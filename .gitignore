@@ -216,3 +216,9 @@ backups/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Speech Lab local exports and independent build output
+speech-lab-local/
+speech-lab-SIMULATED-*.json
+dist-speech-lab/
+.speech-lab-no-env/

@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "speech-lab": "node experiments/speech-lab/server.js",
+    "test:speech-lab": "node --test experiments/speech-lab/tests/*.test.js",
     "test:diagnostic-streaming": "node --test tests/diagnosticStreaming.test.js",
     "start": "node server.js",
     "dev": "nodemon server.js",

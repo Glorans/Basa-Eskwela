@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/experiments/speech-lab", "vite.speech-lab.config.ts"]
+}
