@@ -1,0 +1,40 @@
+.teacher-invitations { display: grid; gap: 20px; min-width: 0; color: var(--basa-navy, #0b3a3d); }
+.teacher-invitations header { display: flex; gap: 16px; justify-content: space-between; align-items: start; }
+.teacher-invitations h1 { font-size: 1.8rem; font-weight: 800; }
+.teacher-invitations h2 { font-size: 1.2rem; font-weight: 800; margin-bottom: 10px; }
+.teacher-invitations-eyebrow { font-size: .8rem; font-weight: 800; text-transform: uppercase; }
+.teacher-invitations section, .teacher-invitations form { background: #fff; border-radius: 18px; padding: 22px; min-width: 0; }
+.teacher-invitations p { margin-bottom: 12px; }
+.teacher-invitations button { border-radius: 10px; background: var(--basa-navy, #0b3a3d); color: #fff; padding: 10px 16px; font-weight: 700; }
+.teacher-invitations button:disabled { opacity: .55; cursor: not-allowed; }
+.teacher-invitations button:focus-visible, .teacher-invitations input:focus-visible { outline: 3px solid #13795b; outline-offset: 3px; }
+.teacher-invitations-fields { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; }
+.teacher-invitations label { display: grid; gap: 8px; }
+.teacher-invitations input { border: 1px solid #70817d; border-radius: 9px; padding: 10px; max-width: 100%; min-width: 0; }
+.teacher-invitations .teacher-invitations-reveal { background: var(--basa-yellow, #ffcf4d); }
+.teacher-invitations-reveal code { display: block; overflow-wrap: anywhere; user-select: all; padding: 14px; background: #fff; border-radius: 9px; margin-bottom: 16px; }
+.teacher-invitations-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.teacher-invitations-error { background: #fff0f0; color: #9f1239; padding: 12px; border-radius: 10px; }
+.teacher-invitations-table { overflow-x: auto; }
+.teacher-invitations table { width: 100%; border-collapse: collapse; text-align: left; }
+.teacher-invitations th, .teacher-invitations td { padding: 12px; border-bottom: 1px solid #dce8e7; }
+.teacher-invitations td:first-child { font-size: .8rem; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .teacher-invitations header { flex-direction: column; } .teacher-invitations-fields { flex-direction: column; } }
+
+.teacher-invitations [role="tabpanel"]:not([hidden]) { display: grid; gap: 20px; min-width: 0; }
+.teacher-invitations-tabs { display: flex; gap: 12px; flex-wrap: wrap; }
+.teacher-invitations-tabs [aria-selected="true"] { background: #ffcf4d; color: #0b3a3d; }
+.pending-teachers-list { display: grid; gap: 16px; }
+.pending-teacher { border: 1px solid #dce8e7; border-radius: 12px; padding: 18px; min-width: 0; overflow-wrap: anywhere; }
+.pending-teacher h3 { font-size: 1.1rem; font-weight: 800; }
+.pending-teacher dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.pending-teacher dt { font-weight: 700; }
+.pending-teacher dd { margin: 0; }
+@media (max-width: 640px) {
+  .pending-teacher dl { grid-template-columns: 1fr; }
+  .teacher-invitations section, .teacher-invitations form { padding: 16px; }
+  .teacher-invitations table, .teacher-invitations tbody, .teacher-invitations tr, .teacher-invitations td { display: block; }
+  .teacher-invitations thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
+  .teacher-invitations tr { border: 1px solid #dce8e7; border-radius: 10px; margin-bottom: 12px; }
+  .teacher-invitations td::before { content: attr(data-label) ": "; font-weight: 700; }
+}

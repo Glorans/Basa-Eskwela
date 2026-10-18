@@ -1,0 +1,22 @@
+.m3-admin-module-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.m3-admin-module-summary h2 { margin: 0 0 8px; font-size: 1rem; }
+.m3-admin-module-summary strong { display: block; font-size: 2rem; color: #183c33; }
+.m3-admin-module-summary span { color: #52615c; font-size: .85rem; }
+.m3-admin-module-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0 0; font-size: .85rem; }
+.m3-admin-module-meta dt { color: #52615c; font-size: .75rem; }
+.m3-admin-module-meta dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.m3-admin-module-actions { display: flex; flex-direction: column; gap: 8px; }
+.m3-module-delete-button { background: #ad2d24; color: #fff; border: 1px solid #ad2d24; }
+.m3-module-delete-button:hover:not(:disabled) { background: #872019; color: #fff; }
+.m3-admin-content .m3-toolbar { flex-wrap: wrap; }
+.m3-admin-content .m3-record-heading h2 { overflow-wrap: anywhere; }
+.m3-admin-content .m3-search-field:focus-within { outline: 2px solid #24653b; outline-offset: 2px; }
+@media (max-width: 700px) {
+  .m3-admin-module-summary { gap: 8px; }
+  .m3-admin-module-summary .m3-panel { padding: 12px; }
+  .m3-admin-module-summary h2 { font-size: .85rem; }
+  .m3-admin-content .m3-record-card { grid-template-columns: minmax(0, 1fr); }
+  .m3-admin-content .m3-record-icon { display: none; }
+  .m3-admin-module-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .m3-admin-module-actions { flex-direction: row; flex-wrap: wrap; }
+}

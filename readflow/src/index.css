@@ -1,0 +1,46 @@
+@import "./styles/basa-theme.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family:
+    "Inter",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+/* Public landing-page viewport contract. M1 pages own their layout styles. */
+.landing-page,
+.landing-page * {
+  box-sizing: border-box;
+}
+
+.landing-page {
+  --m1-viewport-padding-block: clamp(20px, 5dvh, 64px);
+  min-height: 100dvh;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.paragraph-enter {
+  animation: fadeInUp 0.35s ease-out;
+}

@@ -1,0 +1,55 @@
+/* Collection editor only. Reuse ReadFlow Admin tokens and button variants. */
+.m3-collection-editor { color: #143b32; gap: 20px; width: 100%; min-width: 0; }
+.m3-collection-editor * { box-sizing: border-box; }
+.m3-collection-editor :is(h1,h2,h3,h4,p) { margin: 0; }
+.m3-collection-editor h1 { font-size: clamp(1.65rem,4vw,2.2rem); letter-spacing: -.035em; line-height: 1.2; }
+.m3-collection-editor h2 { font-size: 1.12rem; }
+.m3-collection-editor h3 { font-size: 1.05rem; }
+.m3-collection-editor h4 { font-size: .95rem; }
+.m3-collection-editor .m3-editor-header { display: grid; justify-items: start; gap: 10px; }
+.m3-collection-editor .m3-editor-back { color: #365b50; font-size: .85rem; margin-bottom: 8px; text-underline-offset: 4px; }
+.m3-collection-editor .m3-editor-card { background: #fff; border: 1px solid #dce5df; border-radius: 18px; padding: 22px; box-shadow: 0 4px 16px #143b3208; display: grid; gap: 18px; min-width: 0; }
+.m3-collection-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.m3-collection-editor .m3-collection-fields { display: grid; gap: 16px; align-content: start; }
+.m3-collection-editor .m3-editor-metadata { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.m3-collection-editor .m3-editor-wide { grid-column: 1 / -1; }
+.m3-collection-editor label { color: #294c40; font-size: .85rem; font-weight: 750; display: grid; gap: 7px; min-width: 0; }
+.m3-collection-editor :is(input,select,textarea) { width: 100%; min-width: 0; max-width: 100%; border: 1px solid #b9c9c0; border-radius: 9px; background: #fff; color: #193e32; padding: 10px 12px; font: inherit; font-size: .9rem; font-weight: 400; line-height: 1.5; box-shadow: none; }
+.m3-collection-editor :is(input,select) { height: 44px; min-height: 44px; }
+.m3-collection-editor textarea { height: auto; min-height: 80px; resize: vertical; }
+.m3-collection-editor .m3-editor-passage-text { height: 168px; min-height: 120px; }
+.m3-collection-editor :is(input,select,textarea,button,a,summary):focus-visible { outline: 3px solid #287360; outline-offset: 3px; }
+.m3-collection-editor :is(input,select,textarea):disabled { background: #f4f6f3; color: #58665e; }
+.m3-collection-editor .m3-button { min-height: 42px; padding: 9px 14px; border-radius: 10px; white-space: normal; }
+.m3-collection-editor .m3-button--primary { background: var(--basa-navy,#0b3a3d); }
+.m3-collection-editor .m3-editor-danger { color: #a1392c; border: 1px solid #e3c8c2; background: #fff; box-shadow: none; }
+.m3-collection-editor .m3-editor-danger:hover:not(:disabled) { background: #fff2ef; }
+.m3-collection-editor :is(.m3-editor-section-heading,.m3-editor-passage-heading,.m3-editor-question-heading) { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.m3-collection-editor .m3-editor-section-heading p, .m3-collection-editor .m3-editor-help { color: #596c62; font-size: .82rem; font-weight: 400; line-height: 1.55; }
+.m3-collection-editor .m3-editor-section-heading p { margin-top: 5px; }
+.m3-collection-editor .m3-editor-passage-heading { padding-bottom: 15px; border-bottom: 1px solid #e4ebe5; }
+.m3-collection-editor .m3-editor-passage-status { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: .8rem; color: #596c62; }
+.m3-collection-editor .m3-editor-badge { display: inline-flex; width: fit-content; padding: 5px 10px; border-radius: 99px; background: #edf3ef; color: #355c4c; font-size: .76rem; font-weight: 750; line-height: 1.4; }
+.m3-collection-editor .m3-editor-badge--pending { background: #fff2d8; color: #79541b; }
+.m3-collection-editor .m3-editor-badge--ready { background: #e3f3e9; color: #256342; }
+.m3-collection-editor .m3-editor-upload { padding: 14px; background: #f6f8f5; border: 1px dashed #becdc2; border-radius: 12px; }
+.m3-collection-editor input[type=file] { height: auto; min-height: 42px; padding: 0; border: 0; background: transparent; font-size: .8rem; }
+.m3-collection-editor input[type=file]::file-selector-button { padding: 10px 12px; margin-right: 10px; border: 1px solid #b9c9c0; border-radius: 8px; background: #fff; color: #244e3f; font: inherit; font-weight: 700; cursor: pointer; }
+.m3-collection-editor .m3-editor-review { border: 1px solid #dce5df; border-radius: 12px; background: #f7f9f6; min-width: 0; }
+.m3-collection-editor .m3-editor-review summary { padding: 15px; cursor: pointer; font-size: .9rem; font-weight: 800; }
+.m3-collection-editor .m3-editor-review summary span { display: block; margin: 6px 0 0 16px; color: #596c62; font-size: .76rem; font-weight: 500; }
+.m3-collection-editor .m3-editor-review > fieldset { padding: 0 14px 14px; }
+.m3-collection-editor .m3-editor-question { padding: 16px; border: 1px solid #dce5df; border-radius: 10px; background: #fff; }
+.m3-collection-editor .m3-editor-question .m3-editor-badge { text-transform: capitalize; }
+.m3-collection-editor .m3-editor-footer { padding: 18px 0 4px; border-top: 1px solid #d4dfd7; display: flex; flex-wrap: wrap; gap: 12px; }
+.m3-collection-editor .m3-editor-notice { padding: 12px 16px; border-radius: 10px; background: #edf3ef; font-size: .9rem; overflow-wrap: anywhere; }
+.m3-collection-editor .m3-editor-draft-feedback { flex-basis: 100%; overflow-wrap: anywhere; }
+@media (max-width:560px) {
+  .m3-collection-editor .m3-editor-metadata { grid-template-columns: minmax(0,1fr); }
+  .m3-collection-editor .m3-editor-card { padding: 16px; border-radius: 14px; }
+  .m3-collection-editor .m3-editor-section-heading { align-items: flex-start; }
+  .m3-collection-editor .m3-editor-section-heading > div { flex: 1 1 160px; }
+  .m3-collection-editor .m3-editor-question { padding: 12px; }
+  .m3-collection-editor .m3-editor-review > fieldset { padding: 0 10px 10px; }
+  .m3-collection-editor .m3-editor-footer .m3-button { width: 100%; }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "readflow",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:diagnostic-streaming": "node --experimental-strip-types --test tests/diagnosticStreaming.test.ts",
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
+    "test:diagnostic-scoring": "node --experimental-strip-types --test tests/diagnosticScoring.test.ts",
+    "test:diagnostic-language": "node --experimental-strip-types --test tests/diagnosticLanguage.test.ts",
+    "test:diagnostic-recording": "node --experimental-strip-types --test tests/diagnosticRecording.test.ts",
+    "test:learner-ui": "node --experimental-strip-types --test tests/learnerEmptyStates.test.ts",
+    "test:auth": "node --experimental-strip-types --test tests/authOnboarding.test.ts tests/roleSelectionPage.test.ts tests/m1OnboardingFlows.test.ts tests/loginFlow.test.ts tests/authServiceBoundary.test.ts tests/authProvider.test.ts tests/authLoadingUi.test.ts tests/profileSettings.test.ts tests/m1UiComponents.test.ts tests/m1CssOrganization.test.ts",
+    "test:m1-components": "node --experimental-strip-types --test tests/m1UiComponents.test.ts tests/m1CssOrganization.test.ts",
+    "test:profile": "node --experimental-strip-types --test tests/profileSettings.test.ts",
+    "test:m3": "node --experimental-strip-types --test tests/m3*.test.ts",
+    "test:m4": "node --experimental-strip-types --test tests/m4*.test.ts",
+    "test:m5": "node --experimental-strip-types --test tests/m5*.test.ts",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@fontsource/fredoka": "^5.3.0",
+    "@fontsource/nunito": "^5.3.0",
+    "@supabase/supabase-js": "^2.117.2",
+    "axios": "^1.20.0",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

@@ -1,0 +1,218 @@
+/* One layout for module and assigned read-aloud: title, story box, button.
+   Only basa-theme tokens are used for color. */
+.read-aloud-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 800px;
+  margin: 10px auto 0;
+  color: var(--basa-text);
+  font-family: "Nunito", sans-serif;
+  text-align: center;
+}
+
+.read-aloud-body h2 {
+  margin: 0;
+  color: var(--basa-navy);
+  font-family: "Fredoka", sans-serif;
+  font-size: clamp(1.75rem, 6vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* Solid story frame (border, cream, padding). No fade, mask or blur, so every
+   line stays crisp. The frame itself does not scroll. */
+.read-aloud-story-box {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 20px clamp(18px, 5vw, 40px);
+  border: 3px solid var(--basa-sidebar);
+  border-radius: var(--basa-radius-lg);
+  background: var(--basa-cream);
+  text-align: left;
+}
+
+/* The scrolling viewport is a whole number of lines tall with no vertical
+   padding, so pages snap to line boundaries and no line is ever cut in half.
+   Paragraph gaps are exactly one line for the same reason. */
+.read-aloud-story-viewport {
+  --read-aloud-story-lines: 6;
+  height: calc(var(--read-aloud-story-lines) * 1.9em);
+  overflow-y: auto;
+  font-size: clamp(1.375rem, 4.5vw, 1.6rem);
+  line-height: 1.9;
+  scrollbar-width: none;
+}
+
+.read-aloud-story-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.read-aloud-story-viewport p {
+  margin: 0;
+  color: var(--basa-text);
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1.9;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.read-aloud-story-viewport p + p {
+  margin-top: 1.9em;
+}
+
+.read-aloud-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 6px 0 20px;
+}
+
+.read-aloud-review details { width: 100%; max-height: 35vh; overflow: auto; }
+.read-aloud-body summary { cursor: pointer; font-weight: 700; padding: 10px; }
+
+.read-aloud-record-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: min(100%, 360px);
+  min-height: 56px;
+  padding: 14px 24px;
+  border: 0;
+  border-radius: var(--basa-btn-radius);
+  background: var(--basa-navy);
+  color: #ffffff;
+  font: inherit;
+  font-size: 1.15rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* Dark text on coral keeps contrast readable (about 5.9:1). */
+.read-aloud-record-button--active {
+  background: var(--basa-sidebar-item);
+  color: var(--basa-text);
+  animation: read-aloud-story-pulse 1.6s ease-out infinite;
+}
+
+@keyframes read-aloud-story-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--basa-sidebar-item) 55%, transparent); }
+  100% { box-shadow: 0 0 0 14px transparent; }
+}
+
+.read-aloud-record-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.read-aloud-story-timer {
+  padding: 4px 12px;
+  border-radius: var(--basa-btn-radius);
+  background: var(--basa-sidebar);
+  color: var(--basa-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.read-aloud-status {
+  margin: 0;
+  color: var(--basa-text);
+  font-size: 1rem;
+}
+
+.read-aloud-status:empty {
+  display: none;
+}
+
+.read-aloud-review {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(100%, 480px);
+}
+
+.read-aloud-review audio {
+  width: 100%;
+}
+
+.read-aloud-part {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  color: var(--basa-text);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.read-aloud-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.read-aloud-continue,
+.read-aloud-secondary {
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 12px 22px;
+  border-radius: var(--basa-btn-radius);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.read-aloud-continue {
+  border: 2px solid var(--basa-navy);
+  background: var(--basa-navy);
+  color: #ffffff;
+}
+
+.read-aloud-secondary {
+  border: 2px solid var(--basa-navy);
+  background: var(--basa-card);
+  color: var(--basa-navy);
+}
+
+.read-aloud-continue:disabled,
+.read-aloud-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.read-aloud-story-viewport:focus-visible,
+.read-aloud-record-button:focus-visible,
+.read-aloud-continue:focus-visible,
+.read-aloud-secondary:focus-visible,
+.read-aloud-body summary:focus-visible {
+  outline: 3px solid var(--basa-navy);
+  outline-offset: 3px;
+}
+
+/* Short phones (for example 360x640): the box shrinks, the button does not. */
+@media (max-height: 700px) {
+  .read-aloud-story-viewport {
+    --read-aloud-story-lines: 4;
+  }
+}
+
+@media (max-width: 480px) {
+  .read-aloud-actions > button {
+    flex: 1 1 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .read-aloud-record-button--active {
+    animation: none;
+    box-shadow: 0 0 0 4px var(--basa-yellow);
+  }
+}

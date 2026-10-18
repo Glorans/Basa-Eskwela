@@ -1,0 +1,12 @@
+.teacher-verification .auth-card { overflow: visible; }
+.teacher-verification .auth-form-panel { min-width: 0; padding: clamp(24px, 4vw, 40px); }
+.teacher-verification .auth-form-container { width: 100%; max-width: 370px; min-width: 0; }
+.teacher-verification .auth-heading { white-space: normal; overflow-wrap: anywhere; font-size: clamp(1.65rem, 2.6vw, 2.15rem); line-height: 1.2; }
+.teacher-verification p[role="status"] { line-height: 1.6; text-align: center; margin: 0 0 28px; }
+.teacher-verification-actions { display: grid; gap: 16px; margin-top: 24px; }
+@media (max-width: 800px) {
+  .teacher-verification .auth-brand-panel { min-height: 0; padding-block: 16px; }
+  .teacher-verification .auth-brand-name { margin-top: 0; font-size: 2rem; }
+  .teacher-verification .auth-mascot-frame { height: 150px; }
+  .teacher-verification .auth-mascot { width: 260px; transform: translateY(-50px); }
+}

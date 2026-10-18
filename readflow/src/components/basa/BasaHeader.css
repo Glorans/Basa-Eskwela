@@ -1,0 +1,106 @@
+.basa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 26px;
+  border-radius: 24px;
+  background: var(--basa-header);
+}
+
+.basa-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.basa-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #10231f;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 150ms ease;
+}
+
+.basa-icon-button:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.basa-icon-button:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.basa-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.basa-xp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--basa-navy);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.basa-xp-star {
+  border-radius: 50%;
+}
+
+.basa-user-button {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+@media (min-width: 769px) {
+  .basa-menu-button {
+    display: none;
+  }
+}
+
+@media (min-width: 1000px) and (max-height: 800px) {
+  .basa-header {
+    padding: 10px 20px;
+    border-radius: 20px;
+  }
+}
+
+@media (max-width: 560px) {
+  .basa-header {
+    padding: 12px 16px;
+    border-radius: 18px;
+  }
+}
+
+.basa-account-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #ffffff;
+  text-decoration: none;
+  border-radius: 12px;
+}
+.basa-account-link:focus-visible { outline: 2px solid white; outline-offset: 4px; }
+.basa-account-copy { display: flex; flex-direction: column; min-width: 0; }
+.basa-account-copy strong { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.basa-account-copy small { font-size: 0.74rem; }
+@media (max-width: 560px) {
+  .basa-account-copy small { display: none; }
+  .basa-account-copy strong { max-width: 36vw; }
+}

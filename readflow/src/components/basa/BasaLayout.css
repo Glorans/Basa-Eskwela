@@ -1,0 +1,52 @@
+.basa-page,
+.basa-page * {
+  box-sizing: border-box;
+}
+
+.basa-page {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  overflow: hidden;
+  background: var(--basa-bg);
+}
+
+.basa-main-shell {
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: clamp(14px, 3vw, 26px);
+}
+
+.basa-content {
+  min-height: 0;
+  flex: 1;
+  margin-top: 18px;
+  padding: clamp(20px, 4vw, 36px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: var(--basa-radius-lg);
+  background: var(--basa-content-bg);
+  color: var(--basa-text);
+}
+
+@media (min-width: 1000px) and (max-height: 800px) {
+  .basa-main-shell {
+    padding: 10px 16px;
+  }
+
+  .basa-content {
+    margin-top: 10px;
+    padding: 18px 22px;
+  }
+}
+
+@media (max-width: 768px) {
+  .basa-main-shell {
+    width: 100%;
+  }
+}

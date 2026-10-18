@@ -1,0 +1,22 @@
+.m3-language-selector { display:flex; flex-wrap:wrap; gap:12px; margin:16px 0; }
+.m3-language-selector button { min-height:44px; padding:10px 22px; border:2px solid var(--basa-navy, #17344b); border-radius:14px; background:var(--basa-card, white); color:var(--basa-text, #17344b); font:inherit; font-weight:800; cursor:pointer; }
+.m3-language-selector button[aria-pressed="true"] { background:var(--basa-navy, #17344b); color:white; text-decoration:underline; text-underline-offset:4px; }
+.m3-language-selector button:focus-visible, .m3-reading-link:focus-visible, .m3-catalog-filters button:focus-visible { outline:3px solid #17849c; outline-offset:4px; }
+.m3-placement { padding:20px; border:1px solid #d8e2e8; border-radius:18px; background:var(--basa-cream, #fff9ea); color:var(--basa-text, #17344b); min-width:0; overflow-wrap:anywhere; }
+.m3-placement h3 { margin:0 0 12px; font-size:1.1rem; }
+.m3-placement dl { display:flex; flex-wrap:wrap; gap:18px 36px; margin:0; }
+.m3-placement dt { font-size:.85rem; }
+.m3-placement dd { margin:4px 0 0; font-weight:800; font-size:1.15rem; }
+.m3-placement p { line-height:1.5; }
+.m3-reading-link { display:inline-block; padding:10px 0; border:0; background:none; color:var(--basa-link, #176279); font:inherit; font-weight:700; text-decoration:underline; cursor:pointer; }
+.m3-placement-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:16px 0 24px; }
+.m3-reading-section { margin:24px 0 32px; }
+.m3-reading-section h2 { font-size:1.2rem; margin:0 0 16px; }
+.m3-learner-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px; }
+.m3-learner-card { min-width:0; display:flex; flex-direction:column; overflow-wrap:anywhere; }
+.m3-learner-card .basa-module-card { flex:1; }
+.m3-card-label { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; padding:8px 4px; font-size:.78rem; font-weight:700; color:var(--basa-text-soft, #455b69); }
+.m3-catalog-filters { flex-wrap:wrap; }
+.m3-catalog-filters button { min-height:44px; }
+@media(max-width:1000px) { .m3-learner-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:560px) { .m3-placement-grid, .m3-learner-grid { grid-template-columns:1fr; } .m3-language-selector button { flex:1; } }

@@ -1,0 +1,7 @@
+.admin-diagnostic-results-table {
+  min-width: 1220px;
+}
+
+.admin-diagnostic-results-table td:nth-child(n + 4):nth-child(-n + 6) {
+  font-variant-numeric: tabular-nums;
+}

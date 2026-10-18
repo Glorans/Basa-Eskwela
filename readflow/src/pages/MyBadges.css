@@ -1,0 +1,112 @@
+.basa-badges-card {
+  position: relative;
+  padding: 26px;
+  border-radius: var(--basa-radius-lg);
+  background: var(--basa-cream);
+}
+
+.basa-badges-empty {
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-right: 110px;
+  color: var(--basa-text-soft);
+  text-align: center;
+}
+
+.basa-badges-empty strong {
+  color: var(--basa-text);
+  font-size: 1rem;
+}
+
+.basa-badges-empty span {
+  font-size: 0.88rem;
+}
+
+.basa-badges-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.basa-badge-tile {
+  padding: 20px 16px;
+  border-radius: var(--basa-radius-md);
+  background: #f3f1e2;
+  text-align: center;
+}
+
+.basa-badge-tile--locked {
+  opacity: 0.65;
+}
+
+.basa-badge-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  background: var(--basa-yellow);
+  color: #7a5200;
+}
+
+.basa-badge-tile--locked .basa-badge-icon {
+  background: #d8d4bd;
+  color: #7c7a68;
+}
+
+.basa-badge-name {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--basa-text);
+}
+
+.basa-badge-desc {
+  margin: 0 0 10px;
+  font-size: 0.75rem;
+  color: var(--basa-text-soft);
+  line-height: 1.35;
+}
+
+.basa-badge-status {
+  display: inline-block;
+  padding: 2px 12px;
+  border-radius: 999px;
+  background: #e2ded0;
+  color: #7c7a68;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.basa-badge-status--earned {
+  background: #d3f2cc;
+  color: #1f9d55;
+}
+
+.basa-badges-mascot {
+  position: absolute;
+  right: -10px;
+  bottom: -8px;
+}
+
+@media (max-width: 900px) {
+  .basa-badges-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .basa-badges-empty {
+    padding-right: 0;
+  }
+
+  .basa-badges-grid {
+    grid-template-columns: 1fr;
+  }
+}

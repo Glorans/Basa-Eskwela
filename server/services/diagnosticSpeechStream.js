@@ -1,0 +1,226 @@
+const { getGoogleSpeechLanguageCode } = require("./diagnosticLanguage");
+const { createDiagnosticRecognitionStream } = require("./googleSpeechService");
+
+const PCM_SAMPLE_RATE = 16000;
+const MAX_FRAME_BYTES = 6400; // At most 200 ms of mono, signed LE 16-bit PCM.
+const MAX_BUFFER_BYTES = PCM_SAMPLE_RATE * 2 * 5;
+const STREAM_ROTATION_MS = 240000; // Drain well before Google's five-minute limit.
+const SAFE_STREAM_ERROR = "We had trouble listening to your reading. Your recording can still be processed.";
+
+function buildStreamingRequest(language) {
+  return {
+    config: {
+      encoding: "LINEAR16",
+      sampleRateHertz: PCM_SAMPLE_RATE,
+      audioChannelCount: 1,
+      languageCode: getGoogleSpeechLanguageCode(language),
+      ...(language === "en" ? { model: "latest_long" } : {}),
+      enableAutomaticPunctuation: true,
+    },
+    interimResults: true,
+    singleUtterance: false,
+  };
+}
+
+function developmentLog(event, details) {
+  if (process.env.NODE_ENV === "development") {
+    console.info(`[DiagnosticStreaming] ${event}`, details ?? "");
+  }
+}
+
+/** One reading session. Rotation drains the old stream before opening the next,
+ * buffering new PCM in order. No overlapping/replayed audio or recorder control. */
+function createDiagnosticSpeechSession({
+  language,
+  send,
+  close,
+  createStream = createDiagnosticRecognitionStream,
+  timers = { setTimeout, clearTimeout },
+  rotationMs = STREAM_ROTATION_MS,
+  log = developmentLog,
+}) {
+  const request = buildStreamingRequest(language);
+  let active;
+  let generation = 0;
+  let finalCount = 0;
+  const finalTranscripts = [];
+  let audioBytes = 0;
+  let stopped = false;
+  let disposed = false;
+  let queue = [];
+  let queuedBytes = 0;
+  const timerIds = new Set();
+
+  function later(callback, delay) {
+    const id = timers.setTimeout(() => { timerIds.delete(id); callback(); }, delay);
+    timerIds.add(id);
+    id?.unref?.();
+    return id;
+  }
+
+  function cancelTimer(id) {
+    timers.clearTimeout(id);
+    timerIds.delete(id);
+  }
+
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    timerIds.forEach((id) => timers.clearTimeout(id));
+    timerIds.clear();
+    queue = [];
+    queuedBytes = 0;
+    if (active) {
+      log("Google stream closed", { generation: active.id });
+      active.stream.destroy();
+      active = undefined;
+    }
+  }
+
+  function fail(reason) {
+    if (disposed) return;
+    log("stream failure", { reason });
+    send({ type: "error", code: "STREAM_UNAVAILABLE", message: SAFE_STREAM_ERROR });
+    dispose();
+    close();
+  }
+
+  function complete() {
+    if (disposed) return;
+    log("complete final transcript", {
+      languageCode: request.config.languageCode,
+      model: request.config.model ?? "automatic",
+      finalCount,
+      text: finalTranscripts.join(" "),
+    });
+    send({ type: "complete", finalCount, audioBytes });
+    dispose();
+    close();
+  }
+
+  function drain(reason) {
+    if (!active || active.draining || disposed) return;
+    active.draining = reason;
+    cancelTimer(active.rotationTimer);
+    active.drainTimer = later(() => fail("Google finalization timed out"), 8000);
+    active.stream.end(); // Half-close: keep reading final responses until `end`.
+  }
+
+  function pump() {
+    if (disposed || !active || active.draining || active.blocked) return;
+    while (queue.length && !active.blocked) {
+      const frame = queue.shift();
+      queuedBytes -= frame.length;
+      try {
+        active.blocked = !active.stream.write(frame);
+      } catch {
+        fail("Google audio write failed");
+        return;
+      }
+    }
+    if (stopped && queue.length === 0) drain("stop");
+  }
+
+  function openStream() {
+    if (disposed) return;
+    let stream;
+    try { stream = createStream(request); } catch { fail("Google stream setup failed"); return; }
+    const context = {
+      stream, id: ++generation, lastFinalEnd: -1, draining: null,
+      blocked: false, ended: false, pendingInterim: false, rotationTimer: null, drainTimer: null,
+    };
+    active = context;
+    log("Google stream opened", { generation: context.id, language });
+    stream.on("data", (data) => {
+      if (disposed || active !== context) return;
+      if (data.error?.code) { fail("Google returned a recognition error"); return; }
+      const interim = [];
+      let advanced = false;
+      let hasInterim = false;
+      for (const result of data.results ?? []) {
+        const alternative = result.alternatives?.[0];
+        const text = alternative?.transcript?.trim();
+        if (!text) continue;
+        if (!result.isFinal) { hasInterim = true; interim.push(text); continue; }
+        const end = result.resultEndTime;
+        const endNanos = end ? Number(end.seconds ?? 0) * 1e9 + Number(end.nanos ?? 0) : NaN;
+        if (!Number.isFinite(endNanos)) { fail("Final result has no ordering timestamp"); return; }
+        if (endNanos <= context.lastFinalEnd) continue;
+        context.lastFinalEnd = endNanos;
+        advanced = true;
+        finalTranscripts.push(text);
+        send({
+          type: "final", segmentId: `${context.id}:${endNanos}`, sequence: ++finalCount,
+          text, ...(Number.isFinite(alternative.confidence) ? { confidence: alternative.confidence } : {}),
+        });
+        log("final transcript", { text, generation: context.id, sequence: finalCount });
+      }
+      if (advanced || hasInterim) {
+        const text = interim.join(" ");
+        context.pendingInterim = Boolean(text);
+        send({ type: "interim", text });
+        log("interim transcript", { text });
+      }
+    });
+    stream.on("drain", () => { context.blocked = false; pump(); });
+    stream.on("error", () => {
+      if (active === context) fail("Google stream error");
+    });
+    stream.on("end", () => {
+      context.ended = true;
+      if (disposed || active !== context) return;
+      if (!context.draining) { fail("Google stream ended unexpectedly"); return; }
+      if (context.pendingInterim) { fail("Google stream ended with unfinalized speech"); return; }
+      cancelTimer(context.drainTimer);
+      cancelTimer(context.rotationTimer);
+      active = undefined;
+      log("Google stream closed", { generation: context.id });
+      stream.destroy();
+      send({ type: "interim", text: "" });
+      if (stopped && queuedBytes === 0) complete();
+      else openStream();
+    });
+    stream.on("close", () => {
+      if (!disposed && !context.ended) fail("Google stream closed before final results");
+    });
+    context.rotationTimer = later(() => drain("rotate"), rotationMs);
+    pump();
+  }
+
+  let audioTimer;
+  function acceptAudio(frame) {
+    if (disposed || stopped) return;
+    if (!Buffer.isBuffer(frame) || !frame.length || frame.length % 2 || frame.length > MAX_FRAME_BYTES) {
+      fail("Invalid PCM frame"); return;
+    }
+    audioBytes += frame.length;
+    if (audioBytes > PCM_SAMPLE_RATE * 2 * 301) { fail("Session audio limit exceeded"); return; }
+    queuedBytes += frame.length;
+    if (queuedBytes > MAX_BUFFER_BYTES) { fail("Audio backpressure limit exceeded"); return; }
+    queue.push(frame);
+    cancelTimer(audioTimer);
+    audioTimer = later(() => fail("Audio transport interrupted"), 10000);
+    pump();
+  }
+
+  function stop() {
+    if (disposed || stopped) return;
+    stopped = true;
+    cancelTimer(audioTimer);
+    log("recording stopped");
+    pump();
+  }
+
+  openStream();
+  if (!disposed) {
+    send({ type: "ready", encoding: "LINEAR16", sampleRate: PCM_SAMPLE_RATE, channels: 1 });
+    audioTimer = later(() => fail("No audio received"), 10000);
+    later(() => fail("Session lifetime exceeded"), 315000);
+  }
+  return { acceptAudio, stop, dispose };
+}
+
+module.exports = {
+  buildStreamingRequest, createDiagnosticSpeechSession, developmentLog,
+  MAX_FRAME_BYTES, SAFE_STREAM_ERROR, STREAM_ROTATION_MS,
+};

@@ -1,0 +1,248 @@
+import { supabase } from "../../../lib/supabaseClient";
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ProposedPassageDatabase } from '../types/proposedPassageDatabase';
+import type { ModuleFormValues, ModuleStatus, ReadingModule } from "../types/content";
+import {
+  buildCreateModulePayload,
+  buildUpdateModulePayload,
+  isUuid,
+  loadMappedModules,
+  mapLearningPathRow,
+  mapModuleRow,
+  type ModuleQueryRow,
+} from "./moduleModel";
+
+const MODULE_SELECT = `
+  id,
+  path_id,
+  title,
+  difficulty,
+  status,
+  collection_revision,
+  created_by,
+  created_at,
+  published_at,
+  passage,
+  source_material_id,
+  updated_at,
+  learning_paths!modules_path_id_fkey (
+    id,
+    path_name,
+    language,
+    reading_level,
+    difficulty_tier,
+    description
+  ),
+  comprehension_questions(count)
+` as const;
+
+export class ModuleServiceError extends Error {
+  readonly causeValue?: unknown;
+
+  constructor(message: string, causeValue?: unknown) {
+    super(message);
+    this.name = "ModuleServiceError";
+    this.causeValue = causeValue;
+  }
+}
+
+function mapSingleModule(row: ModuleQueryRow | null, missingMessage: string): ReadingModule {
+  if (!row) {
+    throw new ModuleServiceError(missingMessage);
+  }
+
+  return mapModuleRow(row);
+}
+
+async function getAuthenticatedUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error || !data.user) {
+    throw new ModuleServiceError("You must be signed in to manage reading modules.", error);
+  }
+
+  return data.user.id;
+}
+
+export async function getLearningPaths() {
+  const { data, error } = await supabase
+    .from("learning_paths")
+    .select("id, path_name, language, reading_level, difficulty_tier, description")
+    .order("path_name", { ascending: true });
+
+  if (error) {
+    throw new ModuleServiceError("Unable to load learning paths.", error);
+  }
+
+  return data.map(mapLearningPathRow);
+}
+
+export async function getModules(): Promise<ReadingModule[]> {
+  const { data, error } = await supabase
+    .from("modules")
+    .select(MODULE_SELECT)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new ModuleServiceError("Unable to load reading modules.", error);
+  }
+
+  return loadMappedModules(async () => data);
+}
+
+export async function getModuleById(moduleId: string): Promise<ReadingModule | undefined> {
+  if (!isUuid(moduleId)) {
+    return undefined;
+  }
+
+  const { data, error } = await supabase
+    .from("modules")
+    .select(MODULE_SELECT)
+    .eq("id", moduleId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw new ModuleServiceError("Unable to load the reading module.", error);
+  }
+
+  return data ? mapModuleRow(data) : undefined;
+}
+
+export async function createModule(values: ModuleFormValues): Promise<ReadingModule> {
+  const userId = await getAuthenticatedUserId();
+  const path = await getSelectedLearningPath(values.learningPathId);
+  const payload = buildCreateModulePayload(values, userId, path);
+  const { data, error } = await supabase
+    .from("modules")
+    .insert(payload)
+    .select(MODULE_SELECT)
+    .single();
+
+  if (error) {
+    throw new ModuleServiceError("Unable to create the module. Check your access and try again.", error);
+  }
+
+  return mapSingleModule(data, "The created module could not be loaded.");
+}
+
+export async function updateModule(
+  moduleId: string,
+  values: ModuleFormValues,
+): Promise<ReadingModule> {
+  const path = await getSelectedLearningPath(values.learningPathId);
+  const payload = buildUpdateModulePayload(values, path);
+  const { data, error } = await supabase
+    .from("modules")
+    .update(payload)
+    .eq("id", moduleId)
+    .select(MODULE_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    throw new ModuleServiceError("Unable to update the module. Check your access and try again.", error);
+  }
+
+  return mapSingleModule(data, "Module not found or you do not have permission to update it.");
+}
+
+async function getSelectedLearningPath(pathId: string) {
+  if (!isUuid(pathId)) {
+    throw new ModuleServiceError("Select a valid learning path before saving.");
+  }
+  const { data, error } = await supabase
+    .from("learning_paths")
+    .select("id, path_name, language, reading_level, difficulty_tier, description")
+    .eq("id", pathId)
+    .maybeSingle();
+  if (error) {
+    throw new ModuleServiceError("Unable to verify the selected learning path. Please try again.", error);
+  }
+  if (!data) {
+    throw new ModuleServiceError("Select a valid learning path before saving.");
+  }
+  return data;
+}
+
+async function updateModuleStatus(
+  moduleId: string,
+  status: ModuleStatus,
+  failureMessage: string,
+): Promise<ReadingModule> {
+  const { data, error } = await supabase
+    .from("modules")
+    .update({ status })
+    .eq("id", moduleId)
+    .select(MODULE_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    throw new ModuleServiceError(failureMessage, error);
+  }
+
+  return mapSingleModule(data, failureMessage);
+}
+
+export async function publishModule(moduleId: string): Promise<ReadingModule> {
+  const { data: issues, error } = await (supabase as unknown as SupabaseClient<ProposedPassageDatabase>)
+    .rpc('m3_collection_publish_issues', { target_id: moduleId });
+  if (error) throw new ModuleServiceError('Unable to validate module publication.', error);
+  if (issues.length) throw new ModuleServiceError(issues.join(' '));
+  // The live trigger supplies the trusted database timestamp and preserves it
+  // as first-publication history; the browser never writes published_at.
+  return updateModuleStatus(
+    moduleId,
+    "published",
+    "Unable to publish this module. Check the publication requirements and your access, then try again.",
+  );
+}
+
+export function unpublishModule(moduleId: string): Promise<ReadingModule> {
+  return updateModuleStatus(
+    moduleId,
+    "draft",
+    "Unable to unpublish this module. Check your access and try again.",
+  );
+}
+
+export function archiveModule(moduleId: string): Promise<ReadingModule> {
+  return updateModuleStatus(
+    moduleId,
+    "archived",
+    "Unable to archive this module. Check your access and try again.",
+  );
+}
+
+export function restoreModule(moduleId: string): Promise<ReadingModule> {
+  return updateModuleStatus(
+    moduleId,
+    "draft",
+    "Unable to restore this module. Check your access and try again.",
+  );
+}
+
+interface DeletionDatabaseError { code?: string; message?: string; }
+
+function deletionDatabaseFailure(operation: string, error: DeletionDatabaseError) {
+  const permission = error.code === "42501" || error.code === "PGRST301" || error.code === "PGRST303";
+  return new ModuleServiceError(
+    `${permission ? "Database permission denied" : "Database check failed"} while ${operation}${error.code ? ` (${error.code})` : ""}: ${error.message || "No database error detail was returned."}`,
+    error,
+  );
+}
+
+export async function deleteModule(moduleId: string): Promise<"permanent" | "soft"> {
+  if (!isUuid(moduleId)) throw new ModuleServiceError("This module is unavailable. Reload the module list.");
+  const { data, error } = await (supabase as unknown as SupabaseClient<ProposedPassageDatabase>)
+    .rpc("m3_delete_module", { target_id: moduleId });
+  if (error) throw deletionDatabaseFailure("deleting this module", error);
+  if (data !== "permanent" && data !== "soft") {
+    throw new ModuleServiceError("The database did not confirm deletion. Refresh the list before retrying.");
+  }
+  return data;
+}
+
+export function getModuleErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}

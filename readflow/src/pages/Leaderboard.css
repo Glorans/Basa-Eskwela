@@ -1,0 +1,140 @@
+.basa-page-subtitle {
+  margin: 0 0 24px;
+  color: var(--basa-text-soft);
+  font-size: 0.92rem;
+}
+
+.basa-leaderboard-layout {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.basa-leaderboard-card {
+  flex: 1;
+  padding: 24px 26px;
+  border-radius: var(--basa-radius-lg);
+  background: var(--basa-cream);
+}
+
+.basa-leaderboard-card h2 {
+  margin: 0 0 16px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--basa-text);
+}
+
+.basa-leaderboard-empty {
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--basa-text-soft);
+  text-align: center;
+}
+
+.basa-leaderboard-empty strong {
+  color: var(--basa-text);
+  font-size: 1rem;
+}
+
+.basa-leaderboard-empty span {
+  font-size: 0.88rem;
+}
+
+.basa-leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.basa-leaderboard-row {
+  display: grid;
+  grid-template-columns: 28px 34px 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.basa-leaderboard-row:first-child {
+  border-top: 0;
+}
+
+.basa-leaderboard-row--you {
+  background: rgba(255, 199, 85, 0.35);
+  border-radius: 12px;
+}
+
+.basa-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e2ded0;
+  color: var(--basa-text-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.basa-rank-badge--gold {
+  background: #eab308;
+  color: #ffffff;
+}
+
+.basa-rank-badge--silver {
+  background: #94a3b8;
+  color: #ffffff;
+}
+
+.basa-rank-badge--bronze {
+  background: #b45309;
+  color: #ffffff;
+}
+
+.basa-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.basa-leaderboard-name {
+  font-weight: 600;
+  color: var(--basa-text);
+}
+
+.basa-leaderboard-xp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+  color: var(--basa-text);
+}
+
+.basa-podium {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 800px) {
+  .basa-leaderboard-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .basa-leaderboard-row {
+    grid-template-columns: 24px 28px 1fr auto;
+  }
+
+  .basa-leaderboard-row .basa-badge {
+    display: none;
+  }
+}

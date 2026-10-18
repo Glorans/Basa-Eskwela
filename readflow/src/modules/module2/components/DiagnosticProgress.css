@@ -1,0 +1,10 @@
+.diagnostic-progress-wrap { width: 100%; font-family: Nunito, sans-serif; color: #244d35; }
+.diagnostic-progress { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; list-style: none; padding: 0; }
+.diagnostic-progress li { padding: .4rem .65rem; border-radius: 1rem; background: #eef6ed; }
+.diagnostic-progress li[aria-current] { background: #24653b; color: white; font-weight: 800; }
+.diagnostic-progress-wrap > p { font-size: .8rem; text-align: center; }
+.diagnostic-reading-panel .diagnostic-story-card p { font-size: clamp(1.35rem, 2vw, 1.65rem); }
+@media (max-width: 520px) {
+  .diagnostic-reading-panel .diagnostic-story-card { padding: 1.1rem; }
+  .diagnostic-reading-panel .diagnostic-story-card h2 { margin-bottom: .6rem; }
+}

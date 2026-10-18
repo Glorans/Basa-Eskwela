@@ -1,0 +1,674 @@
+const { loadAssignedReadingSource } = require("./assignedReadingSource");
+const { getReadingWords, scorePassage } = require("./oralReadingScoring");
+const { loadComprehensionForOralAttempts } = require("./teacherComprehensionReview");
+const {
+  SupabaseAuthenticationError,
+  getAuthenticatedSupabaseUser,
+  getSupabaseAdmin,
+} = require("./supabaseAdmin");
+
+const LEARNER_ROLES = Object.freeze(["student", "general_user"]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_RECORDING_SECONDS = 300;
+const MAX_TRANSCRIPT_LENGTH = 100000;
+
+class OralReadingAuthorizationError extends Error {
+  constructor(message = "This oral-reading activity is not available to your account.") {
+    super(message);
+    this.name = "OralReadingAuthorizationError";
+    this.statusCode = 403;
+  }
+}
+
+class OralReadingPersistenceError extends Error {
+  constructor(message, statusCode = 500, code = "ORAL_READING_OPERATION_FAILED") {
+    super(message);
+    this.name = "OralReadingPersistenceError";
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+function requireUuid(value, label) {
+  if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
+    throw new OralReadingPersistenceError(`${label} is invalid.`, 400, "INVALID_ID");
+  }
+  return value;
+}
+
+function normalizeLanguage(value) {
+  const language = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (["fil", "filipino", "tagalog", "fil-ph", "tl", "tl-ph"].includes(language)) return "fil";
+  if (["en", "english"].includes(language)) return "en";
+  throw new OralReadingPersistenceError(
+    "The module language is not supported for oral reading.",
+    422,
+    "UNSUPPORTED_LANGUAGE",
+  );
+}
+
+const getNormalizedWords = getReadingWords;
+
+async function authorizeOralReadingRequest(req, dependencies = {}) {
+  const authenticate = dependencies.getAuthenticatedSupabaseUser
+    ?? getAuthenticatedSupabaseUser;
+  const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
+  const user = await authenticate(req);
+  const { data: profile, error } = await getAdmin()
+    .from("profiles")
+    .select("id, full_name, nickname, role")
+    .eq("id", user.id)
+    .single();
+
+  if (error || !profile) {
+    console.error("[M5 profile lookup failed]", {
+      code: error?.code,
+      message: error?.message,
+      details: error?.details,
+      profileFound: Boolean(profile),
+    });
+    throw new OralReadingPersistenceError(
+      "Unable to load your account profile. Check the backend terminal.",
+      500,
+      "PROFILE_LOOKUP_FAILED",
+    );
+  }
+  if (!LEARNER_ROLES.includes(profile.role)) throw new OralReadingAuthorizationError();
+  return { user, profile };
+}
+
+async function authorizeTeacherOralReadingRequest(req, dependencies = {}) {
+  const authenticate = dependencies.getAuthenticatedSupabaseUser
+    ?? getAuthenticatedSupabaseUser;
+  const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
+  const user = await authenticate(req);
+  const { data: profile, error } = await getAdmin()
+    .from("profiles")
+    .select("id, full_name, nickname, role, teacher_status")
+    .eq("id", user.id)
+    .single();
+
+  if (error || !profile) throw new SupabaseAuthenticationError();
+  if (profile.role !== "teacher" || profile.teacher_status !== "approved") {
+    throw new OralReadingAuthorizationError("Approved Teacher access is required.");
+  }
+  return { user, profile };
+}
+
+async function loadAccessiblePublishedModule(requester, moduleId, dependencies = {}, context = {}) {
+  requireUuid(moduleId, "The module ID");
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const { data: moduleRow, error } = await supabase
+    .from("modules")
+    .select("id, path_id, title, difficulty, status, passage, deleted_at")
+    .eq("id", moduleId)
+    .maybeSingle();
+
+  if (error) throw new OralReadingPersistenceError("Unable to load the reading module.");
+  if (!moduleRow) {
+    throw new OralReadingPersistenceError("Reading module not found.", 404, "MODULE_NOT_FOUND");
+  }
+  if (moduleRow.deleted_at || moduleRow.status !== "published") {
+    throw new OralReadingAuthorizationError("This reading module is not available for oral reading.");
+  }
+
+  let roomId = null;
+  let assignmentId = null;
+  if (requester.profile.role === "student") {
+    const { data: enrolled, error: enrolledError } = await supabase.from("enrollments")
+      .select("room_id").eq("student_id", requester.user.id);
+    if (enrolledError) throw new OralReadingPersistenceError("Unable to verify classroom enrollment.");
+    const rooms = (enrolled ?? []).map(row => row.room_id);
+    if (context.roomId) requireUuid(context.roomId, "The classroom ID");
+    if (context.assignmentId) requireUuid(context.assignmentId, "The assignment ID");
+    if (!rooms.length || (context.roomId && !rooms.includes(context.roomId))) {
+      throw new OralReadingAuthorizationError();
+    }
+    let query = supabase.from("room_modules").select("id, room_id, module_id")
+      .eq("module_id", moduleId).in("room_id", rooms);
+    if (context.roomId) query = query.eq("room_id", context.roomId);
+    if (context.assignmentId) query = query.eq("id", context.assignmentId);
+    const { data: assignments, error: assignmentError } = await query;
+    if (assignmentError) {
+      throw new OralReadingPersistenceError("Unable to verify the classroom assignment.");
+    }
+    if (!assignments?.length) {
+      throw new OralReadingAuthorizationError(
+        "This module must be assigned in a classroom where you are enrolled.",
+      );
+    }
+    if (assignments.length > 1) {
+      throw new OralReadingPersistenceError(
+        "Open this activity from its classroom to select the assignment.",
+        400,
+        "CLASSROOM_REQUIRED",
+      );
+    }
+    roomId = assignments[0].room_id;
+    assignmentId = assignments[0].id;
+  } else if (requester.profile.role !== "general_user" || context.roomId || context.assignmentId) {
+    throw new OralReadingAuthorizationError();
+  }
+
+  if (context.passageId) requireUuid(context.passageId, "The passage ID");
+  const { data: passages, error: passageError } = await supabase.from("module_passages")
+    .select("id, title, passage_text, display_order").eq("module_id", moduleId);
+
+  // Only a genuinely absent legacy table permits fallback.
+  if (passageError && !["42P01", "PGRST205"].includes(passageError.code)) {
+    throw new OralReadingPersistenceError("Unable to load the selected passage.");
+  }
+
+  const available = passages ?? [];
+  let selected = context.passageId ? available.find(row => row.id === context.passageId)
+    : available.length === 1 ? available[0] : null;
+
+  if (!selected && available.length) {
+    throw new OralReadingPersistenceError(
+      "Select a valid passage in this module.",
+      400,
+      "PASSAGE_REQUIRED",
+    );
+  }
+  if (!selected && context.passageId && context.passageId !== moduleId) {
+    throw new OralReadingAuthorizationError();
+  }
+
+  const passage = selected?.passage_text ?? moduleRow.passage;
+  if (!passage?.trim()) {
+    throw new OralReadingPersistenceError("The selected passage has no readable text.", 422);
+  }
+
+  const { data: path, error: pathError } = await supabase
+    .from("learning_paths")
+    .select("id, path_name, language")
+    .eq("id", moduleRow.path_id)
+    .maybeSingle();
+
+  if (pathError || !path) {
+    throw new OralReadingPersistenceError("Unable to load the module learning path.");
+  }
+
+  return {
+    id: moduleRow.id,
+    title: moduleRow.title,
+    difficulty: moduleRow.difficulty,
+    passage: passage.trim(),
+    passageId: selected?.id ?? null,
+    passageTitle: selected?.title ?? moduleRow.title,
+    roomId,
+    assignmentId,
+    learningPath: path.path_name,
+    language: normalizeLanguage(path.language),
+  };
+}
+
+function buildAttemptInsert(requester, module, body) {
+  const transcript = typeof body?.transcript === "string" ? body.transcript.trim() : "";
+  const durationSeconds = Number(body?.durationSeconds);
+  const sttConfidence = body?.sttConfidence == null ? null : Number(body.sttConfidence);
+
+  if (!transcript || transcript.length > MAX_TRANSCRIPT_LENGTH) {
+    throw new OralReadingPersistenceError(
+      "A valid read-aloud transcript is required.",
+      400,
+      "INVALID_TRANSCRIPT",
+    );
+  }
+  if (
+    !Number.isFinite(durationSeconds)
+    || durationSeconds <= 0
+    || durationSeconds > MAX_RECORDING_SECONDS
+  ) {
+    throw new OralReadingPersistenceError(
+      "Recording duration must be between 0 and 300 seconds.",
+      400,
+      "INVALID_DURATION",
+    );
+  }
+  if (
+    sttConfidence !== null
+    && (!Number.isFinite(sttConfidence) || sttConfidence < 0 || sttConfidence > 1)
+  ) {
+    throw new OralReadingPersistenceError(
+      "Speech-recognition confidence is invalid.",
+      400,
+      "INVALID_CONFIDENCE",
+    );
+  }
+
+  let scoring;
+  try {
+    scoring = scorePassage(module.passage, transcript, module.language);
+  } catch (error) {
+    if (error.code === "SCORING_LIMIT") {
+      throw new OralReadingPersistenceError(error.message, 422, error.code);
+    }
+    throw error;
+  }
+
+  const { expectedWords, spokenWords, wordMetrics } = scoring;
+  if (!spokenWords.length) {
+    throw new OralReadingPersistenceError(
+      "The transcript contains no recognized words.",
+      400,
+      "INVALID_TRANSCRIPT",
+    );
+  }
+  if (expectedWords.length === 0) {
+    throw new OralReadingPersistenceError("The selected module has no readable passage.", 422);
+  }
+
+  const detectedErrorCount = wordMetrics.filter((metric) => metric.type !== "match").length;
+  const pronunciationAccuracy = Math.min(
+    100,
+    Math.max(0, ((expectedWords.length - detectedErrorCount) / expectedWords.length) * 100),
+  );
+  const readingSpeedWpm = (spokenWords.length / durationSeconds) * 60;
+
+  return {
+    user_id: requester.user.id,
+    module_id: module.id,
+    ...(module.materialId ? { material_id: module.materialId, activity_assignment_id: module.activityAssignmentId } : {}),
+    passage_id: module.passageId ?? null,
+    passage_title_snapshot: module.passageTitle ?? module.title,
+    module_title_snapshot: module.title,
+    language_snapshot: module.language,
+    room_id: module.roomId ?? null,
+    assignment_id: module.assignmentId ?? null,
+    submission_id: body.submissionId == null
+      ? null
+      : requireUuid(body.submissionId, "The submission ID"),
+    scoring_version: 2,
+    passage_snapshot: module.passage,
+    transcript,
+    duration_seconds: durationSeconds,
+    reading_speed_wpm: readingSpeedWpm,
+    pronunciation_accuracy: pronunciationAccuracy,
+    expected_word_count: expectedWords.length,
+    detected_error_count: detectedErrorCount,
+    word_metrics: wordMetrics,
+    stt_confidence: sttConfidence,
+  };
+}
+
+function toAttemptDto(row, module) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    moduleId: row.module_id,
+    materialId: row.material_id ?? null,
+    activityAssignmentId: row.activity_assignment_id ?? null,
+    readAloudOnly: module.readAloudOnly === true,
+    readAloudCompleted: module.readAloudOnly === true && module.activityStatus === "completed",
+    moduleTitle: row.module_title_snapshot ?? module.title,
+    language: row.language_snapshot ?? module.language,
+    passageId: row.passage_id ?? null,
+    passageTitle: row.passage_title_snapshot ?? module.title,
+    passageSnapshot: row.passage_snapshot,
+    roomId: row.room_id ?? null,
+    assignmentId: row.assignment_id ?? null,
+    scoringVersion: row.scoring_version ?? 1,
+    transcript: row.transcript,
+    durationSeconds: Number(row.duration_seconds),
+    readingSpeedWpm: Number(row.reading_speed_wpm),
+    pronunciationAccuracy: Number(row.pronunciation_accuracy),
+    expectedWordCount: row.expected_word_count,
+    detectedErrorCount: row.detected_error_count,
+    wordMetrics: row.word_metrics,
+    sttConfidence: row.stt_confidence == null ? null : Number(row.stt_confidence),
+    completedAt: row.completed_at,
+  };
+}
+
+// Called only after the attempt owner has been verified. Reading historical
+// results does not require current enrollment and never changes assignments.
+async function loadAttemptAssignmentMode(supabase, row, requester) {
+  if (!row.material_id || !row.activity_assignment_id) return {};
+  const { data: assignment, error } = await supabase.from("reading_activity_assignments")
+    .select("read_aloud_only,status").eq("id", row.activity_assignment_id)
+    .eq("student_id", requester.user.id).eq("material_id", row.material_id)
+    .eq("room_id", row.room_id).maybeSingle();
+  if (error) throw new OralReadingPersistenceError("Unable to verify the activity mode.");
+  return { readAloudOnly: assignment?.read_aloud_only === true, activityStatus: assignment?.status };
+}
+
+async function createOralReadingAttempt(requester, body, dependencies = {}) {
+  const materialId = body?.materialId;
+  const moduleId = materialId ? null : requireUuid(body?.moduleId, "The module ID");
+  if (materialId) requireUuid(materialId, "The material ID");
+  if (!materialId && body.activityAssignmentId) {
+    throw new OralReadingPersistenceError("Material and module references cannot be combined.", 400);
+  }
+  function verifyRetry(existing) {
+    if (materialId && (existing.material_id !== materialId || existing.activity_assignment_id !== body.activityAssignmentId || existing.room_id !== body.roomId || body.moduleId || body.passageId || body.assignmentId)) {
+      throw new OralReadingPersistenceError("This submission ID belongs to another activity.", 409);
+    }
+    if (!materialId && (existing.material_id || existing.module_id !== moduleId
+      || (body.roomId && existing.room_id !== body.roomId)
+      || (body.assignmentId && existing.assignment_id !== body.assignmentId)
+      || (body.passageId && (existing.passage_id ?? moduleId) !== body.passageId))) {
+      throw new OralReadingPersistenceError("This submission ID belongs to another activity.", 409);
+    }
+  }
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+
+  if (body.submissionId != null) {
+    requireUuid(body.submissionId, "The submission ID");
+    const { data: existing, error: existingError } = await supabase
+      .from("oral_reading_attempts")
+      .select("*")
+      .eq("user_id", requester.user.id)
+      .eq("submission_id", body.submissionId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new OralReadingPersistenceError("Unable to check the previous save.");
+    }
+    if (existing) {
+      verifyRetry(existing);
+      return toAttemptDto(existing, {
+        title: existing.module_title_snapshot,
+        language: existing.language_snapshot,
+        ...await loadAttemptAssignmentMode(supabase, existing, requester),
+      });
+    }
+  }
+
+  const module = materialId
+    ? await loadAssignedReadingSource(requester, materialId, body, dependencies)
+    : await loadAccessiblePublishedModule(requester, moduleId, dependencies, body);
+  if (materialId && body.passageRevision !== module.passageRevision) {
+    throw new OralReadingPersistenceError("This story changed. Reload it and record the current story before saving.", 409);
+  }
+  const payload = buildAttemptInsert(requester, module, body);
+  const { data, error } = await supabase
+    .from("oral_reading_attempts")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error?.code === "23505" && body.submissionId) {
+    const { data: existing, error: lookupError } = await supabase
+      .from("oral_reading_attempts")
+      .select("*")
+      .eq("user_id", requester.user.id)
+      .eq("submission_id", body.submissionId)
+      .maybeSingle();
+
+    if (!lookupError && existing) { verifyRetry(existing); return toAttemptDto(existing, module); }
+  }
+
+  if (error || !data) {
+    throw new OralReadingPersistenceError(
+      "Your result could not be saved. Please try again.",
+      500,
+      "ATTEMPT_SAVE_FAILED",
+    );
+  }
+  return toAttemptDto(data, module);
+}
+
+async function loadAttemptModuleMetadata(supabase, moduleId) {
+  const { data: moduleRow, error } = await supabase
+    .from("modules")
+    .select("id, path_id, title")
+    .eq("id", moduleId)
+    .maybeSingle();
+
+  if (error || !moduleRow) {
+    throw new OralReadingPersistenceError("Unable to load the result's reading module.");
+  }
+
+  const { data: path, error: pathError } = await supabase
+    .from("learning_paths")
+    .select("id, language")
+    .eq("id", moduleRow.path_id)
+    .maybeSingle();
+
+  if (pathError || !path) {
+    throw new OralReadingPersistenceError("Unable to load the result's module language.");
+  }
+  return { title: moduleRow.title, language: normalizeLanguage(path.language) };
+}
+
+async function loadTeacherStudentProfiles(supabase, teacherId) {
+  const { data: rooms, error: roomsError } = await supabase
+    .from("rooms")
+    .select("id")
+    .eq("teacher_id", teacherId);
+
+  if (roomsError) {
+    throw new OralReadingPersistenceError("Unable to load your classrooms.");
+  }
+
+  const roomIds = (rooms ?? []).map((room) => room.id);
+  if (roomIds.length === 0) return new Map();
+
+  const { data: enrollments, error: enrollmentError } = await supabase
+    .from("enrollments")
+    .select("student_id")
+    .in("room_id", roomIds);
+
+  if (enrollmentError) {
+    throw new OralReadingPersistenceError("Unable to load classroom enrollments.");
+  }
+
+  const enrolledIds = [...new Set((enrollments ?? []).map((row) => row.student_id))];
+  if (enrolledIds.length === 0) return new Map();
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from("profiles")
+    .select("id, full_name, nickname, role")
+    .in("id", enrolledIds);
+
+  if (profilesError) {
+    throw new OralReadingPersistenceError("Unable to load enrolled student profiles.");
+  }
+
+  const result = new Map(
+    (profiles ?? [])
+      .filter((profile) => profile.role === "student")
+      .map((profile) => [profile.id, profile]),
+  );
+  result.roomIds = roomIds;
+  return result;
+}
+
+async function loadModuleReviewMetadata(supabase, moduleIds) {
+  if (moduleIds.length === 0) return new Map();
+
+  const { data: modules, error } = await supabase
+    .from("modules")
+    .select("id, title, difficulty")
+    .in("id", moduleIds);
+
+  if (error) {
+    throw new OralReadingPersistenceError("Unable to load attempt module details.");
+  }
+  return new Map((modules ?? []).map((module) => [module.id, module]));
+}
+
+function toTeacherAttemptSummary(row, student, module) {
+  return {
+    id: row.id,
+    learnerId: student.id,
+    learnerName: student.nickname?.trim() || student.full_name?.trim() || "Unnamed student",
+    moduleId: row.module_id,
+    moduleTitle: row.module_title_snapshot ?? module.title,
+    passageTitle: row.passage_title_snapshot ?? null,
+    scoringVersion: row.scoring_version ?? 1,
+    pronunciationAccuracy: Number(row.pronunciation_accuracy),
+    readingSpeedWpm: Number(row.reading_speed_wpm),
+    detectedErrorCount: row.detected_error_count,
+    completedAt: row.completed_at,
+  };
+}
+
+async function listTeacherOralReadingAttempts(requester, dependencies = {}) {
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const students = await loadTeacherStudentProfiles(supabase, requester.user.id);
+  const studentIds = [...students.keys()];
+  if (studentIds.length === 0) return [];
+
+  const { data: attempts, error } = await supabase
+    .from("oral_reading_attempts")
+    .select("*")
+    .in("user_id", studentIds)
+    .order("completed_at", { ascending: false });
+
+  if (error) {
+    throw new OralReadingPersistenceError("Unable to load student oral-reading results.");
+  }
+
+  const moduleIds = [...new Set((attempts ?? []).map((attempt) => attempt.module_id).filter(Boolean))];
+  const modules = await loadModuleReviewMetadata(supabase, moduleIds);
+
+  const visible = (attempts ?? []).flatMap((attempt) => {
+    const student = students.get(attempt.user_id);
+    const module = attempt.material_id
+      ? { title: attempt.module_title_snapshot, difficulty: "" }
+      : modules.get(attempt.module_id);
+    return student && module && (!attempt.room_id || students.roomIds.includes(attempt.room_id))
+      ? [{ attempt, student, module }]
+      : [];
+  });
+  // Only already-authorized attempts are passed to the comprehension lookup.
+  const comprehension = await loadComprehensionForOralAttempts(
+    supabase, visible.map(({ attempt }) => attempt),
+  );
+  return visible.map(({ attempt, student, module }) => ({
+    ...toTeacherAttemptSummary(attempt, student, module),
+    comprehension: comprehension.get(attempt.id) ?? { status: "unavailable" },
+  }));
+}
+
+async function getTeacherOralReadingAttempt(requester, attemptId, dependencies = {}) {
+  if (typeof attemptId !== "string" || !UUID_PATTERN.test(attemptId)) {
+    throw new OralReadingPersistenceError(
+      "Oral-reading result not found.",
+      404,
+      "ATTEMPT_NOT_FOUND",
+    );
+  }
+
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const students = await loadTeacherStudentProfiles(supabase, requester.user.id);
+  const { data: attempt, error } = await supabase
+    .from("oral_reading_attempts")
+    .select("*")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (error) {
+    throw new OralReadingPersistenceError("Unable to load the oral-reading result.");
+  }
+
+  const student = attempt ? students.get(attempt.user_id) : undefined;
+  if (!attempt || !student || (attempt.room_id && !students.roomIds.includes(attempt.room_id))) {
+    throw new OralReadingPersistenceError(
+      "Oral-reading result not found.",
+      404,
+      "ATTEMPT_NOT_FOUND",
+    );
+  }
+
+  const modules = await loadModuleReviewMetadata(supabase, attempt.module_id ? [attempt.module_id] : []);
+  const module = attempt.material_id ? { title: attempt.module_title_snapshot, difficulty: "" } : modules.get(attempt.module_id);
+  if (!module) {
+    throw new OralReadingPersistenceError("Unable to load the attempt module details.");
+  }
+
+  const comprehension = await loadComprehensionForOralAttempts(
+    supabase, [attempt], { includeDetail: true },
+  );
+  return {
+    ...toTeacherAttemptSummary(attempt, student, module),
+    comprehension: comprehension.get(attempt.id) ?? { status: "unavailable" },
+    difficulty: module.difficulty,
+    expectedWordCount: attempt.expected_word_count,
+    passageSnapshot: attempt.passage_snapshot,
+    transcript: attempt.transcript,
+    wordMetrics: attempt.word_metrics,
+  };
+}
+
+async function getOralReadingAttempt(requester, attemptId, dependencies = {}) {
+  requireUuid(attemptId, "The attempt ID");
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const { data: row, error } = await supabase
+    .from("oral_reading_attempts")
+    .select("*")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (error) {
+    throw new OralReadingPersistenceError("Unable to load the oral-reading result.");
+  }
+  if (!row) {
+    throw new OralReadingPersistenceError(
+      "Oral-reading result not found.",
+      404,
+      "ATTEMPT_NOT_FOUND",
+    );
+  }
+  if (row.user_id !== requester.user.id) {
+    throw new OralReadingAuthorizationError(
+      "This oral-reading result is not available to your account.",
+    );
+  }
+
+  const module = row.module_title_snapshot && row.language_snapshot
+    ? { title: row.module_title_snapshot, language: row.language_snapshot }
+    : await loadAttemptModuleMetadata(supabase, row.module_id);
+
+  Object.assign(module, await loadAttemptAssignmentMode(supabase, row, requester));
+  return toAttemptDto(row, module);
+}
+
+async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}, context = {}) {
+  if (context.materialId) requireUuid(context.materialId, "The material ID");
+  if (context.activityAssignmentId) requireUuid(context.activityAssignmentId, "The reading assignment ID");
+  if (moduleId !== undefined) requireUuid(moduleId, "The module ID");
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const rows = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    let query = supabase.from("oral_reading_attempts")
+      .select("id, module_id, material_id, activity_assignment_id, module_title_snapshot, passage_title_snapshot, completed_at, pronunciation_accuracy, reading_speed_wpm, detected_error_count")
+      .eq("user_id", requester.user.id);
+    if (moduleId) query = query.eq("module_id", moduleId);
+    if (context.materialId) query = query.eq("material_id", context.materialId);
+    if (context.activityAssignmentId) query = query.eq("activity_assignment_id", context.activityAssignmentId);
+    const { data, error } = await query.order("completed_at", { ascending: false })
+      .order("id", { ascending: false }).range(offset, offset + pageSize - 1);
+    if (error) throw new OralReadingPersistenceError("Unable to load your saved results.");
+    rows.push(...(data ?? []));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows.map(row => ({
+    id: row.id,
+    moduleId: row.module_id,
+    moduleTitle: row.module_title_snapshot ?? "Reading module",
+    passageTitle: row.passage_title_snapshot ?? "Reading result",
+    pronunciationAccuracy: Number(row.pronunciation_accuracy),
+    readingSpeedWpm: Number(row.reading_speed_wpm),
+    detectedErrorCount: row.detected_error_count,
+    completedAt: row.completed_at,
+  }));
+}
+
+module.exports = {
+  listOwnOralReadingAttempts,
+  OralReadingAuthorizationError,
+  OralReadingPersistenceError,
+  authorizeOralReadingRequest,
+  authorizeTeacherOralReadingRequest,
+  buildAttemptInsert,
+  createOralReadingAttempt,
+  getOralReadingAttempt,
+  getTeacherOralReadingAttempt,
+  getNormalizedWords,
+  loadAccessiblePublishedModule,
+  listTeacherOralReadingAttempts,
+};

@@ -1,0 +1,92 @@
+.diagnostic-start-panel {
+  width: min(76vw, 800px);
+  min-height: 360px;
+  margin-top: 58px;
+  padding-top: 154px;
+  padding-bottom: 34px;
+  overflow: visible;
+}
+
+.diagnostic-start-mascot {
+  position: absolute;
+  top: -118px;
+  left: 50%;
+  width: 310px;
+  height: 310px;
+  object-fit: contain;
+  transform: translateX(-50%);
+}
+
+.diagnostic-start-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.diagnostic-start-content h1 {
+  margin: 0;
+  color: #10231f;
+  font-size: clamp(1.75rem, 3.5vw, 2.35rem);
+  font-weight: 600;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+}
+
+.diagnostic-start-description {
+  margin: 14px 0 22px;
+  color: #15332c;
+  font-size: clamp(1rem, 1.7vw, 1.15rem);
+  line-height: 1.55;
+}
+
+.diagnostic-start-note {
+  margin: 10px 0 0;
+  color: #18372f;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 800px) {
+  .diagnostic-start-panel {
+    width: min(88vw, 650px);
+  }
+}
+
+@media (min-width: 1000px) and (max-height: 800px) {
+  .diagnostic-start-panel {
+    min-height: 0;
+    margin-top: 42px;
+    padding-top: 118px;
+    padding-bottom: 24px;
+  }
+
+  .diagnostic-start-mascot {
+    top: -92px;
+    width: 250px;
+    height: 250px;
+  }
+
+  .diagnostic-start-description {
+    margin: 10px 0 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .diagnostic-start-panel {
+    width: 100%;
+    min-height: 0;
+    margin-top: clamp(76px, 18vw, 92px);
+    padding-top: 124px;
+  }
+
+  .diagnostic-start-mascot {
+    top: -102px;
+    width: 270px;
+    height: 270px;
+  }
+
+  .diagnostic-start-description br {
+    display: none;
+  }
+}

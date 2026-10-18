@@ -1,0 +1,51 @@
+.diagnostic-guard-panel {
+  display: grid;
+  place-items: center;
+}
+
+.diagnostic-guard-message {
+  max-width: 620px;
+  padding: 36px 20px;
+  color: #17372f;
+  text-align: center;
+}
+
+.diagnostic-guard-message h1 {
+  margin: 0 0 14px;
+  color: #10231f;
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  line-height: 1.15;
+}
+
+.diagnostic-guard-message p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.diagnostic-guard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.diagnostic-guard-secondary {
+  padding: 12px 20px;
+  border: 2px solid #004a4d;
+  border-radius: 999px;
+  background: transparent;
+  color: #004a4d;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.diagnostic-guard-secondary:hover {
+  background: rgba(0, 74, 77, 0.08);
+}
+
+.diagnostic-guard-secondary:focus-visible {
+  outline: 3px solid rgba(0, 74, 77, 0.3);
+  outline-offset: 2px;
+}

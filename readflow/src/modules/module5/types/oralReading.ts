@@ -1,0 +1,136 @@
+import type { DiagnosticLanguage, ReadingWordAlignment } from "../../module2/types/diagnostic";
+
+export type LearnerM5Role = "student" | "general_user";
+
+export interface OralReadingContext {
+  materialId?: string | null;
+  activityAssignmentId?: string | null;
+  passageRevision?: string;
+  passageId?: string | null;
+  roomId?: string | null;
+  assignmentId?: string | null;
+}
+
+export interface OralReadingModule extends OralReadingContext {
+  readAloudOnly?: boolean;
+  passageTitle?: string;
+  id: string | null;
+  title: string;
+  difficulty: string;
+  passage: string;
+  learningPath: string;
+  language: DiagnosticLanguage;
+}
+
+export interface OralReadingWordMetric {
+  expected: string | null;
+  actual: string | null;
+  type: ReadingWordAlignment["type"];
+}
+
+export interface CreateOralReadingAttemptInput extends OralReadingContext {
+  submissionId?: string;
+  moduleId: string | null;
+  transcript: string;
+  durationSeconds: number;
+  wordMetrics: OralReadingWordMetric[];
+  sttConfidence: number | null;
+}
+
+export interface OralReadingAttempt extends OralReadingContext {
+  readAloudOnly?: boolean;
+  readAloudCompleted?: boolean;
+  passageTitle?: string;
+  passageSnapshot?: string;
+  scoringVersion?: number;
+  id: string;
+  userId: string;
+  moduleId: string | null;
+  moduleTitle: string;
+  language: DiagnosticLanguage;
+  transcript: string;
+  durationSeconds: number;
+  readingSpeedWpm: number;
+  pronunciationAccuracy: number;
+  expectedWordCount: number;
+  detectedErrorCount: number;
+  wordMetrics: OralReadingWordMetric[];
+  sttConfidence: number | null;
+  completedAt: string;
+}
+
+export type TeacherComprehensionStatus =
+  | "completed"
+  | "in_progress"
+  | "not_started"
+  | "not_applicable"
+  | "unavailable";
+
+export type ComprehensionQuestionType = "literal" | "inferential" | "critical";
+
+export interface TeacherComprehensionTypeSummary {
+  total: number;
+  answered: number;
+  firstCorrect: number;
+  resolved: number;
+  hintsUsed: number;
+  firstAttemptPercentage: number;
+}
+
+export interface TeacherComprehensionQuestionReview {
+  order: number;
+  type: ComprehensionQuestionType;
+  prompt: string;
+  options: string[];
+  studentFirstAnswerIndex: number | null;
+  correctIndex: number;
+  firstAnswerCorrect: boolean | null;
+  hintUsed: boolean;
+  resolved: boolean;
+  secondAnswerIndex?: number;
+}
+
+export interface TeacherComprehensionScore {
+  firstCorrect: number;
+  totalQuestions: number;
+  firstAttemptPercentage: number;
+  hintsUsed: number;
+  completedAt: string | null;
+}
+
+export type TeacherComprehensionSummary =
+  | { status: "not_started" | "not_applicable" | "unavailable" }
+  | ({ status: "completed" | "in_progress" } & TeacherComprehensionScore);
+
+export type TeacherComprehensionDetail =
+  | { status: "not_started" | "not_applicable" | "unavailable" }
+  | ({
+      status: "completed" | "in_progress";
+      byType: Record<ComprehensionQuestionType, TeacherComprehensionTypeSummary>;
+      questions: TeacherComprehensionQuestionReview[];
+    } & TeacherComprehensionScore);
+
+export interface TeacherOralReadingAttemptSummary {
+  comprehension: TeacherComprehensionSummary;
+  passageTitle?: string | null;
+  scoringVersion?: number;
+  id: string;
+  learnerId: string;
+  learnerName: string;
+  moduleId: string | null;
+  moduleTitle: string;
+  pronunciationAccuracy: number;
+  readingSpeedWpm: number;
+  detectedErrorCount: number;
+  completedAt: string;
+}
+
+export interface TeacherOralReadingAttemptDetail
+  extends Omit<TeacherOralReadingAttemptSummary, "comprehension"> {
+  comprehension: TeacherComprehensionDetail;
+  difficulty: string;
+  expectedWordCount: number;
+  passageSnapshot: string;
+  transcript: string;
+  wordMetrics: OralReadingWordMetric[];
+}

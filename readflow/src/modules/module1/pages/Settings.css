@@ -1,0 +1,180 @@
+.basa-settings-card {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 30px 34px;
+  border-radius: var(--basa-radius-lg);
+  background: var(--basa-card);
+}
+
+.basa-settings-avatar-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 26px;
+}
+
+.basa-settings-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: #4fb8d6;
+  color: #ffffff;
+}
+
+.basa-settings-avatar-row p {
+  margin: 0;
+  font-weight: 700;
+  color: var(--basa-text);
+}
+
+.basa-settings-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+}
+
+.basa-settings-columns h2 {
+  margin: 0 0 16px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--basa-text);
+}
+
+.basa-settings-columns label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--basa-text);
+}
+
+.basa-settings-columns input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1.5px solid #cfd3d1;
+  border-radius: 10px;
+  font: inherit;
+}
+
+.basa-settings-readonly-field > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--basa-text);
+}
+
+.basa-settings-readonly-field > p {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1.5px solid #cfd3d1;
+  border-radius: 10px;
+  background: #f1f5f4;
+  color: #526561;
+  font: inherit;
+}
+
+.basa-settings-columns input:disabled,
+.basa-settings-actions button:disabled,
+.basa-password-field button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.basa-password-field {
+  position: relative;
+}
+
+.basa-settings-columns .basa-password-field input {
+  padding-right: 42px;
+}
+
+.basa-password-field button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: 0;
+  background: transparent;
+  color: #6b7573;
+  cursor: pointer;
+}
+
+.basa-password-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  margin-bottom: 16px;
+}
+
+.basa-password-checks label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--basa-text-soft);
+}
+
+.basa-settings-error {
+  margin: 4px 0 0;
+  color: #c23b32;
+  font-size: 0.88rem;
+}
+
+.basa-settings-help {
+  color: var(--basa-text-soft);
+  font-size: 0.88rem;
+}
+
+.basa-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.basa-settings-save {
+  padding: 11px 22px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--basa-navy);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.basa-settings-cancel {
+  padding: 11px 22px;
+  border: 1.5px solid #cfd3d1;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--basa-text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.basa-settings-saved {
+  color: #1f9d55;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 700px) {
+  .basa-settings-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .basa-settings-card {
+    padding: 24px 20px;
+  }
+}

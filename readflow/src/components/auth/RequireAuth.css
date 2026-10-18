@@ -1,0 +1,17 @@
+.auth-route-status,
+.auth-route-status * {
+  box-sizing: border-box;
+}
+
+.auth-route-status {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 32px;
+  background: #115246;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: center;
+}

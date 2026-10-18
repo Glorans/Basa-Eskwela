@@ -1,0 +1,29 @@
+/**
+ * ReadFlow design tokens — matched to the approved mockups
+ * (dashboard, materials, reading activity, leaderboard, badges, settings).
+ */
+:root {
+  /* Page & panel backgrounds */
+  --basa-bg: #0e3d30;         /* dark teal-green outer page background */
+  --basa-content-bg: #c9d2da; /* light blue-gray content panel behind stat pills/cards */
+  --basa-card: #ececec;       /* module cards, settings card */
+  --basa-cream: #e3e1c3;      /* pale khaki panels: stat pills, join-classroom card, quiz question box, leaderboard/badges card */
+  --basa-green-card: #64be55; /* bright green feature cards: quiz card, reading result card */
+
+  /* Brand colors */
+  --basa-header: #7cc15e;       /* top header bar background (sage green) */
+  --basa-navy: #0b3a3d;         /* XP pill, primary buttons */
+  --basa-sidebar: #ffc755;      /* sidebar background (amber/orange) */
+  --basa-sidebar-item: #ff6f5b; /* sidebar nav item background (coral) */
+  --basa-yellow: #ffcf4d;       /* stars, XP icon accents */
+  --basa-link: #3563e9;         /* "Continue >", "Review >", "View all >" links */
+
+  /* Text */
+  --basa-text: #24201b;      /* primary heading/body text */
+  --basa-text-soft: #6b7280; /* secondary/muted text */
+
+  /* Radii */
+  --basa-radius-md: 18px; /* module cards, badge tiles */
+  --basa-radius-lg: 28px; /* page content panel, big feature cards */
+  --basa-btn-radius: 12px; /* regular action buttons (matches Tailwind rounded-xl) */
+}

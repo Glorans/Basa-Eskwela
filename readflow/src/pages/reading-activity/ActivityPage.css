@@ -1,0 +1,36 @@
+.activity-page-shell {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-page {
+  flex: 1;
+  margin-top: 18px;
+  padding: clamp(20px, 4vw, 36px);
+  border-radius: var(--basa-radius-lg);
+  background: var(--basa-content-bg);
+  color: var(--basa-text);
+}
+
+.activity-missing {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin-top: 40px;
+  color: var(--basa-text);
+  text-align: center;
+}
+
+.activity-missing p { margin: 0; }
+
+.activity-missing button {
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--basa-navy);
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}

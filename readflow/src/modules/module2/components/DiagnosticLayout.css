@@ -1,0 +1,227 @@
+.diagnostic-shell,
+.diagnostic-shell * {
+  box-sizing: border-box;
+}
+
+.diagnostic-shell {
+  --diagnostic-shell-padding-block: clamp(34px, 6vw, 72px);
+  --diagnostic-content-width: 900px;
+  --diagnostic-card-radius: 26px;
+  --diagnostic-content-gap: 24px;
+  --diagnostic-heading-font: "Fredoka", ui-rounded, "Arial Rounded MT Bold", sans-serif;
+  --diagnostic-body-font: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: var(--diagnostic-shell-padding-block) clamp(18px, 4vw, 48px);
+  background: #115246;
+  color: #10231f;
+  font-family: var(--diagnostic-body-font);
+  font-weight: 500;
+}
+
+.diagnostic-shell h1,
+.diagnostic-shell h2,
+.diagnostic-shell h3,
+.diagnostic-shell button,
+.diagnostic-shell .diagnostic-primary-button {
+  font-family: var(--diagnostic-heading-font);
+  font-weight: 600;
+}
+
+.diagnostic-shell__panel {
+  position: relative;
+  z-index: 1;
+  width: min(78vw, 1060px);
+  max-height: calc(
+    100dvh - var(--diagnostic-shell-padding-block) - var(--diagnostic-shell-padding-block)
+  );
+  padding: clamp(30px, 5vw, 58px);
+  overflow-y: auto;
+  border-radius: 30px;
+  background: #78b75c;
+  box-shadow: 0 24px 60px rgba(0, 38, 32, 0.28);
+}
+
+.diagnostic-shell__decoration {
+  position: absolute;
+  z-index: 0;
+  width: clamp(96px, 12vw, 150px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #ffc755;
+  pointer-events: none;
+}
+
+.diagnostic-shell__decoration::before,
+.diagnostic-shell__decoration::after {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  background: #ff655d;
+  content: "";
+}
+
+.diagnostic-shell__decoration--top {
+  top: -46px;
+  left: -35px;
+}
+
+.diagnostic-shell__decoration--top::before {
+  top: -20px;
+  left: 96px;
+  width: 82px;
+  height: 82px;
+}
+
+.diagnostic-shell__decoration--top::after {
+  top: 104px;
+  left: -5px;
+  width: 68px;
+  height: 68px;
+}
+
+.diagnostic-shell__decoration--bottom {
+  right: -38px;
+  bottom: -48px;
+}
+
+.diagnostic-shell__decoration--bottom::before {
+  right: 10px;
+  bottom: 108px;
+  width: 76px;
+  height: 76px;
+}
+
+.diagnostic-shell__decoration--bottom::after {
+  right: 112px;
+  bottom: 5px;
+  width: 72px;
+  height: 72px;
+}
+
+.diagnostic-primary-button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 28px;
+  border: 0;
+  border-radius: 999px;
+  background: #004a4d;
+  color: #ffffff;
+  font-family: var(--diagnostic-heading-font);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+
+.diagnostic-primary-button:hover:not(:disabled) {
+  box-shadow: 0 7px 18px rgba(0, 38, 40, 0.25);
+  transform: translateY(-1px);
+}
+
+.diagnostic-primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.diagnostic-primary-button:focus-visible {
+  outline: 3px solid #ffc755;
+  outline-offset: 4px;
+}
+
+.diagnostic-primary-button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.diagnostic-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+@media (max-width: 800px) {
+  .diagnostic-shell__panel {
+    width: min(90vw, 680px);
+    border-radius: 24px;
+  }
+}
+
+@media (min-width: 1000px) and (max-height: 800px) {
+  .diagnostic-shell {
+    --diagnostic-shell-padding-block: 18px;
+    height: 100dvh;
+    min-height: 0;
+    padding-inline: 28px;
+  }
+
+  .diagnostic-shell__panel {
+    padding: 24px 30px;
+    border-radius: 24px;
+  }
+
+  .diagnostic-actions {
+    margin-top: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .diagnostic-shell {
+    --diagnostic-shell-padding-block: 32px;
+    place-items: start center;
+    padding: 32px 14px;
+  }
+
+  .diagnostic-shell__panel {
+    width: 100%;
+    padding: 28px 20px;
+    border-radius: 20px;
+  }
+
+  .diagnostic-shell__decoration {
+    width: 76px;
+    opacity: 0.8;
+  }
+
+  .diagnostic-shell__decoration::before,
+  .diagnostic-shell__decoration::after {
+    display: none;
+  }
+
+  .diagnostic-primary-button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagnostic-primary-button {
+    transition: none;
+  }
+}
+
+/* Shared frame for the three assessment screens; the welcome screen keeps its layout. */
+.diagnostic-shell:has(
+  > :is(.diagnostic-reading-panel, .diagnostic-questions-panel, .diagnostic-result-panel)
+) {
+  --diagnostic-shell-padding-block: clamp(16px, 3dvh, 32px);
+  padding-block: var(--diagnostic-shell-padding-block);
+}
+
+.diagnostic-shell__panel:is(
+  .diagnostic-reading-panel,
+  .diagnostic-questions-panel,
+  .diagnostic-result-panel
+) {
+  width: min(100%, 1000px);
+  padding: clamp(16px, 3vw, 40px);
+  border-radius: var(--diagnostic-card-radius);
+}
