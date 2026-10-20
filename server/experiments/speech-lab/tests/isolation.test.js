@@ -19,7 +19,7 @@ test("lab dependency boundary excludes production clients, startup and environme
       if (spec.startsWith(".")) {
         const resolved = path.resolve(path.dirname(file), spec);
         assert.ok(resolved.startsWith(backend + path.sep) || resolved.startsWith(frontend + path.sep), `${file}: ${spec}`);
-      } else assert.ok(spec.startsWith("node:") || allowedPackages.has(spec) || spec === "react-dom/client", `${file}: ${spec}`);
+      } else assert.ok(spec.startsWith("node:") || allowedPackages.has(spec) || spec === "react-dom/client" || spec === "microsoft-cognitiveservices-speech-sdk" && file === path.join(backend, "adapters", "azure.js"), `${file}: ${spec}`);
     }
   }
 });

@@ -13,7 +13,7 @@ function validateRequest(body) {
   if (!LANGUAGES.includes(body.language)) throw new LabError("INVALID_LANGUAGE", "Select English or Filipino.");
   if (typeof body.text !== "string" || !/[\p{L}\p{N}]/u.test(body.text) || body.text.length > LIMITS.maxTextLength)
     throw new LabError("INVALID_TEXT", `Supply a passage of 1–${LIMITS.maxTextLength} characters.`);
-  if (!SCENARIOS.includes(body.scenario)) throw new LabError("INVALID_SCENARIO", "Select a listed simulation scenario.");
+  if (body.provider !== "azure" && !SCENARIOS.includes(body.scenario)) throw new LabError("INVALID_SCENARIO", "Select a listed simulation scenario.");
   if (typeof body.provider !== "string") throw new LabError("INVALID_PROVIDER", "Select a provider.");
   return { language: body.language, text: body.text.trim(), scenario: body.scenario, provider: body.provider };
 }

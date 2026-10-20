@@ -1,4 +1,6 @@
-# Basa Eskwela Speech Lab — Phase 1
+# Basa Eskwela Speech Lab — Phase 1 record
+
+**Phase 2 update:** the disabled-by-default Azure adapter is now implemented and verified offline. See [Speech Lab Azure setup and verification](speech-lab-azure.md) for current capabilities, configuration, limits and security findings. The remainder of this document records the original Phase 1 behavior; statements that all code is simulation-only describe that earlier phase. Mock provider behavior and the isolated launch commands remain available.
 
 This standalone React/Vite page and Express server exercise a provider interface with **SIMULATED fixtures only**. No Azure, Whisper, Google, Supabase, speech SDK, or production authentication module is imported. No cloud calls or database writes exist. Mock output is derived from the passage, never from audio recognition. Mock pronunciation numbers are UI fixtures, not measurements. Mock TTS is a quiet half-second tone, not speech.
 
