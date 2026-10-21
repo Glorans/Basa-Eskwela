@@ -8,10 +8,12 @@ import ActivityHeader from "./ActivityHeader";
 import { useAudioRecorder } from "../../modules/module2/hooks/useAudioRecorder";
 import { uploadDiagnosticAudio } from "../../modules/module2/services/diagnosticAudio";
 import {
+  RECORDING_UPLOAD_ERROR,
   createOralReadingAttempt,
   getOralReadingModule,
   getOwnOralReadingAttempts,
   getAssignedReadingProgress,
+  uploadOralReadingRecording,
 } from "../../modules/module5/services/oralReadingService";
 import {
   ORAL_READING_MAX_RECORDING_SECONDS,
@@ -35,7 +37,7 @@ interface ReadAloudPageProps {
   role: LearnerM5Role;
 }
 
-type ProcessingStatus = "idle" | "processing" | "saving" | "transcription-error" | "save-error";
+type ProcessingStatus = "idle" | "processing" | "saving" | "transcription-error" | "save-error" | "recording-error";
 
 export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const { moduleId, materialId } = useParams<{ moduleId: string; materialId: string }>();
@@ -63,6 +65,8 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>("idle");
   const [processingError, setProcessingError] = useState<string | Error>();
   const [pendingAttempt, setPendingAttempt] = useState<CreateOralReadingAttemptInput>();
+  // Set once the result is saved but its recording upload failed.
+  const [savedAttemptId, setSavedAttemptId] = useState<string>();
   const processingRef = useRef(false);
   const autoProcessed = useRef<Blob[] | null>(null);
   const generation = useRef(0);
@@ -99,13 +103,18 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     onStreamStopped: storyFollow.onStreamStopped,
   });
 
-  const backTarget = materialId && roomId
+  const resultPathFor = (attemptId: string) => role === "admin"
+    ? `/admin/read-aloud/results/${attemptId}`
+    : role === "student" ? `/dashboard/read-aloud/results/${attemptId}` : `/m3/general/read-aloud/results/${attemptId}`;
+  const backTarget = role === "admin"
+    ? "/admin/oral-reading"
+    : materialId && roomId
     ? `/dashboard/learning-rooms/${roomId}`
     : role === "student" && (module?.roomId || roomId)
     ? `/dashboard/learning-rooms/${module?.roomId ?? roomId}`
     : moduleId ? `${role === "student" ? "/dashboard/materials" : "/m3/general/modules"}/${moduleId}?${searchParams}`
     : role === "student" ? "/dashboard/materials" : "/m3/general/modules";
-  const backLabel = materialId ? "Back to Learning Room" : role === "student" && (module?.roomId || roomId) ? "Back to Classroom" : "Back to Reading Module";
+  const backLabel = role === "admin" ? "Back to Oral Reading" : materialId ? "Back to Learning Room" : role === "student" && (module?.roomId || roomId) ? "Back to Classroom" : "Back to Reading Module";
 
   useEffect(() => {
     let active = true;
@@ -115,6 +124,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     setModule(undefined);
     setContinueTarget(undefined);
     setPendingAttempt(undefined);
+    setSavedAttemptId(undefined);
     setProcessingStatus("idle");
     setProcessingError(undefined);
     resetRecording();
@@ -165,6 +175,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
       return;
     }
     setPendingAttempt(undefined);
+    setSavedAttemptId(undefined);
     setProcessingStatus("idle");
     setProcessingError(undefined);
     void startRecording();
@@ -178,11 +189,31 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
       await updateReadingActivityStatus(module.activityAssignmentId, "completed");
     }
     if (currentGeneration !== generation.current) return;
-    const resultPath = role === "student"
-      ? `/dashboard/read-aloud/results/${attempt.id}`
-      : `/m3/general/read-aloud/results/${attempt.id}`;
-    // Every saved reading shows its feedback first; that page offers the questions.
-    navigate(resultPath, { replace: true, state: activityLanguageState(module?.language) });
+    await saveRecordingThenOpenResult(attempt.id);
+  };
+
+  // Every saved reading shows its feedback first; that page offers the questions.
+  const openResult = (attemptId: string) =>
+    navigate(resultPathFor(attemptId), { replace: true, state: activityLanguageState(module?.language) });
+
+  // The result is already saved here, so a failed upload never discards it: the learner can
+  // retry the upload while the recording is still in memory, or continue without it.
+  const saveRecordingThenOpenResult = async (attemptId: string) => {
+    const currentGeneration = generation.current;
+    setProcessingStatus("saving");
+    setProcessingError(undefined);
+    try {
+      await uploadOralReadingRecording(attemptId, audioSegments);
+    } catch (error) {
+      if (currentGeneration !== generation.current) return;
+      setSavedAttemptId(attemptId);
+      setProcessingStatus("recording-error");
+      setProcessingError(error instanceof Error ? error : RECORDING_UPLOAD_ERROR);
+      return;
+    }
+    if (currentGeneration !== generation.current) return;
+    setSavedAttemptId(undefined);
+    openResult(attemptId);
   };
 
   const handleProcess = async () => {
@@ -235,6 +266,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const handleRecordAgain = () => {
     processingRef.current = false;
     setPendingAttempt(undefined);
+    setSavedAttemptId(undefined);
     setProcessingStatus("idle");
     setProcessingError(undefined);
     autoProcessed.current = null;
@@ -267,7 +299,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
             <p>{loadError ? ui.message(loadError, "Unable to load the activity.") : t("Loading oral-reading activity...")}</p>
             {loadError && <button type="button" onClick={() => window.location.reload()}>{t("Retry")}</button>}
             {loadError && <button type="button" onClick={() => navigate(backTarget)}>{t(backLabel)}</button>}
-            {savedAttempts.map((saved, index) => <p key={saved.id}><button type="button" onClick={() => navigate(role === "student" ? `/dashboard/read-aloud/results/${saved.id}` : `/m3/general/read-aloud/results/${saved.id}`, { state: activityState })}>{saved.passageTitle} - {t("Saved Result")} {index + 1}</button></p>)}
+            {savedAttempts.map((saved, index) => <p key={saved.id}><button type="button" onClick={() => navigate(resultPathFor(saved.id), { state: activityState })}>{saved.passageTitle} - {t("Saved Result")} {index + 1}</button></p>)}
           </div>
         </div>
       </div>
@@ -286,7 +318,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
       <div className="activity-page">
         <div className="read-aloud-body">
           {savedAttempts.length > 0 && <details><summary>{t("Saved oral reading results")}</summary><section aria-label={t("Saved oral reading results")}><h2>{t("Your Saved Results")}</h2>
-            {savedAttempts.map((saved, index) => <p key={saved.id}><button type="button" onClick={() => navigate(role === "student" ? `/dashboard/read-aloud/results/${saved.id}` : `/m3/general/read-aloud/results/${saved.id}`, { state: activityState })}>{saved.passageTitle} - {t("Result")} {index + 1}</button></p>)}
+            {savedAttempts.map((saved, index) => <p key={saved.id}><button type="button" onClick={() => navigate(resultPathFor(saved.id), { state: activityState })}>{saved.passageTitle} - {t("Result")} {index + 1}</button></p>)}
           </section></details>}
           {historyError && <p role="alert">{ui.message(historyError, "Unable to load your saved results. Please refresh to retry.")}</p>}
           <h2 className="read-aloud-story-heading">{t("Read the Story Aloud")}</h2>
@@ -341,7 +373,10 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
               </span>
             )}
             <p className="read-aloud-status" role="status" aria-live="polite">
-              {ui.message(statusMessage, processingStatus === "save-error" ? "Your result could not be saved. Please try again." : "We couldn't process your full reading. Please record it again.")}
+              {ui.message(statusMessage, processingStatus === "recording-error" ? RECORDING_UPLOAD_ERROR : processingStatus === "save-error" ? "Your result could not be saved. Please try again." : "We couldn't process your full reading. Please record it again.")}
+            </p>
+            <p className="read-aloud-status">
+              {t(role === "student" ? "Your recording is saved with your result so you can listen again. For classroom activities, your teacher can review it too." : "Your recording is saved with your result so you can listen again.")}
             </p>
 
             {audioURLs.length > 0 && (
@@ -355,6 +390,10 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
                 ))}
                 </details>
                 <div className="read-aloud-actions">
+                  {processingStatus === "recording-error" && savedAttemptId ? <>
+                    <button className="read-aloud-continue" type="button" onClick={() => void saveRecordingThenOpenResult(savedAttemptId)}>{t("Retry Saving Recording")}</button>
+                    <button className="read-aloud-secondary" type="button" onClick={() => openResult(savedAttemptId)}>{t("Continue Without Recording")}</button>
+                  </> : <>
                   <button className="read-aloud-secondary" type="button" disabled={isProcessing || processingStatus === "save-error"} onClick={handleRecordAgain}>{t("Record Again")}</button>
                   {(!materialId && processingStatus !== "transcription-error" || processingStatus === "save-error" || materialId && processingStatus === "transcription-error") && (
                     <button className="read-aloud-continue" type="button" disabled={isProcessing} onClick={handleProcess}>
@@ -367,6 +406,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
                             : materialId ? t("Retry Processing") : t("Process Reading")}
                     </button>
                   )}
+                  </>}
                 </div>
               </div>
             )}

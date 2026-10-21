@@ -2,6 +2,8 @@ import type { LearnerM5Role, OralReadingAttempt } from "../types/oralReading.ts"
 
 export function comprehensionTargetForReading(role: LearnerM5Role, attempt: Pick<OralReadingAttempt,
   "id" | "moduleId" | "materialId" | "passageId" | "roomId" | "assignmentId" | "activityAssignmentId" | "readAloudOnly">) {
+  // Admin self-practice is read-aloud only; M6 comprehension stays learner-only.
+  if (role === "admin") return null;
   if (attempt.materialId && attempt.readAloudOnly === true) return null;
   if (attempt.materialId) {
     if (role !== "student" || !attempt.roomId || !attempt.activityAssignmentId || attempt.moduleId) return null;

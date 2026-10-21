@@ -21,6 +21,7 @@ const {
 } = require("./routes/adminDiagnosticResults");
 const { adminUsersRouter } = require("./routes/adminUsers");
 const { oralReadingRouter } = require("./routes/oralReading");
+const { weeklyReportsRouter } = require("./routes/weeklyReports");
 const {
   adminModuleExtractionRouter,
 } = require("./routes/adminModuleExtraction");
@@ -99,6 +100,8 @@ app.use("/api/admin/diagnostic-results", adminDiagnosticResultsRouter);
 app.use("/api/admin/users", adminUsersRouter);
 app.use("/api/admin/teacher-invitations", require("./routes/teacherInvitations").createTeacherInvitationsRouter());
 app.use("/api/oral-reading", oralReadingRouter);
+app.use("/api/weekly-reports", weeklyReportsRouter);
+app.use("/api/analytics", require("./routes/m7Analytics"));
 app.use("/api/comprehension", require("./routes/comprehension"));
 
 app.post("/api/tts", async (req, res) => {
@@ -154,6 +157,8 @@ app.post("/api/diagnostic/audio", (req, res) => {
 function startServer(port = process.env.PORT || 5000) {
   const server = createServer(app);
   const speechSocket = attachDiagnosticSpeechSocket(server);
+  const stopRiskWorker = require("./services/m7RiskWorker").startRiskWorker();
+  server.once("close", stopRiskWorker);
   server.closeDiagnosticSpeech = speechSocket.dispose;
   return server.listen(port, () => {
     console.log(`ReadFlow server running on http://localhost:${port}`);

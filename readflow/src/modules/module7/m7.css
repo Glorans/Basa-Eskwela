@@ -1,0 +1,21 @@
+.m7-page { width:100%; max-width:1200px; margin:0 auto; padding:clamp(16px,3vw,32px); color:#29374b; box-sizing:border-box; }
+.m7-page h1,.m7-page h2,.m7-page h3 { color:#265c47; }
+.m7-page section { background:white; border:1px solid #dbe9df; border-radius:18px; padding:20px; margin:20px 0; }
+.m7-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:12px; margin:16px 0; }
+.m7-card { background:#f5faf5; border:1px solid #dbe9df; border-radius:14px; padding:16px; margin-bottom:10px; display:flex; flex-direction:column; gap:8px; }
+.m7-metrics strong { font-size:1.5rem; }
+.m7-page button { background:#e5f1e8; color:#245d46; border:1px solid #bdd8c7; padding:8px 12px; border-radius:9px; cursor:pointer; font:inherit; }
+.m7-page button:disabled { opacity:.6; cursor:wait; }
+.m7-page a { color:#276549; text-decoration:underline; }
+.m7-page li { margin:12px 0; }
+.m7-scroll { width:100%; overflow-x:auto; }
+.m7-page table { width:100%; border-collapse:collapse; text-align:left; }
+.m7-page th,.m7-page td { padding:12px; border-bottom:1px solid #e2e9e4; }
+.m7-page th { background:#f2f7f3; }
+.m7-form { display:grid; gap:14px; margin:18px 0; }
+.m7-form label { display:grid; gap:6px; }
+.m7-page input,.m7-page textarea,.m7-page select { font:inherit; border:1px solid #b8cabf; border-radius:8px; padding:9px; max-width:100%; box-sizing:border-box; }
+.m7-page textarea { min-height:100px; resize:vertical; }
+.m7-error { padding:14px; background:#fff0ee; border-radius:10px; }
+.m7-notes { white-space:pre-wrap; overflow-wrap:anywhere; }
+@media(max-width:600px) { .m7-page section { padding:12px; } .m7-page th,.m7-page td { padding:8px; min-width:105px; } }

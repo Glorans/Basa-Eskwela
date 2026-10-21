@@ -1,6 +1,7 @@
 import type { DiagnosticLanguage, ReadingWordAlignment } from "../../module2/types/diagnostic";
 
-export type LearnerM5Role = "student" | "general_user";
+// "admin" is limited to M5 self-practice: own read-alouds, results and recordings.
+export type LearnerM5Role = "student" | "general_user" | "admin";
 
 export interface OralReadingContext {
   materialId?: string | null;
@@ -111,6 +112,7 @@ export type TeacherComprehensionDetail =
     } & TeacherComprehensionScore);
 
 export interface TeacherOralReadingAttemptSummary {
+  roomId?: string | null;
   comprehension: TeacherComprehensionSummary;
   passageTitle?: string | null;
   scoringVersion?: number;

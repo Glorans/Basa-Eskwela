@@ -10,6 +10,7 @@ import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { synthesizeDiagnosticSpeech } from "../../modules/module2/services/diagnosticTts";
 import { getWordsToPractice } from "../../modules/module5/services/oralReadingProcessing";
 import { getOralReadingAttempt } from "../../modules/module5/services/oralReadingService";
+import RecordingPlayback from "../../modules/module5/components/RecordingPlayback";
 import type {
   LearnerM5Role,
   OralReadingAttempt,
@@ -80,16 +81,23 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const audioUrlRef = useRef<string>();
 
   const moduleRoot =
-    role === "student"
+    role === "admin"
+      ? "/admin/oral-reading/modules"
+      : role === "student"
       ? "/dashboard/materials"
       : "/m3/general/modules";
 
   const historyTarget =
-    role === "student"
+    role === "admin"
+      ? "/admin/reading-history"
+      : role === "student"
       ? "/dashboard/reading-history"
       : "/m3/general/reading-history";
 
-  const backTarget = attempt?.materialId && attempt.roomId
+  // Admin practice has no module-detail page; return to the passage list.
+  const backTarget = role === "admin"
+    ? "/admin/oral-reading"
+    : attempt?.materialId && attempt.roomId
     ? `/dashboard/learning-rooms/${attempt.roomId}`
     : role === "student" && attempt?.roomId
       ? `/dashboard/learning-rooms/${attempt.roomId}`
@@ -101,7 +109,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           ).toString()}`
         : moduleRoot;
 
-  const backLabel = attempt?.materialId ? "Back to Learning Room" :
+  const backLabel = role === "admin" ? "Back to Oral Reading" : attempt?.materialId ? "Back to Learning Room" :
     role === "student" && attempt?.roomId
       ? "Back to Classroom"
       : "Back to Reading Module";
@@ -337,6 +345,8 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
               </p>
             )}
           </section>
+
+          <RecordingPlayback attemptId={attempt.id} language={language} />
 
           <section className="result-feedback-card result-feedback-card--cream" aria-labelledby="transcript-title">
             <h3 id="transcript-title">

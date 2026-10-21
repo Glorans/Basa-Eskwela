@@ -200,6 +200,14 @@ const filipino = {
   "This activity requires a passage with reviewed questions.": "Kailangan ng gawaing ito ng tekstong may mga nasuring tanong.",
   "This oral-reading result is not available to your account.": "Hindi magagamit ng iyong account ang resultang ito ng pagbasa nang malakas.",
   "No speech was detected. Please record your reading again.": "Walang natukoy na pagsasalita. Paki-record muli ang iyong pagbasa.",
+  // M5 recording playback
+  "Back to Oral Reading": "Bumalik sa Pagbasa nang Malakas",
+  "Your recording is saved with your result so you can listen again. For classroom activities, your teacher can review it too.": "Nase-save ang iyong rekording kasama ng iyong resulta upang mapakinggan mo itong muli. Sa mga gawain sa klase, maaari rin itong pakinggan ng iyong guro.",
+  "Your recording is saved with your result so you can listen again.": "Nase-save ang iyong rekording kasama ng iyong resulta upang mapakinggan mo itong muli.",
+  "Your result is saved, but recording upload failed. Retry saving the recording before leaving this page.": "Naka-save ang iyong resulta, ngunit hindi na-upload ang rekording. Subukang i-save muli ang rekording bago umalis sa pahinang ito.",
+  "Recording storage is not installed yet. Your result is saved without its recording.": "Hindi pa handa ang imbakan ng rekording. Naka-save ang iyong resulta nang walang rekording.",
+  "Retry Saving Recording": "Subukang I-save Muli ang Rekording",
+  "Continue Without Recording": "Magpatuloy nang Walang Rekording",
 } as const;
 
 export type ActivityText = keyof typeof filipino;

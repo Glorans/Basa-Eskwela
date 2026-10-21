@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { label: "My Materials", to: "/dashboard/materials", icon: BookOpen },
   { label: "Leaderboard", to: "/dashboard/leaderboard", icon: Trophy },
   { label: "My Badges", to: "/dashboard/badges", icon: Award },
+  { label: "My Progress & Results", to: "/dashboard/progress", icon: BookOpen },
   { label: "Reading History", to: "/dashboard/reading-history", icon: BookOpen },
   { label: "Settings", to: "/dashboard/settings", icon: Settings },
 ];

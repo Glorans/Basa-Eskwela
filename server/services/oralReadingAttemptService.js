@@ -1,3 +1,4 @@
+const { reportRows } = require("./weeklyReportRows");
 const { loadAssignedReadingSource } = require("./assignedReadingSource");
 const { getReadingWords, scorePassage } = require("./oralReadingScoring");
 const { loadComprehensionForOralAttempts } = require("./teacherComprehensionReview");
@@ -8,6 +9,7 @@ const {
 } = require("./supabaseAdmin");
 
 const LEARNER_ROLES = Object.freeze(["student", "general_user"]);
+const SELF_PRACTICE_ROLES = Object.freeze([...LEARNER_ROLES, "admin"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_RECORDING_SECONDS = 300;
 const MAX_TRANSCRIPT_LENGTH = 100000;
@@ -50,6 +52,16 @@ function normalizeLanguage(value) {
 const getNormalizedWords = getReadingWords;
 
 async function authorizeOralReadingRequest(req, dependencies = {}) {
+  return authorizeRequesterRole(req, dependencies, LEARNER_ROLES);
+}
+
+// M5 self-practice only (own published-module read-alouds, results and recordings).
+// Classroom, assigned-material and M6/M7 learner routes keep authorizeOralReadingRequest.
+async function authorizeOralReadingPracticeRequest(req, dependencies = {}) {
+  return authorizeRequesterRole(req, dependencies, SELF_PRACTICE_ROLES);
+}
+
+async function authorizeRequesterRole(req, dependencies, roles) {
   const authenticate = dependencies.getAuthenticatedSupabaseUser
     ?? getAuthenticatedSupabaseUser;
   const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
@@ -73,7 +85,7 @@ async function authorizeOralReadingRequest(req, dependencies = {}) {
       "PROFILE_LOOKUP_FAILED",
     );
   }
-  if (!LEARNER_ROLES.includes(profile.role)) throw new OralReadingAuthorizationError();
+  if (!roles.includes(profile.role)) throw new OralReadingAuthorizationError();
   return { user, profile };
 }
 
@@ -146,7 +158,10 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
     }
     roomId = assignments[0].room_id;
     assignmentId = assignments[0].id;
-  } else if (requester.profile.role !== "general_user" || context.roomId || context.assignmentId) {
+  } else if (
+    !["general_user", "admin"].includes(requester.profile.role) || context.roomId || context.assignmentId
+  ) {
+    // Admin self-practice, like general users, reads published modules outside any classroom.
     throw new OralReadingAuthorizationError();
   }
 
@@ -432,60 +447,54 @@ async function loadAttemptModuleMetadata(supabase, moduleId) {
   return { title: moduleRow.title, language: normalizeLanguage(path.language) };
 }
 
-async function loadTeacherStudentProfiles(supabase, teacherId) {
-  const { data: rooms, error: roomsError } = await supabase
-    .from("rooms")
-    .select("id")
-    .eq("teacher_id", teacherId);
-
-  if (roomsError) {
-    throw new OralReadingPersistenceError("Unable to load your classrooms.");
+// Every review read pages through all rows (M7) so a server row cap cannot truncate a class.
+// Interactive review keeps the M5 error types and messages; weekly reports (`complete`) keep
+// the report error so generation aborts instead of saving partial data.
+async function selectReviewRows(supabase, complete, table, columns, filters, batchColumn, ids, message) {
+  try {
+    return await reportRows(supabase, table, columns, filters, batchColumn, ids);
+  } catch (error) {
+    if (complete) throw error;
+    throw new OralReadingPersistenceError(message);
   }
+}
+
+async function loadTeacherStudentProfiles(supabase, teacherId, complete = false) {
+  const rooms = await selectReviewRows(supabase, complete, "rooms", "id", { teacher_id: teacherId }, null, [],
+    "Unable to load your classrooms.");
 
   const roomIds = (rooms ?? []).map((room) => room.id);
   if (roomIds.length === 0) return new Map();
 
-  const { data: enrollments, error: enrollmentError } = await supabase
-    .from("enrollments")
-    .select("student_id")
-    .in("room_id", roomIds);
-
-  if (enrollmentError) {
-    throw new OralReadingPersistenceError("Unable to load classroom enrollments.");
-  }
+  const enrollments = await selectReviewRows(supabase, complete, "enrollments", "id,student_id,room_id", {}, "room_id", roomIds,
+    "Unable to load classroom enrollments.");
 
   const enrolledIds = [...new Set((enrollments ?? []).map((row) => row.student_id))];
   if (enrolledIds.length === 0) return new Map();
 
-  const { data: profiles, error: profilesError } = await supabase
-    .from("profiles")
-    .select("id, full_name, nickname, role")
-    .in("id", enrolledIds);
-
-  if (profilesError) {
-    throw new OralReadingPersistenceError("Unable to load enrolled student profiles.");
-  }
+  const profiles = await selectReviewRows(supabase, complete, "profiles", "id,full_name,nickname,role", {}, "id", enrolledIds,
+    "Unable to load enrolled student profiles.");
 
   const result = new Map(
     (profiles ?? [])
       .filter((profile) => profile.role === "student")
       .map((profile) => [profile.id, profile]),
   );
-  result.roomIds = roomIds;
+  result.roomsByStudent = new Map();
+  for (const enrollment of enrollments ?? []) {
+    if (!result.has(enrollment.student_id)) continue;
+    const rooms = result.roomsByStudent.get(enrollment.student_id) ?? new Set();
+    rooms.add(enrollment.room_id);
+    result.roomsByStudent.set(enrollment.student_id, rooms);
+  }
   return result;
 }
 
-async function loadModuleReviewMetadata(supabase, moduleIds) {
+async function loadModuleReviewMetadata(supabase, moduleIds, complete = false) {
   if (moduleIds.length === 0) return new Map();
 
-  const { data: modules, error } = await supabase
-    .from("modules")
-    .select("id, title, difficulty")
-    .in("id", moduleIds);
-
-  if (error) {
-    throw new OralReadingPersistenceError("Unable to load attempt module details.");
-  }
+  const modules = await selectReviewRows(supabase, complete, "modules", "id,title,difficulty", {}, "id", moduleIds,
+    "Unable to load attempt module details.");
   return new Map((modules ?? []).map((module) => [module.id, module]));
 }
 
@@ -493,6 +502,7 @@ function toTeacherAttemptSummary(row, student, module) {
   return {
     id: row.id,
     learnerId: student.id,
+    roomId: row.room_id ?? null,
     learnerName: student.nickname?.trim() || student.full_name?.trim() || "Unnamed student",
     moduleId: row.module_id,
     moduleTitle: row.module_title_snapshot ?? module.title,
@@ -507,39 +517,35 @@ function toTeacherAttemptSummary(row, student, module) {
 
 async function listTeacherOralReadingAttempts(requester, dependencies = {}) {
   const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
-  const students = await loadTeacherStudentProfiles(supabase, requester.user.id);
+  const students = await loadTeacherStudentProfiles(supabase, requester.user.id, dependencies.weeklyReportStrict === true);
   const studentIds = [...students.keys()];
   if (studentIds.length === 0) return [];
 
-  const { data: attempts, error } = await supabase
-    .from("oral_reading_attempts")
-    .select("*")
-    .in("user_id", studentIds)
-    .order("completed_at", { ascending: false });
-
-  if (error) {
-    throw new OralReadingPersistenceError("Unable to load student oral-reading results.");
-  }
-
+  const attempts = await selectReviewRows(supabase, dependencies.weeklyReportStrict === true,
+    "oral_reading_attempts", "*", {}, "user_id", studentIds, "Unable to load student oral-reading results.");
+  attempts.sort((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at) || a.id.localeCompare(b.id));
   const moduleIds = [...new Set((attempts ?? []).map((attempt) => attempt.module_id).filter(Boolean))];
-  const modules = await loadModuleReviewMetadata(supabase, moduleIds);
+  const modules = await loadModuleReviewMetadata(supabase, moduleIds, dependencies.weeklyReportStrict === true);
 
   const visible = (attempts ?? []).flatMap((attempt) => {
     const student = students.get(attempt.user_id);
     const module = attempt.material_id
       ? { title: attempt.module_title_snapshot, difficulty: "" }
       : modules.get(attempt.module_id);
-    return student && module && (!attempt.room_id || students.roomIds.includes(attempt.room_id))
+    if (dependencies.weeklyReportStrict && student && !module && (!attempt.room_id || students.roomsByStudent?.get(attempt.user_id)?.has(attempt.room_id))) {
+      throw new OralReadingPersistenceError("Required report module metadata is missing.");
+    }
+    return student && module && (!attempt.room_id || students.roomsByStudent?.get(attempt.user_id)?.has(attempt.room_id))
       ? [{ attempt, student, module }]
       : [];
   });
   // Only already-authorized attempts are passed to the comprehension lookup.
-  const comprehension = await loadComprehensionForOralAttempts(
-    supabase, visible.map(({ attempt }) => attempt),
+  const comprehension = dependencies.weeklyReportSeparateQuizzes ? new Map() : await loadComprehensionForOralAttempts(
+    supabase, visible.map(({ attempt }) => attempt), { strict: dependencies.weeklyReportStrict === true },
   );
   return visible.map(({ attempt, student, module }) => ({
     ...toTeacherAttemptSummary(attempt, student, module),
-    comprehension: comprehension.get(attempt.id) ?? { status: "unavailable" },
+    comprehension: comprehension.get(attempt.id) ?? { status: dependencies.weeklyReportSeparateQuizzes ? "not_applicable" : "unavailable" },
   }));
 }
 
@@ -565,7 +571,7 @@ async function getTeacherOralReadingAttempt(requester, attemptId, dependencies =
   }
 
   const student = attempt ? students.get(attempt.user_id) : undefined;
-  if (!attempt || !student || (attempt.room_id && !students.roomIds.includes(attempt.room_id))) {
+  if (!attempt || !student || (attempt.room_id && !students.roomsByStudent?.get(attempt.user_id)?.has(attempt.room_id))) {
     throw new OralReadingPersistenceError(
       "Oral-reading result not found.",
       404,
@@ -659,12 +665,15 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
 }
 
 module.exports = {
+  loadTeacherStudentProfiles,
   listOwnOralReadingAttempts,
   OralReadingAuthorizationError,
   OralReadingPersistenceError,
   authorizeOralReadingRequest,
+  authorizeOralReadingPracticeRequest,
   authorizeTeacherOralReadingRequest,
   buildAttemptInsert,
+  normalizeLanguage,
   createOralReadingAttempt,
   getOralReadingAttempt,
   getTeacherOralReadingAttempt,

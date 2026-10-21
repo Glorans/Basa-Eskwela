@@ -60,6 +60,9 @@ class Query {
   in(column, values) { this.filters.push((row) => values.includes(row[column])); return this; }
   order(column, options = {}) { this.ordering = { column, ascending: options.ascending !== false }; return this; }
   range() { return this; }
+  // Keyset pagination used by the M7 complete-read helper (reportRows).
+  gt(column, value) { this.filters.push((row) => row[column] > value); return this; }
+  limit(count) { this.rowLimit = count; return this; }
   single() { this.singleMode = "single"; return this; }
   maybeSingle() { this.singleMode = "maybe"; return this; }
   then(resolve, reject) { return this.execute().then(resolve, reject); }
@@ -70,7 +73,7 @@ class Query {
     }
     const rows = this.database.tables[this.table];
     if (!rows) return { data: null, error: { message: `Unknown table ${this.table}` } };
-    const selected = rows.filter((row) => this.filters.every((filter) => filter(row)))
+    let selected = rows.filter((row) => this.filters.every((filter) => filter(row)))
       .map((row) => structuredClone(row));
     if (this.ordering) {
       const direction = this.ordering.ascending ? 1 : -1;
@@ -78,6 +81,7 @@ class Query {
         ? direction
         : -direction);
     }
+    if (this.rowLimit !== undefined) selected = selected.slice(0, this.rowLimit);
     if (this.singleMode === "single") {
       return selected.length === 1
         ? { data: selected[0], error: null }
@@ -131,6 +135,7 @@ function comprehension(id, userId, roomId, extra = {}) {
 
 function response(attemptId, questionIndex, firstOptionIndex, extra = {}) {
   return {
+    id: `${attemptId}-response-${questionIndex}`,
     attempt_id: attemptId,
     question_id: QUESTIONS[questionIndex].id,
     first_option_index: firstOptionIndex,
@@ -154,7 +159,7 @@ function createDatabase() {
         { id: STUDENT_B, full_name: "Student B", role: "student" },
       ],
       rooms: [{ id: ROOM_A, teacher_id: TEACHER_A }, { id: ROOM_B, teacher_id: TEACHER_B }],
-      enrollments: [{ room_id: ROOM_A, student_id: STUDENT_A }, { room_id: ROOM_B, student_id: STUDENT_B }],
+      enrollments: [{ id: "enrollment-1", room_id: ROOM_A, student_id: STUDENT_A }, { id: "enrollment-2", room_id: ROOM_B, student_id: STUDENT_B }],
       modules: [{ id: MODULE, title: "Rivers", difficulty: "Easy" }],
       reading_activity_assignments: [
         { id: ACTIVITY_DONE, student_id: STUDENT_A, read_aloud_only: false },
@@ -288,8 +293,10 @@ test("Teacher list adds comprehension status for each attempt with batched queri
   assert.deepEqual(byId.get(ORAL_PRACTICE), { status: "not_applicable" });
   assert.equal(byId.has(ORAL_B), false);
   for (const row of rows) assert.equal("questions" in row.comprehension, false);
+  // Batched, never per attempt: M7 keyset pagination reads one page plus the empty page
+  // that confirms completeness, regardless of how many readings are listed.
   for (const table of ["m6_comprehension_attempts", "m6_comprehension_responses", "reading_activity_assignments"]) {
-    assert.equal(database.calls.filter((call) => call === table).length, 1, table);
+    assert.equal(database.calls.filter((call) => call === table).length, 2, table);
   }
 });
 

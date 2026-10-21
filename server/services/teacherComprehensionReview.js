@@ -1,3 +1,4 @@
+const { reportRows } = require("./weeklyReportRows");
 const { summarizeComprehension } = require("./comprehensionScoring");
 
 // Teacher-only read model. Callers must pass oral attempts that the Teacher is
@@ -12,12 +13,6 @@ class TeacherComprehensionLookupError extends Error {
     super(message);
     this.name = "TeacherComprehensionLookupError";
   }
-}
-
-async function selectRows(query, label) {
-  const { data, error } = await query;
-  if (error) throw new TeacherComprehensionLookupError(`Unable to load ${label}.`);
-  return data ?? [];
 }
 
 function sameValue(left, right) {
@@ -76,8 +71,12 @@ function emptyStatus(oral, readAloudOnlyIds) {
   return oral.material_id || oral.assignment_id ? "not_started" : "not_applicable";
 }
 
-function toSummary(comprehension, responses, includeDetail) {
+function toSummary(comprehension, responses, includeDetail, strict = false) {
   const summary = summarizeComprehension(comprehension.question_snapshot, responses);
+  if (strict && comprehension.status === "completed" &&
+    (summary.answered !== summary.totalQuestions || !summary.allResolved || !comprehension.completed_at || !Number.isFinite(Date.parse(comprehension.completed_at)))) {
+    throw new TeacherComprehensionLookupError("Completed quiz evidence is incomplete. Weekly report was not generated.");
+  }
   const result = {
     status: comprehension.status === "completed" ? "completed" : "in_progress",
     firstCorrect: summary.firstCorrect,
@@ -125,12 +124,8 @@ async function loadComprehensionForOralAttempts(supabase, oralAttempts, options 
     const activityIds = [...new Set(oralAttempts.map((oral) => oral.activity_assignment_id).filter(Boolean))];
 
     const [assignments, comprehensions] = await Promise.all([
-      activityIds.length
-        ? selectRows(supabase.from("reading_activity_assignments")
-          .select("id,student_id,read_aloud_only").in("id", activityIds), "activity assignments")
-        : [],
-      selectRows(supabase.from("m6_comprehension_attempts")
-        .select(ATTEMPT_COLUMNS).in("user_id", userIds), "comprehension results"),
+      reportRows(supabase, "reading_activity_assignments", "id,student_id,read_aloud_only", {}, "id", activityIds),
+      reportRows(supabase, "m6_comprehension_attempts", ATTEMPT_COLUMNS, {}, "user_id", userIds),
     ]);
 
     const readAloudOnlyIds = new Set(assignments
@@ -139,10 +134,7 @@ async function loadComprehensionForOralAttempts(supabase, oralAttempts, options 
       .map((assignment) => assignment.id));
     const matches = matchComprehensionAttempts(oralAttempts, comprehensions);
     const matchedIds = [...new Set([...matches.values()].map((row) => row.id))];
-    const responses = matchedIds.length
-      ? await selectRows(supabase.from("m6_comprehension_responses")
-        .select(RESPONSE_COLUMNS).in("attempt_id", matchedIds), "comprehension answers")
-      : [];
+    const responses = await reportRows(supabase, "m6_comprehension_responses", `id,${RESPONSE_COLUMNS}`, {}, "attempt_id", matchedIds);
 
     for (const oral of oralAttempts) {
       const comprehension = matches.get(oral.id);
@@ -152,13 +144,15 @@ async function loadComprehensionForOralAttempts(supabase, oralAttempts, options 
       }
       try {
         const own = responses.filter((response) => response.attempt_id === comprehension.id);
-        results.set(oral.id, toSummary(comprehension, own, options.includeDetail === true));
+        results.set(oral.id, toSummary(comprehension, own, options.includeDetail === true, options.strict === true));
       } catch (error) {
+        if (options.strict) throw error;
         console.error("[Teacher comprehension summary failed]", { message: error?.message });
         results.set(oral.id, { status: "unavailable" });
       }
     }
   } catch (error) {
+    if (options.strict) throw error;
     console.error("[Teacher comprehension lookup failed]", { message: error?.message });
     for (const oral of oralAttempts) results.set(oral.id, { status: "unavailable" });
   }

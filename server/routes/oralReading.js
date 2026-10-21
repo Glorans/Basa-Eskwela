@@ -1,5 +1,9 @@
 const { loadAssignedReadingSource } = require("../services/assignedReadingSource");
+const {
+  getTeacherCompletionAnalytics,
+} = require("../services/teacherCompletionAnalytics");
 const express = require("express");
+const multer = require("multer");
 const {
   SupabaseAuthenticationError,
   SupabaseServerConfigurationError,
@@ -8,6 +12,7 @@ const {
   OralReadingAuthorizationError,
   OralReadingPersistenceError,
   authorizeOralReadingRequest,
+  authorizeOralReadingPracticeRequest,
   authorizeTeacherOralReadingRequest,
   createOralReadingAttempt,
   getOralReadingAttempt,
@@ -16,6 +21,11 @@ const {
   loadAccessiblePublishedModule,
   listOwnOralReadingAttempts,
 } = require("../services/oralReadingAttemptService");
+const {
+  MAX_SEGMENTS,
+  getOralReadingRecording,
+  saveOralReadingRecording,
+} = require("../services/oralReadingRecordingService");
 
 function sendOralReadingError(res, error, fallbackMessage) {
   if (error instanceof SupabaseAuthenticationError) {
@@ -36,6 +46,10 @@ function sendOralReadingError(res, error, fallbackMessage) {
 function createOralReadingRouter(dependencies = {}) {
   const router = express.Router();
   const authorize = dependencies.authorizeOralReadingRequest ?? authorizeOralReadingRequest;
+  // Self-practice routes (published modules, own results and recordings) also admit admins.
+  const authorizePractice = dependencies.authorizeOralReadingPracticeRequest
+    ?? dependencies.authorizeOralReadingRequest
+    ?? authorizeOralReadingPracticeRequest;
   const loadModule = dependencies.loadAccessiblePublishedModule ?? loadAccessiblePublishedModule;
   const createAttempt = dependencies.createOralReadingAttempt ?? createOralReadingAttempt;
   const getAttempt = dependencies.getOralReadingAttempt ?? getOralReadingAttempt;
@@ -45,6 +59,12 @@ function createOralReadingRouter(dependencies = {}) {
     ?? listTeacherOralReadingAttempts;
   const getTeacherAttempt = dependencies.getTeacherOralReadingAttempt
     ?? getTeacherOralReadingAttempt;
+  const saveRecording = dependencies.saveOralReadingRecording ?? saveOralReadingRecording;
+  const loadRecording = dependencies.getOralReadingRecording ?? getOralReadingRecording;
+  const uploadRecording = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024, files: MAX_SEGMENTS, fields: 0, parts: MAX_SEGMENTS },
+  }).array("audio", MAX_SEGMENTS);
 
   router.get("/rooms/:roomId/progress", async (req, res) => {
     try {
@@ -54,6 +74,28 @@ function createOralReadingRouter(dependencies = {}) {
       return res.json({ success: true, progress });
     } catch (error) {
       return sendOralReadingError(res, error, "Unable to load assessment progress.");
+    }
+  });
+
+  router.get("/admin/passages", async (req, res) => {
+    try {
+      const requester = await authorizePractice(req, dependencies);
+      const { listAdminReadingPassages } = require("../services/adminOralReadingService");
+      const passages = await listAdminReadingPassages(requester, dependencies);
+      res.set("Cache-Control", "no-store");
+      return res.json({ success: true, passages });
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to load reading passages.");
+    }
+  });
+
+  router.get("/teacher/completion-analytics", async (req, res) => {
+    try {
+      const requester = await authorizeTeacher(req, dependencies);
+      const analytics = await getTeacherCompletionAnalytics(requester, dependencies);
+      return res.json({ success: true, analytics });
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to load teacher completion analytics.");
     }
   });
 
@@ -77,6 +119,17 @@ function createOralReadingRouter(dependencies = {}) {
     }
   });
 
+  router.get("/teacher/attempts/:attemptId/recording", async (req, res) => {
+    try {
+      const requester = await authorizeTeacher(req, dependencies);
+      const recording = await loadRecording(requester, req.params.attemptId, true, dependencies);
+      res.set("Cache-Control", "no-store");
+      return res.json({ success: true, recording });
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to load recording.");
+    }
+  });
+
   router.get("/materials/:materialId", async (req, res) => {
     try {
       const requester = await authorize(req, dependencies);
@@ -89,7 +142,7 @@ function createOralReadingRouter(dependencies = {}) {
 
   router.get("/modules/:moduleId", async (req, res) => {
     try {
-      const requester = await authorize(req, dependencies);
+      const requester = await authorizePractice(req, dependencies);
       const module = await loadModule(requester, req.params.moduleId, dependencies, req.query);
       return res.json({ success: true, module });
     } catch (error) {
@@ -99,7 +152,7 @@ function createOralReadingRouter(dependencies = {}) {
 
   router.get("/attempts", async (req, res) => {
     try {
-      const requester = await authorize(req, dependencies);
+      const requester = await authorizePractice(req, dependencies);
       const attempts = await (dependencies.listOwnOralReadingAttempts ?? listOwnOralReadingAttempts)(requester, req.query.moduleId, dependencies, req.query);
       return res.json({ success: true, attempts });
     } catch (error) {
@@ -109,7 +162,7 @@ function createOralReadingRouter(dependencies = {}) {
 
   router.post("/attempts", async (req, res) => {
     try {
-      const requester = await authorize(req, dependencies);
+      const requester = await authorizePractice(req, dependencies);
       const attempt = await createAttempt(requester, req.body, dependencies);
       return res.status(201).json({ success: true, attempt });
     } catch (error) {
@@ -119,11 +172,43 @@ function createOralReadingRouter(dependencies = {}) {
 
   router.get("/attempts/:attemptId", async (req, res) => {
     try {
-      const requester = await authorize(req, dependencies);
+      const requester = await authorizePractice(req, dependencies);
       const attempt = await getAttempt(requester, req.params.attemptId, dependencies);
       return res.json({ success: true, attempt });
     } catch (error) {
       return sendOralReadingError(res, error, "Unable to load the oral-reading result.");
+    }
+  });
+
+  router.post("/attempts/:attemptId/recording", async (req, res) => {
+    try {
+      const requester = await authorizePractice(req, dependencies);
+      // Ownership is verified before the upload body is read.
+      await getAttempt(requester, req.params.attemptId, dependencies);
+      uploadRecording(req, res, async (uploadError) => {
+        if (uploadError) {
+          return res.status(400).json({ success: false, message: "Recording upload is invalid or exceeds the size limit." });
+        }
+        try {
+          await saveRecording(requester, req.params.attemptId, req.files, dependencies);
+          return res.json({ success: true });
+        } catch (error) {
+          return sendOralReadingError(res, error, "Unable to save recording.");
+        }
+      });
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to save recording.");
+    }
+  });
+
+  router.get("/attempts/:attemptId/recording", async (req, res) => {
+    try {
+      const requester = await authorizePractice(req, dependencies);
+      const recording = await loadRecording(requester, req.params.attemptId, false, dependencies);
+      res.set("Cache-Control", "no-store");
+      return res.json({ success: true, recording });
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to load recording.");
     }
   });
 

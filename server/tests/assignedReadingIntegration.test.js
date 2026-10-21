@@ -17,7 +17,7 @@ function fixture() {
   const db = createDatabase({
     profiles: [{ id: STUDENT, role: "student", full_name: "Reader" }],
     rooms: [{ id: ROOM, teacher_id: OTHER }],
-    enrollments: [{ room_id: ROOM, student_id: STUDENT }],
+    enrollments: [{ id: "enrollment-1", room_id: ROOM, student_id: STUDENT }],
     reading_activity_assignments: [{ id: ASSIGNMENT, material_id: MATERIAL, room_id: ROOM, student_id: STUDENT, status: "completed" }],
     uploaded_materials: [material(MATERIAL, OTHER)],
     oral_reading_attempts: [], m6_comprehension_attempts: [], m6_comprehension_responses: [],

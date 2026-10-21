@@ -64,6 +64,7 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
       if (id.endsWith(".css")) return {};
       if (id.includes("ActivityHeader")) return { default: "header" };
       if (id.includes("OralReadingSummary")) return { default: "oral-summary" };
+      if (id.includes("RecordingPlayback")) return { default: "recording-playback" };
       return require(id);
     },
   });
@@ -79,10 +80,13 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
   };
 }
 
-async function recordingFixture(options: { saved?: boolean; saveError?: boolean; transcriptionError?: boolean; standalone?: boolean; readAloudOnly?: boolean; statusError?: boolean; viewReading?: boolean } = {}) {
+async function recordingFixture(options: { saved?: boolean; saveError?: boolean; transcriptionError?: boolean; standalone?: boolean; readAloudOnly?: boolean; statusError?: boolean; viewReading?: boolean; recordingUploadError?: boolean } = {}) {
   let started = 0, stopped = 0, processed = 0;
   const submissions: any[] = [];
   const statusUpdates: any[] = [];
+  const uploads: { attemptId: string; segments: Blob[]; afterNavigations: number }[] = [];
+  let mounted: { navigations: string[] } | undefined;
+  const navigationCount = () => mounted?.navigations.length ?? 0;
   const recorder = {
     audioSegments: [] as Blob[], audioURLs: [] as string[], segmentDurationsSeconds: [] as number[],
     isRecording: false, isStarting: false, isStopping: false, message: "Ready", recordingDurationSeconds: null as number | null,
@@ -116,12 +120,53 @@ async function recordingFixture(options: { saved?: boolean; saveError?: boolean;
         if (options.saveError && submissions.length === 1) throw Error("Network response lost");
         return { id: "oral", moduleId: null, materialId: "material", activityAssignmentId: "assignment", roomId: "room" };
       },
+      uploadOralReadingRecording: async (attemptId: string, segments: Blob[]) => {
+        uploads.push({ attemptId, segments: [...segments], afterNavigations: navigationCount() });
+        if (options.recordingUploadError && uploads.length === 1) throw Error("Recording upload failed");
+      },
+      RECORDING_UPLOAD_ERROR: "Your result is saved, but recording upload failed. Retry saving the recording before leaving this page.",
     },
     comprehensionNavigation: { comprehensionTargetForReading }, assignedReadingNavigation: { assignedReadingTarget },
   }, options.standalone ? "general_user" : "student");
+  mounted = page;
   page.render(); await tick();
-  return { ...page, recorder, submissions, statusUpdates, counts: () => ({ started, stopped, processed }) };
+  return { ...page, recorder, submissions, statusUpdates, uploads, counts: () => ({ started, stopped, processed }) };
 }
+
+test("the saved result's recording is uploaded once, in recorder order, before the feedback opens", async () => {
+  const f = await recordingFixture();
+  button(f.render(), "Start Recording").props.onClick();
+  button(f.render(), "Stop Recording").props.onClick();
+  f.render(); f.render(); await tick(); f.render();
+  assert.equal(f.uploads.length, 1);
+  assert.equal(f.uploads[0].attemptId, "oral");
+  assert.deepEqual(await Promise.all(f.uploads[0].segments.map((blob) => blob.text())), ["one", "two"]);
+  assert.equal(f.uploads[0].afterNavigations, 0, "upload completes before navigation");
+  assert.deepEqual(f.navigations, ["/dashboard/read-aloud/results/oral"]);
+});
+
+test("a failed recording upload keeps the saved result: retry the upload or continue without it", async () => {
+  const f = await recordingFixture({ recordingUploadError: true });
+  button(f.render(), "Start Recording").props.onClick();
+  button(f.render(), "Stop Recording").props.onClick();
+  f.render(); f.render(); await tick(); f.render();
+  assert.equal(f.submissions.length, 1);
+  assert.deepEqual(f.navigations, []);
+  assert.match(JSON.stringify(f.render()), /recording upload failed/i);
+  button(f.render(), "Retry Saving Recording").props.onClick();
+  await tick(); f.render();
+  assert.equal(f.uploads.length, 2, "retry uploads the same in-memory segments again");
+  assert.equal(f.submissions.length, 1, "retrying the recording never re-submits the result");
+  assert.deepEqual(f.navigations, ["/dashboard/read-aloud/results/oral"]);
+
+  const g = await recordingFixture({ recordingUploadError: true });
+  button(g.render(), "Start Recording").props.onClick();
+  button(g.render(), "Stop Recording").props.onClick();
+  g.render(); g.render(); await tick(); g.render();
+  button(g.render(), "Continue Without Recording").props.onClick();
+  assert.deepEqual(g.navigations, ["/dashboard/read-aloud/results/oral"]);
+  assert.equal(g.uploads.length, 1);
+});
 
 test("new assigned activity shows full story without opening microphone; Stop processes once and opens the reading feedback", async () => {
   const f = await recordingFixture();
