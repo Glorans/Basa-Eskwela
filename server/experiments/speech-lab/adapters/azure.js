@@ -5,7 +5,9 @@ const { createUsageLimits } = require("../usageLimits");
 const { azureError, assessmentSegment } = require("../azureResults");
 const LOCALES = Object.freeze({ en: "en-US", fil: "fil-PH" });
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
-function createAzureAdapter(config, { sdkFactory = () => require("microsoft-cognitiveservices-speech-sdk"), cleanupMs = 2000 } = {}) {
+// SDK close() reports success only after the peer has torn down the WebSocket's TCP connection, which can take
+// seconds after a completed result. Keep timeoutMs (max 60 s) + cleanupMs below the frontend's 75 s deadline.
+function createAzureAdapter(config, { sdkFactory = () => require("microsoft-cognitiveservices-speech-sdk"), cleanupMs = 10000 } = {}) {
   const usage = createUsageLimits(config);
   async function execute(operation, input) {
     if (!config.enabled) throw new LabError("PROVIDER_DISABLED", "Azure is disabled.", 422);
@@ -14,7 +16,7 @@ function createAzureAdapter(config, { sdkFactory = () => require("microsoft-cogn
     if (operation === "synthesize" && [...input.text].length > 1000) throw new LabError("INVALID_TEXT", "Azure TTS is limited to 1,000 characters per request.");
     const metadata = operation === "synthesize" ? null : validateAudio(input.audio, { azure: true });
     const release = usage.reserve(operation, metadata ? Math.ceil(metadata.durationSeconds) : [...input.text].length);
-    let sdk, client, audioConfig, stream, assessmentConfig, timer, abort, finished = false, streamClosed = false;
+    let sdk, client, audioConfig, stream, assessmentConfig, timer, abort, result, finished = false, streamClosed = false;
     const closeStream = () => { if (stream && !streamClosed) { streamClosed = true; stream.close(); } };
     try {
       sdk = sdkFactory();
@@ -90,7 +92,7 @@ function createAzureAdapter(config, { sdkFactory = () => require("microsoft-cogn
           }), () => finish(azureError(sdk)));
         }
       });
-      return { ...output, locale: LOCALES[input.language], sdkVersion: "1.52.0", region: config.region, warnings: [...(output.warnings || []), "Real Azure result. Session usage is an estimate, not a billing guarantee."] };
+      result = { ...output, locale: LOCALES[input.language], sdkVersion: "1.52.0", region: config.region, warnings: [...(output.warnings || []), "Real Azure result. Session usage is an estimate, not a billing guarantee."] };
     } catch (error) {
       if (error instanceof LabError) throw error;
       throw new LabError("AZURE_SERVICE", "Azure operation failed. Check the lab configuration; diagnostic details are withheld.", 502);
@@ -109,10 +111,15 @@ function createAzureAdapter(config, { sdkFactory = () => require("microsoft-cogn
           try { client.close(() => done(true), () => done(false)); } catch { done(false); }
         })) && cleanupOK;
       }
-      try { audioConfig?.close(); assessmentConfig?.close?.(); } catch { cleanupOK = false; }
+      // SDK 1.52 AudioConfig.close() always throws for push streams (it calls .then() on the push stream's
+      // undefined turnOff() result). turnOff() is the whole of what close() does, so await it directly.
+      try { await audioConfig?.turnOff(); assessmentConfig?.close?.(); } catch { cleanupOK = false; }
       release(cleanupOK);
-      if (!cleanupOK) throw new LabError("AZURE_CLEANUP_FAILED", "Azure cleanup failed. Restart the lab before further Azure testing.", 503);
+      // A completed result stays valid; unconfirmed cleanup still locks Azure until the lab restarts.
+      if (!cleanupOK && !result) throw new LabError("AZURE_CLEANUP_FAILED", "Azure cleanup failed. Restart the lab before further Azure testing.", 503);
+      if (!cleanupOK) result.warnings.push("Azure cleanup did not confirm completion. This result is valid, but restart the lab before further Azure testing.");
     }
+    return result;
   }
   return { transcribe: input => execute("transcribe", input), assessPronunciation: input => execute("assess", input), synthesize: input => execute("synthesize", input) };
 }

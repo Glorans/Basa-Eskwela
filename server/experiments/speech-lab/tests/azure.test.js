@@ -17,7 +17,8 @@ function fakeSDK(options = {}) {
     SpeechConfig: { fromSubscription(key, region) { assert.equal(key, SECRET); assert.equal(region, "southeastasia"); calls.config = { setProperty: (key, value) => { assert.equal(key, "SPEECH-Error-MaxRetryCount"); assert.equal(value, "0"); } }; return calls.config; } },
     AudioStreamFormat: { getWaveFormatPCM: (...args) => { assert.deepEqual(args, [16000, 16, 1]); return {}; } },
     AudioInputStream: { createPushStream: () => ({ write: bytes => calls.writes.push(Buffer.from(bytes)), close: () => calls.streamClosed++ }) },
-    AudioConfig: { fromStreamInput: () => ({ close: () => calls.audioClosed++ }) },
+    // Mirrors SDK 1.52: close() on a push-stream AudioConfig throws; turnOff() is the working release path.
+    AudioConfig: { fromStreamInput: () => ({ close: () => { throw new TypeError("Cannot read properties of undefined (reading 'then')"); }, turnOff: async () => { calls.audioClosed++; if (options.audioTurnOffFails) throw new Error(SECRET); } }) },
     ResultReason: { RecognizedSpeech: 3, NoMatch: 0, SynthesizingAudioCompleted: 9 },
     CancellationReason: { Error: 1, EndOfStream: 2 },
     CancellationErrorCode: { AuthenticationFailure: 1, TooManyRequests: 3, Forbidden: 4 },
@@ -29,7 +30,12 @@ function fakeSDK(options = {}) {
     PronunciationAssessmentConfig: class { constructor(...args) { calls.assessment = args; } applyTo() {} },
   };
   class Client {
-    close(done) { calls.closed++; if (options.cleanupHang) return; setTimeout(done, options.cleanupDelay || 0); }
+    close(done, fail) {
+      calls.closed++;
+      if (options.cleanupThrows) throw new Error(SECRET);
+      if (options.cleanupHang) return;
+      setTimeout(options.cleanupError ? () => fail(SECRET) : done, options.cleanupDelay || 0);
+    }
   }
   sdk.SpeechRecognizer = class extends Client {
     static enableTelemetry(value) { assert.equal(value, false); }
@@ -155,7 +161,7 @@ test("aborted-before-start consumes nothing; cleanup failure disables further wo
   const pre = setup(); const controller = new AbortController(); controller.abort();
   await assert.rejects(pre.adapter.transcribe({ ...input(), signal: controller.signal }), { code: "CANCELLED" }); assert.equal(pre.calls.starts, 0);
   const broken = setup({ cleanupHang: true });
-  await assert.rejects(broken.adapter.transcribe(input()), { code: "AZURE_CLEANUP_FAILED" });
+  assert.match((await broken.adapter.transcribe(input())).warnings.join(" "), /cleanup did not confirm/);
   await assert.rejects(broken.adapter.transcribe(input()), { code: "AZURE_CLEANUP_FAILED" }); assert.equal(broken.calls.starts, 1);
 });
 test("session reservations survive failures and concurrency stays locked through cleanup", async () => {
@@ -195,4 +201,153 @@ test("HTTP Azure responses and errors never serialize configuration, keys or raw
     assert.equal(unsupported.status, 422); assert.match(unsupported.text, /UNSUPPORTED_CAPABILITY/);
     assert.ok(!captured.join(" ").includes(SECRET));
   } finally { loggers.forEach((name, i) => { console[name] = originals[i]; }); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+// Fictional keys only. The 84-char value mirrors the current Azure key shape (alphanumeric, beyond hex).
+const FICTIONAL_KEY_84 = "Fict10nalTestKeyNotReal".repeat(4).slice(0, 84);
+const FICTIONAL_KEY_HEX = "0123456789abcdef0123456789ABCDEF";
+const validEnv = (changes = {}) => ({ SPEECH_LAB_AZURE_ENABLED: "true", SPEECH_LAB_AZURE_LIVE_APPROVED: "true", SPEECH_LAB_AZURE_RESOURCE_TIER: "F0", SPEECH_LAB_AZURE_KEY: FICTIONAL_KEY_84, SPEECH_LAB_AZURE_REGION: "southeastasia", ...changes });
+test("key validation accepts 84-char alphanumeric and legacy hex keys, rejects placeholders and malformed values", () => {
+  assert.equal(FICTIONAL_KEY_84.length, 84); assert.match(FICTIONAL_KEY_84, /[g-z]/i);
+  for (const key of [FICTIONAL_KEY_84, FICTIONAL_KEY_HEX]) {
+    const c = parseAzureConfig(validEnv({ SPEECH_LAB_AZURE_KEY: key }));
+    assert.equal(c.enabled, true); assert.equal(c.key, key); assert.equal(c.tier, "F0");
+  }
+  const rejected = [undefined, "", " ", FICTIONAL_KEY_84.slice(0, 31), "A".repeat(129) + "b", ` ${FICTIONAL_KEY_84}`, `${FICTIONAL_KEY_84} `, `"${FICTIONAL_KEY_84}"`, FICTIONAL_KEY_84.slice(0, 40) + " " + FICTIONAL_KEY_84.slice(41), FICTIONAL_KEY_84.slice(0, 83) + "\n", "<your-azure-speech-key-goes-here-please>", "YOUR_AZURE_SPEECH_KEY_PLACEHOLDER_VALUE", "your-key-here", "changeme", "<KEY>", "${SPEECH_LAB_AZURE_KEY}", FICTIONAL_KEY_84.slice(0, 42) + "-" + FICTIONAL_KEY_84.slice(43), FICTIONAL_KEY_84.slice(0, 83) + "="];
+  for (const key of rejected) {
+    const c = parseAzureConfig(validEnv({ SPEECH_LAB_AZURE_KEY: key }));
+    assert.equal(c.enabled, false, `accepted ${JSON.stringify(key?.slice(0, 8))}`); assert.equal(c.key, undefined); assert.ok(!JSON.stringify(c).includes(FICTIONAL_KEY_84.slice(0, 31)));
+  }
+});
+test("both enablement switches and the F0-only restriction still gate a valid 84-char key", () => {
+  assert.equal(parseAzureConfig(validEnv()).enabled, true);
+  for (const value of [undefined, "false", "TRUE", "1", "yes", " true"]) {
+    assert.equal(parseAzureConfig(validEnv({ SPEECH_LAB_AZURE_ENABLED: value })).enabled, false);
+    assert.equal(parseAzureConfig(validEnv({ SPEECH_LAB_AZURE_LIVE_APPROVED: value })).enabled, false);
+  }
+  for (const tier of [undefined, "", "S0", "s0", "f0", "F0 ", "S1"]) assert.equal(parseAzureConfig(validEnv({ SPEECH_LAB_AZURE_RESOURCE_TIER: tier })).enabled, false);
+});
+test("providers endpoint reports Azure ready with valid fictional config; mocks stay functional; no SDK loaded", async () => {
+  const http = require("node:http");
+  const { createApp } = require("../server");
+  let sdkLoads = 0;
+  const registry = createRegistry(parseAzureConfig(validEnv()), { sdkFactory: () => { sdkLoads++; throw new Error("SDK must not load in this test"); } });
+  const server = createApp({ registry }).listen(0, "127.0.0.1");
+  await new Promise(resolve => server.once("listening", resolve));
+  const request = (route, body) => new Promise((resolve, reject) => {
+    const req = http.request({ hostname: "127.0.0.1", port: server.address().port, path: `/api/speech-lab/${route}`, method: body ? "POST" : "GET", headers: { Host: "127.0.0.1:5002", "X-Speech-Lab": "1", "Content-Type": "application/json" } }, res => {
+      const chunks = []; res.on("data", chunk => chunks.push(chunk)); res.on("end", () => resolve({ status: res.statusCode, text: Buffer.concat(chunks).toString() }));
+    }); req.on("error", reject); req.end(body ? JSON.stringify(body) : undefined);
+  });
+  try {
+    const response = await request("providers"); assert.equal(response.status, 200);
+    assert.ok(!response.text.includes(FICTIONAL_KEY_84)); assert.doesNotMatch(response.text, /"key"/i);
+    const { providers } = JSON.parse(response.text);
+    const azure = providers.find(p => p.id === "azure");
+    assert.equal(azure.status, "real"); assert.equal(azure.reason, undefined);
+    assert.deepEqual(azure.languages, ["en", "fil"]); assert.deepEqual(azure.operations, ["transcribe", "synthesize", "assess"]);
+    assert.deepEqual(azure.capabilities, { en: ["transcribe", "synthesize", "assess"], fil: ["transcribe", "synthesize"] });
+    for (const id of ["mock-full", "mock-stt-tts"]) assert.equal(providers.find(p => p.id === id).status, "simulated");
+    for (const [provider, language] of [["mock-full", "en"], ["mock-stt-tts", "fil"]]) {
+      const mock = await request("synthesize", { provider, language, text: "A bird rests.", scenario: "complete" });
+      assert.equal(mock.status, 200); assert.equal(JSON.parse(mock.text).simulated, true);
+    }
+    assert.equal(sdkLoads, 0);
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+// Regression: real SDK close() waits for the peer to tear down the WebSocket, which outlasted the old 2 s budget.
+test("TTS close slower than the old 2 s budget completes cleanly with the default cleanup budget", async () => {
+  const { sdk, calls } = fakeSDK({ cleanupDelay: 2100 });
+  const adapter = createAzureAdapter(config, { sdkFactory: () => sdk });
+  const result = await adapter.synthesize(input());
+  assert.deepEqual(Buffer.from(result.audioBase64, "base64"), tone()); assert.equal(calls.closed, 1);
+  assert.doesNotMatch(result.warnings.join(" "), /cleanup/);
+  await adapter.synthesize(input()); assert.equal(calls.closed, 2); assert.equal(calls.starts, 2);
+});
+test("successful TTS is returned when cleanup is unconfirmed, and Azure then stays locked", async () => {
+  for (const options of [{ cleanupHang: true }, { cleanupError: true }, { cleanupThrows: true }]) {
+    const { adapter, calls } = setup(options);
+    const result = await adapter.synthesize(input());
+    assert.deepEqual(Buffer.from(result.audioBase64, "base64"), tone());
+    assert.match(result.warnings.join(" "), /cleanup did not confirm.*restart the lab/i); assert.ok(!JSON.stringify(result).includes(SECRET));
+    await assert.rejects(adapter.synthesize(input()), { code: "AZURE_CLEANUP_FAILED" });
+    await assert.rejects(adapter.transcribe(input()), { code: "AZURE_CLEANUP_FAILED" });
+    assert.equal(calls.starts, 1); assert.equal(calls.closed, 1);
+  }
+});
+test("failed, timed-out or cancelled TTS with failed cleanup reports AZURE_CLEANUP_FAILED and locks Azure", async () => {
+  const cases = [[{ startError: true, cleanupHang: true }, {}], [{ hang: true, cleanupError: true }, { timeoutMs: 10 }], [{ hang: true, cleanupThrows: true }, {}, true]];
+  for (const [options, changes, cancel] of cases) {
+    const { adapter, calls } = setup(options, changes); const controller = new AbortController();
+    const pending = adapter.synthesize({ ...input(), signal: controller.signal }); if (cancel) controller.abort();
+    await assert.rejects(pending, e => e.code === "AZURE_CLEANUP_FAILED" && !e.message.includes(SECRET));
+    await assert.rejects(adapter.synthesize(input()), { code: "AZURE_CLEANUP_FAILED" }); assert.equal(calls.closed, 1);
+  }
+});
+test("repeated TTS after successful cleanup closes every synthesizer and never leaks the lock", async () => {
+  const { adapter, registry, calls } = setup({ cleanupDelay: 5 });
+  for (let i = 1; i <= 5; i++) {
+    const result = await adapter.synthesize(input(i % 2 ? "en" : "fil"));
+    assert.equal(calls.closed, i); assert.equal(calls.starts, i); assert.doesNotMatch(result.warnings.join(" "), /cleanup/);
+  }
+  const pending = adapter.synthesize(input());
+  await assert.rejects(adapter.synthesize(input()), { code: "LAB_BUSY" }); await pending; assert.equal(calls.closed, 6);
+  const routed = await runExperiment("synthesize", { ...input(), provider: "azure" }, undefined, undefined, registry);
+  assert.equal(routed.simulated, false); assert.equal(routed.label, "REAL AZURE — cloud speech result"); assert.ok(routed.audioBase64);
+});
+// Regression: SDK 1.52 AudioConfig.close() throws for push streams, which flagged every STT/assessment cleanup as failed.
+test("real SDK push-stream AudioConfig: close() throws, turnOff() releases cleanly (offline)", async () => {
+  const sdk = require("microsoft-cognitiveservices-speech-sdk");
+  const stream = sdk.AudioInputStream.createPushStream(sdk.AudioStreamFormat.getWaveFormatPCM(16000, 16, 1));
+  const audioConfig = sdk.AudioConfig.fromStreamInput(stream);
+  assert.throws(() => audioConfig.close(), TypeError, "SDK fixed AudioConfig.close(); revisit the adapter's turnOff() workaround");
+  await assert.doesNotReject(async () => audioConfig.turnOff()); stream.close();
+});
+test("STT and English assessment clean up fully, repeatedly, without warnings or a leaked lock", async () => {
+  const { adapter, calls } = setup({ cleanupDelay: 5 });
+  for (let i = 1; i <= 4; i++) {
+    const result = i % 2 ? await adapter.transcribe(input(i === 3 ? "fil" : "en")) : await adapter.assessPronunciation(input());
+    assert.equal(result.completeness, "complete"); assert.doesNotMatch(result.warnings.join(" "), /cleanup/);
+    assert.equal(calls.closed, i); assert.equal(calls.streamClosed, i); assert.equal(calls.audioClosed, i); assert.equal(calls.starts, i);
+  }
+  for (const operation of ["transcribe", "assessPronunciation"]) {
+    const pending = adapter[operation](input());
+    await assert.rejects(adapter.transcribe(input()), { code: "LAB_BUSY" }); await assert.rejects(adapter.synthesize(input()), { code: "LAB_BUSY" }); await pending;
+  }
+  assert.equal(calls.starts, 6); assert.equal(calls.closed, 6);
+});
+test("STT recognizer close slower than the old 2 s budget completes with the default cleanup budget", async () => {
+  const { sdk, calls } = fakeSDK({ cleanupDelay: 2100 });
+  const result = await createAzureAdapter(config, { sdkFactory: () => sdk }).transcribe(input());
+  assert.equal(result.transcript, "A bird rests."); assert.doesNotMatch(result.warnings.join(" "), /cleanup/); assert.equal(calls.audioClosed, 1);
+});
+test("STT/assessment timeout and cancellation with clean cleanup keep their own error and leave Azure usable", async () => {
+  for (const operation of ["transcribe", "assessPronunciation"]) {
+    const timed = setup({ hang: true }, { timeoutMs: 10 });
+    await assert.rejects(timed.adapter[operation](input()), { code: "AZURE_TIMEOUT" });
+    assert.equal(timed.calls.closed, 1); assert.equal(timed.calls.audioClosed, 1);
+    const controller = new AbortController(); const cancelled = setup({ hang: true });
+    const pending = cancelled.adapter[operation]({ ...input(), signal: controller.signal }); controller.abort();
+    await assert.rejects(pending, { code: "CANCELLED" }); assert.equal(cancelled.calls.audioClosed, 1);
+    // Not locked: the next request reaches the SDK again (this fixture still hangs, so it ends by its own timeout/cancel).
+    await assert.rejects(timed.adapter[operation](input()), { code: "AZURE_TIMEOUT" }); assert.equal(timed.calls.starts, 2);
+    const again = new AbortController(); const retry = cancelled.adapter[operation]({ ...input(), signal: again.signal });
+    await new Promise(resolve => setImmediate(resolve)); again.abort();
+    await assert.rejects(retry, { code: "CANCELLED" }); assert.equal(cancelled.calls.starts, 2);
+  }
+});
+test("unconfirmed STT/assessment cleanup preserves the result, reports it separately and locks Azure", async () => {
+  for (const operation of ["transcribe", "assessPronunciation"]) {
+    for (const options of [{ cleanupHang: true }, { cleanupError: true }, { cleanupThrows: true }, { audioTurnOffFails: true }]) {
+      const { adapter, calls } = setup(options);
+      const result = await adapter[operation](input());
+      assert.equal(result.transcript, "A bird rests."); assert.equal(result.completeness, "complete");
+      if (operation === "assessPronunciation") assert.equal(result.pronunciation.kind, "azure");
+      assert.match(result.warnings.join(" "), /cleanup did not confirm/); assert.ok(!JSON.stringify(result).includes(SECRET));
+      for (const next of ["transcribe", "assessPronunciation", "synthesize"]) await assert.rejects(adapter[next](input()), { code: "AZURE_CLEANUP_FAILED" });
+      assert.equal(calls.starts, 1); assert.equal(calls.streamClosed, 1);
+    }
+  }
+  const timedOut = setup({ hang: true, cleanupHang: true }, { timeoutMs: 10 });
+  await assert.rejects(timedOut.adapter.transcribe(input()), { code: "AZURE_CLEANUP_FAILED" });
+  await assert.rejects(timedOut.adapter.transcribe(input()), { code: "AZURE_CLEANUP_FAILED" }); assert.equal(timedOut.calls.starts, 1);
 });

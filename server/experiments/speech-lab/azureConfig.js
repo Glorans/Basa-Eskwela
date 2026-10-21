@@ -16,7 +16,8 @@ function parseAzureConfig(values = {}) {
   try {
     if (get("LIVE_APPROVED") !== "true") throw new Error("Live testing not approved");
     // Phase 2 deliberately supports F0 only. No paid-mode switch or fallback.
-    if (get("RESOURCE_TIER") !== "F0" || !/^[a-z]+[a-z0-9]*$/.test(get("REGION") || "") || !/^[a-f0-9]{32,128}$/i.test(get("KEY") || "")) throw new Error("Invalid configuration");
+    // Azure keys are 32-char hex (legacy) or 84-char alphanumeric; placeholders with symbols, spaces or short text fail.
+    if (get("RESOURCE_TIER") !== "F0" || !/^[a-z]+[a-z0-9]*$/.test(get("REGION") || "") || !/^[A-Za-z0-9]{32,128}$/.test(get("KEY") || "")) throw new Error("Invalid configuration");
     const voices = { en: get("VOICE_EN") || VOICES.en[0], fil: get("VOICE_FIL") || VOICES.fil[0] };
     if (!VOICES.en.includes(voices.en) || !VOICES.fil.includes(voices.fil)) throw new Error("Invalid voice");
     return Object.freeze({ enabled: true, key: get("KEY"), region: get("REGION"), tier: "F0", voices: Object.freeze(voices), timeoutMs: integer("TIMEOUT_MS", 60000, 60000), audioSeconds: integer("SESSION_AUDIO_SECONDS", 300, 1800), ttsCharacters: integer("SESSION_TTS_CHARACTERS", 5000, 50000), ttsPerMinute: integer("TTS_PER_MINUTE", 10, 20) });
