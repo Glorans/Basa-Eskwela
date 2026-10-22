@@ -58,5 +58,49 @@ Tokens, request text, recordings and provider payloads are not logged.
   Text-to-Speech API quota caps in the Google Cloud console as the authoritative
   cost limit. For multi-instance deployment, move counters to a shared store
   (e.g. Redis) or an API gateway.
-- The WebSocket streaming path (`/ws/diagnostic/speech`) was already
-  authenticated and is not throttled by these counters.
+
+## Live streaming WebSocket (`/ws/diagnostic/speech`)
+
+Defined in `server/routes/diagnosticSpeechSocket.js`; used for M2 live
+transcription and M5 voice-follow scrolling. Checks, in order:
+
+1. **Origin** must be in `DIAGNOSTIC_WS_ORIGINS` (unchanged; refused with HTTP
+   403 before the upgrade).
+2. The first message must be a valid `configure` message within 10 seconds
+   (unchanged).
+3. **Authentication and role.** The Supabase access token in `configure` is
+   verified and the same roles as the HTTP endpoints are required (`student`,
+   `general_user`, `admin`). Others are closed with code **1008**.
+4. **Session-start budget.** At most **12** authorized session starts per user
+   per 10 minutes; over budget the socket is closed with code **1013**
+   (`SPEECH_RATE_LIMITED`). Rejected and abandoned attempts are not counted.
+5. **One active stream per user.** A newer authorized session for the same user
+   ends the older one first (close code **4000**, `STREAM_REPLACED`) and closes
+   its Google stream. Reconnecting after a network drop is therefore never
+   blocked by a stale session the server has not yet detected.
+
+Only after all of these does the server open a Google streaming request.
+Session tracking is released when the client disconnects, the stream completes
+or fails, the connection errors, or the server shuts down.
+
+The browser treats every rejection as "use the recording upload instead", so a
+rejected or replaced stream never blocks a reading; the segment upload above is
+separately authenticated and throttled.
+
+Unchanged safeguards: 16 KB WebSocket payloads, 200 ms PCM frames, a 5-second
+buffer, the four-minute Google stream rotation, the ~5-minute (301-second) audio
+and 315-second session lifetime limits, and the 10-second no-audio timeout.
+
+### Limitations
+
+- **Per process.** Active-session tracking and the start budget are in memory.
+  With several instances, a user could hold one live stream (and one budget) per
+  instance; counters reset on restart.
+- **Worst case per account.** One active stream at a time, each limited to
+  about five minutes of audio, and at most 12 starts per 10 minutes. Google
+  Cloud quotas and budget alerts remain the authoritative cost control.
+- **Unauthenticated connection attempts** are bounded by the origin check and
+  the 10-second configure timeout but are not counted; each `configure` with a
+  token costs one Supabase token verification and profile lookup.
+- **Per account, not per device.** Two tabs of the same account cannot stream
+  live at the same time; the older tab falls back to the recording upload.

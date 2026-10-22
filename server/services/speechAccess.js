@@ -17,6 +17,12 @@ const SPEECH_RATE_LIMITS = Object.freeze({
   tts: Object.freeze({ limit: 100, windowMs: 10 * 60 * 1000 }),
 });
 
+// Live streaming (/ws/diagnostic/speech): one active session per user, and at
+// most this many session starts per user. Each recording opens one session (up
+// to the existing five-minute safeguard); over budget, the browser falls back
+// to the throttled segment upload above, so reading is never blocked.
+const SPEECH_STREAM_SESSION_LIMIT = Object.freeze({ limit: 12, windowMs: 10 * 60 * 1000 });
+
 const SESSION_EXPIRED_MESSAGE = "Your session has expired. Please sign in again.";
 const FORBIDDEN_MESSAGE = "Speech practice is not available for this account.";
 const RATE_LIMITED_MESSAGE = "Too many speech requests. Please wait a few minutes, then try again.";
@@ -126,6 +132,7 @@ module.exports = {
   RATE_LIMITED_MESSAGE,
   SESSION_EXPIRED_MESSAGE,
   SPEECH_RATE_LIMITS,
+  SPEECH_STREAM_SESSION_LIMIT,
   createRequestLimiter,
   createSpeechAccess,
 };
