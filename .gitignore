@@ -223,3 +223,6 @@ speech-lab-SIMULATED-*.json
 speech-lab-results-*.json
 dist-speech-lab/
 .speech-lab-no-env/
+
+# Team repository credential folders must never be committed here.
+ReadFlowCredentials/

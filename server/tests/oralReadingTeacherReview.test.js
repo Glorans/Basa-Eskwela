@@ -37,6 +37,9 @@ class Query {
   eq(column, value) { this.filters.push((row) => row[column] === value); return this; }
   in(column, values) { this.filters.push((row) => values.includes(row[column])); return this; }
   order(column, options = {}) { this.ordering = { column, ascending: options.ascending !== false }; return this; }
+  // Keyset pagination used by the M7 complete-read helper (reportRows).
+  gt(column, value) { this.filters.push((row) => row[column] > value); return this; }
+  limit(count) { this.rowLimit = count; return this; }
   single() { this.singleMode = "single"; return this; }
   maybeSingle() { this.singleMode = "maybe"; return this; }
   then(resolve, reject) { return this.execute().then(resolve, reject); }
@@ -53,6 +56,7 @@ class Query {
         ? direction
         : -direction);
     }
+    if (this.rowLimit !== undefined) selected = selected.slice(0, this.rowLimit);
     if (this.singleMode === "single") {
       return selected.length === 1
         ? { data: selected[0], error: null }
@@ -101,9 +105,9 @@ function createDatabase() {
         { id: ROOM_B, teacher_id: TEACHER_B },
       ],
       enrollments: [
-        { room_id: ROOM_A, student_id: STUDENT_A },
-        { room_id: ROOM_B, student_id: STUDENT_B },
-        { room_id: ROOM_A, student_id: GENERAL },
+        { id: "enrollment-1", room_id: ROOM_A, student_id: STUDENT_A },
+        { id: "enrollment-2", room_id: ROOM_B, student_id: STUDENT_B },
+        { id: "enrollment-3", room_id: ROOM_A, student_id: GENERAL },
       ],
       modules: [{ id: MODULE, title: "Seeds", difficulty: "Easy" }],
       oral_reading_attempts: [

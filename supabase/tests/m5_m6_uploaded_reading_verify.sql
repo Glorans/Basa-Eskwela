@@ -161,5 +161,7 @@ $body$)
   end loop;
 end $security$;
 -- END SECURITY PREFLIGHT
+
+SELECT 'B24_SECURITY_GUARD_PASSED' AS verification;
+
 rollback;
--- Also run m5_m6_answer_key_rls.sql with existing test personas before application.

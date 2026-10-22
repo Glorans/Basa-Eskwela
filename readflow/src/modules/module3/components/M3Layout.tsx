@@ -1,6 +1,8 @@
 import { useState } from "react";
 import {
+  Award,
   BookOpenCheck,
+  ChartNoAxesCombined,
   ClipboardList,
   FilePlus2,
   Files,
@@ -10,6 +12,7 @@ import {
   PlusCircle,
   School,
   Settings,
+  Trophy,
   Users,
   UserRound,
   X,
@@ -33,8 +36,11 @@ function getNavItems(role: M3Role) {
     return [
       { label: "Content Management", to: "/m3/admin", icon: Files, end: true },
       { label: "Create Module", to: "/m3/admin/modules/new", icon: PlusCircle, end: true },
+      { label: "System Performance", to: "/admin/analytics", icon: ChartNoAxesCombined, end: true },
       { label: "User Management", to: "/admin/users", icon: Users, end: true },
       { label: "Teacher Invitations", to: "/admin/teacher-invitations", icon: UserRound, end: true },
+      { label: "Oral Reading", to: "/admin/oral-reading", icon: Mic2, end: false },
+      { label: "Reading History", to: "/admin/reading-history", icon: Mic2, end: true },
       {
         label: "Diagnostic Results",
         to: "/admin/diagnostic-results",
@@ -62,9 +68,17 @@ function getNavItems(role: M3Role) {
       icon: Mic2,
       end: false,
     });
+
+    items.push({ label: "Student Support", to: "/m3/teacher/student-support", icon: ClipboardList, end: true });
+    items.push({ label: "Analytics", to: "/m3/teacher/analytics", icon: ChartNoAxesCombined, end: true });
+    items.push({ label: "Reports", to: "/m3/teacher/reports", icon: ClipboardList, end: true });
   }
 
-  if (role === "general_user") items.push({ label: "Reading History", to: "/m3/general/reading-history", icon: Mic2, end: true });
+  if (role === "general_user") {
+    items.push({ label: "Leaderboard", to: "/m3/general/leaderboard", icon: Trophy, end: true });
+    items.push({ label: "My Badges", to: "/m3/general/badges", icon: Award, end: true });
+    items.push({ label: "Reading History", to: "/m3/general/reading-history", icon: Mic2, end: true });
+  }
 
   items.push({ label: "Profile Settings", to: `${root}/settings`, icon: Settings, end: true });
   return items;

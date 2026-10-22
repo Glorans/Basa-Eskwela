@@ -8,7 +8,7 @@ export default function ReadingHistoryPage({ role }: { role: LearnerM5Role }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
-  const root = role === "student" ? "/dashboard" : "/m3/general";
+  const root = role === "admin" ? "/admin" : role === "student" ? "/dashboard" : "/m3/general";
   useEffect(() => {
     let active = true;
     setLoading(true);

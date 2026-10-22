@@ -46,6 +46,8 @@ class Query {
   delete() { this.action = "delete"; return this; }
   eq(column, value) { this.filters.push((row) => row[column] === value); return this; }
   in(column, values) { this.filters.push((row) => values.includes(row[column])); return this; }
+  // Keyset pagination used by the M7 complete-read helper (reportRows).
+  gt(column, value) { this.filters.push((row) => row[column] > value); return this; }
   order(column, options = {}) { this.ordering = { column, ascending: options.ascending !== false }; return this; }
   range(start, end) { this.rowRange = { start, end }; return this; }
   limit(value) { this.rowLimit = value; return this; }

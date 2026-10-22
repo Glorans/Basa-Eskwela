@@ -17,9 +17,10 @@ test("Student leaderboard keeps its route and renders an honest empty state", as
     readSource("../src/components/basa/BasaSidebar.tsx"),
   ]);
 
-  assert.match(pageSource, /const leaderboardEntries: LeaderboardEntry\[\] = \[\]/);
-  assert.match(pageSource, /No leaderboard data yet\./);
-  assert.match(pageSource, /Rankings will appear once learner progress is available\./);
+  // M8 replaced the placeholder with database-backed rankings; it must still show an
+  // honest empty state and never fall back to sample rankings.
+  assert.match(pageSource, /getWeeklyLeaderboard\(\)/);
+  assert.match(pageSource, /No leaderboard scores yet\./);
   assert.doesNotMatch(pageSource, /fullLeaderboard|classRanking/);
   assert.doesNotMatch(pageSource, MOCK_LEARNER_CONTENT);
   assert.match(sidebarSource, /to: "\/dashboard\/leaderboard"/);
@@ -31,9 +32,10 @@ test("Student badges keep their route and render an honest empty state", async (
     readSource("../src/components/basa/BasaSidebar.tsx"),
   ]);
 
-  assert.match(pageSource, /const badges: LearnerBadge\[\] = \[\]/);
-  assert.match(pageSource, /No badges earned yet\./);
-  assert.match(pageSource, /Your badges will appear here as you complete reading activities\./);
+  // M8 replaced the placeholder with database-backed badges; it must still show an
+  // honest empty state and never fall back to sample badges.
+  assert.match(pageSource, /getMyGamification\(\)/);
+  assert.match(pageSource, /No badges are available yet\./);
   assert.doesNotMatch(pageSource, /student\.badgesEarned|student\.badgesTotal/);
   assert.doesNotMatch(pageSource, MOCK_BADGE_CONTENT);
   assert.match(sidebarSource, /to: "\/dashboard\/badges"/);
@@ -59,10 +61,11 @@ test("learner headers no longer consume fake XP or mock identity", async () => {
   assert.doesNotMatch(dashboardDataSource, /VALID_CLASS_CODES/);
 });
 
-test("Independent Learner keeps existing M3 navigation without invented learner pages", async () => {
-  const [appSource, layoutSource] = await Promise.all([
+test("Independent Learner keeps existing M3 navigation and gains only the real M8 pages", async () => {
+  const [appSource, layoutSource, independentSource] = await Promise.all([
     readSource("../src/App.tsx"),
     readSource("../src/modules/module3/components/M3Layout.tsx"),
+    readSource("../src/pages/IndependentLeaderboard.tsx"),
   ]);
   const generalRouteStart = appSource.search(
     /<Route\s+element=\{<RequireRole allowedRoles=\{\["general_user"\]\} \/>\}\s*>/,
@@ -71,7 +74,12 @@ test("Independent Learner keeps existing M3 navigation without invented learner 
   assert.notEqual(generalRouteStart, -1);
   const generalRoutes = appSource.slice(generalRouteStart);
   assert.match(generalRoutes, /path="\/m3\/general"/);
-  assert.doesNotMatch(generalRoutes, /leaderboard|badges/i);
+  // The only learner pages added are M8's database-backed leaderboard and badges.
+  assert.deepEqual(generalRoutes.match(/path="(leaderboard|badges)"/g), ['path="leaderboard"', 'path="badges"']);
+  assert.match(generalRoutes, /path="leaderboard"\s+element=\{<IndependentLeaderboard \/>\}/);
+  assert.match(generalRoutes, /path="badges"\s+element=\{<MyBadges \/>\}/);
+  assert.match(independentSource, /"m8_independent_leaderboard"/);
+  assert.doesNotMatch(independentSource, MOCK_LEARNER_CONTENT);
   assert.match(layoutSource, /useAuthenticatedProfile/);
   assert.match(layoutSource, /ROLE_LABELS\[profile\.role\]/);
   assert.doesNotMatch(layoutSource, MOCK_LEARNER_CONTENT);

@@ -1,70 +1,683 @@
-import { Star, User } from "lucide-react";
-import ImagePlaceholder from "../components/basa/ImagePlaceholder";
-import { BASA_IMAGES } from "../assets/basaImages";
-import type { Difficulty } from "../data/dashboardData";
-import "./Leaderboard.css";
 
-const AVATAR_COLORS = ["#3b82f6", "#8b5cf6", "#22c55e", "#f97316", "#06b6d4", "#ec4899", "#ef4444"];
-const RANK_TIER = ["gold", "silver", "bronze"] as const;
+import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 
-interface LeaderboardEntry {
-  rank: number;
-  name: string;
-  xp: number;
-  difficulty: Difficulty;
-  isYou?: boolean;
-}
+import {
+  Trophy,
+  Medal,
+  Star,
+  User,
+  School,
+} from "lucide-react";
 
-// Populated when a persisted learner-progress source is introduced.
-const leaderboardEntries: LeaderboardEntry[] = [];
+import { supabase } from "../lib/supabaseClient";
+
+import {
+  getWeeklyLeaderboard,
+} from "../modules/module8/gamificationService";
+
+import type {
+  LeaderboardEntry,
+} from "../modules/module8/gamificationService";
+
+import {
+  getStudentClassrooms,
+  getRoomEnrollments,
+} from "../modules/module4/services/classroomService";
+
+import type {
+  Classroom,
+} from "../modules/module4/services/classroomService";
+
+// ========================================
+// CONSTANTS
+// ========================================
+
+const AVATAR_COLORS = [
+  "#3b82f6",
+  "#8b5cf6",
+  "#22c55e",
+  "#f97316",
+  "#06b6d4",
+  "#ec4899",
+  "#ef4444",
+];
+
+const RANK_COLORS = [
+  "#f59e0b",
+  "#94a3b8",
+  "#cd7f32",
+];
+
+// ========================================
+// CLASSROOM LEADERBOARD
+// ========================================
 
 export default function Leaderboard() {
+  const [classrooms, setClassrooms] =
+    useState<Classroom[]>([]);
+
+  const [selectedClassroomId, setSelectedClassroomId] =
+    useState("");
+
+  const [allLeaders, setAllLeaders] =
+    useState<LeaderboardEntry[]>([]);
+
+  const [leaders, setLeaders] =
+    useState<LeaderboardEntry[]>([]);
+
+  const [currentUserId, setCurrentUserId] =
+    useState<string | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [rankingsLoading, setRankingsLoading] =
+    useState(false);
+
+  const [error, setError] = useState("");
+
+  // ========================================
+  // LOAD STUDENT CLASSROOMS AND LEADERBOARD
+  // ========================================
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadInitialData() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError) throw authError;
+
+        if (!user) {
+          throw new Error("Please log in first.");
+        }
+
+        const [joinedRooms, leaderboardData] =
+          await Promise.all([
+            getStudentClassrooms(user.id),
+            getWeeklyLeaderboard(),
+          ]);
+
+        if (!active) return;
+
+        setCurrentUserId(user.id);
+        setClassrooms(joinedRooms);
+        setAllLeaders(leaderboardData);
+
+        if (joinedRooms.length > 0) {
+          setSelectedClassroomId(joinedRooms[0].id);
+        }
+      } catch (err) {
+        if (!active) return;
+
+        console.error(
+          "Failed to load classroom leaderboard:",
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load classroom leaderboard."
+        );
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadInitialData();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // ========================================
+  // FILTER RANKINGS BY SELECTED CLASSROOM
+  // ========================================
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadClassroomRankings() {
+      if (!selectedClassroomId) {
+        setLeaders([]);
+        return;
+      }
+
+      try {
+        setRankingsLoading(true);
+        setError("");
+        setLeaders([]);
+
+        const enrolledStudents =
+          await getRoomEnrollments(selectedClassroomId);
+
+        if (!active) return;
+
+        const enrolledStudentIds = new Set(
+          enrolledStudents.map(
+            (student) => student.student_id
+          )
+        );
+
+        const studentNames = new Map(
+          enrolledStudents.map(
+            (student) => [
+              student.student_id,
+              student.display_name,
+            ] as const
+          )
+        );
+
+        const filteredLeaders = allLeaders
+          .filter((learner) =>
+            enrolledStudentIds.has(learner.user_id)
+          )
+          .map((learner) => ({
+            ...learner,
+            display_name:
+              studentNames.get(learner.user_id) ||
+              learner.display_name,
+          }))
+          .sort((a, b) => b.xp - a.xp)
+          .map((learner, index) => ({
+            ...learner,
+            rank: index + 1,
+          }));
+
+        setLeaders(filteredLeaders);
+      } catch (err) {
+        if (!active) return;
+
+        console.error(
+          "Failed to load classroom rankings:",
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load classroom rankings."
+        );
+      } finally {
+        if (active) {
+          setRankingsLoading(false);
+        }
+      }
+    }
+
+    void loadClassroomRankings();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedClassroomId, allLeaders]);
+
+  const selectedClassroom = classrooms.find(
+    (room) => room.id === selectedClassroomId
+  );
+
+  // ========================================
+  // RENDER
+  // ========================================
+
   return (
-    <>
-      <h1 className="basa-page-title">Leaderboard</h1>
-      <p className="basa-page-subtitle">See reader progress in your learning room.</p>
+    <main style={pageStyle}>
+      {/* PAGE HEADER */}
+      <header style={pageHeaderStyle}>
+        <h1 style={pageTitleStyle}>
+          <Trophy
+            size={28}
+            color="#d97706"
+            style={{ flexShrink: 0 }}
+          />
+          Classroom Leaderboard
+        </h1>
 
-      <div className="basa-leaderboard-layout">
-        <div className="basa-leaderboard-card">
-          <h2>Top Readers This Week</h2>
+        <p style={subtitleStyle}>
+          View weekly rankings and compare your
+          reading progress with classmates.
+        </p>
+      </header>
 
-          {leaderboardEntries.length === 0 ? (
-            <div className="basa-leaderboard-empty">
-              <strong>No leaderboard data yet.</strong>
-              <span>Rankings will appear once learner progress is available.</span>
-            </div>
+      {/* CLASSROOM SELECTOR */}
+      <section style={selectorCardStyle}>
+        <label
+          htmlFor="classroom-select"
+          style={selectorLabelStyle}
+        >
+          <School size={20} color="#173d31" />
+          Select Classroom
+        </label>
+
+        <select
+          id="classroom-select"
+          value={selectedClassroomId}
+          onChange={(event) =>
+            setSelectedClassroomId(event.target.value)
+          }
+          disabled={loading || classrooms.length === 0}
+          style={selectStyle}
+        >
+          {classrooms.length === 0 ? (
+            <option value="">
+              No classrooms available
+            </option>
           ) : (
-            <ul className="basa-leaderboard-list">
-              {leaderboardEntries.map((entry, index) => (
-                <li key={entry.rank} className={entry.isYou ? "basa-leaderboard-row basa-leaderboard-row--you" : "basa-leaderboard-row"}>
-                  <span
-                    className={`basa-rank-badge ${entry.rank <= 3 ? `basa-rank-badge--${RANK_TIER[entry.rank - 1]}` : ""}`}
-                  >
-                    {entry.rank}
-                  </span>
-                  <span className="basa-avatar" style={{ background: AVATAR_COLORS[index % AVATAR_COLORS.length] }}>
-                    <User size={16} color="#ffffff" />
-                  </span>
-                  <span className="basa-leaderboard-name">{entry.isYou ? `You (${entry.name})` : entry.name}</span>
-                  <span className={`basa-badge basa-badge--${entry.difficulty.toLowerCase()}`}>{entry.difficulty}</span>
-                  <span className="basa-leaderboard-xp">
-                    <Star size={14} fill="var(--basa-yellow)" color="var(--basa-yellow)" />
-                    {entry.xp.toLocaleString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            classrooms.map((room) => (
+              <option key={room.id} value={room.id}>
+                {room.room_name}
+                {room.section
+                  ? ` - ${room.section}`
+                  : ""}
+              </option>
+            ))
           )}
+        </select>
+
+        {selectedClassroom && (
+          <p style={selectedRoomStyle}>
+            Showing rankings for{" "}
+            <strong>
+              {selectedClassroom.room_name}
+            </strong>
+          </p>
+        )}
+      </section>
+
+      {/* LEADERBOARD CARD */}
+      <section style={leaderboardCardStyle}>
+        <div style={headerStyle}>
+          <h2 style={sectionTitleStyle}>
+            <Medal
+              size={24}
+              color="#eab308"
+              style={{ flexShrink: 0 }}
+            />
+            Weekly Rankings
+          </h2>
         </div>
 
-        <ImagePlaceholder
-          src={BASA_IMAGES.podiumGraphic}
-          alt="Podium illustration"
-          className="basa-podium"
-          width={220}
-          height={220}
-        />
-      </div>
-    </>
+        {loading || rankingsLoading ? (
+          <div style={messageStyle} role="status">
+            Loading classroom rankings...
+          </div>
+        ) : error ? (
+          <div
+            style={{
+              ...messageStyle,
+              color: "#dc2626",
+            }}
+            role="alert"
+          >
+            <p>Couldn't load classroom rankings.</p>
+            <p>{error}</p>
+          </div>
+        ) : classrooms.length === 0 ? (
+          <div style={messageStyle}>
+            <p>You haven't joined a classroom yet.</p>
+            <p>
+              Join a learning room to view
+              classroom rankings.
+            </p>
+          </div>
+        ) : leaders.length === 0 ? (
+          <div style={messageStyle}>
+            <p>No leaderboard scores yet.</p>
+            <p>
+              Complete reading activities to
+              start earning XP!
+            </p>
+          </div>
+        ) : (
+          <ol style={listStyle}>
+            {leaders.map((learner, index) => {
+              const rank = index + 1;
+
+              const isCurrentUser =
+                learner.user_id === currentUserId;
+
+              const rankColor =
+                RANK_COLORS[index] ?? "#64748b";
+
+              const difficulty =
+                learner.difficulty || "Easy";
+
+              const difficultyColor =
+                difficulty.toLowerCase() === "hard"
+                  ? "#fee2e2"
+                  : difficulty.toLowerCase() === "medium"
+                  ? "#fef3c7"
+                  : "#dcfce7";
+
+              const displayName = isCurrentUser
+                ? learner.display_name.toLowerCase() ===
+                  "you"
+                  ? "You"
+                  : `You (${learner.display_name})`
+                : learner.display_name;
+
+              return (
+                <li
+                  key={learner.user_id}
+                  style={{
+                    ...rowStyle,
+                    ...(isCurrentUser
+                      ? currentUserRowStyle
+                      : {}),
+                  }}
+                >
+                  {/* RANK */}
+                  <div
+                    style={{
+                      ...rankStyle,
+                      backgroundColor:
+                        rank <= 3
+                          ? rankColor
+                          : "#e2e8f0",
+                      color:
+                        rank <= 3
+                          ? "#ffffff"
+                          : "#475569",
+                    }}
+                  >
+                    {rank}
+                  </div>
+
+                  {/* AVATAR */}
+                  <div
+                    style={{
+                      ...avatarStyle,
+                      backgroundColor:
+                        AVATAR_COLORS[
+                          index % AVATAR_COLORS.length
+                        ],
+                    }}
+                  >
+                    <User size={20} color="#ffffff" />
+                  </div>
+
+                  {/* LEARNER INFORMATION */}
+                  <div style={userInfoStyle}>
+                    <span style={userNameStyle}>
+                      {displayName}
+                    </span>
+
+                    <span
+                      style={{
+                        ...difficultyStyle,
+                        backgroundColor:
+                          difficultyColor,
+                      }}
+                    >
+                      {difficulty}
+                    </span>
+                  </div>
+
+                  {/* XP SCORE */}
+                  <div style={xpStyle}>
+                    <div style={xpNumberStyle}>
+                      <Star
+                        size={17}
+                        fill="#eab308"
+                        color="#eab308"
+                      />
+
+                      {Number(
+                        learner.xp ?? 0
+                      ).toLocaleString()}
+                    </div>
+
+                    <small style={xpLabelStyle}>
+                      XP
+                    </small>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
+
+      {/* FOOTER */}
+      <p style={footerStyle}>
+        Keep reading and completing activities
+        to climb the classroom rankings!
+      </p>
+    </main>
   );
 }
+
+// ========================================
+// PAGE STYLES
+// ========================================
+
+const pageStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: "1100px",
+  margin: "0 auto",
+  padding: "24px",
+  boxSizing: "border-box",
+  color: "#172b25",
+};
+
+const pageHeaderStyle: CSSProperties = {
+  marginBottom: "24px",
+};
+
+const pageTitleStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  fontSize: "28px",
+  fontWeight: 400,
+  color: "#173d31",
+  marginTop: 0,
+  marginBottom: "12px",
+  lineHeight: 1.3,
+  letterSpacing: "-0.3px",
+};
+
+const subtitleStyle: CSSProperties = {
+  fontSize: "16px",
+  color: "#475569",
+  marginTop: 0,
+  marginBottom: 0,
+  lineHeight: 1.6,
+};
+
+// ========================================
+// CLASSROOM SELECTOR STYLES
+// ========================================
+
+const selectorCardStyle: CSSProperties = {
+  backgroundColor: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "18px",
+  padding: "22px 24px",
+  marginBottom: "22px",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+};
+
+const selectorLabelStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  fontSize: "16px",
+  fontWeight: 600,
+  color: "#173d31",
+  marginBottom: "12px",
+};
+
+const selectStyle: CSSProperties = {
+  width: "100%",
+  padding: "13px 16px",
+  fontSize: "15px",
+  color: "#173d31",
+  backgroundColor: "#f8fafc",
+  border: "1px solid #cbd5e1",
+  borderRadius: "12px",
+  outline: "none",
+  cursor: "pointer",
+  boxSizing: "border-box",
+};
+
+const selectedRoomStyle: CSSProperties = {
+  marginTop: "12px",
+  marginBottom: 0,
+  fontSize: "14px",
+  color: "#64748b",
+};
+
+// ========================================
+// LEADERBOARD CARD
+// ========================================
+
+const leaderboardCardStyle: CSSProperties = {
+  backgroundColor: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: "18px",
+  padding: "24px",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+};
+
+const headerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  flexWrap: "wrap",
+  gap: "16px",
+  marginBottom: "24px",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "24px",
+  fontWeight: 400,
+  color: "#173d31",
+  margin: 0,
+  lineHeight: 1.3,
+};
+
+// ========================================
+// LEADERBOARD LIST
+// ========================================
+
+const listStyle: CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+};
+
+const rowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "14px",
+  backgroundColor: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: "12px",
+  padding: "14px 16px",
+  minWidth: 0,
+};
+
+const currentUserRowStyle: CSSProperties = {
+  backgroundColor: "#eff6ff",
+  borderColor: "#60a5fa",
+};
+
+const rankStyle: CSSProperties = {
+  width: "36px",
+  height: "36px",
+  minWidth: "36px",
+  borderRadius: "50%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 700,
+  fontSize: "15px",
+};
+
+const avatarStyle: CSSProperties = {
+  width: "42px",
+  height: "42px",
+  minWidth: "42px",
+  borderRadius: "50%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const userInfoStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: "6px",
+  flex: 1,
+  minWidth: 0,
+};
+
+const userNameStyle: CSSProperties = {
+  fontSize: "15px",
+  fontWeight: 600,
+  color: "#172b25",
+  overflowWrap: "anywhere",
+};
+
+const difficultyStyle: CSSProperties = {
+  display: "inline-flex",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "#334155",
+};
+
+const xpStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  gap: "3px",
+  marginLeft: "auto",
+  flexShrink: 0,
+};
+
+const xpNumberStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  fontSize: "19px",
+  fontWeight: 700,
+  color: "#2563eb",
+};
+
+const xpLabelStyle: CSSProperties = {
+  fontSize: "11px",
+  color: "#64748b",
+};
+
+const messageStyle: CSSProperties = {
+  textAlign: "center",
+  padding: "48px 16px",
+  color: "#64748b",
+};
+
+const footerStyle: CSSProperties = {
+  textAlign: "center",
+  fontSize: "14px",
+  color: "#475569",
+  marginTop: "20px",
+};

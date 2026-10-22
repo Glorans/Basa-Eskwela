@@ -1,88 +1,150 @@
-.basa-page-subtitle {
-  margin: 0 0 24px;
-  color: var(--basa-text-soft);
-  font-size: 0.92rem;
+
+/* ========================================
+   READFLOW - MODULE 8 LEADERBOARD
+   Shared Student & Independent Styling
+======================================== */
+
+.basa-page-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #173d31;
+  margin: 0 0 10px;
 }
+
+.basa-page-subtitle {
+  color: #475569;
+  font-size: 15px;
+  margin-bottom: 24px;
+}
+
+/* Main leaderboard layout */
 
 .basa-leaderboard-layout {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 24px;
+  width: 100%;
 }
 
 .basa-leaderboard-card {
   flex: 1;
-  padding: 24px 26px;
-  border-radius: var(--basa-radius-lg);
-  background: var(--basa-cream);
+  min-width: 0;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-.basa-leaderboard-card h2 {
-  margin: 0 0 16px;
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: var(--basa-text);
-}
+/* Header */
 
-.basa-leaderboard-empty {
-  min-height: 230px;
+.basa-leaderboard-header {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--basa-text-soft);
-  text-align: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
 }
 
-.basa-leaderboard-empty strong {
-  color: var(--basa-text);
-  font-size: 1rem;
+.basa-leaderboard-header h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: #172b25;
 }
 
-.basa-leaderboard-empty span {
-  font-size: 0.88rem;
+/* Weekly / All-time toggle */
+
+.basa-period-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #f1f5f9;
 }
+
+.basa-period-toggle button {
+  border: 0;
+  background: transparent;
+  padding: 9px 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.basa-period-toggle button.is-active {
+  background: #173d31;
+  color: #ffffff;
+}
+
+.basa-period-toggle button:focus-visible {
+  outline: 2px solid #173d31;
+  outline-offset: 2px;
+}
+
+/* Leaderboard list */
 
 .basa-leaderboard-list {
   list-style: none;
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 0;
+  margin: 0;
 }
+
+/* Individual leaderboard row */
 
 .basa-leaderboard-row {
-  display: grid;
-  grid-template-columns: 28px 34px 1fr auto auto;
+  display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  min-width: 0;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  transition: background 0.2s;
 }
 
-.basa-leaderboard-row:first-child {
-  border-top: 0;
+.basa-leaderboard-row:hover {
+  background: #f1f5f9;
 }
+
+/* Highlight logged-in learner */
 
 .basa-leaderboard-row--you {
-  background: rgba(255, 199, 85, 0.35);
-  border-radius: 12px;
+  background: #eff6ff;
+  border-color: #60a5fa;
 }
 
+.basa-leaderboard-row--you:hover {
+  background: #dbeafe;
+}
+
+/* Ranking circles */
+
 .basa-rank-badge {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: #e2ded0;
-  color: var(--basa-text-soft);
-  font-size: 0.82rem;
-  font-weight: 700;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 15px;
+  font-weight: 800;
 }
 
 .basa-rank-badge--gold {
-  background: #eab308;
+  background: #f59e0b;
   color: #ffffff;
 }
 
@@ -92,49 +154,142 @@
 }
 
 .basa-rank-badge--bronze {
-  background: #b45309;
+  background: #cd7f32;
   color: #ffffff;
 }
 
+/* User avatar */
+
 .basa-avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: #ffffff;
 }
 
+/* Learner name */
+
 .basa-leaderboard-name {
-  font-weight: 600;
-  color: var(--basa-text);
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #172b25;
+  overflow-wrap: anywhere;
 }
+
+/* Difficulty pill */
+
+.basa-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.basa-badge--easy {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.basa-badge--medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.basa-badge--hard {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* XP display */
 
 .basa-leaderboard-xp {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-weight: 700;
-  color: var(--basa-text);
+  gap: 6px;
+  flex-shrink: 0;
+  color: #2563eb;
+  font-size: 19px;
+  font-weight: 800;
 }
+
+.basa-leaderboard-xp svg {
+  color: #eab308;
+}
+
+/* Empty, loading, and error states */
+
+.basa-leaderboard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 180px;
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+}
+
+.basa-leaderboard-empty strong {
+  color: #172b25;
+}
+
+/* Optional podium image */
 
 .basa-podium {
   flex-shrink: 0;
-  margin-bottom: 12px;
+  max-width: 220px;
 }
 
-@media (max-width: 800px) {
+/* Responsive layout */
+
+@media (max-width: 900px) {
   .basa-leaderboard-layout {
     flex-direction: column;
-    align-items: stretch;
+  }
+
+  .basa-leaderboard-card {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .basa-podium {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .basa-leaderboard-card {
+    padding: 16px;
   }
 
   .basa-leaderboard-row {
-    grid-template-columns: 24px 28px 1fr auto;
+    gap: 9px;
+    padding: 12px;
+    flex-wrap: wrap;
   }
 
-  .basa-leaderboard-row .basa-badge {
-    display: none;
+  .basa-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .basa-leaderboard-name {
+    font-size: 14px;
+  }
+
+  .basa-leaderboard-xp {
+    font-size: 16px;
   }
 }

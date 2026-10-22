@@ -80,6 +80,12 @@ async function applyComprehensionAction(
     );
   }
 
+  if (body.action === "complete") {
+    // The DB trigger durably queues completion; this accelerates delivery when M7 is enabled.
+    const riskWorker = require("./m7RiskWorker");
+    if (riskWorker.isRiskWorkerEnabled()) void riskWorker.drainRiskQueue();
+  }
+
   return {
     outcome: data,
     attempt: await getComprehensionAttempt(requester, attemptId),

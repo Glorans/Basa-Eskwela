@@ -173,3 +173,54 @@ export async function getAssignedReadingProgress(roomId: string): Promise<Assign
     throw toServiceError(error, "Unable to load assessment progress. Please retry.");
   }
 }
+
+export const RECORDING_UPLOAD_ERROR =
+  "Your result is saved, but recording upload failed. Retry saving the recording before leaving this page.";
+
+/** Segments are appended in recorder order; the server stores and replays them in that order. */
+export async function uploadOralReadingRecording(attemptId: string, segments: readonly Blob[]) {
+  try {
+    const form = new FormData();
+    segments.forEach((blob, index) => form.append("audio", blob, `segment-${String(index).padStart(3, "0")}`));
+    await api.post(`/api/oral-reading/attempts/${encodeURIComponent(attemptId)}/recording`, form, {
+      headers: await getAuthHeaders(),
+    });
+  } catch (error) {
+    throw toServiceError(error, RECORDING_UPLOAD_ERROR);
+  }
+}
+
+export async function getOralReadingRecording(
+  attemptId: string,
+  teacher = false,
+): Promise<{ available: boolean; segments: string[] }> {
+  try {
+    const response = await api.get(
+      `/api/oral-reading/${teacher ? "teacher/" : ""}attempts/${encodeURIComponent(attemptId)}/recording`,
+      { headers: await getAuthHeaders() },
+    );
+    return response.data.recording;
+  } catch (error) {
+    throw toServiceError(error, "Unable to load recording. Please retry.");
+  }
+}
+
+export interface AdminReadingPassage {
+  moduleId: string;
+  moduleTitle: string;
+  passageId: string | null;
+  passageTitle: string;
+  language: "en" | "fil";
+}
+
+export async function getAdminReadingPassages(): Promise<AdminReadingPassage[]> {
+  try {
+    const { data } = await api.get<{ success: boolean; passages: AdminReadingPassage[] }>(
+      "/api/oral-reading/admin/passages",
+      { headers: await getAuthHeaders() },
+    );
+    return data.passages;
+  } catch (error) {
+    throw toServiceError(error, "Unable to load reading passages.");
+  }
+}

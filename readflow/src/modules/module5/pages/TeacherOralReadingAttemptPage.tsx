@@ -2,6 +2,7 @@ import { ArrowLeft, BookOpen, CheckCircle2, Gauge, ListChecks, Mic2, RefreshCw, 
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import M3PageHeader from "../../module3/components/M3PageHeader";
+import RecordingPlayback from "../components/RecordingPlayback";
 import { getWordsToPractice } from "../services/oralReadingProcessing";
 import { getTeacherOralReadingAttempt } from "../services/oralReadingService";
 import {
@@ -277,6 +278,8 @@ export default function TeacherOralReadingAttemptPage() {
           <h2 id="m5-passage-title"><BookOpen size={21} /> Reference Passage{attempt.passageTitle ? `: ${attempt.passageTitle}` : ""}</h2>
           <p className="m5-review-reading-text">{attempt.passageSnapshot}</p>
         </section>
+
+        <RecordingPlayback attemptId={attempt.id} teacher />
 
         <section className="m5-review-detail-section" aria-labelledby="m5-transcript-title">
           <h2 id="m5-transcript-title"><Gauge size={21} /> Read-Aloud Transcript</h2>

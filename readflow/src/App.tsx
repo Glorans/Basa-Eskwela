@@ -28,6 +28,7 @@ import StudentDashboard from "./pages/StudentDashboard";
 import MyMaterials from "./pages/MyMaterials";
 import StudentModuleViewPage from "./pages/StudentModuleViewPage";
 import Leaderboard from "./pages/Leaderboard";
+import IndependentLeaderboard from "./pages/IndependentLeaderboard";
 import MyBadges from "./pages/MyBadges";
 import AdminDiagnosticResultsPage from "./pages/admin/AdminDiagnosticResultsPage";
 
@@ -52,11 +53,15 @@ import AdminClassroomDetailsPage from "./modules/module4/pages/AdminClassroomDet
 
 import ReadAloudPage from "./pages/reading-activity/ReadAloudPage";
 import ReadingResultPage from "./pages/reading-activity/ReadingResultPage";
+import AdminOralReadingPage from "./modules/module5/pages/AdminOralReadingPage";
 import ReadingHistoryPage from "./modules/module5/pages/ReadingHistoryPage";
 import TeacherOralReadingResultsPage from "./modules/module5/pages/TeacherOralReadingResultsPage";
 import TeacherOralReadingAttemptPage from "./modules/module5/pages/TeacherOralReadingAttemptPage";
 
 import ComprehensionPage from "./modules/module6/pages/ComprehensionPage";
+import TeacherAnalyticsPage from "./modules/module7/TeacherAnalyticsPage";
+import TeacherReportsPage from "./modules/module7/TeacherReportsPage";
+import { StudentProgressPage, AdminAnalyticsPage, TeacherSupportPage } from "./modules/module7/M7Pages";
 
 function App() {
   return (
@@ -166,6 +171,7 @@ function App() {
         <Route element={<RequireRole allowedRoles={["student"]} />}>
           <Route path="/dashboard" element={<BasaLayout />}>
             <Route index element={<StudentDashboard />} />
+            <Route path="progress" element={<StudentProgressPage />} />
 
             <Route
               path="join-classroom"
@@ -313,6 +319,23 @@ function App() {
             />
             <Route path="teacher-invitations" element={<TeacherInvitationsPage />} />
 
+            <Route path="analytics" element={<AdminAnalyticsPage />} />
+
+            {/* M5 - admin self-practice; results stay private to the admin's own account */}
+            <Route path="oral-reading" element={<AdminOralReadingPage />} />
+            <Route
+              path="oral-reading/modules/:moduleId/read-aloud"
+              element={<ReadAloudPage role="admin" />}
+            />
+            <Route
+              path="read-aloud/results/:attemptId"
+              element={<ReadingResultPage role="admin" />}
+            />
+            <Route
+              path="reading-history"
+              element={<ReadingHistoryPage role="admin" />}
+            />
+
             <Route
               path="diagnostic-results"
               element={<AdminDiagnosticResultsPage />}
@@ -389,6 +412,14 @@ function App() {
             <Route
               path="oral-reading/:attemptId"
               element={<TeacherOralReadingAttemptPage />}
+            />
+
+            <Route path="student-support" element={<TeacherSupportPage />} />
+            <Route path="reports" element={<TeacherReportsPage />} />
+            {/* M7 - Teacher Analytics */}
+            <Route
+              path="analytics"
+              element={<TeacherAnalyticsPage />}
             />
 
             <Route
@@ -469,6 +500,16 @@ function App() {
             <Route
               path="materials/:materialId"
               element={<MaterialDetailPage role="general_user" />}
+            />
+
+            <Route
+              path="leaderboard"
+              element={<IndependentLeaderboard />}
+            />
+
+            <Route
+              path="badges"
+              element={<MyBadges />}
             />
 
             <Route
