@@ -1,5 +1,7 @@
 
 import { supabase } from "../../lib/supabaseClient";
+import { toLearnerProgress } from "./learnerProgress";
+import type { LearnerProgressRow } from "./learnerProgress";
 
 export type Difficulty = "Easy" | "Medium" | "Hard";
 
@@ -13,7 +15,8 @@ export interface LearnerProgress {
   total_xp: number;
   current_streak: number;
   longest_streak: number;
-  difficulty: Difficulty;
+  // From m8_learner_progress.unlocked_difficulty; null if missing or invalid.
+  difficulty: Difficulty | null;
 }
 
 export interface Badge {
@@ -125,22 +128,11 @@ export async function getMyGamification(): Promise<{
     })
   );
 
-  const rawProgress = progressResult.data;
+  const rawProgress: LearnerProgressRow | null =
+    progressResult.data;
 
   const progress: LearnerProgress | null = rawProgress
-    ? {
-        user_id: rawProgress.user_id,
-        total_xp: Number(rawProgress.total_xp ?? 0),
-        current_streak: Number(
-          rawProgress.current_streak ?? 0
-        ),
-        longest_streak: Number(
-          rawProgress.longest_streak ?? 0
-        ),
-        difficulty: (
-          rawProgress.difficulty ?? "Easy"
-        ) as Difficulty,
-      }
+    ? toLearnerProgress(rawProgress)
     : null;
 
   return {

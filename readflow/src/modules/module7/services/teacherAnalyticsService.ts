@@ -1,4 +1,5 @@
 
+import { getApiUrl } from "../../../lib/apiUrl";
 import { supabase } from "../../../lib/supabaseClient";
 import { getTeacherOralReadingAttempts } from "../../module5/services/oralReadingService";
 import type { TeacherOralReadingAttemptSummary } from "../../module5/types/oralReading";
@@ -127,7 +128,7 @@ export async function getTeacherCompletionAnalytics(): Promise<TeacherCompletion
   }
 
   const response = await fetch(
-    "http://localhost:5001/api/oral-reading/teacher/completion-analytics",
+    `${getApiUrl().replace(/\/+$/, "")}/api/oral-reading/teacher/completion-analytics`,
     {
       method: "GET",
       headers: {

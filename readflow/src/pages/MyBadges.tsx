@@ -178,7 +178,10 @@ export default function MyBadges() {
             📖 Difficulty
           </span>
           <strong style={statValueStyle}>
-            {progress?.difficulty ?? "Easy"}
+            {/* No progress row yet matches the database default (Easy). */}
+            {progress
+              ? progress.difficulty ?? "Not available"
+              : "Easy"}
           </strong>
         </div>
       </section>
