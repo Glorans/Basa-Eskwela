@@ -4,7 +4,6 @@
 
 begin;
 
-s.
 create table if not exists public.uploaded_materials (
   id uuid primary key default gen_random_uuid(),
   uploaded_by uuid not null
@@ -284,7 +283,6 @@ create unique index if not exists comprehension_questions_material_order_key
 create index if not exists comprehension_questions_review_status_idx
   on public.comprehension_questions (review_status);
 
-.
 create table if not exists public.comprehension_question_answers (
   question_id uuid primary key
     references public.comprehension_questions (id)
