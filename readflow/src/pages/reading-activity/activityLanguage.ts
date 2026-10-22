@@ -200,6 +200,11 @@ const filipino = {
   "This activity requires a passage with reviewed questions.": "Kailangan ng gawaing ito ng tekstong may mga nasuring tanong.",
   "This oral-reading result is not available to your account.": "Hindi magagamit ng iyong account ang resultang ito ng pagbasa nang malakas.",
   "No speech was detected. Please record your reading again.": "Walang natukoy na pagsasalita. Paki-record muli ang iyong pagbasa.",
+  // Speech endpoint access and limits (server/services/speechAccess.js, server/routes/diagnosticAudio.js)
+  "Speech practice is not available for this account.": "Hindi magagamit ng account na ito ang pagsasanay sa pagsasalita.",
+  "Too many speech requests. Please wait a few minutes, then try again.": "Masyadong maraming kahilingan sa pagsasalita. Maghintay nang ilang minuto, pagkatapos ay subukang muli.",
+  "This part of the recording is too large to process. Please record it again.": "Masyadong malaki ang bahaging ito ng recording para maproseso. Paki-record itong muli.",
+  "Speech processing is temporarily unavailable. Please try again later.": "Pansamantalang hindi magagamit ang pagproseso ng pagsasalita. Pakisubukang muli mamaya.",
   // M5 recording playback
   "Back to Oral Reading": "Bumalik sa Pagbasa nang Malakas",
   "Your recording is saved with your result so you can listen again. For classroom activities, your teacher can review it too.": "Nase-save ang iyong rekording kasama ng iyong resulta upang mapakinggan mo itong muli. Sa mga gawain sa klase, maaari rin itong pakinggan ng iyong guro.",

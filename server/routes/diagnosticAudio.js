@@ -2,10 +2,16 @@ const { unlink } = require("node:fs/promises");
 const { getGoogleSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { transcribeWebm, getSpeechErrorResponse } = require("../services/googleSpeechService");
 
+// Multer limit codes. Size limits are 413; count limits mean a malformed request.
+const UPLOAD_TOO_LARGE_CODES = new Set(["LIMIT_FILE_SIZE", "LIMIT_FIELD_VALUE"]);
+
 /** Only Module 2's synchronous fallback owns these temporary uploads. */
 function createDiagnosticAudioHandler({ transcribe = transcribeWebm, remove = unlink, log = console.error } = {}) {
   return async function diagnosticAudio(req, res, uploadError) {
     try {
+      if (UPLOAD_TOO_LARGE_CODES.has(uploadError?.code)) {
+        return res.status(413).json({ success: false, code: "AUDIO_TOO_LARGE", message: "This part of the recording is too large to process. Please record it again." });
+      }
       if (uploadError || !req.file) {
         return res.status(400).json({ success: false, code: "STT_INVALID_AUDIO", message: "Audio upload failed. Please try recording again." });
       }

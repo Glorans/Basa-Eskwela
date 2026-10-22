@@ -1,9 +1,12 @@
 import api from "../../../services/api";
+import { getSessionAuthHeaders } from "../../../services/authHeaders";
 import type {
   DiagnosticLanguage,
   DiagnosticTranscription,
 } from "../types/diagnostic";
 import {
+  DiagnosticAudioUploadError,
+  SESSION_EXPIRED_MESSAGE,
   toDiagnosticAudioUploadError,
   type DiagnosticAudioErrorCode,
 } from "./diagnosticAudioError";
@@ -43,10 +46,19 @@ export async function uploadDiagnosticAudio(
   formData.append("audio", audioBlob, getRecordingFilename(audioBlob));
   formData.append("language", language);
 
+  let headers: Awaited<ReturnType<typeof getSessionAuthHeaders>>;
+  try {
+    headers = await getSessionAuthHeaders(SESSION_EXPIRED_MESSAGE);
+  } catch {
+    // No upload is attempted without a session; the recording stays in memory.
+    throw new DiagnosticAudioUploadError("AUTH_REQUIRED", SESSION_EXPIRED_MESSAGE, 401);
+  }
+
   try {
     const response = await api.post<DiagnosticAudioUploadResult>(
       "/api/diagnostic/audio",
       formData,
+      { headers },
     );
 
     return response.data;
