@@ -16,6 +16,7 @@ export interface AdminDiagnosticResult {
   readingLevel: ReadingLevel;
   difficultyTier: Difficulty;
   completedAt: string;
+  verificationStatus: "unverified" | "server_verified";
 }
 
 interface AdminDiagnosticResultsResponse {

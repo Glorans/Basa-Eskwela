@@ -38,13 +38,31 @@ function getRecordingFilename(audioBlob: Blob) {
     : "diagnostic-recording";
 }
 
+/** Module 2 parts name the diagnostic and recording so the server can sign the transcript. */
+export interface DiagnosticRecordingIdentity {
+  recordingId: string;
+  assessmentId: string;
+  assessmentVersion: string;
+}
+
+export interface DiagnosticSegmentIdentity extends DiagnosticRecordingIdentity {
+  segmentIndex: number;
+}
+
 export async function uploadDiagnosticAudio(
   audioBlob: Blob,
   language: DiagnosticLanguage,
+  segment?: DiagnosticSegmentIdentity,
 ) {
   const formData = new FormData();
   formData.append("audio", audioBlob, getRecordingFilename(audioBlob));
   formData.append("language", language);
+  if (segment) {
+    formData.append("recordingId", segment.recordingId);
+    formData.append("segmentIndex", String(segment.segmentIndex));
+    formData.append("assessmentId", segment.assessmentId);
+    formData.append("assessmentVersion", segment.assessmentVersion);
+  }
 
   let headers: Awaited<ReturnType<typeof getSessionAuthHeaders>>;
   try {

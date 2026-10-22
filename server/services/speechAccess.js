@@ -120,6 +120,8 @@ function createSpeechAccess({
         return res.status(429).json({ success: false, code: "SPEECH_RATE_LIMITED", message: RATE_LIMITED_MESSAGE });
       }
 
+      // The authorized identity binds M2 transcript receipts to this learner.
+      res.locals.speechRequester = requester;
       return next();
     };
   }

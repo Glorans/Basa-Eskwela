@@ -4,6 +4,7 @@ const { EventEmitter, once } = require("node:events");
 const { createServer } = require("node:http");
 const { WebSocket } = require("ws");
 const { attachDiagnosticSpeechSocket } = require("../routes/diagnosticSpeechSocket");
+const { testReceipts } = require("./fixtures/diagnosticTrust");
 const { buildStreamingRequest, createDiagnosticSpeechSession, developmentLog } = require("../services/diagnosticSpeechStream");
 
 class FakeGoogleStream extends EventEmitter {
@@ -211,6 +212,7 @@ test("WebSocket endpoint authenticates configuration, accepts PCM, finalizes, an
   const server = createServer();
   const google = new FakeGoogleStream();
   const socketServer = attachDiagnosticSpeechSocket(server, {
+    receipts: testReceipts(),
     authorize: async (token) => {
       assert.equal(token, "test-session-token");
       return { user: { id: "learner" }, profile: { role: "student" } };
@@ -248,6 +250,7 @@ test("WebSocket disconnect during asynchronous authentication does not open Goog
   let finishAuth;
   let created = 0;
   const socketServer = attachDiagnosticSpeechSocket(server, {
+    receipts: testReceipts(),
     authorize: () => new Promise((resolve) => { finishAuth = resolve; }),
     createSession: () => { created++; throw new Error("Should not run"); },
   });

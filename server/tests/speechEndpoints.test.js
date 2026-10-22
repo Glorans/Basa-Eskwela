@@ -121,7 +121,8 @@ test("speech budgets and upload limits are configured, with no recording-duratio
     stt: { limit: 60, windowMs: 600000 },
     tts: { limit: 100, windowMs: 600000 },
   });
-  assert.deepEqual(SPEECH_UPLOAD_LIMITS, { fileSize: 10485760, files: 1, fields: 2, fieldSize: 1024, parts: 3 });
+  // Fields: language, plus M2's recordingId and segmentIndex (DT1).
+  assert.deepEqual(SPEECH_UPLOAD_LIMITS, { fileSize: 10485760, files: 1, fields: 5, fieldSize: 1024, parts: 6 });
   assert.equal(Object.keys(SPEECH_UPLOAD_LIMITS).some((key) => /duration|second/i.test(key)), false);
 });
 
@@ -246,7 +247,7 @@ test("extra files, extra fields and oversized fields are rejected without transc
   try {
     const twoFiles = await postAudio(speech.base, "student", { extraFile: true });
     assert.equal(twoFiles.status, 400);
-    const manyFields = await postAudio(speech.base, "student", { extraFields: 2 });
+    const manyFields = await postAudio(speech.base, "student", { extraFields: 5 });
     assert.equal(manyFields.status, 400);
     const longField = await postAudio(speech.base, "student", { language: "e".repeat(SPEECH_UPLOAD_LIMITS.fieldSize + 1) });
     assert.equal(longField.status, 413);

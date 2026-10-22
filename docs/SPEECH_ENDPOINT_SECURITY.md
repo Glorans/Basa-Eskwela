@@ -29,7 +29,7 @@ temporary audio file and never reach Google.
 | TTS requests per user | 100 per 10 minutes | 429 |
 | Audio bytes per upload | 10 MB (Google synchronous recognition limit) | 413 `AUDIO_TOO_LARGE` |
 | Files per upload | 1 (`audio`) | 400 |
-| Form fields / parts | 2 fields, 3 parts, 1 KB per field | 400 (count) / 413 (field size) |
+| Form fields / parts | 5 fields (`language`; M2 only: `recordingId`, `segmentIndex`, `assessmentId`, `assessmentVersion`), 6 parts, 1 KB per field | 400 (count) / 413 (field size) |
 | TTS text | 200 characters (unchanged) | 400 |
 
 These limits cap **bytes and request counts, not reading time**. Recordings are

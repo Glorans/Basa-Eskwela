@@ -49,7 +49,7 @@ where n.nspname = 'public' and p.prosecdef
 order by 1;
 
 -- A6. Targeted effective grants after B3/B20. B3 diagnostic_results should have
--- only table SELECT/INSERT/UPDATE for authenticated. B20 activities should have
+-- only table SELECT/INSERT/UPDATE for authenticated; after DT1, SELECT only. B20 activities should have
 -- only table SELECT/INSERT plus column UPDATE(status); no anon grants on either.
 select r.rolname, c.oid::regclass as table_name, privilege.name as table_privilege
 from pg_roles r cross join pg_class c

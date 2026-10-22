@@ -23,6 +23,7 @@ const results: AdminDiagnosticResult[] = [
     readingLevel: "Independent",
     difficultyTier: "Hard",
     completedAt: "2026-10-01T00:00:00.000Z",
+    verificationStatus: "server_verified",
   },
   {
     id: "learner-result",
@@ -37,6 +38,7 @@ const results: AdminDiagnosticResult[] = [
     readingLevel: "Instructional",
     difficultyTier: "Medium",
     completedAt: "2026-10-01T00:00:00.000Z",
+    verificationStatus: "unverified",
   },
 ];
 
@@ -71,11 +73,9 @@ test("DiagnosticResult stays camelCase outside the database repository", async (
   assert.doesNotMatch(scoringSource, databaseFieldNames);
   assert.match(databaseSource, /orvScore: row\.orv_score/);
   assert.match(databaseSource, /comprehensionScore: row\.comprehension_score/);
-  assert.match(databaseSource, /orv_score: completeResult\.orvScore/);
-  assert.match(
-    databaseSource,
-    /comprehension_score: completeResult\.comprehensionScore/,
-  );
+  // DT1: the browser only reads diagnostic rows; the backend writes them.
+  assert.doesNotMatch(databaseSource, /\.(?:insert|upsert|update|delete)\(/);
+  assert.doesNotMatch(databaseSource, /\b(?:orv_score|reading_level|difficulty_tier):/);
 });
 
 test("Admin diagnostic search and filters combine for both learner roles", () => {

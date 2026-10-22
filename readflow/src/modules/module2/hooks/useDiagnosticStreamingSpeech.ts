@@ -11,7 +11,13 @@ import type { DiagnosticLanguage } from "../types/diagnostic";
 
 const EMPTY_TRANSCRIPT: StreamingTranscriptState = { confirmedTranscript: "", interimTranscript: "" };
 
-export function useDiagnosticStreamingSpeech(language: DiagnosticLanguage) {
+/** `diagnostic` is passed by Module 2 only; M5 voice-follow streams without it. */
+export function useDiagnosticStreamingSpeech(
+  language: DiagnosticLanguage,
+  diagnostic?: { assessmentId: string; assessmentVersion: string },
+) {
+  const assessmentId = diagnostic?.assessmentId;
+  const assessmentVersion = diagnostic?.assessmentVersion;
   const [transcript, setTranscript] = useState(EMPTY_TRANSCRIPT);
   const [failed, setFailed] = useState(false);
   const mounted = useRef(false);
@@ -28,6 +34,7 @@ export function useDiagnosticStreamingSpeech(language: DiagnosticLanguage) {
     reset();
     const current = createDiagnosticStreamingSession({
       language,
+      ...(assessmentId && assessmentVersion ? { diagnostic: { assessmentId, assessmentVersion } } : {}),
       url: getDiagnosticSpeechSocketUrl(getApiUrl(), window.location.href),
       workletUrl,
       getAccessToken: async () => {
@@ -50,7 +57,7 @@ export function useDiagnosticStreamingSpeech(language: DiagnosticLanguage) {
     });
     session.current = current;
     void current.start(stream);
-  }, [language, reset]);
+  }, [language, assessmentId, assessmentVersion, reset]);
 
   const stop = useCallback(() => session.current?.stop() ?? Promise.resolve(null), []);
   const cancel = useCallback(() => session.current?.cancel(), []);

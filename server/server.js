@@ -18,8 +18,13 @@ const {
 } = require("./routes/adminModuleExtraction");
 const { terminateOcrWorker } = require("./services/materialOcrService");
 const { attachDiagnosticSpeechSocket } = require("./routes/diagnosticSpeechSocket");
+const { createDiagnosticResultsRouter } = require("./routes/diagnosticResults");
+const { createTranscriptReceiptService } = require("./services/diagnosticTranscriptReceipts");
 
 const app = express();
+// Signs M2 transcripts at both Google STT entry points and verifies them when
+// the diagnostic result is submitted (DIAGNOSTIC_RECEIPT_SECRET).
+const diagnosticReceipts = createTranscriptReceiptService();
 
 app.use(
   cors({
@@ -49,11 +54,13 @@ app.use("/api/weekly-reports", weeklyReportsRouter);
 app.use("/api/analytics", require("./routes/m7Analytics"));
 app.use("/api/comprehension", require("./routes/comprehension"));
 // POST /api/tts and POST /api/diagnostic/audio (authenticated, throttled Google speech).
-app.use(createSpeechRouter());
+app.use(createSpeechRouter({ receipts: diagnosticReceipts }));
+// POST /api/diagnostic/results: the only write path for M2 diagnostic results.
+app.use(createDiagnosticResultsRouter({ receipts: diagnosticReceipts }));
 
 function startServer(port = process.env.PORT || 5000) {
   const server = createServer(app);
-  const speechSocket = attachDiagnosticSpeechSocket(server);
+  const speechSocket = attachDiagnosticSpeechSocket(server, { receipts: diagnosticReceipts });
   const stopRiskWorker = require("./services/m7RiskWorker").startRiskWorker();
   server.once("close", stopRiskWorker);
   server.closeDiagnosticSpeech = speechSocket.dispose;

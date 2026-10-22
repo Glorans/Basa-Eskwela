@@ -1,6 +1,8 @@
 const { WebSocketServer, WebSocket } = require("ws");
 const { authorizeOralReadingPracticeRequest } = require("../services/oralReadingAttemptService");
 const { SPEECH_STREAM_SESSION_LIMIT, createRequestLimiter } = require("../services/speechAccess");
+const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
+const { getDiagnosticAssessmentBinding } = require("../services/diagnosticAssessments");
 const {
   createDiagnosticSpeechSession, developmentLog, SAFE_STREAM_ERROR,
 } = require("../services/diagnosticSpeechStream");
@@ -21,6 +23,7 @@ function attachDiagnosticSpeechSocket(server, {
   allowedOrigins = (process.env.DIAGNOSTIC_WS_ORIGINS || "http://localhost:5173,http://127.0.0.1:5173")
     .split(",").map((origin) => origin.trim()),
   sessionLimit = SPEECH_STREAM_SESSION_LIMIT,
+  receipts = createTranscriptReceiptService(),
   now = Date.now,
 } = {}) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16384, perMessageDeflate: false });
@@ -85,6 +88,18 @@ function attachDiagnosticSpeechSocket(server, {
         const requester = await authorize(message.accessToken);
         if (closed || ws.readyState !== WebSocket.OPEN) return;
         clearTimeout(configTimer);
+        // M2 names its diagnostic and gets a signed transcript; M5 voice-follow
+        // sends no `diagnostic`, gets no receipt and needs no receipt secret.
+        // An M2 stream that could not be signed opens no Google stream; the
+        // browser falls back to the recording upload, which fails closed too.
+        let binding = null;
+        if (message.diagnostic !== undefined) {
+          binding = getDiagnosticAssessmentBinding(
+            message.language, message.diagnostic?.assessmentId, message.diagnostic?.assessmentVersion,
+          );
+          if (!binding) { reject(); return; }
+          receipts.assertConfigured();
+        }
         // Only authorized starts are counted; over budget, no Google stream opens.
         if (!sessionStarts.take(requester.user.id).allowed) { reject(REJECTION.rateLimited); return; }
         userId = requester.user.id;
@@ -92,9 +107,16 @@ function attachDiagnosticSpeechSocket(server, {
         // drop the server has not detected yet) ends the older one first.
         activeStreams.get(userId)?.end(REJECTION.replaced);
         activeStreams.set(userId, connection);
+        const recordingId = receipts.newRecordingId();
         session = createSession({
           language: message.language, send,
           close: () => ws.close(1000, "Diagnostic session ended"),
+          ...(binding ? {
+            issueReceipt: ({ text, confidence, audioSeconds }) => receipts.issue({
+              userId: requester.user.id, language: message.language, binding, recordingId, segmentIndex: 1,
+              source: "stream", text, confidence, audioSeconds,
+            }),
+          } : {}),
         });
         developmentLog("WebSocket connected");
       } catch { reject(); }

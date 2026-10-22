@@ -427,3 +427,55 @@ test("diagnostic start reveals its mascot without disabling shared panel scrolli
   );
   assert.match(startStyles, /margin-top:\s*clamp\(76px, 18vw, 92px\);/);
 });
+
+const RECORDING_ID = "00000000-0000-4000-8000-0000000000c1";
+const DIAGNOSTIC = { recordingId: RECORDING_ID, assessmentId: "grade5-fil-passage-v3", assessmentVersion: "3.0" };
+const webm = () => new Blob(["audio"], { type: "audio/webm" });
+
+test("DT1: Module 2 parts name their recording and return every receipt in order", async () => {
+  const calls: unknown[] = [];
+  const result = await processDiagnosticRecording({
+    audioSegments: [webm(), webm()], language: "fil", expectedText: "isang araw", recordingDurationSeconds: 40,
+    diagnostic: DIAGNOSTIC,
+    uploadSegment: async (_blob, language, segment) => {
+      calls.push({ language, segment });
+      return { success: true, message: "ok", transcription: { text: `part ${calls.length}`, receipt: `r${calls.length}` } };
+    },
+  });
+  assert.deepEqual(calls, [
+    { language: "fil", segment: { ...DIAGNOSTIC, segmentIndex: 1 } },
+    { language: "fil", segment: { ...DIAGNOSTIC, segmentIndex: 2 } },
+  ]);
+  assert.deepEqual(result.transcriptReceipts, ["r1", "r2"]);
+});
+
+test("DT1: a Module 2 part without a receipt cannot be scored", async () => {
+  await assert.rejects(processDiagnosticRecording({
+    audioSegments: [webm()], language: "en", expectedText: "one day", recordingDurationSeconds: 5, diagnostic: DIAGNOSTIC,
+    uploadSegment: async () => ({ success: true, message: "ok", transcription: { text: "one day" } }),
+  }), (error: unknown) => error instanceof DiagnosticRecordingProcessingError && error.code === "STT_PROVIDER_ERROR");
+});
+
+test("DT1: an unsigned stream falls back to the signed uploads; a signed stream is used directly", async () => {
+  let uploads = 0;
+  const input = {
+    audioSegments: [webm()], language: "en" as const, expectedText: "one day", recordingDurationSeconds: 5, diagnostic: DIAGNOSTIC,
+    uploadSegment: async () => { uploads++; return { success: true, message: "ok", transcription: { text: "one day", receipt: "upload" } }; },
+  };
+  assert.deepEqual((await processDiagnosticRecording({ ...input, streamingTranscription: { text: "one day" } })).transcriptReceipts, ["upload"]);
+  assert.equal(uploads, 1);
+  assert.deepEqual((await processDiagnosticRecording({ ...input, streamingTranscription: { text: "one day", receipt: "stream" } })).transcriptReceipts, ["stream"]);
+  assert.equal(uploads, 1);
+});
+
+test("DT1: Module 5 read-alouds are unchanged: no recording identity, no receipts required", async () => {
+  const calls: unknown[][] = [];
+  const result = await processDiagnosticRecording({
+    audioSegments: [webm()], language: "en", expectedText: "one day", recordingDurationSeconds: 5,
+    uploadSegment: async (...args: unknown[]) => { calls.push(args); return { success: true, message: "ok", transcription: { text: "one day" } }; },
+    streamingTranscription: undefined,
+  });
+  assert.equal(calls[0].length, 2);
+  assert.deepEqual(result.transcriptReceipts, []);
+  assert.equal(result.oralReadingMetrics.correctWords, 2);
+});

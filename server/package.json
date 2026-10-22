@@ -13,6 +13,7 @@
     "test:materials": "node --test --test-concurrency=1 tests/material*.test.js",
     "test:questions": "node --test tests/questionGeneration.test.js",
     "test:diagnostic-results": "node --test tests/adminDiagnosticResults.test.js",
+    "test:diagnostic-trust": "node --test tests/diagnosticTrustedScoring.test.js tests/diagnosticResults.test.js tests/diagnosticTrustMigration.test.js",
     "test:users": "node --test tests/adminUsers.test.js",
     "test:oral-reading": "node --test tests/oralReading*.test.js"
   },

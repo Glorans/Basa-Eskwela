@@ -7,7 +7,8 @@ import { calculateOralReadingMetrics } from "../src/modules/module2/services/dia
 const assessment = { ...requireDiagnosticAssessment("en"), id: "legacy-session", version: "1.0" };
 const session = {
   assessmentId: assessment.id, assessmentVersion: assessment.version,
-  reading: { language: "en" as const, transcription: { text: "one day frog" }, oralReadingMetrics: calculateOralReadingMetrics("one day a frog", "one day frog", 3) },
+  reading: { language: "en" as const, transcription: { text: "one day frog" }, oralReadingMetrics: calculateOralReadingMetrics("one day a frog", "one day frog", 3),
+    transcriptReceipts: ["signed-receipt"] },
   answers: { [assessment.questions[0].id]: assessment.questions[0].choices[0].id }, questionIndex: 1,
 };
 
@@ -19,6 +20,14 @@ test("refresh recovers reading and answers, recalculating scores from real speec
   assert.equal(restored.reading.oralReadingMetrics.numberOfWordsRead, 3);
   assert.ok(restored.reading.oralReadingMetrics.totalExpectedWords > 4);
   assert.doesNotMatch(raw, /audioBlob|data:audio|recognizedWordIndexes|bridgedVisual/);
+  assert.deepEqual(restored.reading.transcriptReceipts, ["signed-receipt"]);
+});
+
+test("a reading saved without server receipts is not restored, so the learner records again", () => {
+  for (const transcriptReceipts of [undefined, [], [""], [1], Array(13).fill("r"), ["x".repeat(65537)]]) {
+    const raw = serializeDiagnosticSession({ ...session, reading: { ...session.reading, transcriptReceipts } as never }, "reader");
+    assert.equal(recoverDiagnosticSession(raw, "reader", assessment), null);
+  }
 });
 
 test("recovery rejects different users, languages, versions, malformed, missing and expired state", () => {

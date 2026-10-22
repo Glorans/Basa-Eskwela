@@ -8,18 +8,20 @@ const { createDiagnosticAudioHandler } = require("./diagnosticAudio");
 const { synthesizeSpeech } = require("../services/googleTtsService");
 const { getGoogleSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { createSpeechAccess } = require("../services/speechAccess");
+const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
 
 const MAX_TTS_TEXT_LENGTH = 200;
 
 // One recording part per request. 10 MB matches Google's synchronous
 // recognition limit (googleSpeechService.js); a 25-second WebM part is far
 // smaller. This caps bytes per upload, not how long a learner may read.
+// Fields: language, plus M2's recordingId, segmentIndex, assessmentId and assessmentVersion.
 const SPEECH_UPLOAD_LIMITS = Object.freeze({
   fileSize: 10 * 1024 * 1024,
   files: 1,
-  fields: 2,
+  fields: 5,
   fieldSize: 1024,
-  parts: 3,
+  parts: 6,
 });
 
 const audioExtensionsByMimeType = {
@@ -77,6 +79,7 @@ function createSpeechRouter({
   now,
   transcribe,
   synthesize = synthesizeSpeech,
+  receipts = createTranscriptReceiptService(),
   log = console.error,
 } = {}) {
   fs.mkdirSync(uploadDirectory, { recursive: true });
@@ -86,6 +89,7 @@ function createSpeechRouter({
   const { requireSpeechAccess } = createSpeechAccess({ authorize, rateLimits, now, log });
   const diagnosticAudioHandler = createDiagnosticAudioHandler({
     ...(transcribe ? { transcribe } : {}),
+    receipts,
     log,
   });
 

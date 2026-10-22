@@ -8,7 +8,7 @@ import { getDiagnosticPassageText } from "../data/diagnosticData";
 import {
   type DiagnosticAnswers,
 } from "../services/diagnosticScoring";
-import { saveInitialDiagnosticResult } from "../services/diagnosticDatabase";
+import { DiagnosticDatabaseError, saveInitialDiagnosticResult } from "../services/diagnosticDatabase";
 import { logDiagnosticScoreAudit } from "../services/diagnosticScoreAudit";
 import type {
   DiagnosticAssessment,
@@ -118,10 +118,25 @@ export default function DiagnosticQuestionsPage({
       );
       diagnosticSession.clear(assessment);
       navigate(`/diagnostic/${savedResult.result.language}/result`);
-    } catch {
+    } catch (error) {
       if (!mounted.current) return;
+      const code = error instanceof DiagnosticDatabaseError ? error.code : undefined;
+      if (code === "ALREADY_COMPLETED") {
+        // A verified result already exists for this diagnostic; show that one.
+        diagnosticSession.clear(assessment);
+        navigate(`/diagnostic/${assessment.language}/result`, { replace: true });
+        return;
+      }
+      if (code === "READING_NOT_VERIFIED") {
+        // The saved reading cannot be scored (for example, older than a day);
+        // drop it so "Back to the story" starts a new recording.
+        diagnosticSession.clear(assessment);
+        setPendingResult(null);
+      }
       setSaveError(
-        "We couldn't save your result. Your answers are still here—please try again.",
+        code === "READING_NOT_VERIFIED" || code === "ASSESSMENT_CHANGED" || code === "AUTH_REQUIRED"
+          ? (error as Error).message
+          : "We couldn't save your result. Your answers are still here—please try again.",
       );
     } finally {
       saving.current = false;

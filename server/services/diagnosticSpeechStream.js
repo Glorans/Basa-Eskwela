@@ -37,6 +37,8 @@ function createDiagnosticSpeechSession({
   createStream = createDiagnosticRecognitionStream,
   timers = { setTimeout, clearTimeout },
   rotationMs = STREAM_ROTATION_MS,
+  // Signs the completed transcript for M2 scoring (diagnosticTranscriptReceipts.js).
+  issueReceipt,
   log = developmentLog,
 }) {
   const request = buildStreamingRequest(language);
@@ -44,6 +46,7 @@ function createDiagnosticSpeechSession({
   let generation = 0;
   let finalCount = 0;
   const finalTranscripts = [];
+  const finalConfidences = [];
   let audioBytes = 0;
   let stopped = false;
   let disposed = false;
@@ -87,13 +90,27 @@ function createDiagnosticSpeechSession({
 
   function complete() {
     if (disposed) return;
+    const text = finalTranscripts.join(" ");
     log("complete final transcript", {
       languageCode: request.config.languageCode,
       model: request.config.model ?? "automatic",
       finalCount,
-      text: finalTranscripts.join(" "),
+      text,
     });
-    send({ type: "complete", finalCount, audioBytes });
+    let receipt;
+    if (issueReceipt && text) {
+      // Audio length is counted here from the PCM actually received, not reported by the browser.
+      try {
+        receipt = issueReceipt({
+          text,
+          confidence: finalConfidences.length
+            ? finalConfidences.reduce((sum, value) => sum + value, 0) / finalConfidences.length
+            : undefined,
+          audioSeconds: audioBytes / (PCM_SAMPLE_RATE * 2),
+        });
+      } catch { fail("Transcript receipt could not be issued"); return; }
+    }
+    send({ type: "complete", finalCount, audioBytes, ...(receipt ? { receipt } : {}) });
     dispose();
     close();
   }
@@ -149,6 +166,7 @@ function createDiagnosticSpeechSession({
         context.lastFinalEnd = endNanos;
         advanced = true;
         finalTranscripts.push(text);
+        if (Number.isFinite(alternative.confidence)) finalConfidences.push(alternative.confidence);
         send({
           type: "final", segmentId: `${context.id}:${endNanos}`, sequence: ++finalCount,
           text, ...(Number.isFinite(alternative.confidence) ? { confidence: alternative.confidence } : {}),

@@ -5,6 +5,7 @@ const { createServer } = require("node:http");
 const { WebSocket } = require("ws");
 
 const { attachDiagnosticSpeechSocket } = require("../routes/diagnosticSpeechSocket");
+const { testReceipts } = require("./fixtures/diagnosticTrust");
 const { createDiagnosticSpeechSession } = require("../services/diagnosticSpeechStream");
 const { SPEECH_STREAM_SESSION_LIMIT } = require("../services/speechAccess");
 const { SupabaseAuthenticationError } = require("../services/supabaseAdmin");
@@ -53,6 +54,7 @@ async function startSocket(t, options = {}) {
   const streams = [];
   const authorizeCalls = [];
   const socketServer = attachDiagnosticSpeechSocket(server, {
+    receipts: testReceipts(),
     authorize: async (token) => {
       authorizeCalls.push(token);
       return authorizeOralReadingPracticeRequest({ get: () => `Bearer ${token}` }, authDependencies);
@@ -276,4 +278,56 @@ test("other origins are still refused before any authorization", async (t) => {
   const [error] = await once(rejected, "error");
   assert.match(error.message, /403/);
   assert.deepEqual(socket.authorizeCalls, []);
+});
+
+// DT1: receipts are issued only to streams that name the active M2 diagnostic.
+async function finishStream(ws, stream, text) {
+  ws.send(Buffer.alloc(3200));
+  await waitFor(() => stream.bytes === 3200);
+  stream.emit("data", { results: [{ isFinal: true, resultEndTime: { seconds: 1 }, alternatives: [{ transcript: text }] }] });
+  ws.send(JSON.stringify({ type: "stop" }));
+  await waitFor(() => stream.ended);
+  stream.emit("end");
+  await waitFor(() => ws.messages.some((message) => message.type === "complete"));
+  return ws.messages.find((message) => message.type === "complete");
+}
+
+function configureDiagnostic(ws, accessToken, language, diagnostic) {
+  ws.send(JSON.stringify({ type: "configure", accessToken, language, encoding: "LINEAR16", sampleRate: 16000, channels: 1, diagnostic }));
+}
+
+test("DT1: M5 voice-follow streams work without a receipt secret and never receive a receipt", async (t) => {
+  const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
+  const socket = await startSocket(t, { receipts: createTranscriptReceiptService({ getSecret: () => undefined }) });
+  const ws = await startStream(socket.url, "student", "fil");
+  assert.equal(ws.messages[0].type, "ready");
+  const complete = await finishStream(ws, socket.streams.at(-1), "isang araw");
+  assert.deepEqual(complete, { type: "complete", finalCount: 1, audioBytes: 3200 });
+});
+
+test("DT1: an M2 stream needs the active diagnostic and a configured secret, then gets a bound receipt", async (t) => {
+  const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
+  const unsigned = await startSocket(t, { receipts: createTranscriptReceiptService({ getSecret: () => undefined }) });
+  const noSecret = await connect(unsigned.url);
+  configureDiagnostic(noSecret, "student", "en", { assessmentId: "grade5-en-passage-v3", assessmentVersion: "3.0" });
+  assert.equal((await noSecret.closeEvent).code, 1008);
+  assert.equal(unsigned.streams.length, 0);
+
+  const receipts = testReceipts();
+  const socket = await startSocket(t, { receipts });
+  for (const diagnostic of [{ assessmentId: "grade5-en-passage-v3", assessmentVersion: "2.0" },
+    { assessmentId: "grade5-fil-passage-v3", assessmentVersion: "3.0" }, { assessmentId: "m5-passage" }, null, "x"]) {
+    const ws = await connect(socket.url);
+    configureDiagnostic(ws, "student", "en", diagnostic);
+    assert.equal((await ws.closeEvent).code, 1008, JSON.stringify(diagnostic));
+  }
+  assert.equal(socket.streams.length, 0);
+
+  const ws = await connect(socket.url);
+  configureDiagnostic(ws, "student", "en", { assessmentId: "grade5-en-passage-v3", assessmentVersion: "3.0" });
+  await waitFor(() => ws.messages.length > 0);
+  const complete = await finishStream(ws, socket.streams.at(-1), "Mia walked");
+  const claims = receipts.verify(complete.receipt);
+  assert.deepEqual([claims.sub, claims.lang, claims.aid, claims.aver, claims.src, claims.text],
+    ["student-1", "en", "grade5-en-passage-v3", "3.0", "stream", "Mia walked"]);
 });

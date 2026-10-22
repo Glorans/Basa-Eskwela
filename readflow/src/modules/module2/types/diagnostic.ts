@@ -45,6 +45,8 @@ export type DiagnosticAssessmentRegistry = Readonly<{
 export interface DiagnosticTranscription {
   text: string;
   confidence?: number;
+  /** Server-signed proof that the backend produced this Google transcript. */
+  receipt?: string;
 }
 
 export type ReadingWordAlignment =
@@ -84,7 +86,11 @@ export interface DiagnosticQuestionsRouteState {
   language: DiagnosticLanguage;
   transcription: DiagnosticTranscription;
   oralReadingMetrics: OralReadingMetrics;
+  /** One receipt per transcribed part, in order; the backend scores only these. */
+  transcriptReceipts: string[];
 }
+
+export type DiagnosticVerificationStatus = "unverified" | "server_verified";
 
 /**
  * Frontend representation of a diagnostic_results record.
@@ -104,6 +110,8 @@ export interface DiagnosticResult {
   transcript?: string;
   googleConfidence?: number;
   oralReadingMetrics?: OralReadingMetrics;
+  transcriptReceipts?: string[];
+  verificationStatus?: DiagnosticVerificationStatus;
 }
 
 export interface SavedDiagnosticResult {
