@@ -3,6 +3,12 @@
 -- group's own verify_*.sql checks. Run one section at a time.
 -- A1-A5 expect 0 rows; every row must be explained before continuing.
 -- These are catalog audits, not evidence that row-level behaviour was tested.
+-- After DT1 and C9 (prepared, not applied) the expectations are unchanged except:
+--   A6: diagnostic_results authenticated SELECT only (no INSERT/UPDATE); no anon grants.
+--   A8: diagnostic_results 1 PERMISSIVE SELECT + 1 RESTRICTIVE ALL (public total 70).
+--   A5/A7: no new rows. DT1/C9 add 5 SECURITY INVOKER functions with pinned search_path
+--   and no client EXECUTE. C9 replaces two existing M8 definers plus m6_apply_action;
+--   the new internal m6_assert_completion_access(uuid) is not a client RPC.
 
 -- A1. Every application table must have RLS enabled.
 select c.oid::regclass as table_name

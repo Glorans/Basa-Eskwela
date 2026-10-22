@@ -258,6 +258,19 @@ file rolls back, so fix the cause and rerun only that file.
   output for C9. Design, deployment order and risks: [DT1_DIAGNOSTIC_TRUST_REVIEW.md](DT1_DIAGNOSTIC_TRUST_REVIEW.md).
 - **Stop if:** the guard raises, or any V-DT1 result differs. Never upgrade an `unverified` row in place.
 
+### C9 — trusted M8 XP (alone, right after DT1; prepared, not applied)
+
+| # | File |
+|---|------|
+| C9 | `supabase/migrations/20261026_m8_trusted_xp.sql` (re-runnable; refuses to run without DT1) |
+
+- **Before:** `verify_c9_trusted_xp.sql` P-C9a through P-C9f; record P-C9b. Every P-C9c row must normalize to
+  `en`/`fil` (a NULL there would make completions of those modules fail).
+- **After:** V-C9a through V-C9i, then A1–A8. History counts equal P-C9b; public functions +3; 7 M7/M8 triggers;
+  31 tables, 70 public policies. Keep V-C9g's output. Design and risks:
+  [C9_TRUSTED_XP_REVIEW.md](C9_TRUSTED_XP_REVIEW.md).
+- **Stop if:** the guard raises, or any V-C9 result differs.
+
 ## Known privilege gaps (decisions needed before the affected group)
 
 Supabase's default privileges grant new `public` tables and functions directly to `anon` and
