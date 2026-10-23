@@ -12,38 +12,15 @@ const {
   deriveAssignedProgress,
 } = require("./assignedReadingProgress");
 
-const PAGE_SIZE = 100;
-
-async function fetchAllRows(
-  db,
-  table,
-  columns,
-  filterColumn,
-  filterValue,
-  complete = false
-) {
-  if (complete) return reportRows(db, table, columns, { [filterColumn]: filterValue });
-  const results = [];
-
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await db
-      .from(table)
-      .select(columns)
-      .eq(filterColumn, filterValue)
-      .order("id", { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-
-    if (error) {
-      throw new OralReadingPersistenceError(
-        "Unable to load classroom completion analytics. Please retry."
-      );
-    }
-
-    results.push(...(data ?? []));
-
-    if (!data || data.length < PAGE_SIZE) {
-      return results;
-    }
+async function fetchAllRows(db, table, columns, filterColumn, filterValue, complete = false) {
+  try {
+    // Continue keyset reads to an empty page, even under a reduced server cap.
+    return await reportRows(db, table, columns, { [filterColumn]: filterValue });
+  } catch (error) {
+    if (complete) throw error;
+    throw new OralReadingPersistenceError(
+      "Unable to load classroom completion analytics. Please retry."
+    );
   }
 }
 
@@ -116,9 +93,9 @@ async function getTeacherCompletionAnalytics(
       ),
     ]);
 
-    const authorizedAssignments = assignments.filter((assignment) =>
+    const authorizedAssignments = [...new Map(assignments.filter((assignment) =>
       authorizedStudents.roomsByStudent?.get(assignment.student_id)?.has(room.id)
-    );
+    ).map(assignment => [assignment.id, assignment])).values()];
     const progress = authorizedAssignments.map((assignment) => {
       const studentReadings = readings.filter(
         (reading) =>
@@ -147,6 +124,9 @@ async function getTeacherCompletionAnalytics(
       (item) => item.status === "Completed"
     ).length;
 
+    // Collapse the shared detailed stages into the three dashboard buckets.
+    const notStartedAssignments = progress.filter(item => item.status === "Not Started").length;
+    const inProgressAssignments = progress.length - completedAssignments - notStartedAssignments;
     const totalAssignments = authorizedAssignments.length;
 
     classrooms.push({
@@ -154,6 +134,8 @@ async function getTeacherCompletionAnalytics(
       roomName: room.room_name,
       totalAssignments,
       completedAssignments,
+      inProgressAssignments,
+      notStartedAssignments,
       incompleteAssignments:
         totalAssignments - completedAssignments,
       completionRate: calculateCompletionRate(
@@ -170,6 +152,8 @@ async function getTeacherCompletionAnalytics(
           studentId: item.studentId,
           totalAssignments: 0,
           completedAssignments: 0,
+          inProgressAssignments: 0,
+          notStartedAssignments: 0,
           incompleteAssignments: 0,
           completionRate: null,
           classrooms: [],
@@ -188,6 +172,8 @@ async function getTeacherCompletionAnalytics(
           roomName: room.room_name,
           totalAssignments: 0,
           completedAssignments: 0,
+          inProgressAssignments: 0,
+          notStartedAssignments: 0,
           incompleteAssignments: 0,
           completionRate: null,
         };
@@ -201,6 +187,12 @@ async function getTeacherCompletionAnalytics(
       if (item.status === "Completed") {
         student.completedAssignments += 1;
         studentRoom.completedAssignments += 1;
+      } else if (item.status === "Not Started") {
+        student.notStartedAssignments += 1;
+        studentRoom.notStartedAssignments += 1;
+      } else {
+        student.inProgressAssignments += 1;
+        studentRoom.inProgressAssignments += 1;
       }
     }
   }
@@ -247,6 +239,8 @@ async function getTeacherCompletionAnalytics(
     totalClassrooms: classrooms.length,
     totalAssignments,
     completedAssignments,
+    inProgressAssignments: classrooms.reduce((sum, room) => sum + room.inProgressAssignments, 0),
+    notStartedAssignments: classrooms.reduce((sum, room) => sum + room.notStartedAssignments, 0),
     incompleteAssignments:
       totalAssignments - completedAssignments,
     completionRate: calculateCompletionRate(

@@ -161,33 +161,56 @@ async function saveWeeklyReport(
   return toSavedReport(data);
 }
 
-async function listWeeklyReports(
-  requester,
-  dependencies = {}
-) {
-  const supabase =
-    dependencies.getSupabaseAdmin?.() ??
-    getSupabaseAdmin();
+const HISTORY_PAGE_SIZE = 50;
 
-  const { data, error } = await supabase
-    .from("weekly_reports")
-    .select(
-      "id, period_start, period_end, created_at"
-    )
+function decodeHistoryCursor(value) {
+  if (value === undefined) return null;
+  try {
+    if (typeof value !== "string" || value.length > 512 || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error();
+    const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (typeof cursor.id !== "string" || !UUID_PATTERN.test(cursor.id)
+      || typeof cursor.createdAt !== "string"
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(cursor.createdAt)
+      || !Number.isFinite(Date.parse(cursor.createdAt))) throw new Error();
+    return cursor;
+  } catch {
+    throw new WeeklyReportStorageError("Invalid report history cursor. Refresh the history and retry.", 400, "INVALID_HISTORY_CURSOR");
+  }
+}
+
+async function listWeeklyReports(requester, dependencies = {}, options = {}) {
+  let cursor = decodeHistoryCursor(options.cursor);
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const data = [];
+  // A short response may reflect a server cap, not the end of history.
+  // Collect a page plus one lookahead row, stopping only on an empty read.
+  while (data.length < HISTORY_PAGE_SIZE + 1) {
+    let query = supabase.from("weekly_reports")
+    .select("id, period_start, period_end, created_at")
     .eq("teacher_id", requester.user.id)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
-    .limit(100);
-
-  if (error) {
-    console.error("Unable to list M7 weekly reports:", error);
-
-    throw new WeeklyReportStorageError(
-      "Unable to load your saved weekly reports."
-    );
+    .limit(HISTORY_PAGE_SIZE + 1 - data.length);
+    // Preserve the database timestamp's precision. ID breaks timestamp ties;
+    // new reports arriving between pages cannot shift previously loaded rows.
+    if (cursor) query = query.or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`);
+    const { data: batch, error } = await query;
+    if (error || !Array.isArray(batch)) {
+      throw new WeeklyReportStorageError("Unable to load your saved weekly reports.");
+    }
+    if (!batch.length) break;
+    data.push(...batch);
+    const last = batch.at(-1);
+    cursor = { createdAt: last.created_at, id: last.id };
   }
-
-  return (data ?? []).map(toReportHistoryItem);
+  const page = data.slice(0, HISTORY_PAGE_SIZE);
+  const last = page.at(-1);
+  return {
+    reports: page.map(toReportHistoryItem),
+    nextCursor: data.length > HISTORY_PAGE_SIZE && last
+      ? Buffer.from(JSON.stringify({ createdAt: last.created_at, id: last.id })).toString("base64url")
+      : null,
+  };
 }
 
 async function getSavedWeeklyReport(

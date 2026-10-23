@@ -97,11 +97,11 @@ function createWeeklyReportsRouter(dependencies = {}) {
   router.get("/", async (req, res) => {
     try {
       const requester = await authorizeTeacher(req, dependencies);
-      const reports = await listReports(requester, dependencies);
+      const page = await listReports(requester, dependencies, req.query);
 
       return res.json({
         success: true,
-        reports,
+        ...page,
       });
     } catch (error) {
       return sendWeeklyReportError(res, error);

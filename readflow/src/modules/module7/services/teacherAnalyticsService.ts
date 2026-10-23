@@ -1,6 +1,9 @@
+import { allTime, filterRecords, type AnalyticsScope } from "./analyticsFilters.ts";
+import { getTeacherQuizAttempts, quizMetrics, type TeacherQuizAttempt } from "./teacherQuizService";
+import { countIndependentAssessments } from "./assessmentSource.ts";
 
-import { getApiUrl } from "../../../lib/apiUrl";
 import { supabase } from "../../../lib/supabaseClient";
+import { getApiUrl } from "../../../lib/apiUrl";
 import { getTeacherOralReadingAttempts } from "../../module5/services/oralReadingService";
 import type { TeacherOralReadingAttemptSummary } from "../../module5/types/oralReading";
 
@@ -11,6 +14,7 @@ export interface TeacherAnalyticsSummary {
   averageReadingSpeedWpm: number | null;
   averageComprehensionScore: number | null;
   completedComprehensionAttempts: number;
+  independentComprehensionAttempts: number;
 }
 
 export interface ClassroomCompletionAnalytics {
@@ -18,6 +22,8 @@ export interface ClassroomCompletionAnalytics {
   roomName: string;
   totalAssignments: number;
   completedAssignments: number;
+  inProgressAssignments: number;
+  notStartedAssignments: number;
   incompleteAssignments: number;
   completionRate: number | null;
 }
@@ -27,6 +33,8 @@ export interface StudentClassroomCompletionAnalytics {
   roomName: string;
   totalAssignments: number;
   completedAssignments: number;
+  inProgressAssignments: number;
+  notStartedAssignments: number;
   incompleteAssignments: number;
   completionRate: number | null;
 }
@@ -35,6 +43,8 @@ export interface StudentCompletionAnalytics {
   studentId: string;
   totalAssignments: number;
   completedAssignments: number;
+  inProgressAssignments: number;
+  notStartedAssignments: number;
   incompleteAssignments: number;
   completionRate: number | null;
   classrooms: StudentClassroomCompletionAnalytics[];
@@ -44,6 +54,8 @@ export interface TeacherCompletionAnalytics {
   totalClassrooms: number;
   totalAssignments: number;
   completedAssignments: number;
+  inProgressAssignments: number;
+  notStartedAssignments: number;
   incompleteAssignments: number;
   completionRate: number | null;
   classrooms: ClassroomCompletionAnalytics[];
@@ -68,14 +80,11 @@ function calculateAverage(values: number[]): number | null {
 }
 
 export function calculateTeacherAnalytics(
-  attempts: TeacherOralReadingAttemptSummary[]
+  attempts: TeacherOralReadingAttemptSummary[],
+  quizzes: TeacherQuizAttempt[]
 ): TeacherAnalyticsSummary {
   const uniqueStudents = new Set(
     attempts.map((attempt) => attempt.learnerId)
-  );
-
-  const completedComprehension = attempts.filter(
-    (attempt) => attempt.comprehension.status === "completed"
   );
 
   return {
@@ -95,24 +104,15 @@ export function calculateTeacherAnalytics(
       )
     ),
 
-    averageComprehensionScore: calculateAverage(
-      completedComprehension.map(
-        (attempt) =>
-          attempt.comprehension.status === "completed"
-            ? attempt.comprehension.firstAttemptPercentage
-            : NaN
-      )
-    ),
-
-    completedComprehensionAttempts:
-      completedComprehension.length,
+    ...quizMetrics(quizzes),
+    independentComprehensionAttempts: countIndependentAssessments(quizzes),
   };
 }
 
-export async function getTeacherAnalytics(): Promise<TeacherAnalyticsSummary> {
-  const attempts = await getTeacherOralReadingAttempts();
+export async function getTeacherAnalytics(loadQuizzes = getTeacherQuizAttempts, scope: AnalyticsScope = allTime): Promise<TeacherAnalyticsSummary> {
+  const [attempts, quizzes] = await Promise.all([getTeacherOralReadingAttempts(), loadQuizzes()]);
 
-  return calculateTeacherAnalytics(attempts);
+  return calculateTeacherAnalytics(filterRecords(attempts, scope), filterRecords(quizzes, scope));
 }
 
 export async function getTeacherCompletionAnalytics(): Promise<TeacherCompletionAnalytics> {

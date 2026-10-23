@@ -1,5 +1,6 @@
+import { formatScore, formatAnswerCounts } from "./services/scoreDisplay";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   Download,
@@ -35,13 +36,14 @@ interface WeeklyReportApiResponse {
   success: boolean;
   report?: SavedWeeklyReport;
   reports?: SavedReportHistoryItem[];
+  nextCursor?: string | null;
   message?: string;
 }
 
 const API_URL = `${getApiUrl().replace(/\/+$/, "")}/api/weekly-reports`;
 
 function formatPercentage(value: number | null): string {
-  return value === null ? "N/A" : `${value.toFixed(2)}%`;
+  return value === null ? "N/A" : formatScore(value, 2);
 }
 
 function formatNumber(value: number | null): string {
@@ -450,14 +452,12 @@ function downloadWeeklyReportPdf(
 
         addField(
           "Correct Answers",
-          `${assessment.correctAnswers}/${assessment.totalQuestions}`
+          formatAnswerCounts(assessment.correctAnswers, assessment.totalQuestions)
         );
 
         addField(
           "Score",
-          formatPercentage(
-            assessment.scorePercentage
-          )
+          formatScore(assessment.scorePercentage, 2)
         );
 
         y += 3;
@@ -477,7 +477,7 @@ function downloadWeeklyReportPdf(
 }
 
 const panelStyle = {
-  backgroundColor: "#ffffff",
+  backgroundColor: "#dce8e7",
   borderRadius: "16px",
   padding: "24px",
   boxShadow: "0 3px 12px rgba(0, 0, 0, 0.06)",
@@ -486,7 +486,7 @@ const panelStyle = {
 const metricsStyle = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(auto-fit, minmax(180px, 1fr))",
+    "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
   gap: "14px",
 } as const;
 
@@ -506,7 +506,7 @@ function ReportMetric({
   return (
     <div
       style={{
-        backgroundColor: "#f1f5f9",
+        backgroundColor: "#dce8e7",
         borderRadius: "12px",
         padding: "16px",
       }}
@@ -552,6 +552,10 @@ export default function WeeklyReportSection() {
   const [history, setHistory] =
     useState<SavedReportHistoryItem[]>([]);
 
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const historyRequest = useRef(0);
+  const reportRequest = useRef(0);
+
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] =
     useState(false);
@@ -566,36 +570,43 @@ export default function WeeklyReportSection() {
 
   const report = savedReport?.report ?? null;
 
-  const loadReportHistory = useCallback(async () => {
+  const loadReportHistory = useCallback(async (cursor: string | null = null) => {
+    const request = ++historyRequest.current;
     setHistoryLoading(true);
     setHistoryError("");
 
     try {
-      const result = await requestWeeklyReports();
+      const result = await requestWeeklyReports(cursor ? `?cursor=${encodeURIComponent(cursor)}` : "");
+      if (request !== historyRequest.current) return;
 
-      if (!Array.isArray(result.reports)) {
+      if (!Array.isArray(result.reports) || (result.nextCursor !== null && typeof result.nextCursor !== "string")) {
         throw new Error(
           "The saved report history response is invalid."
         );
       }
 
-      setHistory(result.reports);
+      const reports = result.reports;
+      setHistory(previous => [...new Map([...(cursor ? previous : []), ...reports].map(item => [item.id, item])).values()]);
+      setNextCursor(result.nextCursor ?? null);
     } catch (cause) {
+      if (request !== historyRequest.current) return;
       setHistoryError(
         cause instanceof Error
           ? cause.message
           : "Unable to load saved reports."
       );
     } finally {
-      setHistoryLoading(false);
+      if (request === historyRequest.current) setHistoryLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void loadReportHistory();
+    return () => { historyRequest.current++; reportRequest.current++; };
   }, [loadReportHistory]);
 
   async function handleGenerateReport() {
+    const request = ++reportRequest.current;
     setError("");
     setSuccessMessage("");
 
@@ -627,6 +638,7 @@ export default function WeeklyReportSection() {
         }),
       });
 
+      if (request !== reportRequest.current) return;
       if (!result.report) {
         throw new Error(
           "The generated report was not returned by the server."
@@ -641,17 +653,19 @@ export default function WeeklyReportSection() {
 
       await loadReportHistory();
     } catch (cause) {
+      if (request !== reportRequest.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "Unable to generate and save the weekly report."
       );
     } finally {
-      setLoading(false);
+      if (request === reportRequest.current) setLoading(false);
     }
   }
 
   async function handleOpenSavedReport(reportId: string) {
+    const request = ++reportRequest.current;
     setError("");
     setSuccessMessage("");
     setOpeningReportId(reportId);
@@ -661,6 +675,7 @@ export default function WeeklyReportSection() {
         `/${encodeURIComponent(reportId)}`
       );
 
+      if (request !== reportRequest.current) return;
       if (!result.report) {
         throw new Error(
           "The saved report was not returned by the server."
@@ -673,13 +688,14 @@ export default function WeeklyReportSection() {
         "Previously saved report opened successfully."
       );
     } catch (cause) {
+      if (request !== reportRequest.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : "Unable to open the saved report."
       );
     } finally {
-      setOpeningReportId(null);
+      if (request === reportRequest.current) setOpeningReportId(null);
     }
   }
 
@@ -747,7 +763,7 @@ export default function WeeklyReportSection() {
             <input
               type="date"
               value={startDate}
-              disabled={loading}
+              disabled={loading || openingReportId !== null}
               onChange={(event) =>
                 setStartDate(event.target.value)
               }
@@ -771,7 +787,7 @@ export default function WeeklyReportSection() {
             <input
               type="date"
               value={endDate}
-              disabled={loading}
+              disabled={loading || openingReportId !== null}
               onChange={(event) =>
                 setEndDate(event.target.value)
               }
@@ -786,7 +802,7 @@ export default function WeeklyReportSection() {
           <button
             type="button"
             className="m3-button m3-button--secondary"
-            disabled={loading}
+            disabled={loading || openingReportId !== null}
             onClick={() => void handleGenerateReport()}
           >
             {loading ? (
@@ -881,8 +897,7 @@ export default function WeeklyReportSection() {
           }}
         >
           Reopen previously generated reports without
-          recalculating their saved statistics. Up to 100
-          recent reports are displayed.
+          recalculating their saved statistics. Load more to view older reports.
         </p>
 
         {historyError && (
@@ -896,7 +911,7 @@ export default function WeeklyReportSection() {
 
         {historyLoading && history.length === 0 ? (
           <p>Loading saved reports...</p>
-        ) : history.length === 0 ? (
+        ) : history.length === 0 && !historyError ? (
           <p>No saved weekly reports found.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -954,6 +969,16 @@ export default function WeeklyReportSection() {
               </tbody>
             </table>
           </div>
+        )}
+        {nextCursor && (
+          <button
+            type="button"
+            className="m3-button m3-button--secondary"
+            disabled={historyLoading || loading}
+            onClick={() => void loadReportHistory(nextCursor)}
+          >
+            {historyLoading ? "Loading..." : "Load More"}
+          </button>
         )}
       </div>
 
@@ -1292,13 +1317,10 @@ export default function WeeklyReportSection() {
                             )}
                           </td>
                           <td style={tableCellStyle}>
-                            {assessment.correctAnswers}/
-                            {assessment.totalQuestions}
+                            {formatAnswerCounts(assessment.correctAnswers, assessment.totalQuestions)}
                           </td>
                           <td style={tableCellStyle}>
-                            {formatPercentage(
-                              assessment.scorePercentage
-                            )}
+                            {formatScore(assessment.scorePercentage, 2)}
                           </td>
                         </tr>
                       )

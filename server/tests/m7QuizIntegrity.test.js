@@ -29,3 +29,22 @@ test('scope predicates run before response retrieval and scoring', async () => {
 test('retrieval failures remain errors rather than missing assessments', async()=>{
   await assert.rejects(quizzes({}, {rows:async(table)=>{if(table==='m6_comprehension_attempts') return [valid];throw Error('network');}}),/network/);
 });
+
+test('missing and unparseable completion timestamps serialize as null without dropping invalid evidence', async () => {
+  for (const completed_at of [null, undefined, '', ' ', 'malformed', '2026-13-01T00:00:00Z']) {
+    const [result] = await quizzes({}, { rows: loader([{ ...valid, completed_at }]) });
+    assert.equal(result.completedAt, null);
+    assert.equal(result.score, null);
+    assert.equal(result.dataQuality, 'Invalid completed assessment evidence');
+    assert.equal(JSON.parse(JSON.stringify(result)).completedAt, null);
+  }
+});
+
+test('valid completion timestamps and assessment scores remain unchanged', async () => {
+  for (const completed_at of ['2026-10-02T00:00:00Z', '2026-10-02T00:00:00.123456+08:00']) {
+    const [result] = await quizzes({}, { rows: loader([{ ...valid, completed_at }]) });
+    assert.equal(result.completedAt, completed_at);
+    assert.equal(result.score, 100);
+    assert.equal(result.dataQuality, undefined);
+  }
+});
