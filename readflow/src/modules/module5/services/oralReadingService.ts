@@ -13,6 +13,7 @@ import {
   parseTeacherComprehensionDetail,
   parseTeacherComprehensionSummary,
 } from "./teacherComprehension";
+import type { PronunciationPartResult } from "./pronunciationSummary";
 
 interface ModuleResponse {
   success: boolean;
@@ -202,6 +203,28 @@ export async function getOralReadingRecording(
     return response.data.recording;
   } catch (error) {
     throw toServiceError(error, "Unable to load recording. Please retry.");
+  }
+}
+
+/**
+ * Azure Pronunciation Assessment of one saved recording part (16 kHz WAV) of an
+ * English reading. The server compares it with the attempt's saved passage.
+ */
+export async function assessOralReadingPronunciationPart(
+  attemptId: string,
+  wav: Blob,
+): Promise<PronunciationPartResult> {
+  try {
+    const form = new FormData();
+    form.append("audio", wav, "part.wav");
+    const response = await api.post(
+      `/api/oral-reading/attempts/${encodeURIComponent(attemptId)}/pronunciation`,
+      form,
+      { headers: await getAuthHeaders() },
+    );
+    return response.data.pronunciation;
+  } catch (error) {
+    throw toServiceError(error, "Pronunciation feedback is unavailable right now. Please try again.");
   }
 }
 

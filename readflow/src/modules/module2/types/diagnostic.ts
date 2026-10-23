@@ -45,7 +45,7 @@ export type DiagnosticAssessmentRegistry = Readonly<{
 export interface DiagnosticTranscription {
   text: string;
   confidence?: number;
-  /** Server-signed proof that the backend produced this Google transcript. */
+  /** Server-signed proof that the backend produced this Azure transcript. */
   receipt?: string;
 }
 

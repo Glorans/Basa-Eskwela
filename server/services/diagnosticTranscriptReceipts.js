@@ -1,6 +1,6 @@
 const { createHmac, randomUUID, timingSafeEqual } = require("node:crypto");
 
-// A transcript receipt is the server's signed statement that Google returned
+// A transcript receipt is the server's signed statement that Azure Speech returned
 // this FINAL transcript, through this backend, for this user's audio in this
 // language, while the learner was reading this M2 diagnostic (active assessment
 // id/version and passage hash, checked by the server when the audio arrived).

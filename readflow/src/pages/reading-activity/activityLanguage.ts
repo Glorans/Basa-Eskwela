@@ -96,6 +96,7 @@ const filipino = {
   "Nice job! A few words need practice.": "Mahusay! May ilang salitang kailangan pang sanayin.",
   "Good try! Let's practice some words.": "Magandang pagsubok! Magsanay tayo ng ilang salita.",
   "Pronunciation Accuracy": "Katumpakan ng Pagbigkas",
+  "Reading Accuracy": "Katumpakan ng Pagbasa",
   "This score is transcript-based: it compares the words we heard with the story. Speech recognition can make mistakes.": "Batay sa transkripsiyon ang markang ito: inihahambing nito ang mga salitang narinig namin sa kuwento. Maaaring magkamali ang pagkilala sa pagsasalita.",
   "Words to Practice": "Mga Salitang Dapat Sanayin",
   "not heard": "hindi narinig",

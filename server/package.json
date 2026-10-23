@@ -23,8 +23,6 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@google-cloud/speech": "^8.1.0",
-    "@google-cloud/text-to-speech": "^7.1.0",
     "@google/genai": "2.24.0",
     "@supabase/supabase-js": "^2.117.2",
     "cors": "^2.8.6",

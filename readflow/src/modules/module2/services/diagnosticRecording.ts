@@ -91,7 +91,7 @@ interface ProcessDiagnosticRecordingInput {
     recordingDurationSeconds?: number,
     language?: DiagnosticLanguage,
   ) => OralReadingMetrics;
-  /** Only a successfully drained, complete Google stream may supply this. */
+  /** Only a successfully drained, complete Azure stream may supply this. */
   streamingTranscription?: DiagnosticTranscription | null;
   /**
    * Module 2 only. Every transcript must then carry a server receipt; they are

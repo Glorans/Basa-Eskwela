@@ -7,7 +7,7 @@ const {
   authorizeOralReadingPracticeRequest,
 } = require("./oralReadingAttemptService");
 
-// Per-user request budgets for the paid Google speech endpoints. A full-length
+// Per-user request budgets for the paid Azure Speech endpoints. A full-length
 // reading (five minutes in 25-second parts) needs at most 12 transcription
 // requests, and real time limits a learner to about 24 parts per 10 minutes, so
 // these budgets leave room for slow readers and retries while capping abuse.

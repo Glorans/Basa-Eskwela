@@ -18,29 +18,27 @@ const assessment = requireDiagnosticAssessment("en");
 const expectedText = "The colorfully-wrapped box was lying on the table when Mario got home. Thinking that it was his parents\u2019 birthday gift to him, he took it and quickly tore it open. It was the coolest looking pair of shoes he had ever seen. Mario put them on, walked out into the street and jumped into a puddle. \u201cMario, why are you wearing your brother\u2019s shoes?\u201d his Mother cried. When he looked down, he said, \u201cOh no, that\u2019s a lot of cleaning I have to do.\u201d";
 const expectedTokens = getReadingWords(expectedText);
 
-class GoogleStreamFixture extends EventEmitter {
+class AzureStreamFixture extends EventEmitter {
   write() { return true; }
   end() { /* Finals may arrive after the client has stopped sending audio. */ }
   destroy() { this.emit("close"); }
   final(text: string, endNanos: number) {
-    this.emit("data", { results: [{ isFinal: true,
-      resultEndTime: { seconds: Math.floor(endNanos / 1e9), nanos: endNanos % 1e9 },
-      alternatives: [{ transcript: text, confidence: 0.9 }],
-    }] });
+    // Azure reports utterance offset + duration in 100 ns ticks.
+    this.emit("data", { results: [{ isFinal: true, text, confidence: 0.9, endOffsetTicks: endNanos / 100 }] });
   }
   interim(text: string) {
-    this.emit("data", { results: [{ isFinal: false, alternatives: [{ transcript: text }] }] });
+    this.emit("data", { results: [{ isFinal: false, text }] });
   }
 }
 
 /** Real server final forwarding -> browser accumulation -> processing -> audit.
- * Only Google's response stream is simulated; this is not microphone evidence. */
-async function scoreGoogleFinalChunks(chunks: string[], duration = 60) {
-  const google = new GoogleStreamFixture();
+ * Only Azure's response stream is simulated; this is not microphone evidence. */
+async function scoreAzureFinalChunks(chunks: string[], duration = 60) {
+  const azure = new AzureStreamFixture();
   const accumulator = new DiagnosticStreamingTranscript();
   const messages: Record<string, unknown>[] = [];
   const session = createDiagnosticSpeechSession({
-    language: "en", createStream: () => google, close: () => {}, log: () => {},
+    language: "en", createStream: () => azure, close: () => {}, log: () => {},
     send(message: Record<string, unknown>) {
       messages.push(message);
       if (message.type === "final" || message.type === "interim") accumulator.receive(message);
@@ -50,14 +48,14 @@ async function scoreGoogleFinalChunks(chunks: string[], duration = 60) {
     session.acceptAudio(Buffer.alloc(3200));
     for (const [index, text] of chunks.entries()) {
       if (index === chunks.length - 1) session.stop(); // Include the trailing final after Stop.
-      google.interim("unrelated revised interim");
-      google.interim(""); // A pause cannot remove already finalized words.
+      azure.interim("unrelated revised interim");
+      azure.interim(""); // A pause cannot remove already finalized words.
       assert.equal(accumulator.snapshot.confirmedTranscript, chunks.slice(0, index).join(" "));
-      google.final(text, (index + 1) * 100000000);
-      google.final(text, (index + 1) * 100000000); // Transport/provider duplicate, same ID.
+      azure.final(text, (index + 1) * 100000000);
+      azure.final(text, (index + 1) * 100000000); // Transport/provider duplicate, same ID.
       assert.equal(accumulator.snapshot.confirmedTranscript, chunks.slice(0, index + 1).join(" "));
     }
-    google.emit("end");
+    azure.emit("end");
     const completion = messages[messages.length - 1];
     assert.equal(completion.type, "complete");
     assert.equal(completion.finalCount, chunks.length);
@@ -77,8 +75,8 @@ async function scoreGoogleFinalChunks(chunks: string[], duration = 60) {
 test("slow one-word finals and fast large finals produce the same complete transcript, alignment, practice list and score", async () => {
   const words = expectedText.split(/\s+/);
   const fastChunks = Array.from({ length: Math.ceil(words.length / 27) }, (_, i) => words.slice(i * 27, (i + 1) * 27).join(" "));
-  const slow = await scoreGoogleFinalChunks(words);
-  const fast = await scoreGoogleFinalChunks(fastChunks);
+  const slow = await scoreAzureFinalChunks(words);
+  const fast = await scoreAzureFinalChunks(fastChunks);
   assert.equal(slow.processed.transcription.text, fast.processed.transcription.text);
   assert.deepEqual(slow.processed.oralReadingMetrics, fast.processed.oralReadingMetrics);
   assert.deepEqual(slow.audit, fast.audit);
@@ -93,14 +91,14 @@ test("slow one-word finals and fast large finals produce the same complete trans
 });
 
 test("the three example final chunks are concatenated without dropping their boundary words or last final", async () => {
-  const { processed } = await scoreGoogleFinalChunks(["the colorfully wrapped box", "was lying on the table", "when mario got home"]);
+  const { processed } = await scoreAzureFinalChunks(["the colorfully wrapped box", "was lying on the table", "when mario got home"]);
   assert.equal(processed.transcription.text, "the colorfully wrapped box was lying on the table when mario got home");
   assert.equal(processed.oralReadingMetrics.numberOfWordsRead, 13);
   assert.equal(processed.oralReadingMetrics.correctWords, 13);
 });
 
 test("separate identical final chunks are retained as repeated speech, even within the same second", async () => {
-  const { processed } = await scoreGoogleFinalChunks(["one day", "one day", "a frog"]);
+  const { processed } = await scoreAzureFinalChunks(["one day", "one day", "a frog"]);
   assert.equal(processed.transcription.text, "one day one day a frog");
   assert.equal(processed.oralReadingMetrics.numberOfWordsRead, 6);
 });

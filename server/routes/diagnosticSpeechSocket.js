@@ -90,7 +90,7 @@ function attachDiagnosticSpeechSocket(server, {
         clearTimeout(configTimer);
         // M2 names its diagnostic and gets a signed transcript; M5 voice-follow
         // sends no `diagnostic`, gets no receipt and needs no receipt secret.
-        // An M2 stream that could not be signed opens no Google stream; the
+        // An M2 stream that could not be signed opens no Azure stream; the
         // browser falls back to the recording upload, which fails closed too.
         let binding = null;
         if (message.diagnostic !== undefined) {
@@ -100,7 +100,7 @@ function attachDiagnosticSpeechSocket(server, {
           if (!binding) { reject(); return; }
           receipts.assertConfigured();
         }
-        // Only authorized starts are counted; over budget, no Google stream opens.
+        // Only authorized starts are counted; over budget, no Azure stream opens.
         if (!sessionStarts.take(requester.user.id).allowed) { reject(REJECTION.rateLimited); return; }
         userId = requester.user.id;
         // One live stream per user: a newer session (for example after a network

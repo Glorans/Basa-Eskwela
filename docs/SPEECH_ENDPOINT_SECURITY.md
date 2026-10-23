@@ -1,8 +1,13 @@
-# Speech endpoint security (Google STT/TTS)
+# Speech endpoint security (Azure Speech)
 
-`POST /api/diagnostic/audio` (Google Speech-to-Text) and `POST /api/tts` (Google
-Text-to-Speech) are defined in `server/routes/speech.js`. Google remains the only
-provider in the main application.
+> **2026-10-24:** the application now uses **Microsoft Azure Speech** instead of
+> Google for speech-to-text, text-to-speech and English pronunciation assessment;
+> see [AZURE_SPEECH_INTEGRATION.md](AZURE_SPEECH_INTEGRATION.md). The access order,
+> roles and throttles below are unchanged; where this page says "Google", read
+> "Azure". There is no Google fallback.
+
+`POST /api/diagnostic/audio` (speech-to-text) and `POST /api/tts` (text-to-speech)
+are defined in `server/routes/speech.js`.
 
 ## Request order
 

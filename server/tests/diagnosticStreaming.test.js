@@ -7,7 +7,7 @@ const { attachDiagnosticSpeechSocket } = require("../routes/diagnosticSpeechSock
 const { testReceipts } = require("./fixtures/diagnosticTrust");
 const { buildStreamingRequest, createDiagnosticSpeechSession, developmentLog } = require("../services/diagnosticSpeechStream");
 
-class FakeGoogleStream extends EventEmitter {
+class FakeRecognitionStream extends EventEmitter {
   bytes = 0;
   ended = false;
   destroyed = false;
@@ -16,7 +16,7 @@ class FakeGoogleStream extends EventEmitter {
   end() { this.ended = true; }
   destroy() { this.destroyed = true; this.emit("close"); }
   result(text, isFinal = false, seconds = 1) {
-    this.emit("data", { results: [{ isFinal, resultEndTime: { seconds, nanos: 0 }, alternatives: [{ transcript: text, confidence: 0.9 }] }] });
+    this.emit("data", { results: [{ isFinal, text, confidence: 0.9, ...(isFinal ? { endOffsetTicks: seconds * 1e7 } : {}) }] });
   }
 }
 
@@ -47,18 +47,15 @@ function fixture() {
   const session = createDiagnosticSpeechSession({
     language: "en", send: (data) => messages.push(data), close: () => { closes++; },
     timers: clock, log: (event, details) => logs.push({ event, details }),
-    createStream: (request) => { requests.push(request); const stream = new FakeGoogleStream(); streams.push(stream); return stream; },
+    createStream: (request) => { requests.push(request); const stream = new FakeRecognitionStream(); streams.push(stream); return stream; },
   });
   return { session, streams, messages, requests, logs, clock, get closes() { return closes; } };
 }
 
-test("stream config uses LINEAR16 mono 16k and continuous interim recognition in both languages", () => {
+test("stream config uses LINEAR16 mono 16k and continuous interim recognition in both Azure locales", () => {
   for (const [language, code] of [["en", "en-US"], ["fil", "fil-PH"]]) {
     assert.deepEqual(buildStreamingRequest(language), {
-      config: { encoding: "LINEAR16", sampleRateHertz: 16000, audioChannelCount: 1, languageCode: code, enableAutomaticPunctuation: true,
-        ...(language === "en" ? { model: "latest_long" } : {}),
-      },
-      interimResults: true, singleUtterance: false,
+      encoding: "LINEAR16", sampleRateHertz: 16000, channels: 1, languageCode: code, interimResults: true,
     });
   }
   assert.throws(() => buildStreamingRequest("unknown"));
@@ -120,7 +117,7 @@ test("unfinalized speech at stop or rotation selects fallback instead of silentl
   }
 });
 
-test("manual stop half-closes Google and waits for final results before completion", () => {
+test("manual stop half-closes Azure and waits for final results before completion", () => {
   const f = fixture();
   f.session.acceptAudio(Buffer.alloc(3200));
   f.session.stop(); f.session.stop();
@@ -182,23 +179,23 @@ test("four-minute rotation buffers new audio, drains in order, and supports stop
   f.streams[1].emit("end");
   assert.deepEqual(f.messages.filter((m) => m.type === "final").map((m) => m.text), ["first", "second"]);
   assert.equal(f.messages.at(-1).audioBytes, 2400 * 3200 + 1600);
-  assert.ok(f.requests.every(request => request.config.model === "latest_long"));
+  assert.ok(f.requests.every(request => request.languageCode === "en-US"));
   assert.deepEqual(f.logs.filter(item => item.event === "complete final transcript"), [{
     event: "complete final transcript",
-    details: { languageCode: "en-US", model: "latest_long", finalCount: 2, text: "first second" },
+    details: { languageCode: "en-US", finalCount: 2, text: "first second" },
   }]);
   assert.equal(f.clock.jobs.size, 0);
 });
 
 for (const failure of ["error", "end", "close", "interruption", "invalid-frame", "backpressure", "finalization-timeout"]) {
-  test(`${failure} safely releases the Google stream and leaves upload fallback available`, () => {
+  test(`${failure} safely releases the Azure stream and leaves upload fallback available`, () => {
     const f = fixture();
     if (failure === "interruption") f.clock.advance(10001);
     else if (failure === "invalid-frame") f.session.acceptAudio(Buffer.alloc(3));
     else if (failure === "backpressure") {
       f.streams[0].blocked = true;
       for (let i = 0; i < 53; i++) f.session.acceptAudio(Buffer.alloc(3200));
-    } else if (failure === "finalization-timeout") { f.session.stop(); f.clock.advance(8001); }
+    } else if (failure === "finalization-timeout") { f.session.stop(); f.clock.advance(15001); }
     else f.streams[0].emit(failure, new Error("secret credential path"));
     assert.equal(f.messages.at(-1).type, "error");
     assert.doesNotMatch(JSON.stringify(f.messages), /secret|credential/);
@@ -210,14 +207,14 @@ for (const failure of ["error", "end", "close", "interruption", "invalid-frame",
 
 test("WebSocket endpoint authenticates configuration, accepts PCM, finalizes, and rejects other origins", async (t) => {
   const server = createServer();
-  const google = new FakeGoogleStream();
+  const azure = new FakeRecognitionStream();
   const socketServer = attachDiagnosticSpeechSocket(server, {
     receipts: testReceipts(),
     authorize: async (token) => {
       assert.equal(token, "test-session-token");
       return { user: { id: "learner" }, profile: { role: "student" } };
     },
-    createSession: (options) => createDiagnosticSpeechSession({ ...options, createStream: () => google, log: () => {} }),
+    createSession: (options) => createDiagnosticSpeechSession({ ...options, createStream: () => azure, log: () => {} }),
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(async () => { socketServer.dispose(); await new Promise((resolve) => server.close(resolve)); });
@@ -230,22 +227,22 @@ test("WebSocket endpoint authenticates configuration, accepts PCM, finalizes, an
   assert.equal((await response).type, "ready");
   ws.send(Buffer.alloc(3200));
   ws.send(JSON.stringify({ type: "stop" }));
-  // Let the real transport deliver the messages before the mock Google drain.
-  while (!google.ended) await new Promise((resolve) => setTimeout(resolve, 5));
+  // Let the real transport deliver the messages before the mock Azure drain.
+  while (!azure.ended) await new Promise((resolve) => setTimeout(resolve, 5));
   response = next();
-  google.result("hello", true);
+  azure.result("hello", true);
   assert.equal((await response).type, "final");
   const closed = once(ws, "close");
-  google.emit("end");
+  azure.emit("end");
   await closed;
-  assert.equal(google.bytes, 3200);
-  assert.equal(google.destroyed, true);
+  assert.equal(azure.bytes, 3200);
+  assert.equal(azure.destroyed, true);
   const rejected = new WebSocket(url, { origin: "https://unrelated.example" });
   const [error] = await once(rejected, "error");
   assert.match(error.message, /403/);
 });
 
-test("WebSocket disconnect during asynchronous authentication does not open Google", async (t) => {
+test("WebSocket disconnect during asynchronous authentication does not open Azure", async (t) => {
   const server = createServer();
   let finishAuth;
   let created = 0;

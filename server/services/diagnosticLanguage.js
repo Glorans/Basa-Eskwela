@@ -1,4 +1,5 @@
-const googleSpeechLanguageCodeByDiagnosticLanguage = Object.freeze({
+// Application languages and the Azure Speech locales used for recognition.
+const speechLanguageCodeByDiagnosticLanguage = Object.freeze({
   en: "en-US",
   fil: "fil-PH",
 });
@@ -12,21 +13,21 @@ class UnsupportedDiagnosticLanguageError extends Error {
 
 function isDiagnosticLanguage(language) {
   return Object.hasOwn(
-    googleSpeechLanguageCodeByDiagnosticLanguage,
+    speechLanguageCodeByDiagnosticLanguage,
     language,
   );
 }
 
-function getGoogleSpeechLanguageCode(language) {
+function getSpeechLanguageCode(language) {
   if (!isDiagnosticLanguage(language)) {
     throw new UnsupportedDiagnosticLanguageError(language);
   }
 
-  return googleSpeechLanguageCodeByDiagnosticLanguage[language];
+  return speechLanguageCodeByDiagnosticLanguage[language];
 }
 
 module.exports = {
-  getGoogleSpeechLanguageCode,
+  getSpeechLanguageCode,
   isDiagnosticLanguage,
   UnsupportedDiagnosticLanguageError,
 };

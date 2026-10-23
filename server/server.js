@@ -22,7 +22,7 @@ const { createDiagnosticResultsRouter } = require("./routes/diagnosticResults");
 const { createTranscriptReceiptService } = require("./services/diagnosticTranscriptReceipts");
 
 const app = express();
-// Signs M2 transcripts at both Google STT entry points and verifies them when
+// Signs M2 transcripts at both Azure STT entry points and verifies them when
 // the diagnostic result is submitted (DIAGNOSTIC_RECEIPT_SECRET).
 const diagnosticReceipts = createTranscriptReceiptService();
 
@@ -53,7 +53,7 @@ app.use("/api/oral-reading", oralReadingRouter);
 app.use("/api/weekly-reports", weeklyReportsRouter);
 app.use("/api/analytics", require("./routes/m7Analytics"));
 app.use("/api/comprehension", require("./routes/comprehension"));
-// POST /api/tts and POST /api/diagnostic/audio (authenticated, throttled Google speech).
+// POST /api/tts and POST /api/diagnostic/audio (authenticated, throttled Azure Speech).
 app.use(createSpeechRouter({ receipts: diagnosticReceipts }));
 // POST /api/diagnostic/results: the only write path for M2 diagnostic results.
 app.use(createDiagnosticResultsRouter({ receipts: diagnosticReceipts }));

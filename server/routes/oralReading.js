@@ -26,6 +26,10 @@ const {
   getOralReadingRecording,
   saveOralReadingRecording,
 } = require("../services/oralReadingRecordingService");
+const { assessPronunciationWav } = require("../services/azureSpeechService");
+const { getSpeechErrorResponse, SAFE_SPEECH_ERRORS } = require("../services/speechErrors");
+const { MAX_WAV_BYTES } = require("../services/wavAudio");
+const { RATE_LIMITED_MESSAGE, SPEECH_RATE_LIMITS, createRequestLimiter } = require("../services/speechAccess");
 
 function sendOralReadingError(res, error, fallbackMessage) {
   if (error instanceof SupabaseAuthenticationError) {
@@ -65,6 +69,15 @@ function createOralReadingRouter(dependencies = {}) {
     storage: multer.memoryStorage(),
     limits: { fileSize: 2 * 1024 * 1024, files: MAX_SEGMENTS, fields: 0, parts: MAX_SEGMENTS },
   }).array("audio", MAX_SEGMENTS);
+  const assessPronunciation = dependencies.assessPronunciation ?? assessPronunciationWav;
+  // Shares the per-user speech-to-text budget size (speechAccess.js); a full
+  // five-minute reading is at most 12 parts.
+  const pronunciationLimiter = dependencies.pronunciationLimiter
+    ?? createRequestLimiter({ ...SPEECH_RATE_LIMITS.stt });
+  const uploadPronunciationPart = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_WAV_BYTES, files: 1, fields: 0, parts: 1 },
+  }).single("audio");
 
   router.get("/rooms/:roomId/progress", async (req, res) => {
     try {
@@ -199,6 +212,54 @@ function createOralReadingRouter(dependencies = {}) {
     } catch (error) {
       return sendOralReadingError(res, error, "Unable to save recording.");
     }
+  });
+
+  // English only: Azure Pronunciation Assessment of one recorded part (16 kHz
+  // PCM WAV) against the passage saved with the learner's own attempt. The
+  // reference text never comes from the browser. Feedback is returned for
+  // display only; reading accuracy stays the separately saved transcript score.
+  router.post("/attempts/:attemptId/pronunciation", async (req, res) => {
+    let requester;
+    let attempt;
+    try {
+      requester = await authorizePractice(req, dependencies);
+      // Ownership is verified before the upload body is read.
+      attempt = await getAttempt(requester, req.params.attemptId, dependencies);
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to check pronunciation.");
+    }
+    if (attempt.language !== "en") {
+      return res.status(422).json({
+        success: false, code: "PRONUNCIATION_UNSUPPORTED", message: SAFE_SPEECH_ERRORS.PRONUNCIATION_UNSUPPORTED.message,
+      });
+    }
+    if (typeof attempt.passageSnapshot !== "string" || !attempt.passageSnapshot.trim()) {
+      return res.status(422).json({ success: false, code: "STT_INVALID_AUDIO", message: "This reading has no saved passage to compare with." });
+    }
+    const decision = pronunciationLimiter.take(requester.user.id);
+    if (!decision.allowed) {
+      res.set("Retry-After", String(decision.retryAfterSeconds));
+      return res.status(429).json({ success: false, code: "SPEECH_RATE_LIMITED", message: RATE_LIMITED_MESSAGE });
+    }
+    return uploadPronunciationPart(req, res, async (uploadError) => {
+      const mimeType = req.file?.mimetype?.split(";", 1)[0].trim().toLowerCase();
+      if (uploadError || !req.file || !["audio/wav", "audio/x-wav"].includes(mimeType)) {
+        return res.status(400).json({ success: false, code: "STT_INVALID_AUDIO", message: "Recording upload is invalid. Please try again." });
+      }
+      try {
+        const pronunciation = await assessPronunciation(req.file.buffer, "en", attempt.passageSnapshot);
+        res.set("Cache-Control", "no-store");
+        return res.json({ success: true, pronunciation });
+      } catch (error) {
+        const safe = getSpeechErrorResponse(error);
+        // A silent part (for example a pause before Stop) has nothing to score.
+        if (safe.code === "NO_SPEECH") {
+          res.set("Cache-Control", "no-store");
+          return res.json({ success: true, pronunciation: { provider: "azure", locale: "en-US", scale: "0-100", utterances: [] } });
+        }
+        return res.status(safe.status).json({ success: false, code: safe.code, message: safe.message });
+      }
+    });
   });
 
   router.get("/attempts/:attemptId/recording", async (req, res) => {

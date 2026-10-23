@@ -1,24 +1,21 @@
-const { getGoogleSpeechLanguageCode } = require("./diagnosticLanguage");
-const { createDiagnosticRecognitionStream } = require("./googleSpeechService");
+const { getSpeechLanguageCode } = require("./diagnosticLanguage");
+const { createRecognitionStream } = require("./azureSpeechService");
 
 const PCM_SAMPLE_RATE = 16000;
 const MAX_FRAME_BYTES = 6400; // At most 200 ms of mono, signed LE 16-bit PCM.
 const MAX_BUFFER_BYTES = PCM_SAMPLE_RATE * 2 * 5;
-const STREAM_ROTATION_MS = 240000; // Drain well before Google's five-minute limit.
+// Each Azure connection is drained and replaced after four minutes, so one
+// connection never spans a whole five-minute reading.
+const STREAM_ROTATION_MS = 240000;
 const SAFE_STREAM_ERROR = "We had trouble listening to your reading. Your recording can still be processed.";
 
 function buildStreamingRequest(language) {
   return {
-    config: {
-      encoding: "LINEAR16",
-      sampleRateHertz: PCM_SAMPLE_RATE,
-      audioChannelCount: 1,
-      languageCode: getGoogleSpeechLanguageCode(language),
-      ...(language === "en" ? { model: "latest_long" } : {}),
-      enableAutomaticPunctuation: true,
-    },
+    encoding: "LINEAR16",
+    sampleRateHertz: PCM_SAMPLE_RATE,
+    channels: 1,
+    languageCode: getSpeechLanguageCode(language),
     interimResults: true,
-    singleUtterance: false,
   };
 }
 
@@ -34,7 +31,7 @@ function createDiagnosticSpeechSession({
   language,
   send,
   close,
-  createStream = createDiagnosticRecognitionStream,
+  createStream = createRecognitionStream,
   timers = { setTimeout, clearTimeout },
   rotationMs = STREAM_ROTATION_MS,
   // Signs the completed transcript for M2 scoring (diagnosticTranscriptReceipts.js).
@@ -74,7 +71,7 @@ function createDiagnosticSpeechSession({
     queue = [];
     queuedBytes = 0;
     if (active) {
-      log("Google stream closed", { generation: active.id });
+      log("Azure stream closed", { generation: active.id });
       active.stream.destroy();
       active = undefined;
     }
@@ -92,8 +89,7 @@ function createDiagnosticSpeechSession({
     if (disposed) return;
     const text = finalTranscripts.join(" ");
     log("complete final transcript", {
-      languageCode: request.config.languageCode,
-      model: request.config.model ?? "automatic",
+      languageCode: request.languageCode,
       finalCount,
       text,
     });
@@ -119,7 +115,8 @@ function createDiagnosticSpeechSession({
     if (!active || active.draining || disposed) return;
     active.draining = reason;
     cancelTimer(active.rotationTimer);
-    active.drainTimer = later(() => fail("Google finalization timed out"), 8000);
+    // Azure finishes buffered audio after the half-close before ending the session.
+    active.drainTimer = later(() => fail("Azure finalization timed out"), 15000);
     active.stream.end(); // Half-close: keep reading final responses until `end`.
   }
 
@@ -131,7 +128,7 @@ function createDiagnosticSpeechSession({
       try {
         active.blocked = !active.stream.write(frame);
       } catch {
-        fail("Google audio write failed");
+        fail("Azure audio write failed");
         return;
       }
     }
@@ -141,35 +138,33 @@ function createDiagnosticSpeechSession({
   function openStream() {
     if (disposed) return;
     let stream;
-    try { stream = createStream(request); } catch { fail("Google stream setup failed"); return; }
+    try { stream = createStream(request); } catch { fail("Azure stream setup failed"); return; }
     const context = {
       stream, id: ++generation, lastFinalEnd: -1, draining: null,
       blocked: false, ended: false, pendingInterim: false, rotationTimer: null, drainTimer: null,
     };
     active = context;
-    log("Google stream opened", { generation: context.id, language });
+    log("Azure stream opened", { generation: context.id, language });
     stream.on("data", (data) => {
       if (disposed || active !== context) return;
-      if (data.error?.code) { fail("Google returned a recognition error"); return; }
       const interim = [];
       let advanced = false;
       let hasInterim = false;
       for (const result of data.results ?? []) {
-        const alternative = result.alternatives?.[0];
-        const text = alternative?.transcript?.trim();
+        const text = typeof result.text === "string" ? result.text.trim() : "";
         if (!text) continue;
         if (!result.isFinal) { hasInterim = true; interim.push(text); continue; }
-        const end = result.resultEndTime;
-        const endNanos = end ? Number(end.seconds ?? 0) * 1e9 + Number(end.nanos ?? 0) : NaN;
-        if (!Number.isFinite(endNanos)) { fail("Final result has no ordering timestamp"); return; }
-        if (endNanos <= context.lastFinalEnd) continue;
-        context.lastFinalEnd = endNanos;
+        // Azure utterance end (audio offset + duration, 100 ns ticks) orders and deduplicates finals.
+        const end = Number(result.endOffsetTicks);
+        if (!Number.isFinite(end)) { fail("Final result has no ordering timestamp"); return; }
+        if (end <= context.lastFinalEnd) continue;
+        context.lastFinalEnd = end;
         advanced = true;
         finalTranscripts.push(text);
-        if (Number.isFinite(alternative.confidence)) finalConfidences.push(alternative.confidence);
+        if (Number.isFinite(result.confidence)) finalConfidences.push(result.confidence);
         send({
-          type: "final", segmentId: `${context.id}:${endNanos}`, sequence: ++finalCount,
-          text, ...(Number.isFinite(alternative.confidence) ? { confidence: alternative.confidence } : {}),
+          type: "final", segmentId: `${context.id}:${end}`, sequence: ++finalCount,
+          text, ...(Number.isFinite(result.confidence) ? { confidence: result.confidence } : {}),
         });
         log("final transcript", { text, generation: context.id, sequence: finalCount });
       }
@@ -182,24 +177,24 @@ function createDiagnosticSpeechSession({
     });
     stream.on("drain", () => { context.blocked = false; pump(); });
     stream.on("error", () => {
-      if (active === context) fail("Google stream error");
+      if (active === context) fail("Azure stream error");
     });
     stream.on("end", () => {
       context.ended = true;
       if (disposed || active !== context) return;
-      if (!context.draining) { fail("Google stream ended unexpectedly"); return; }
-      if (context.pendingInterim) { fail("Google stream ended with unfinalized speech"); return; }
+      if (!context.draining) { fail("Azure stream ended unexpectedly"); return; }
+      if (context.pendingInterim) { fail("Azure stream ended with unfinalized speech"); return; }
       cancelTimer(context.drainTimer);
       cancelTimer(context.rotationTimer);
       active = undefined;
-      log("Google stream closed", { generation: context.id });
+      log("Azure stream closed", { generation: context.id });
       stream.destroy();
       send({ type: "interim", text: "" });
       if (stopped && queuedBytes === 0) complete();
       else openStream();
     });
     stream.on("close", () => {
-      if (!disposed && !context.ended) fail("Google stream closed before final results");
+      if (!disposed && !context.ended) fail("Azure stream closed before final results");
     });
     context.rotationTimer = later(() => drain("rotate"), rotationMs);
     pump();

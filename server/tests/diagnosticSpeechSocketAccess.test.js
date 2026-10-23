@@ -40,7 +40,7 @@ const authDependencies = {
   }),
 };
 
-class FakeGoogleStream extends EventEmitter {
+class FakeRecognitionStream extends EventEmitter {
   bytes = 0;
   ended = false;
   destroyed = false;
@@ -62,7 +62,7 @@ async function startSocket(t, options = {}) {
     createSession: (sessionOptions) => createDiagnosticSpeechSession({
       ...sessionOptions,
       log: () => {},
-      createStream: (request) => { const stream = new FakeGoogleStream(); stream.request = request; streams.push(stream); return stream; },
+      createStream: (request) => { const stream = new FakeRecognitionStream(); stream.request = request; streams.push(stream); return stream; },
     }),
     ...options,
   });
@@ -100,7 +100,7 @@ test("the per-user session-start budget is 12 per 10 minutes", () => {
   assert.deepEqual(SPEECH_STREAM_SESSION_LIMIT, { limit: 12, windowMs: 600000 });
 });
 
-test("missing or invalid tokens are rejected before Google is opened", async (t) => {
+test("missing or invalid tokens are rejected before Azure is opened", async (t) => {
   const socket = await startSocket(t);
   for (const configureMessage of [
     { type: "configure", language: "en", encoding: "LINEAR16", sampleRate: 16000, channels: 1 },
@@ -118,7 +118,7 @@ test("missing or invalid tokens are rejected before Google is opened", async (t)
   assert.equal(socket.socketServer.activeStreams.size, 0);
 });
 
-test("teachers (approved or pending) and accounts without a role are rejected without Google", async (t) => {
+test("teachers (approved or pending) and accounts without a role are rejected without Azure", async (t) => {
   const socket = await startSocket(t);
   for (const token of ["teacher", "pending", "unassigned"]) {
     const ws = await startStream(socket.url, token);
@@ -131,14 +131,13 @@ test("teachers (approved or pending) and accounts without a role are rejected wi
 
 test("students, independent learners and admins stream English and Filipino as before", async (t) => {
   const socket = await startSocket(t);
-  for (const [token, language, languageCode, model] of [
-    ["student", "en", "en-US", "latest_long"], ["general", "fil", "fil-PH", undefined], ["admin", "en", "en-US", "latest_long"],
+  for (const [token, language, languageCode] of [
+    ["student", "en", "en-US"], ["general", "fil", "fil-PH"], ["admin", "en", "en-US"],
   ]) {
     const ws = await startStream(socket.url, token, language);
     assert.deepEqual(ws.messages[0], { type: "ready", encoding: "LINEAR16", sampleRate: 16000, channels: 1 }, token);
     const stream = socket.streams.at(-1);
-    assert.equal(stream.request.config.languageCode, languageCode);
-    assert.equal(stream.request.config.model, model);
+    assert.equal(stream.request.languageCode, languageCode);
     ws.send(Buffer.alloc(3200));
     await waitFor(() => stream.bytes === 3200);
     ws.close();
@@ -158,7 +157,7 @@ test("a second stream from the same account replaces the first; other accounts a
   const firstClose = await first.closeEvent;
   assert.equal(firstClose.code, 4000);
   assert.equal(first.messages.at(-1).code, "STREAM_REPLACED");
-  assert.equal(socket.streams[0].destroyed, true, "the replaced Google stream is closed");
+  assert.equal(socket.streams[0].destroyed, true, "the replaced Azure stream is closed");
   assert.equal(socket.streams[2].destroyed, false);
   assert.equal(other.readyState, WebSocket.OPEN);
   assert.equal(socket.socketServer.activeStreams.size, 2);
@@ -188,17 +187,17 @@ test("tracking is released on disconnect, completed stream, failure and shutdown
   assert.equal((await dropped.closeEvent).code, 4000);
   assert.equal(activeStreams.size, 1);
 
-  // Completed stream (stop -> Google finalizes -> server closes the socket).
+  // Completed stream (stop -> Azure finalizes -> server closes the socket).
   reconnected.send(Buffer.alloc(3200));
-  const google = socket.streams.at(-1);
-  await waitFor(() => google.bytes === 3200);
+  const azure = socket.streams.at(-1);
+  await waitFor(() => azure.bytes === 3200);
   reconnected.send(JSON.stringify({ type: "stop" }));
-  await waitFor(() => google.ended);
-  google.emit("end");
+  await waitFor(() => azure.ended);
+  azure.emit("end");
   assert.equal((await reconnected.closeEvent).code, 1000);
   await waitFor(() => activeStreams.size === 0);
 
-  // Google failure mid-stream.
+  // Azure failure mid-stream.
   const failing = await startStream(socket.url, "student");
   socket.streams.at(-1).emit("error", new Error("provider"));
   await failing.closeEvent;
@@ -217,7 +216,7 @@ test("tracking is released on disconnect, completed stream, failure and shutdown
   assert.equal(activeStreams.size, 0);
 });
 
-test("exceeding the per-user session-start budget is rejected without Google and resets later", async (t) => {
+test("exceeding the per-user session-start budget is rejected without Azure and resets later", async (t) => {
   let time = 1_000_000;
   const socket = await startSocket(t, { sessionLimit: { limit: 2, windowMs: 60_000 }, now: () => time });
   for (let index = 0; index < 2; index++) {
@@ -233,7 +232,7 @@ test("exceeding the per-user session-start budget is rejected without Google and
   const limited = await startStream(socket.url, "student");
   assert.deepEqual(await limited.closeEvent, { code: 1013, reason: "Too many diagnostic streams" });
   assert.equal(limited.messages[0].code, "SPEECH_RATE_LIMITED");
-  assert.equal(socket.streams.length, 2, "no Google stream for the rejected start");
+  assert.equal(socket.streams.length, 2, "no Azure stream for the rejected start");
 
   const otherUser = await startStream(socket.url, "general");
   assert.equal(otherUser.messages[0].type, "ready");
@@ -246,7 +245,7 @@ test("exceeding the per-user session-start budget is rejected without Google and
   await waitFor(() => socket.socketServer.activeStreams.size === 0);
 });
 
-test("a disconnect during authorization neither opens Google nor uses the budget", async (t) => {
+test("a disconnect during authorization neither opens Azure nor uses the budget", async (t) => {
   let release;
   let calls = 0;
   const student = { user: { id: "student-1" }, profile: { role: "student" } };
@@ -284,7 +283,7 @@ test("other origins are still refused before any authorization", async (t) => {
 async function finishStream(ws, stream, text) {
   ws.send(Buffer.alloc(3200));
   await waitFor(() => stream.bytes === 3200);
-  stream.emit("data", { results: [{ isFinal: true, resultEndTime: { seconds: 1 }, alternatives: [{ transcript: text }] }] });
+  stream.emit("data", { results: [{ isFinal: true, endOffsetTicks: 10000000, text: text }] });
   ws.send(JSON.stringify({ type: "stop" }));
   await waitFor(() => stream.ended);
   stream.emit("end");

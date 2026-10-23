@@ -11,6 +11,7 @@ import { synthesizeDiagnosticSpeech } from "../../modules/module2/services/diagn
 import { getWordsToPractice } from "../../modules/module5/services/oralReadingProcessing";
 import { getOralReadingAttempt } from "../../modules/module5/services/oralReadingService";
 import RecordingPlayback from "../../modules/module5/components/RecordingPlayback";
+import PronunciationFeedback from "../../modules/module5/components/PronunciationFeedback";
 import type {
   LearnerM5Role,
   OralReadingAttempt,
@@ -298,7 +299,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           </header>
 
           <section className="result-feedback-card result-feedback-score" aria-labelledby="accuracy-title">
-            <h3 id="accuracy-title">{t("Pronunciation Accuracy")}</h3>
+            <h3 id="accuracy-title">{t("Reading Accuracy")}</h3>
             <p className="result-feedback-score-value">{accuracy}%</p>
             <progress
               className="result-feedback-progress"
@@ -347,6 +348,8 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           </section>
 
           <RecordingPlayback attemptId={attempt.id} language={language} />
+
+          <PronunciationFeedback attemptId={attempt.id} language={language} />
 
           <section className="result-feedback-card result-feedback-card--cream" aria-labelledby="transcript-title">
             <h3 id="transcript-title">

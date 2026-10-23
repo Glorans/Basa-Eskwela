@@ -140,7 +140,7 @@ async function startApp(t, { receipts = testReceipts(), admin = fakeAdmin(), now
     } = {}) {
       if (text !== undefined) transcripts.push({ text, confidence: 0.9 });
       const form = new FormData();
-      form.append("audio", new Blob([Buffer.from("webm")], { type: "audio/webm" }), "part.webm");
+      form.append("audio", new Blob([Buffer.from("wav")], { type: "audio/wav" }), "part.wav");
       form.append("language", language);
       if (recordingId !== null) form.append("recordingId", recordingId);
       if (segmentIndex !== null) form.append("segmentIndex", String(segmentIndex));
@@ -398,7 +398,7 @@ test("upload parts need a valid recording identity; M5 uploads are unchanged and
   assert.deepEqual(m5.json.transcription, { text: "practice reading", confidence: 0.9 });
 });
 
-test("without a receipt secret the diagnostic fails closed before Google is called", async (t) => {
+test("without a receipt secret the diagnostic fails closed before Azure is called", async (t) => {
   const receipts = createTranscriptReceiptService({ getSecret: () => undefined });
   const app = await startApp(t, { receipts });
   const upload = await app.upload("student", { text: "x" });
@@ -453,8 +453,8 @@ test("streaming: the server signs its own FINAL transcript and counts the audio 
   });
   session.acceptAudio(Buffer.alloc(3200));
   session.acceptAudio(Buffer.alloc(3200));
-  stream.emit("data", { results: [{ isFinal: true, resultEndTime: { seconds: 1 }, alternatives: [{ transcript: "Maagang nagtungo", confidence: 0.8 }] }] });
-  stream.emit("data", { results: [{ isFinal: true, resultEndTime: { seconds: 2 }, alternatives: [{ transcript: "si Lito", confidence: 0.6 }] }] });
+  stream.emit("data", { results: [{ isFinal: true, endOffsetTicks: 10000000, text: "Maagang nagtungo", confidence: 0.8 }] });
+  stream.emit("data", { results: [{ isFinal: true, endOffsetTicks: 20000000, text: "si Lito", confidence: 0.6 }] });
   session.stop();
   return new Promise((done) => setImmediate(() => {
     const complete = sent.find((message) => message.type === "complete");

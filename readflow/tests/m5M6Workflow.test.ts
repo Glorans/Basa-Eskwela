@@ -65,6 +65,7 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
       if (id.includes("ActivityHeader")) return { default: "header" };
       if (id.includes("OralReadingSummary")) return { default: "oral-summary" };
       if (id.includes("RecordingPlayback")) return { default: "recording-playback" };
+      if (id.includes("PronunciationFeedback")) return { default: "pronunciation-feedback" };
       return require(id);
     },
   });
@@ -245,7 +246,7 @@ test("oral-only results retain score, show completion, and offer no comprehensio
   f.render(); await tick();
   const rendered = JSON.stringify(f.render());
   assert.match(rendered, /Read-aloud activity completed/);
-  assert.match(rendered, /Pronunciation Accuracy/);
+  assert.match(rendered, /Reading Accuracy/);
   assert.match(rendered, /85/);
   assert.doesNotMatch(rendered, /Continue to Questions|Continue to Comprehension/);
 });
@@ -396,7 +397,7 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   f.render(); await tick();
   const tree = f.render();
   const text = JSON.stringify(tree);
-  const order = ["Great reading, ", "Nice job! A few words need practice.", "Pronunciation Accuracy", "Words to Practice",
+  const order = ["Great reading, ", "Nice job! A few words need practice.", "Reading Accuracy", "Words to Practice",
     "What we heard", "Your Reading Result", "Continue to Questions", "Read again", "Back to my activities"];
   order.reduce((last, label) => { const at = text.indexOf(label); assert.ok(at > last, `${label} is out of order`); return at; }, -1);
   assert.match(text, /"Ana"/);

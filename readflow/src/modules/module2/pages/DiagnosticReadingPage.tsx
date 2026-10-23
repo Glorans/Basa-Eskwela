@@ -155,7 +155,7 @@ export default function DiagnosticReadingPage({
     setUploadError(null);
 
     try {
-      // Only a complete Google stream can bypass the existing upload fallback.
+      // Only a complete Azure stream can bypass the existing upload fallback.
       const streamingTranscription = await streaming.stop();
       if (!mountedRef.current) return;
       if (!streamingTranscription && import.meta.env.DEV) {

@@ -1,6 +1,7 @@
 const { unlink } = require("node:fs/promises");
-const { getGoogleSpeechLanguageCode } = require("../services/diagnosticLanguage");
-const { transcribeWebm, getSpeechErrorResponse } = require("../services/googleSpeechService");
+const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
+const { transcribeWav } = require("../services/azureSpeechService");
+const { getSpeechErrorResponse } = require("../services/speechErrors");
 const { isUuid } = require("../services/diagnosticTranscriptReceipts");
 const { getDiagnosticAssessmentBinding } = require("../services/diagnosticAssessments");
 const { MAX_SEGMENTS } = require("../services/diagnosticResultService");
@@ -27,7 +28,7 @@ function readDiagnosticSegment(body) {
 }
 
 /** Only Module 2's synchronous fallback owns these temporary uploads. */
-function createDiagnosticAudioHandler({ transcribe = transcribeWebm, remove = unlink, receipts, log = console.error } = {}) {
+function createDiagnosticAudioHandler({ transcribe = transcribeWav, remove = unlink, receipts, log = console.error } = {}) {
   return async function diagnosticAudio(req, res, uploadError) {
     try {
       if (UPLOAD_TOO_LARGE_CODES.has(uploadError?.code)) {
@@ -36,11 +37,13 @@ function createDiagnosticAudioHandler({ transcribe = transcribeWebm, remove = un
       if (uploadError || !req.file) {
         return res.status(400).json({ success: false, code: "STT_INVALID_AUDIO", message: "Audio upload failed. Please try recording again." });
       }
-      if (req.file.mimetype.split(";", 1)[0].trim().toLowerCase() !== "audio/webm") {
-        return res.status(415).json({ success: false, code: "STT_INVALID_AUDIO", message: "This recording format cannot be transcribed. Please use WebM audio." });
+      // The browser converts each recorded part to mono 16 kHz PCM WAV for Azure;
+      // transcribeWav() verifies the container itself.
+      if (!["audio/wav", "audio/x-wav"].includes(req.file.mimetype.split(";", 1)[0].trim().toLowerCase())) {
+        return res.status(415).json({ success: false, code: "STT_INVALID_AUDIO", message: "This recording format cannot be transcribed. Please record it again." });
       }
       let languageCode;
-      try { languageCode = getGoogleSpeechLanguageCode(req.body?.language); }
+      try { languageCode = getSpeechLanguageCode(req.body?.language); }
       catch { return res.status(400).json({ success: false, message: "Language must be either 'en' or 'fil'." }); }
       const segment = readDiagnosticSegment(req.body);
       if (segment?.invalid) {

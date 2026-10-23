@@ -10,6 +10,7 @@ import {
   toDiagnosticAudioUploadError,
   type DiagnosticAudioErrorCode,
 } from "./diagnosticAudioError";
+import { convertToSpeechWav } from "./speechWav";
 
 export interface DiagnosticAudioUploadResult {
   success: boolean;
@@ -49,27 +50,43 @@ export interface DiagnosticSegmentIdentity extends DiagnosticRecordingIdentity {
   segmentIndex: number;
 }
 
+/**
+ * Uploads one recorded part for Azure speech-to-text. The recorder's WebM part
+ * is converted to mono 16 kHz PCM WAV first; the original WebM is still what
+ * M5 saves for playback.
+ */
 export async function uploadDiagnosticAudio(
   audioBlob: Blob,
   language: DiagnosticLanguage,
   segment?: DiagnosticSegmentIdentity,
+  convert: (audio: Blob) => Promise<Blob> = convertToSpeechWav,
 ) {
-  const formData = new FormData();
-  formData.append("audio", audioBlob, getRecordingFilename(audioBlob));
-  formData.append("language", language);
-  if (segment) {
-    formData.append("recordingId", segment.recordingId);
-    formData.append("segmentIndex", String(segment.segmentIndex));
-    formData.append("assessmentId", segment.assessmentId);
-    formData.append("assessmentVersion", segment.assessmentVersion);
-  }
-
   let headers: Awaited<ReturnType<typeof getSessionAuthHeaders>>;
   try {
     headers = await getSessionAuthHeaders(SESSION_EXPIRED_MESSAGE);
   } catch {
     // No upload is attempted without a session; the recording stays in memory.
     throw new DiagnosticAudioUploadError("AUTH_REQUIRED", SESSION_EXPIRED_MESSAGE, 401);
+  }
+
+  let speechAudio: Blob;
+  try {
+    speechAudio = await convert(audioBlob);
+  } catch {
+    throw new DiagnosticAudioUploadError(
+      "STT_INVALID_AUDIO",
+      "This part of the recording could not be prepared. Please record it again.",
+    );
+  }
+
+  const formData = new FormData();
+  formData.append("audio", speechAudio, getRecordingFilename(speechAudio));
+  formData.append("language", language);
+  if (segment) {
+    formData.append("recordingId", segment.recordingId);
+    formData.append("segmentIndex", String(segment.segmentIndex));
+    formData.append("assessmentId", segment.assessmentId);
+    formData.append("assessmentVersion", segment.assessmentVersion);
   }
 
   try {

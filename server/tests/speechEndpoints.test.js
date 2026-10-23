@@ -6,7 +6,7 @@ const { tmpdir } = require("node:os");
 const path = require("node:path");
 const express = require("express");
 
-const { createSpeechRouter, SPEECH_UPLOAD_LIMITS } = require("../routes/speech");
+const { createSpeechRouter, MAX_TTS_TEXT_LENGTH, SPEECH_UPLOAD_LIMITS } = require("../routes/speech");
 const { SPEECH_RATE_LIMITS, createRequestLimiter } = require("../services/speechAccess");
 const { SupabaseAuthenticationError } = require("../services/supabaseAdmin");
 const { authorizeOralReadingPracticeRequest } = require("../services/oralReadingAttemptService");
@@ -84,12 +84,12 @@ async function startSpeechServer(options = {}) {
   };
 }
 
-function audioForm({ language = "en", bytes = Buffer.from("webm-audio"), extraFields = 0, extraFile = false, type = "audio/webm" } = {}) {
+function audioForm({ language = "en", bytes = Buffer.from("wav-audio"), extraFields = 0, extraFile = false, type = "audio/wav" } = {}) {
   const form = new FormData();
-  form.append("audio", new Blob([bytes], { type }), "part.webm");
+  form.append("audio", new Blob([bytes], { type }), "part.wav");
   form.append("language", language);
   for (let index = 0; index < extraFields; index++) form.append(`extra${index}`, "x");
-  if (extraFile) form.append("audio", new Blob([bytes], { type }), "second.webm");
+  if (extraFile) form.append("audio", new Blob([bytes], { type }), "second.wav");
   return form;
 }
 
@@ -223,7 +223,7 @@ test("authorized TTS keeps the English and Filipino language mapping and audio r
       assert.deepEqual(speech.calls.synthesize.at(-1), { text: "bahay", languageCode });
     }
     // Existing validation still applies after authorization.
-    assert.equal((await postTts(speech.base, "student", { text: "x".repeat(201), language: "en" })).status, 400);
+    assert.equal((await postTts(speech.base, "student", { text: "x".repeat(MAX_TTS_TEXT_LENGTH + 1), language: "en" })).status, 400);
     assert.equal((await postTts(speech.base, "student", { text: "dog", language: "es" })).status, 400);
   } finally { await speech.close(); }
 });

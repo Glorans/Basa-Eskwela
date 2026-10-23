@@ -1,15 +1,15 @@
 # M5–M8 demonstration checklist
 
 Branch `integration/m5-m8`. Use adult tester voices only; never real children's recordings.
-Keep `M7_RISK_WORKER_ENABLED` unset or `false`. Azure is not used by the app (Speech Lab only).
+Keep `M7_RISK_WORKER_ENABLED` unset or `false`. The app uses Azure Speech; live verification is still pending (see docs/AZURE_SPEECH_INTEGRATION.md).
 
 ## 1. Configuration (values never shared or committed)
 
 `server/.env` (copy from `server/.env.example`):
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `FRONTEND_ORIGIN` and
-`DIAGNOSTIC_WS_ORIGINS` (example: ports 5174), `PORT` (example: 5001), `GOOGLE_STT_SAMPLE_RATE`, and
-Google speech credentials (Application Default Credentials, or `GOOGLE_APPLICATION_CREDENTIALS` pointing to
-a dedicated key file outside the repository; replace the example's deliberately invalid path).
+`DIAGNOSTIC_WS_ORIGINS` (example: ports 5174), `PORT` (example: 5001), `DIAGNOSTIC_RECEIPT_SECRET`, and
+Azure Speech settings `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` (see `docs/AZURE_SPEECH_INTEGRATION.md`;
+Google speech variables are no longer used).
 
 `readflow/.env.local` (copy from `readflow/.env.example`):
 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL` (example: `http://127.0.0.1:5001`).

@@ -5,7 +5,7 @@ export interface StreamingTranscriptState {
   interimTranscript: string;
 }
 
-/** Final segment IDs and sequence numbers survive Google stream rotations.
+/** Final segment IDs and sequence numbers survive Azure stream rotations.
  * Identical words spoken twice remain two segments; transport duplicates don't. */
 export class DiagnosticStreamingTranscript {
   private segments: { id: string; text: string; confidence?: number }[] = [];

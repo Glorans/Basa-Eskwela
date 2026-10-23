@@ -9,7 +9,9 @@ export type DiagnosticAudioErrorCode =
   | "AUTH_REQUIRED"
   | "SPEECH_FORBIDDEN"
   | "AUDIO_TOO_LARGE"
-  | "SPEECH_RATE_LIMITED";
+  | "SPEECH_RATE_LIMITED"
+  | "SPEECH_NOT_CONFIGURED"
+  | "PRONUNCIATION_UNSUPPORTED";
 
 const SAFE_ERROR_CODES = new Set<DiagnosticAudioErrorCode>([
   "AUDIO_TOO_LONG",
@@ -23,6 +25,8 @@ const SAFE_ERROR_CODES = new Set<DiagnosticAudioErrorCode>([
   "SPEECH_FORBIDDEN",
   "AUDIO_TOO_LARGE",
   "SPEECH_RATE_LIMITED",
+  "SPEECH_NOT_CONFIGURED",
+  "PRONUNCIATION_UNSUPPORTED",
 ]);
 
 export const SESSION_EXPIRED_MESSAGE = "Your session has expired. Please sign in again.";
