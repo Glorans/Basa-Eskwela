@@ -45,7 +45,7 @@ class Query {
   then(resolve, reject) { return this.execute().then(resolve, reject); }
 
   async execute() {
-    const rows = this.database.tables[this.table];
+    const rows = this.database.tables[this.table]?.map((row, index) => ({ id: `fixture-${String(index).padStart(6, "0")}`, ...row }));
     if (!rows) return { data: null, error: { message: `Unknown table ${this.table}` } };
     let selected = rows
       .filter((row) => this.filters.every((filter) => filter(row)))
@@ -243,4 +243,24 @@ test("Teacher cannot inspect a contextual attempt from another classroom even fo
   db.tables.oral_reading_attempts[0].room_id = ROOM_B;
   assert.equal((await listTeacherOralReadingAttempts(requester(TEACHER_A), dependencies(db))).length, 0);
   await assert.rejects(getTeacherOralReadingAttempt(requester(TEACHER_A), ATTEMPT_A, dependencies(db)), error => error.statusCode === 404);
+});
+
+test("removed enrollment revokes both historical attempt list and direct access", async () => {
+  const db = createDatabase();
+  db.tables.enrollments = db.tables.enrollments.filter(row => row.student_id !== STUDENT_A);
+  assert.equal((await listTeacherOralReadingAttempts(requester(TEACHER_A), dependencies(db))).length, 0);
+  await assert.rejects(getTeacherOralReadingAttempt(requester(TEACHER_A), ATTEMPT_A, dependencies(db)), error => error.statusCode === 404);
+});
+
+test("membership in another owned room does not authorize a former classroom attempt", async () => {
+  const db = createDatabase();
+  db.tables.rooms.find(row => row.id === ROOM_B).teacher_id = TEACHER_A;
+  db.tables.oral_reading_attempts[0].room_id = ROOM_B;
+  const listed = await listTeacherOralReadingAttempts(requester(TEACHER_A), dependencies(db));
+  assert.ok(!listed.some(row => row.id === ATTEMPT_A));
+  await assert.rejects(getTeacherOralReadingAttempt(requester(TEACHER_A), ATTEMPT_A, dependencies(db)), error => error.statusCode === 404);
+  db.tables.enrollments.push({student_id: STUDENT_A, room_id: ROOM_B});
+  const authorized = await getTeacherOralReadingAttempt(requester(TEACHER_A), ATTEMPT_A, dependencies(db));
+  assert.equal(authorized.id, ATTEMPT_A);
+  assert.equal(authorized.roomId, ROOM_B);
 });

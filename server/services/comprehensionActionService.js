@@ -62,6 +62,9 @@ async function applyComprehensionAction(
   );
 
   if (error) {
+    if (error.code === "42501") {
+      throw new ComprehensionError("Access to this activity has been revoked or is not authorized.", 403);
+    }
     if (error.code === "22023") {
       throw new ComprehensionError(error.message, 400);
     }

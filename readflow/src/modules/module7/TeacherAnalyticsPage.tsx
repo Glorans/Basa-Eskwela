@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import AnalyticsFilterBar from "./components/AnalyticsFilterBar";
+import { allTime, type AnalyticsScope } from "./services/analyticsFilters";
+import { formatScore } from "./services/scoreDisplay";
+import { getTeacherQuizAttempts } from "./services/teacherQuizService";
+import { assessmentSourceLabel, assessmentSourceNote } from "./services/assessmentSource.ts";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   Award,
@@ -12,7 +17,7 @@ import {
   Users,
 } from "lucide-react";
 
-import M3PageHeader from "../module3/components/M3PageHeader";
+import "./m7Dashboard.css";
 
 import {
   getTeacherAnalytics,
@@ -55,7 +60,7 @@ function formatNumber(value: number | null): string {
 }
 
 function formatPercentage(value: number | null): string {
-  return value === null ? "N/A" : `${formatNumber(value)}%`;
+  return value === null ? "N/A" : formatScore(value);
 }
 
 function formatDate(value: string): string {
@@ -73,7 +78,7 @@ function formatDate(value: string): string {
 }
 
 const cardStyle = {
-  backgroundColor: "#ffffff",
+  backgroundColor: "#dce8e7",
   borderRadius: "16px",
   padding: "24px",
   boxShadow: "0 3px 12px rgba(0, 0, 0, 0.06)",
@@ -84,7 +89,7 @@ const cardStyle = {
 
 const gridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
   gap: "16px",
 } as const;
 
@@ -169,7 +174,26 @@ function ProgressBar({
   );
 }
 
+function AssessmentSourceNote({
+  classroomFiltered,
+  independentCount,
+}: {
+  classroomFiltered: boolean;
+  independentCount: number;
+}) {
+  return (
+    <p role="note" style={{ margin: "16px 0 0" }}>
+      {assessmentSourceNote(classroomFiltered, independentCount)}
+    </p>
+  );
+}
+
 export default function TeacherAnalyticsPage() {
+  const [scope,setScope] = useState<AnalyticsScope>(allTime);
+  const [tab,setTab] = useState(0);
+  const request = useRef(0);
+  const [rooms,setRooms] = useState<{id:string;name:string}[]>([]);
+
   const [analytics, setAnalytics] =
     useState<TeacherAnalyticsSummary | null>(null);
 
@@ -193,12 +217,19 @@ export default function TeacherAnalyticsPage() {
   const [quizError, setQuizError] = useState("");
 
   const loadAnalytics = useCallback(async () => {
+    const version = ++request.current;
     setLoading(true);
     setError("");
     setCompletionError("");
     setClassError("");
     setStudentError("");
     setQuizError("");
+
+    // All quiz-derived panels use one snapshot per refresh.
+    const quizSnapshot = getTeacherQuizAttempts();
+    const loadQuizzes = () => quizSnapshot;
+    const completionSnapshot = getTeacherCompletionAnalytics();
+    const loadCompletion = () => completionSnapshot;
 
     const [
       analyticsResult,
@@ -207,12 +238,15 @@ export default function TeacherAnalyticsPage() {
       studentResult,
       quizResult,
     ] = await Promise.allSettled([
-      getTeacherAnalytics(),
-      getTeacherCompletionAnalytics(),
-      getClassPerformance(),
-      getStudentPerformance(),
-      getQuizScores(),
+      getTeacherAnalytics(loadQuizzes, scope),
+      completionSnapshot,
+      getClassPerformance(loadQuizzes, loadCompletion, scope),
+      getStudentPerformance(loadQuizzes, loadCompletion, scope),
+      getQuizScores(loadQuizzes, scope),
     ]);
+
+    if (version !== request.current) return;
+    if (completionResult.status === "fulfilled") setRooms(completionResult.value.classrooms.map(room => ({id:room.roomId,name:room.roomName})));
 
     if (analyticsResult.status === "fulfilled") {
       setAnalytics(analyticsResult.value);
@@ -226,7 +260,11 @@ export default function TeacherAnalyticsPage() {
     }
 
     if (completionResult.status === "fulfilled") {
-      setCompletion(completionResult.value);
+      const value = completionResult.value;
+      const classrooms = value.classrooms.filter(room => !scope.roomId || room.roomId === scope.roomId);
+      const totalAssignments = classrooms.reduce((sum,room)=>sum+room.totalAssignments,0);
+      const completedAssignments = classrooms.reduce((sum,room)=>sum+room.completedAssignments,0);
+      setCompletion(scope.roomId ? {...value,classrooms,totalClassrooms:classrooms.length,totalAssignments,completedAssignments,incompleteAssignments:totalAssignments-completedAssignments,completionRate:totalAssignments ? Math.round(completedAssignments/totalAssignments*10000)/100 : null} : value);
     } else {
       setCompletion(null);
       setCompletionError(
@@ -270,10 +308,11 @@ export default function TeacherAnalyticsPage() {
     }
 
     setLoading(false);
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     void loadAnalytics();
+    return () => { request.current++; };
   }, [loadAnalytics]);
 
   const metrics: AnalyticsMetric[] = analytics
@@ -429,12 +468,13 @@ export default function TeacherAnalyticsPage() {
     : [];
 
   return (
-    <div className="m3-page-stack">
-      <M3PageHeader
-        eyebrow="Module 7"
-        title="Analytics Dashboard"
-        description="Monitor student reading performance, pronunciation accuracy, comprehension results, and classroom completion rates."
-        actions={
+    <div className="m7-dashboard">
+      <header className="m7-dashboard-header m7-header-card">
+        <div>
+          <p className="m7-dashboard-eyebrow">Module 7</p>
+          <h1>Analytics Dashboard</h1>
+          <p>Monitor student reading performance, pronunciation accuracy, comprehension results, and classroom completion rates.</p>
+        </div>
           <button
             className="m3-button m3-button--secondary"
             type="button"
@@ -449,9 +489,13 @@ export default function TeacherAnalyticsPage() {
             />
             Refresh
           </button>
-        }
-      />
+      </header>
+      <div className="m7-dashboard-content">
 
+      <AnalyticsFilterBar rooms={rooms} onApply={value => { request.current++; setScope(value); }}/>
+      <p>Applied performance period: {scope.startDate || 'All Time'}{scope.endDate ? ` through ${scope.endDate} (PHT)` : ''}. Classroom: {rooms.find(room=>room.id===scope.roomId)?.name || 'All Classrooms'}.</p>
+      <p>Enrollment and assignment completion show current snapshots. Weekly Reports use their own reporting dates.</p>
+      <div role="tablist" aria-label="Teacher analytics sections" className="m7-tabs">{['Overview','Classrooms & Students','Assessments'].map((label,index)=><button key={label} id={`analytics-tab-${index}`} role="tab" aria-selected={tab===index} aria-controls={`analytics-panel-${index}`} tabIndex={tab===index ? 0 : -1} onClick={()=>setTab(index)} onKeyDown={event=>{let next=index;if(event.key==='ArrowRight') next=(index+1)%3;else if(event.key==='ArrowLeft') next=(index+2)%3;else if(event.key==='Home') next=0;else if(event.key==='End') next=2;else return;event.preventDefault();setTab(next);document.getElementById(`analytics-tab-${next}`)?.focus();}}>{label}</button>)}</div>
       {error && (
         <p
           className="m3-error-message"
@@ -513,6 +557,7 @@ export default function TeacherAnalyticsPage() {
         </div>
       ) : (
         <>
+          <div role="tabpanel" id="analytics-panel-0" aria-labelledby="analytics-tab-0" hidden={tab !== 0} tabIndex={0}>
           {/* READING PERFORMANCE OVERVIEW */}
 
           {analytics ? (
@@ -541,6 +586,11 @@ export default function TeacherAnalyticsPage() {
                   />
                 ))}
               </div>
+
+              <AssessmentSourceNote
+                classroomFiltered={Boolean(scope.roomId)}
+                independentCount={analytics.independentComprehensionAttempts}
+              />
 
               {analytics.totalReadingAttempts === 0 && (
                 <div
@@ -695,6 +745,7 @@ export default function TeacherAnalyticsPage() {
             </section>
           )}
 
+          </div><div role="tabpanel" id="analytics-panel-1" aria-labelledby="analytics-tab-1" hidden={tab !== 1} tabIndex={0}>
           {/* CLASS PERFORMANCE OVERVIEW */}
 
           {classPerformance && (
@@ -1444,6 +1495,7 @@ export default function TeacherAnalyticsPage() {
             </section>
           )}
 
+          </div><div role="tabpanel" id="analytics-panel-2" aria-labelledby="analytics-tab-2" hidden={tab !== 2} tabIndex={0}>
           {/* QUIZ SCORE TRACKING */}
 
           {quizScores && (
@@ -1477,6 +1529,11 @@ export default function TeacherAnalyticsPage() {
                   />
                 ))}
               </div>
+
+              <AssessmentSourceNote
+                classroomFiltered={Boolean(scope.roomId)}
+                independentCount={quizScores.independentQuizzes}
+              />
 
               {quizScores.totalCompletedQuizzes === 0 ? (
                 <div
@@ -1622,6 +1679,7 @@ export default function TeacherAnalyticsPage() {
                                 <tr>
                                   {[
                                     "Reading Module",
+                                    "Source",
                                     "Completed",
                                     "Correct",
                                     "Score",
@@ -1664,6 +1722,20 @@ export default function TeacherAnalyticsPage() {
                                         {
                                           score.moduleTitle
                                         }
+                                      </td>
+
+                                      <td
+                                        style={{
+                                          padding:
+                                            "14px",
+                                        }}
+                                      >
+                                        <span className="m7-classification">
+                                          {assessmentSourceLabel(
+                                            score,
+                                            rooms
+                                          )}
+                                        </span>
                                       </td>
 
                                       <td
@@ -1750,10 +1822,11 @@ export default function TeacherAnalyticsPage() {
             </section>
           )}
 
-          {/* WEEKLY PERFORMANCE REPORT */}
-          <WeeklyReportSection />
+          </div>
         </>
       )}
+      <WeeklyReportSection />
+      </div>
     </div>
   );
 }

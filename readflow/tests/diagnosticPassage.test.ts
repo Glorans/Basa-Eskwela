@@ -86,7 +86,7 @@ test("v3.0 session recovery restores the single reading and recalculates tampere
   const reading = passageResult("en", { miscues: 2 });
   const session = { assessmentId: a.id, assessmentVersion: a.version, answers: passageAnswers("en", 3), questionIndex: 3,
     reading: { language: "en" as const, transcription: { text: reading.transcript! },
-      oralReadingMetrics: { ...reading.oralReadingMetrics!, wordReadingScore: 100 } } };
+      oralReadingMetrics: { ...reading.oralReadingMetrics!, wordReadingScore: 100 }, transcriptReceipts: reading.transcriptReceipts! } };
   const raw = serializeDiagnosticSession(session, "reader");
   const restored = recoverDiagnosticSession(raw, "reader", a)!;
   assert.equal(restored.assessmentVersion, "3.0");

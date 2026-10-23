@@ -5,15 +5,42 @@ const { classifyRisk, compareCompletedQuizzes } = require('./m7Risk');
 function fail(message, statusCode = 500) { return Object.assign(new Error(message), { statusCode }); }
 async function rows(table, columns = '*', filters = {}, db = getSupabaseAdmin()) {
   const all = [];
-  for (let offset = 0; ; offset += 500) {
-    let query = db.from(table).select(columns);
-    for (const [key, value] of Object.entries(filters)) query = Array.isArray(value) ? query.in(key, value) : query.eq(key, value);
-    const { data, error } = await query.order('id').range(offset, offset + 499);
-    if (error) throw fail(`Unable to load ${table}. Check the M7 migration and retry.`);
-    all.push(...data);
-    if (data.length < 500) return all;
+  const entries = Object.entries(filters);
+  const arrayFilters = entries.filter(([, value]) => Array.isArray(value));
+  // Each IN list is bounded and deduplicated. Traverse combinations lazily
+  // rather than constructing a potentially large cross-product in memory.
+  async function readBatch(index, batches) {
+    if (index < arrayFilters.length) {
+      const [key, values] = arrayFilters[index];
+      const unique = [...new Set(values)];
+      for (let start = 0; start < unique.length; start += 50) {
+        await readBatch(index + 1, { ...batches, [key]: unique.slice(start, start + 50) });
+      }
+      return;
+    }
+    let cursor = null;
+    for (;;) {
+      let query = db.from(table).select(columns).order('id', { ascending: true }).limit(100);
+      for (const [key, value] of entries) {
+        query = Array.isArray(value) ? query.in(key, batches[key]) : query.eq(key, value);
+      }
+      if (cursor !== null) query = query.gt('id', cursor);
+      const { data, error } = await query;
+      if (error || !Array.isArray(data)) throw fail(`Unable to load ${table}. Check the M7 migration and retry.`);
+      if (!data.length) return;
+      for (const row of data) {
+        if (typeof row.id !== 'string' || (cursor !== null && row.id <= cursor)) {
+          throw fail(`Invalid pagination while loading ${table}. Please retry.`);
+        }
+        cursor = row.id;
+        all.push(row);
+      }
+    }
   }
+  await readBatch(0, {});
+  return all.sort((a, b) => a.id.localeCompare(b.id));
 }
+
 const mean = values => { const valid = values.filter(v => typeof v === 'number' && Number.isFinite(v)); return valid.length ? Math.round(valid.reduce((a,b) => a+b, 0) / valid.length * 100) / 100 : null; };
 async function quizzes(filters = {}, options = {}) {
   const load = options.rows || rows;
@@ -24,7 +51,8 @@ async function quizzes(filters = {}, options = {}) {
     const responses = await load('m6_comprehension_responses', '*', { attempt_id: batch.map(a => a.id) });
     for (const a of batch) {
       const identity = { id: a.id, userId: a.user_id, roomId: a.room_id, title: a.passage_title,
-        status: a.status, completedAt: a.completed_at };
+        status: a.status, completedAt: typeof a.completed_at === 'string' && Number.isFinite(Date.parse(a.completed_at))
+          ? a.completed_at : null };
       try {
         const score = summarizeComprehension(a.question_snapshot, responses.filter(r => r.attempt_id === a.id));
         if (score.answered !== score.totalQuestions || !score.allResolved || !Number.isFinite(Date.parse(a.completed_at))) {
@@ -101,7 +129,8 @@ async function teacher(teacherId) {
     const quizResults = allQuizzes.filter(q => !q.roomId || roomIds.includes(q.roomId));
     const readings = allReadings.filter(r => !r.room_id || roomIds.includes(r.room_id));
     const unavailable = quizResults.some(q => q.dataQuality);
-    const risk = unavailable ? { classification: 'Evaluation unavailable' } : classifyRisk(quizResults);
+    const risk = !quizResults.length ? { classification: 'No assessment data' }
+      : unavailable ? { classification: 'Evaluation unavailable' } : classifyRisk(quizResults);
     const competency = {};
     for (const type of ['literal','inferential','critical']) {
       const groups = quizResults.filter(q => !q.dataQuality).map(q => q.byType[type]);

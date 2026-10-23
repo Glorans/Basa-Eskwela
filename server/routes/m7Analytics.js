@@ -22,6 +22,10 @@ router.get('/system',wrap(async req => {
   return require('../services/adminSystemAnalytics').getAdminSystemAnalytics(requester, req.query, { rows: analytics.rows, quizzes: analytics.quizzes });
 }));
 router.get('/teacher',wrap(async req => { const requester = await authorizeTeacherOralReadingRequest(req); return analytics.teacher(requester.user.id); }));
+router.get('/teacher/quizzes',wrap(async req => {
+  const requester = await authorizeTeacherOralReadingRequest(req);
+  return require('../services/m7TeacherQuizzes').getTeacherQuizzes(requester);
+}));
 router.post('/students/:studentId/interventions',wrap(async req => {
   const requester = await authorizeTeacherOralReadingRequest(req);
   return analytics.saveIntervention(requester.user.id,req.params.studentId,null,req.body);

@@ -71,7 +71,7 @@ class Query {
     if (this.database.failing.has(this.table)) {
       return { data: null, error: { message: `Failure in ${this.table}` } };
     }
-    const rows = this.database.tables[this.table];
+    const rows = this.database.tables[this.table]?.map((row, index) => ({ id: `fixture-${String(index).padStart(6, "0")}`, ...row }));
     if (!rows) return { data: null, error: { message: `Unknown table ${this.table}` } };
     let selected = rows.filter((row) => this.filters.every((filter) => filter(row)))
       .map((row) => structuredClone(row));

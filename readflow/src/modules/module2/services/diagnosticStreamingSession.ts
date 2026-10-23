@@ -6,6 +6,8 @@ import {
 
 interface StreamingSessionOptions {
   language: DiagnosticLanguage;
+  /** Module 2 only: the server then signs the completed transcript. M5 voice-follow omits it. */
+  diagnostic?: { assessmentId: string; assessmentVersion: string };
   url: string;
   workletUrl: string;
   getAccessToken: () => Promise<string>;
@@ -141,6 +143,7 @@ export function createDiagnosticStreamingSession(options: StreamingSessionOption
           socket.send(JSON.stringify({
             type: "configure", language: options.language, accessToken,
             encoding: "LINEAR16", sampleRate: 16000, channels: 1,
+            ...(options.diagnostic ? { diagnostic: options.diagnostic } : {}),
           }));
         }).catch(() => fail("Session configuration failed"));
       };
@@ -168,7 +171,10 @@ export function createDiagnosticStreamingSession(options: StreamingSessionOption
             if (!stopSent || message.audioBytes !== sentBytes || !completedTranscript) {
               fail("Incomplete streaming transcript"); return;
             }
-            settle(completedTranscript);
+            // The receipt is opaque here; only the backend can verify it.
+            settle(typeof message.receipt === "string" && message.receipt
+              ? { ...completedTranscript, receipt: message.receipt }
+              : completedTranscript);
           } else {
             fail("Streaming service unavailable");
           }

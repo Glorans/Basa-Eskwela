@@ -243,6 +243,34 @@ file rolls back, so fix the cause and rerun only that file.
   4 storage policies, 0 tables without RLS. Keep `M7_RISK_WORKER_ENABLED` off. Rollback and risks:
   `docs/M5_M8_MIGRATION_READINESS.md`.
 
+### DT1 — trusted M2 diagnostics (alone; prepared, not applied; prerequisite for C9)
+
+| # | File |
+|---|------|
+| DT1 | `supabase/migrations/20261025_m2_trusted_diagnostics.sql` (install-once; refuses to rerun) |
+
+- **Before:** `verify_dt1_diagnostic_trust.sql` P-DT1a–P-DT1e; record P-DT1b's row counts and P-DT1e's totals.
+  `DIAGNOSTIC_RECEIPT_SECRET` is set on the backend, and the DT1 backend and frontend are ready to deploy
+  right after it (from DT1 on, the old frontend can no longer save diagnostics).
+- **After:** V-DT1a–V-DT1j, then A1–A8. Existing rows all `unverified` with P-DT1b's counts;
+  authenticated SELECT only on `diagnostic_results`; 2 policies on it (own-row SELECT and B16's
+  restrictive approval policy); totals 31 tables, 70 public policies, public functions +2. Keep V-DT1j's
+  output for C9. Design, deployment order and risks: [DT1_DIAGNOSTIC_TRUST_REVIEW.md](DT1_DIAGNOSTIC_TRUST_REVIEW.md).
+- **Stop if:** the guard raises, or any V-DT1 result differs. Never upgrade an `unverified` row in place.
+
+### C9 — trusted M8 XP (alone, right after DT1; prepared, not applied)
+
+| # | File |
+|---|------|
+| C9 | `supabase/migrations/20261026_m8_trusted_xp.sql` (re-runnable; refuses to run without DT1) |
+
+- **Before:** `verify_c9_trusted_xp.sql` P-C9a through P-C9f; record P-C9b. Every P-C9c row must normalize to
+  `en`/`fil` (a NULL there would make completions of those modules fail).
+- **After:** V-C9a through V-C9i, then A1–A8. History counts equal P-C9b; public functions +3; 7 M7/M8 triggers;
+  31 tables, 70 public policies. Keep V-C9g's output. Design and risks:
+  [C9_TRUSTED_XP_REVIEW.md](C9_TRUSTED_XP_REVIEW.md).
+- **Stop if:** the guard raises, or any V-C9 result differs.
+
 ## Known privilege gaps (decisions needed before the affected group)
 
 Supabase's default privileges grant new `public` tables and functions directly to `anon` and

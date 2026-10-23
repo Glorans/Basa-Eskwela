@@ -1,10 +1,11 @@
+import { allTime, filterRecords, type AnalyticsScope } from "./analyticsFilters.ts";
+import { getTeacherQuizAttempts, quizMetrics } from "./teacherQuizService";
 
 import { supabase } from "../../../lib/supabaseClient";
 
 import {
   getTeacherClassrooms,
   getRoomEnrollments,
-  getClassroomReadingActivities,
 } from "../../module4/services/classroomService";
 
 import { getTeacherOralReadingAttempts } from "../../module5/services/oralReadingService";
@@ -80,10 +81,6 @@ function calculateCompletionRate(
 function calculateReadingMetrics(
   attempts: TeacherOralReadingAttemptSummary[]
 ) {
-  const completedComprehension = attempts.filter(
-    (attempt) => attempt.comprehension.status === "completed"
-  );
-
   return {
     readingAttempts: attempts.length,
 
@@ -98,21 +95,10 @@ function calculateReadingMetrics(
         (attempt) => attempt.readingSpeedWpm
       )
     ),
-
-    averageComprehensionScore: average(
-      completedComprehension.map((attempt) =>
-        attempt.comprehension.status === "completed"
-          ? attempt.comprehension.firstAttemptPercentage
-          : NaN
-      )
-    ),
-
-    completedComprehensionAttempts:
-      completedComprehension.length,
   };
 }
 
-export async function getStudentPerformance(): Promise<StudentPerformanceResult> {
+export async function getStudentPerformance(loadQuizzes = getTeacherQuizAttempts, loadCompletion = getTeacherCompletionAnalytics, scope: AnalyticsScope = allTime): Promise<StudentPerformanceResult> {
   const {
     data: { user },
     error: userError,
@@ -124,26 +110,22 @@ export async function getStudentPerformance(): Promise<StudentPerformanceResult>
     );
   }
 
-  const classrooms = await getTeacherClassrooms(user.id);
+  const classrooms = (await getTeacherClassrooms(user.id)).filter(room => !scope.roomId || room.id === scope.roomId);
 
   const [
     enrollmentsByRoom,
-    assignmentsByRoom,
     attempts,
     verifiedCompletion,
+    quizzes,
   ] = await Promise.all([
     Promise.all(
       classrooms.map((room) =>
         getRoomEnrollments(room.id)
       )
     ),
-    Promise.all(
-      classrooms.map((room) =>
-        getClassroomReadingActivities(room.id)
-      )
-    ),
     getTeacherOralReadingAttempts(),
-    getTeacherCompletionAnalytics(),
+    loadCompletion(),
+    loadQuizzes(),
   ]);
 
   const verifiedStudents = new Map(
@@ -158,8 +140,7 @@ export async function getStudentPerformance(): Promise<StudentPerformanceResult>
   >();
 
   classrooms.forEach((room, index) => {
-    const enrollments = enrollmentsByRoom[index];
-    const assignments = assignmentsByRoom[index];
+    const enrollments = [...new Map(enrollmentsByRoom[index].map(student => [student.student_id, student])).values()];
 
     enrollments.forEach((student) => {
       let summary = studentMap.get(student.student_id);
@@ -189,16 +170,6 @@ export async function getStudentPerformance(): Promise<StudentPerformanceResult>
         studentMap.set(student.student_id, summary);
       }
 
-      const studentAssignments = assignments.filter(
-        (assignment) =>
-          assignment.student_id === student.student_id
-      );
-
-      const storedInProgress = studentAssignments.filter(
-        (assignment) =>
-          assignment.status === "in_progress"
-      ).length;
-
       const verifiedStudent = verifiedStudents.get(
         student.student_id
       );
@@ -208,30 +179,13 @@ export async function getStudentPerformance(): Promise<StudentPerformanceResult>
           (item) => item.roomId === room.id
         );
 
-      const totalAssignments =
-        verifiedRoom?.totalAssignments ??
-        studentAssignments.length;
-
-      const completedAssignments =
-        verifiedRoom?.completedAssignments ?? 0;
-
-      const incompleteAssignments =
-        verifiedRoom?.incompleteAssignments ??
-        totalAssignments;
-
-      // In-progress counts remain based on stored statuses.
-      // Do not treat an unverified "completed" status as
-      // evidence that the assessment was completed.
-      const inProgressAssignments =
-        storedInProgress;
-
-      // This is a derived residual count, not an M6 status.
-      // It represents assignments that are incomplete and
-      // not marked "in_progress" in the stored records.
-      const notStartedAssignments = Math.max(
-        0,
-        incompleteAssignments - inProgressAssignments
-      );
+      // All counts come from the same evidence-derived backend snapshot.
+      // A currently enrolled learner with no assignments has no summary row.
+      const totalAssignments = verifiedRoom?.totalAssignments ?? 0;
+      const completedAssignments = verifiedRoom?.completedAssignments ?? 0;
+      const incompleteAssignments = verifiedRoom?.incompleteAssignments ?? 0;
+      const inProgressAssignments = verifiedRoom?.inProgressAssignments ?? 0;
+      const notStartedAssignments = verifiedRoom?.notStartedAssignments ?? 0;
 
       summary.classrooms.push({
         roomId: room.id,
@@ -263,7 +217,7 @@ export async function getStudentPerformance(): Promise<StudentPerformanceResult>
     TeacherOralReadingAttemptSummary[]
   >();
 
-  attempts.forEach((attempt) => {
+  filterRecords(attempts, scope).forEach((attempt) => {
     if (!studentMap.has(attempt.learnerId)) return;
 
     const existing =
@@ -295,11 +249,7 @@ export async function getStudentPerformance(): Promise<StudentPerformanceResult>
     student.averageReadingSpeedWpm =
       readingMetrics.averageReadingSpeedWpm;
 
-    student.averageComprehensionScore =
-      readingMetrics.averageComprehensionScore;
-
-    student.completedComprehensionAttempts =
-      readingMetrics.completedComprehensionAttempts;
+    Object.assign(student, quizMetrics(filterRecords(quizzes, scope).filter(quiz => quiz.studentId === student.studentId)));
   });
 
   const students = [...studentMap.values()].sort(

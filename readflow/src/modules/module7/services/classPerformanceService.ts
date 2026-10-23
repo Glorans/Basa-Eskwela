@@ -1,3 +1,5 @@
+import { allTime, filterRecords, type AnalyticsScope } from "./analyticsFilters.ts";
+import { getTeacherQuizAttempts, quizMetrics } from "./teacherQuizService";
 import { attributeClassroomAttempts } from "./classroomAttribution";
 
 import { supabase } from "../../../lib/supabaseClient";
@@ -8,8 +10,6 @@ import {
 } from "../../module4/services/classroomService";
 
 import { getTeacherOralReadingAttempts } from "../../module5/services/oralReadingService";
-
-import type { TeacherOralReadingAttemptSummary } from "../../module5/types/oralReading";
 
 import {
   getTeacherCompletionAnalytics,
@@ -61,21 +61,7 @@ function calculateAverage(
   ) / 100;
 }
 
-function getCompletedComprehensionScores(
-  attempts: TeacherOralReadingAttemptSummary[]
-): number[] {
-  return attempts.flatMap((attempt) => {
-    if (attempt.comprehension.status !== "completed") {
-      return [];
-    }
-
-    return [
-      attempt.comprehension.firstAttemptPercentage,
-    ];
-  });
-}
-
-export async function getClassPerformance(): Promise<ClassPerformanceResult> {
+export async function getClassPerformance(loadQuizzes = getTeacherQuizAttempts, loadCompletion = getTeacherCompletionAnalytics, scope: AnalyticsScope = allTime): Promise<ClassPerformanceResult> {
   const {
     data: { user },
     error: userError,
@@ -87,12 +73,13 @@ export async function getClassPerformance(): Promise<ClassPerformanceResult> {
     );
   }
 
-  const classrooms = await getTeacherClassrooms(user.id);
+  const classrooms = (await getTeacherClassrooms(user.id)).filter(room => !scope.roomId || room.id === scope.roomId);
 
   const [
     enrollmentsByClass,
     readingAttempts,
     completionAnalytics,
+    quizzes,
   ] = await Promise.all([
     Promise.all(
       classrooms.map((classroom) =>
@@ -100,7 +87,8 @@ export async function getClassPerformance(): Promise<ClassPerformanceResult> {
       )
     ),
     getTeacherOralReadingAttempts(),
-    getTeacherCompletionAnalytics(),
+    loadCompletion(),
+    loadQuizzes(),
   ]);
 
   const studentClassrooms = new Map<string, Set<string>>();
@@ -123,7 +111,7 @@ export async function getClassPerformance(): Promise<ClassPerformanceResult> {
   });
 
   const { attemptsByClass, unattributedReadingAttempts } =
-    attributeClassroomAttempts(readingAttempts, studentClassrooms);
+    attributeClassroomAttempts(filterRecords(readingAttempts, scope), studentClassrooms);
 
   const completionByClass = new Map(
     completionAnalytics.classrooms.map((room) => [
@@ -172,9 +160,7 @@ export async function getClassPerformance(): Promise<ClassPerformanceResult> {
           ),
 
         averageComprehensionScore:
-          calculateAverage(
-            getCompletedComprehensionScores(attempts)
-          ),
+          quizMetrics(filterRecords(quizzes, scope).filter(quiz => quiz.roomId === classroom.id)).averageComprehensionScore,
 
         totalAssignments:
           completion?.totalAssignments ?? 0,

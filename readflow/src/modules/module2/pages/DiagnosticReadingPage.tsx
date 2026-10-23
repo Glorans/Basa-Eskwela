@@ -64,7 +64,9 @@ export default function DiagnosticReadingPage({
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
-  const streaming = useDiagnosticStreamingSpeech(assessment.language);
+  const streaming = useDiagnosticStreamingSpeech(assessment.language, {
+    assessmentId: assessment.id, assessmentVersion: assessment.version,
+  });
   const [readingAttempt, setReadingAttempt] = useState(0);
   const tracker = useMemo(() => new LiveReadingTracker(passageText), [passageText, readingAttempt]);
   const startingRef = useRef(false);
@@ -159,7 +161,7 @@ export default function DiagnosticReadingPage({
       if (!streamingTranscription && import.meta.env.DEV) {
         console.info("[DiagnosticStreaming] fallback triggered: processing captured recording");
       }
-      const { transcription, oralReadingMetrics } =
+      const { transcription, oralReadingMetrics, transcriptReceipts } =
         await processDiagnosticRecording({
           audioSegments,
           language: assessment.language,
@@ -168,12 +170,18 @@ export default function DiagnosticReadingPage({
           segmentDurationsSeconds,
           uploadSegment: uploadDiagnosticAudio,
           streamingTranscription,
+          // A new recording identity per processing attempt; every part is uploaded again on retry.
+          diagnostic: {
+            recordingId: crypto.randomUUID(),
+            assessmentId: assessment.id,
+            assessmentVersion: assessment.version,
+          },
         });
 
       if (!mountedRef.current) return;
       setUploadStatus("success");
 
-      saveReading({ language: assessment.language, transcription, oralReadingMetrics });
+      saveReading({ language: assessment.language, transcription, oralReadingMetrics, transcriptReceipts });
 
     } catch {
       if (!mountedRef.current) return;

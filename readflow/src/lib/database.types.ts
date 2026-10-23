@@ -145,6 +145,10 @@ export type Database = {
           transcript: string | null
           updated_at: string
           user_id: string
+          verification_method: string | null
+          verification_recording_id: string | null
+          verification_status: string
+          verified_at: string | null
         }
         Insert: {
           assessment_id?: string | null
@@ -164,6 +168,10 @@ export type Database = {
           transcript?: string | null
           updated_at?: string
           user_id: string
+          verification_method?: string | null
+          verification_recording_id?: string | null
+          verification_status?: string
+          verified_at?: string | null
         }
         Update: {
           assessment_id?: string | null
@@ -183,6 +191,10 @@ export type Database = {
           transcript?: string | null
           updated_at?: string
           user_id?: string
+          verification_method?: string | null
+          verification_recording_id?: string | null
+          verification_status?: string
+          verified_at?: string | null
         }
         Relationships: []
       }

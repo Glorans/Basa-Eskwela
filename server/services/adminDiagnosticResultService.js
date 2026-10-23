@@ -11,7 +11,7 @@ async function listDiagnosticResultRows(supabase) {
   const { data, error } = await supabase
     .from("diagnostic_results")
     .select(
-      "id, user_id, assessment_type, language, orv_score, comprehension_score, reading_speed_wpm, reading_level, difficulty_tier, completed_at",
+      "id, user_id, assessment_type, language, orv_score, comprehension_score, reading_speed_wpm, reading_level, difficulty_tier, completed_at, verification_status",
     )
     .eq("assessment_type", "initial")
     .order("completed_at", { ascending: false });
@@ -54,6 +54,8 @@ async function listAdminDiagnosticResults(dependencies = {}) {
       readingLevel: row.reading_level,
       difficultyTier: row.difficulty_tier,
       completedAt: row.completed_at,
+      // Rows written by the browser before DT1 stay 'unverified' (learner-controlled).
+      verificationStatus: row.verification_status,
     }];
   });
 }

@@ -5,7 +5,11 @@ export type DiagnosticAudioErrorCode =
   | "STT_DEADLINE"
   | "STT_PERMISSION"
   | "STT_QUOTA"
-  | "STT_PROVIDER_ERROR";
+  | "STT_PROVIDER_ERROR"
+  | "AUTH_REQUIRED"
+  | "SPEECH_FORBIDDEN"
+  | "AUDIO_TOO_LARGE"
+  | "SPEECH_RATE_LIMITED";
 
 const SAFE_ERROR_CODES = new Set<DiagnosticAudioErrorCode>([
   "AUDIO_TOO_LONG",
@@ -15,7 +19,13 @@ const SAFE_ERROR_CODES = new Set<DiagnosticAudioErrorCode>([
   "STT_PERMISSION",
   "STT_QUOTA",
   "STT_PROVIDER_ERROR",
+  "AUTH_REQUIRED",
+  "SPEECH_FORBIDDEN",
+  "AUDIO_TOO_LARGE",
+  "SPEECH_RATE_LIMITED",
 ]);
+
+export const SESSION_EXPIRED_MESSAGE = "Your session has expired. Please sign in again.";
 
 const DEFAULT_MESSAGE = "We couldn't process your reading. Please record it again.";
 

@@ -1,10 +1,13 @@
+import { allTime, filterRecords, type AnalyticsScope } from "./analyticsFilters.ts";
 
-import { getTeacherOralReadingAttempts } from "../../module5/services/oralReadingService";
+import { getTeacherQuizAttempts } from "./teacherQuizService";
+import { countIndependentAssessments } from "./assessmentSource.ts";
 
 export interface StudentQuizScore {
   attemptId: string;
   studentId: string;
   studentName: string;
+  roomId: string | null;
   moduleTitle: string;
   completedAt: string;
   correctAnswers: number;
@@ -25,6 +28,7 @@ export interface StudentQuizScoreSummary {
 
 export interface QuizScoreResult {
   totalCompletedQuizzes: number;
+  independentQuizzes: number;
   studentsWithScores: number;
   averageQuizScore: number | null;
   highestQuizScore: number | null;
@@ -45,49 +49,8 @@ function average(values: number[]): number | null {
   );
 }
 
-export async function getQuizScores(): Promise<QuizScoreResult> {
-  const attempts = await getTeacherOralReadingAttempts();
-
-  const scores: StudentQuizScore[] = attempts.flatMap((attempt) => {
-    const comprehension = attempt.comprehension;
-
-    if (comprehension.status !== "completed") {
-      return [];
-    }
-
-    const {
-      firstCorrect,
-      totalQuestions,
-      firstAttemptPercentage,
-      hintsUsed,
-      completedAt,
-    } = comprehension;
-
-    if (
-      totalQuestions <= 0 ||
-      !Number.isFinite(firstCorrect) ||
-      !Number.isFinite(totalQuestions) ||
-      !Number.isFinite(firstAttemptPercentage) ||
-      !Number.isFinite(hintsUsed) ||
-      !completedAt
-    ) {
-      return [];
-    }
-
-    return [
-      {
-        attemptId: attempt.id,
-        studentId: attempt.learnerId,
-        studentName: attempt.learnerName,
-        moduleTitle: attempt.moduleTitle,
-        completedAt,
-        correctAnswers: firstCorrect,
-        totalQuestions,
-        scorePercentage: firstAttemptPercentage,
-        hintsUsed,
-      },
-    ];
-  });
+export async function getQuizScores(loadQuizzes = getTeacherQuizAttempts, scope: AnalyticsScope = allTime): Promise<QuizScoreResult> {
+  const scores: StudentQuizScore[] = filterRecords(await loadQuizzes(), scope);
 
   const scoresByStudent = new Map<
     string,
@@ -134,6 +97,7 @@ export async function getQuizScores(): Promise<QuizScoreResult> {
 
   return {
     totalCompletedQuizzes: scores.length,
+    independentQuizzes: countIndependentAssessments(scores),
     studentsWithScores: students.length,
     averageQuizScore: average(allPercentages),
     highestQuizScore:

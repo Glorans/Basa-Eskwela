@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { DiagnosticPcmEncoder } from "../src/modules/module2/audio/diagnosticPcm.ts";
 import { DiagnosticStreamingTranscript, getDiagnosticSpeechSocketUrl } from "../src/modules/module2/services/diagnosticStreamingTranscript.ts";
 import { createDiagnosticStreamingSession } from "../src/modules/module2/services/diagnosticStreamingSession.ts";
@@ -60,7 +61,7 @@ test("WebSocket URL uses the API origin, keeps deployment prefix, and upgrades H
   assert.equal(getDiagnosticSpeechSocketUrl("/backend", "https://readflow.example/diagnostic"), "wss://readflow.example/backend/ws/diagnostic/speech");
 });
 
-function fixture(overrides: { contextFails?: boolean; workletFails?: boolean; authFails?: boolean; startupTimeoutMs?: number; finishTimeoutMs?: number; onTranscript?: () => void } = {}) {
+function fixture(overrides: { contextFails?: boolean; workletFails?: boolean; authFails?: boolean; startupTimeoutMs?: number; finishTimeoutMs?: number; onTranscript?: () => void; diagnostic?: { assessmentId: string; assessmentVersion: string } } = {}) {
   const track = new EventTarget() as EventTarget & { readyState: string; stopCalls: number; stop: () => void };
   track.readyState = "live"; track.stopCalls = 0; track.stop = () => { track.stopCalls++; };
   const stream = { getAudioTracks: () => [track] } as unknown as MediaStream;
@@ -210,4 +211,29 @@ test("streaming completion bypasses synchronous STT; failure retains the existin
   const fallback = await processDiagnosticRecording({ ...input, streamingTranscription: null });
   assert.equal(uploads, 1);
   assert.deepEqual(streaming, fallback, "Identical Google transcripts use identical existing scoring formulas");
+});
+
+test("DT1: a completed stream carries the server's opaque transcript receipt", async () => {
+  const f = fixture();
+  await f.ready();
+  f.receive({ type: "final", segmentId: "1:100", sequence: 1, text: "one day" });
+  const result = f.session.stop();
+  await tick();
+  f.receive({ type: "complete", finalCount: 1, audioBytes: 0, receipt: "signed.receipt" });
+  assert.deepEqual(await result, { text: "one day", receipt: "signed.receipt" });
+  assert.equal(f.failures, 0);
+});
+
+test("DT1: Module 2 names its diagnostic when configuring; M5 voice-follow sends no diagnostic", async () => {
+  const m2 = fixture({ diagnostic: { assessmentId: "grade5-en-passage-v3", assessmentVersion: "3.0" } });
+  await m2.ready();
+  assert.deepEqual(JSON.parse(m2.socket.sent[0] as string).diagnostic, { assessmentId: "grade5-en-passage-v3", assessmentVersion: "3.0" });
+  const m5 = fixture();
+  await m5.ready();
+  assert.equal("diagnostic" in JSON.parse(m5.socket.sent[0] as string), false);
+});
+
+test("DT1: M5 voice-follow passes no diagnostic to the shared streaming hook", async () => {
+  const source = await readFile(new URL("../src/pages/reading-activity/useVoiceFollowStoryScroll.ts", import.meta.url), "utf8");
+  assert.match(source, /useDiagnosticStreamingSpeech\(language\)/);
 });

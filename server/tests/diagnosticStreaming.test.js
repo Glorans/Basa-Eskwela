@@ -4,6 +4,7 @@ const { EventEmitter, once } = require("node:events");
 const { createServer } = require("node:http");
 const { WebSocket } = require("ws");
 const { attachDiagnosticSpeechSocket } = require("../routes/diagnosticSpeechSocket");
+const { testReceipts } = require("./fixtures/diagnosticTrust");
 const { buildStreamingRequest, createDiagnosticSpeechSession, developmentLog } = require("../services/diagnosticSpeechStream");
 
 class FakeGoogleStream extends EventEmitter {
@@ -211,7 +212,11 @@ test("WebSocket endpoint authenticates configuration, accepts PCM, finalizes, an
   const server = createServer();
   const google = new FakeGoogleStream();
   const socketServer = attachDiagnosticSpeechSocket(server, {
-    authenticate: async (token) => { assert.equal(token, "test-session-token"); },
+    receipts: testReceipts(),
+    authorize: async (token) => {
+      assert.equal(token, "test-session-token");
+      return { user: { id: "learner" }, profile: { role: "student" } };
+    },
     createSession: (options) => createDiagnosticSpeechSession({ ...options, createStream: () => google, log: () => {} }),
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -245,7 +250,8 @@ test("WebSocket disconnect during asynchronous authentication does not open Goog
   let finishAuth;
   let created = 0;
   const socketServer = attachDiagnosticSpeechSocket(server, {
-    authenticate: () => new Promise((resolve) => { finishAuth = resolve; }),
+    receipts: testReceipts(),
+    authorize: () => new Promise((resolve) => { finishAuth = resolve; }),
     createSession: () => { created++; throw new Error("Should not run"); },
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -255,7 +261,7 @@ test("WebSocket disconnect during asynchronous authentication does not open Goog
   ws.send(JSON.stringify({ type: "configure", accessToken: "test", language: "en", encoding: "LINEAR16", sampleRate: 16000, channels: 1 }));
   while (!finishAuth) await new Promise((resolve) => setTimeout(resolve, 5));
   const closed = once(ws, "close"); ws.close(); await closed;
-  finishAuth({ id: "test" });
+  finishAuth({ user: { id: "test" }, profile: { role: "student" } });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(created, 0);
 });

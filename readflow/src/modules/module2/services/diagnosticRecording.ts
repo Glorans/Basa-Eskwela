@@ -3,7 +3,11 @@ import type {
   DiagnosticTranscription,
   OralReadingMetrics,
 } from "../types/diagnostic";
-import type { DiagnosticAudioUploadResult } from "./diagnosticAudio.ts";
+import type {
+  DiagnosticAudioUploadResult,
+  DiagnosticRecordingIdentity,
+  DiagnosticSegmentIdentity,
+} from "./diagnosticAudio.ts";
 import {
   DiagnosticAudioUploadError,
   type DiagnosticAudioErrorCode,
@@ -79,6 +83,7 @@ interface ProcessDiagnosticRecordingInput {
   uploadSegment: (
     audioSegment: Blob,
     language: DiagnosticLanguage,
+    segment?: DiagnosticSegmentIdentity,
   ) => Promise<DiagnosticAudioUploadResult>;
   calculateMetrics?: (
     expectedText: string,
@@ -88,6 +93,15 @@ interface ProcessDiagnosticRecordingInput {
   ) => OralReadingMetrics;
   /** Only a successfully drained, complete Google stream may supply this. */
   streamingTranscription?: DiagnosticTranscription | null;
+  /**
+   * Module 2 only. Every transcript must then carry a server receipt; they are
+   * returned in order as transcriptReceipts. Module 5 omits it and is unchanged.
+   */
+  diagnostic?: DiagnosticRecordingIdentity;
+}
+
+function missingReceipt(segmentIndex?: number) {
+  return new DiagnosticRecordingProcessingError({ code: "STT_PROVIDER_ERROR", segmentIndex });
 }
 
 export async function processDiagnosticRecording({
@@ -99,7 +113,9 @@ export async function processDiagnosticRecording({
   uploadSegment,
   calculateMetrics = calculateOralReadingMetrics,
   streamingTranscription,
+  diagnostic,
 }: ProcessDiagnosticRecordingInput) {
+  const requireReceipts = diagnostic !== undefined;
   if (
     audioSegments.length === 0
     || !Number.isFinite(recordingDurationSeconds)
@@ -108,13 +124,15 @@ export async function processDiagnosticRecording({
     throw new DiagnosticRecordingProcessingError();
   }
 
-  if (streamingTranscription?.text.trim()) {
+  // An unsigned stream cannot be scored for Module 2; the uploaded parts are used instead.
+  if (streamingTranscription?.text.trim() && (!requireReceipts || streamingTranscription.receipt)) {
     if (!getReadingWords(streamingTranscription.text, language).length) throw new DiagnosticRecordingProcessingError({ code: "NO_SPEECH" });
     return {
       transcription: streamingTranscription,
       oralReadingMetrics: calculateMetrics(
         expectedText, streamingTranscription.text, recordingDurationSeconds, language,
       ),
+      transcriptReceipts: streamingTranscription.receipt ? [streamingTranscription.receipt] : [],
     };
   }
 
@@ -142,7 +160,9 @@ export async function processDiagnosticRecording({
     }
 
     try {
-      const result = await uploadSegment(audioSegment, language);
+      const result = diagnostic
+        ? await uploadSegment(audioSegment, language, { ...diagnostic, segmentIndex })
+        : await uploadSegment(audioSegment, language);
       const transcription = result.transcription;
 
       if (!result.success || !transcription?.text.trim()) {
@@ -152,8 +172,10 @@ export async function processDiagnosticRecording({
         );
       }
 
+      if (requireReceipts && !transcription.receipt) throw missingReceipt(segmentIndex);
       transcriptions.push(transcription);
     } catch (error) {
+      if (error instanceof DiagnosticRecordingProcessingError) throw error;
       const uploadError = error instanceof DiagnosticAudioUploadError
         ? error
         : new DiagnosticAudioUploadError("STT_PROVIDER_ERROR");
@@ -185,5 +207,6 @@ export async function processDiagnosticRecording({
       recordingDurationSeconds,
       language,
     ),
+    transcriptReceipts: transcriptions.flatMap((item) => item.receipt ? [item.receipt] : []),
   };
 }

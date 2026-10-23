@@ -1,9 +1,9 @@
 import axios from 'axios';
 import api from '../../../services/api';
 import { getSessionAuthHeaders } from '../../../services/authHeaders';
-export interface Metrics { readingAttempts: number; completedQuizzes: number; pronunciationAccuracy: number | null; readingSpeedWpm: number | null; comprehensionScore: number | null }
-export interface Quiz { id: string; title: string; completedAt: string; score: number; firstCorrect: number; totalQuestions: number; hintsUsed: number }
-export interface RiskEvent { id: string; attempt_id: string; student_id: string; classification: string; previous_classification: string; occurred_at: string; read_at: string | null; superseded_at: string | null; evidence: {id: string; score: number; completedAt: string}[] }
+export interface Metrics { invalidCompletedQuizzes?: number; readingAttempts: number; completedQuizzes: number; pronunciationAccuracy: number | null; readingSpeedWpm: number | null; comprehensionScore: number | null }
+export interface Quiz { id: string; title: string; completedAt: string | null; score: number | null; firstCorrect?: number; totalQuestions?: number; hintsUsed?: number; dataQuality?: string }
+export interface RiskEvent { id: string; attempt_id: string; student_id: string; classification: string; previous_classification: string; occurred_at: string; read_at: string | null; superseded_at: string | null; evidence: {id: string; score: number | null; completedAt: string | null}[] }
 export interface Intervention { id: string; notes: string; intervention_date: string; status: string; follow_up_date: string | null; follow_up_notes: string }
 export interface Student extends Metrics { id: string; full_name: string; nickname: string; classification: string; quizzes: Quiz[]; competency: Record<string,{total:number;score:number|null}>; history: RiskEvent[]; interventions: Intervention[] }
 export interface TeacherData { students: Student[]; notifications: RiskEvent[] }
@@ -25,7 +25,7 @@ export interface ClassroomComparison extends Metrics, CompletionSummary {
 }
 export interface SupportStudent {
   id: string; name: string; classification: string;
-  contexts: { teacherId: string; teacherName: string; classrooms: string[]; classification: string; completedQuizzes: number; latestScores: { score: number; completedAt: string }[] }[];
+  contexts: { teacherId: string; teacherName: string; classrooms: string[]; classification: string; completedQuizzes: number; latestScores: { score: number | null; completedAt: string | null }[] }[];
   interventions: { total: number; planned: number; inProgress: number; completed: number };
 }
 export interface AdminSystemData extends SystemData {

@@ -18,7 +18,9 @@ export function passageAnswers(language: DiagnosticLanguage, correct = 6) {
 export function passageReading(language: DiagnosticLanguage, miscues = 0, durationSeconds = 30) {
   const text = passageTranscript(language, miscues);
   return { language, transcription: { text }, oralReadingMetrics: calculateOralReadingMetrics(
-    getDiagnosticPassageText(requireDiagnosticAssessment(language)), text, durationSeconds, language) };
+    getDiagnosticPassageText(requireDiagnosticAssessment(language)), text, durationSeconds, language),
+  // Opaque to the browser; only the backend verifies receipts.
+  transcriptReceipts: [`test-receipt-${language}`] };
 }
 
 export function passageResult(language: DiagnosticLanguage, { miscues = 0, correct = 6, durationSeconds = 30 } = {}) {

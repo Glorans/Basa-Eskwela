@@ -187,7 +187,10 @@ export default function AdminDiagnosticResultsPage() {
                     <td>{formatMetric(result.orvScore, "%")}</td>
                     <td>{formatMetric(result.comprehensionScore, "%")}</td>
                     <td>{formatMetric(result.readingSpeedWpm)}</td>
-                    <td>{result.readingLevel}</td>
+                    <td>
+                      {result.readingLevel}
+                      {result.verificationStatus !== "server_verified" && <> (unverified)</>}
+                    </td>
                     <td>{result.difficultyTier}</td>
                     <td>{formatCompletedAt(result.completedAt)}</td>
                   </tr>
