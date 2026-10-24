@@ -20,14 +20,18 @@ export default function LandingPage() {
 
         <section className="landing-content">
           <h1 className="landing-title">
-            Welcome to Basa Eskwela:
-            <span>Enhancing Reading and Comprehension Skills</span>
+            Basa Eskwela:{" "}
+            <span>
+              A Structured and Interactive Reading and Comprehension Learning
+              Platform
+            </span>
           </h1>
 
           <p className="landing-description">
-            Welcome to Basa Eskwela, where we empower young learners to enhance
-            their English and Filipino reading fluency and comprehension
-            through engaging activities.
+            Basa Eskwela is a structured and interactive learning platform designed
+            to help Grade 5 students improve their English and Filipino reading
+            fluency and comprehension through guided reading activities, oral
+            reading assessments, and comprehension exercises.
           </p>
 
           <div className="landing-actions" aria-label="Authentication options">
