@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  SPEECH_WAV_MAX_SECONDS,
   SPEECH_WAV_SAMPLE_RATE,
   SpeechWavConversionError,
   convertToSpeechWav,
   encodePcm16Wav,
+  splitSpeechSamples,
 } from "../src/modules/module2/services/speechWav.ts";
 import {
   PronunciationUnavailableError,
@@ -73,7 +75,7 @@ test("every saved part is converted and assessed in recorder order", async () =>
   const summary = await assessRecordingPronunciation("attempt-1", {
     loadRecording: async (id) => { calls.push(`load:${id}`); return { available: true, segments: ["u1", "u2"] }; },
     fetchAudio: async (url) => { calls.push(`fetch:${url}`); return new Blob([url], { type: "audio/webm" }); },
-    convert: async (audio) => { calls.push(`convert:${await audio.text()}`); return new Blob(["RIFF"], { type: "audio/wav" }); },
+    convert: async (audio) => { calls.push(`convert:${await audio.text()}`); return [new Blob(["RIFF"], { type: "audio/wav" })]; },
     assessPart: async (id, wav) => { calls.push(`assess:${id}:${wav.type}`); return part([{ text: "x", accuracy: 88, fluency: 77, words: [] }]); },
   });
   assert.deepEqual(calls, ["load:attempt-1", "fetch:u1", "convert:u1", "assess:attempt-1:audio/wav", "fetch:u2", "convert:u2", "assess:attempt-1:audio/wav"]);
@@ -81,12 +83,39 @@ test("every saved part is converted and assessed in recorder order", async () =>
   assert.equal(summary.parts, 2);
 });
 
+test("one continuous saved recording is assessed part by part, in order", async () => {
+  const assessed: string[] = [];
+  const summary = await assessRecordingPronunciation("attempt-1", {
+    loadRecording: async () => ({ available: true, segments: ["full"] }),
+    fetchAudio: async () => new Blob(["full"], { type: "audio/webm" }),
+    convert: async () => ["p1", "p2", "p3", "p4"].map((name) => new Blob([name], { type: "audio/wav" })),
+    assessPart: async (_id, wav) => { assessed.push(await wav.text()); return part([{ text: "x", accuracy: 90, fluency: 80, words: [] }]); },
+  });
+  assert.deepEqual(assessed, ["p1", "p2", "p3", "p4"]);
+  assert.equal(summary.parts, 4);
+});
+
+test("a continuous recording splits into 25 s parts within the 30 s Azure limit", () => {
+  const rate = 10;
+  const sizes = (seconds: number) => splitSpeechSamples(new Float32Array(seconds * rate), rate).map((part) => part.length / rate);
+  assert.deepEqual(sizes(15), [15]);
+  assert.deepEqual(sizes(40), [25, 15]);
+  assert.deepEqual(sizes(90), [25, 25, 25, 15]);
+  // A sub-second tail joins the previous part instead of becoming its own part.
+  assert.deepEqual(sizes(50.5), [25, 25.5]);
+  const samples = Float32Array.from({ length: 60 * rate }, (_, index) => index);
+  assert.deepEqual([...splitSpeechSamples(samples, rate).flatMap((part) => [...part])], [...samples]);
+  for (const seconds of [15, 40, 90, 300]) {
+    assert.ok(sizes(seconds).every((part) => part <= SPEECH_WAV_MAX_SECONDS));
+  }
+});
+
 test("a reading without a saved recording is not sent to Azure", async () => {
   let assessed = false;
   await assert.rejects(assessRecordingPronunciation("attempt-1", {
     loadRecording: async () => ({ available: false, segments: [] }),
     fetchAudio: async () => new Blob(),
-    convert: async (audio) => audio,
+    convert: async (audio) => [audio],
     assessPart: async () => { assessed = true; return part([]); },
   }), PronunciationUnavailableError);
   assert.equal(assessed, false);

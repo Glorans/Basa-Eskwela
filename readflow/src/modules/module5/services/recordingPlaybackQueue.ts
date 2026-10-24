@@ -1,6 +1,7 @@
 /**
- * Saved recordings are split into ~25 s parts by the shared M2 recorder. Playback continues
- * from one part to the next in saved order; every part keeps its own manual controls.
+ * New read-aloud recordings are saved as one continuous file. Older results were saved as
+ * ~25 s parts; for those, playback continues from one part to the next in saved order and
+ * every part keeps its own manual controls.
  */
 export interface PlayableSegment {
   paused: boolean;

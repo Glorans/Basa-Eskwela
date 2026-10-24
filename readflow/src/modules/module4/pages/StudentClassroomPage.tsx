@@ -1,5 +1,5 @@
 import { activityLanguageState, getActivityText } from "../../../pages/reading-activity/activityLanguage";
-import { getAssignedReadingProgress, type AssignedReadingProgress } from "../../module5/services/oralReadingService";
+import { getAssignedReadingProgress, getOralReadingModule, type AssignedReadingProgress } from "../../module5/services/oralReadingService";
 import { assignedReadingTarget } from "../../module5/services/assignedReadingNavigation";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -30,6 +30,8 @@ export default function StudentClassroomPage() {
 
   const [progress, setProgress] = useState<AssignedReadingProgress[]>([]);
   const [progressError, setProgressError] = useState("");
+  const [openingActivity, setOpeningActivity] = useState<string>();
+  const [openingError, setOpeningError] = useState<{ id: string; message: string }>();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -153,13 +155,9 @@ export default function StudentClassroomPage() {
                 )}
               </div>
 
-              {classroom.description ? (
+              {classroom.description?.trim() && (
                 <p className="max-w-2xl text-sm leading-6 text-[#5c7471] md:text-base">
                   {classroom.description}
-                </p>
-              ) : (
-                <p className="text-sm italic text-[#7b9290]">
-                  No classroom description.
                 </p>
               )}
             </div>
@@ -380,16 +378,33 @@ export default function StudentClassroomPage() {
               <div className="mt-auto pt-5">
                 <button
                   type="button"
-                  onClick={() =>
-                    navigate(
-                      assignedReadingTarget({ roomId: classroom.id, materialId: activity.material_id, activityAssignmentId: activity.assignment_id }),
-                      { state: activityLanguageState(activity.language) }
-                    )
-                  }
+                  disabled={Boolean(openingActivity)}
+                  onClick={async () => {
+                    setOpeningActivity(activity.assignment_id);
+                    setOpeningError(undefined);
+                    try {
+                      const available = progressError ? await getAssignedReadingProgress(classroom.id) : progress;
+                      const saved = available.find(item => item.activityAssignmentId === activity.assignment_id
+                        && item.materialId === activity.material_id && item.roomId === classroom.id);
+                      if (!saved) throw new Error("This reading activity is not assigned to you.");
+                      const target = assignedReadingTarget(saved);
+                      // Resolve on the card so navigation never opens an empty recorder.
+                      const oralReadingModule = saved.oralReadingAttemptId || saved.comprehensionAttemptId ? undefined
+                        : await getOralReadingModule(undefined, { materialId: saved.materialId,
+                          roomId: saved.roomId, activityAssignmentId: saved.activityAssignmentId });
+                      navigate(target, { state: { ...activityLanguageState(activity.language),
+                        readingActivity: saved, oralReadingModule } });
+                    } catch (error) {
+                      setOpeningError({ id: activity.assignment_id, message: error instanceof Error ? error.message : "Unable to open activity." });
+                    } finally {
+                      setOpeningActivity(undefined);
+                    }
+                  }}
                   className="w-full rounded-xl bg-[#f7cf4a] px-4 py-3 text-sm font-extrabold text-[#173f3b] transition hover:bg-[#f2c83a]"
                 >
-                  {t("Open Reading Activity →")}
+                  {openingActivity === activity.assignment_id ? <span role="status">{t("Opening your reading activity...")}</span> : t("Open Reading Activity")}
                 </button>
+                {openingError?.id === activity.assignment_id && <p role="alert">{openingError.message}</p>}
               </div>
             </article>
             );

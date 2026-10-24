@@ -22,6 +22,7 @@ const {
   listOwnOralReadingAttempts,
 } = require("../services/oralReadingAttemptService");
 const {
+  MAX_BYTES: MAX_RECORDING_BYTES,
   MAX_SEGMENTS,
   getOralReadingRecording,
   saveOralReadingRecording,
@@ -67,7 +68,9 @@ function createOralReadingRouter(dependencies = {}) {
   const loadRecording = dependencies.getOralReadingRecording ?? getOralReadingRecording;
   const uploadRecording = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 2 * 1024 * 1024, files: MAX_SEGMENTS, fields: 0, parts: MAX_SEGMENTS },
+    // One continuous read-aloud file may be the whole recording, so a single file
+    // may use the full recording budget; the service still caps the total size.
+    limits: { fileSize: MAX_RECORDING_BYTES, files: MAX_SEGMENTS, fields: 0, parts: MAX_SEGMENTS },
   }).array("audio", MAX_SEGMENTS);
   const assessPronunciation = dependencies.assessPronunciation ?? assessPronunciationWav;
   // Shares the per-user speech-to-text budget size (speechAccess.js); a full

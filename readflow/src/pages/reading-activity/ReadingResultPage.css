@@ -252,12 +252,12 @@
 .result-feedback {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
   box-sizing: border-box;
-  width: min(100%, 760px);
+  width: min(100%, 1040px);
   min-width: 0;
   margin: 0 auto;
-  padding: 20px 0 32px;
+  padding: 0;
   color: var(--basa-text);
   font-family: "Nunito", sans-serif;
   font-size: 1.125rem;
@@ -292,8 +292,8 @@
 .result-feedback-hero {
   display: grid;
   justify-items: center;
-  gap: 8px;
-  padding: clamp(22px, 5vw, 34px);
+  gap: 4px;
+  padding: 16px 24px;
   border-radius: var(--basa-radius-lg);
   background: var(--basa-sidebar);
   text-align: center;
@@ -528,5 +528,148 @@
 
   .result-feedback-button:hover {
     transform: none;
+  }
+}
+
+/* M5 result cards: each opens its function in a floating panel (M5Modal). */
+.result-panel-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.result-panel-card {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 170px;
+  padding: 14px 16px;
+  border: 2px solid color-mix(in srgb, var(--basa-navy) 22%, transparent);
+  border-radius: var(--basa-radius-md);
+  background: var(--basa-card);
+  color: var(--basa-navy);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--basa-navy) 18%, transparent);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.result-panel-card:hover {
+  border-color: var(--basa-navy);
+  transform: translateY(-2px);
+}
+
+.result-panel-card:focus-visible {
+  outline: 3px solid var(--basa-navy);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--basa-yellow);
+}
+
+.result-panel-card-title {
+  font-family: "Fredoka", sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.result-panel-card-text {
+  color: var(--basa-text);
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.result-panel-card-value {
+  margin-top: auto;
+  font-family: "Fredoka", sans-serif;
+  font-size: 1.6rem;
+}
+
+.result-feedback-status {
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-panel-card {
+    transition: none;
+  }
+
+  .result-panel-card:hover {
+    transform: none;
+  }
+}
+
+/* Compact overview; long content and small screens retain natural scrolling. */
+.reading-result-page > .activity-page {
+  margin-top: 12px;
+  padding: 16px 20px;
+}
+
+.result-feedback-hero-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.result-feedback-stars svg {
+  width: 28px;
+  height: 28px;
+}
+
+.result-panel-card--result {
+  background: #ffe29a;
+}
+
+.result-panel-card--feedback {
+  background: #ffb5a5;
+}
+
+.result-panel-card--saved {
+  background: #b9df9e;
+}
+
+.result-panel-card:active {
+  box-shadow: none;
+}
+
+.result-feedback-actions .result-feedback-button {
+  padding: 10px 14px;
+  color: #FFFFFF;
+  -webkit-text-fill-color: #FFFFFF;
+  opacity: 1;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  font-style: normal;
+  line-height: 1.35;
+  text-decoration: none;
+  text-shadow: none;
+}
+
+.result-feedback-actions svg {
+  flex-shrink: 0;
+}
+
+.result-feedback-status {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 700px) {
+  .result-panel-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .result-panel-card {
+    min-height: 0;
+  }
+
+  .reading-result-page > .activity-page {
+    padding: 14px;
+  }
+
+  .result-feedback-hero {
+    padding: 16px;
   }
 }

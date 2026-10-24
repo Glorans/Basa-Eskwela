@@ -20,8 +20,10 @@ const students = [
   { enrollment_id: "enr-2", student_id: "stu-2", display_name: "Ben Cruz", full_name: "Ben Cruz", enrolled_at: "2026-10-03" },
 ];
 const modules = [
-  { id: "mod-1", title: "Fables", difficulty: "Easy", status: "published" },
-  { id: "mod-2", title: "Myths", difficulty: null, status: "published" },
+  { id: "mod-1", title: "Fables", difficulty: "Easy", status: "published", language: "en" },
+  { id: "mod-2", title: "Myths", difficulty: null, status: "published", language: "en" },
+  { id: "mod-3", title: "Alamat", difficulty: "Easy", status: "published", language: "fil" },
+  { id: "mod-4", title: "No path language", difficulty: null, status: "published", language: null },
 ];
 
 type Options = {
@@ -236,7 +238,8 @@ test("declining the confirmation removes nobody and allows asking again", async 
 test("assigning a module saves it for the signed-in teacher, reloads the list and closes the form", async () => {
   const page = await mount();
   assert.match(page.text(), /No reading modules assigned yet/);
-  page.click("+ Assign Module");
+  page.click("Assign Module");
+  page.change("moduleLanguage", "en");
   page.change("readingModule", "mod-1");
   await page.submit("readingModule");
   assert.deepEqual(page.calls, [["getUser"], ["assignModuleToRoom", "room", "mod-1", "teacher-1"], ["getAssignedModules", "room"]]);
@@ -246,7 +249,7 @@ test("assigning a module saves it for the signed-in teacher, reloads the list an
   assert.match(page.text(), new RegExp(overview(2, 1)));
   assert.equal(page.alert(), "");
   // The assigned module is no longer offered.
-  page.click("+ Assign Module");
+  page.click("Assign Module");
   const options = findAll(page.byId("readingModule"), (node) => node.type === "option").map((node) => node.props.value);
   assert.deepEqual(options, ["", "mod-2"]);
 });
@@ -257,7 +260,8 @@ for (const [label, options] of [
 ] as const) {
   test(`when ${label}, the module form shows an inline error and keeps the selection`, async () => {
     const page = await mount(options);
-    page.click("+ Assign Module");
+    page.click("Assign Module");
+    page.change("moduleLanguage", "en");
     page.change("readingModule", "mod-1");
     await page.submit("readingModule");
     assert.equal(page.alert(), "Unable to assign reading module.");
@@ -271,8 +275,36 @@ for (const [label, options] of [
 
 test("submitting without a module asks for one and saves nothing", async () => {
   const page = await mount();
-  page.click("+ Assign Module");
+  page.click("Assign Module");
   await page.submit("readingModule");
   assert.equal(page.alert(), "Please select a reading module.");
+  assert.deepEqual(page.calls, []);
+});
+
+const moduleOptions = (page: Awaited<ReturnType<typeof mount>>) =>
+  findAll(page.byId("readingModule"), (node) => node.type === "option").map((node) => node.props.value);
+
+test("the classroom language decides which modules can be chosen", async () => {
+  const page = await mount();
+  page.click("Assign Module");
+  assert.deepEqual(moduleOptions(page), [""]);
+  assert.equal(page.byId("readingModule").props.disabled, true);
+  assert.match(page.text(), /Select the classroom language to see matching modules/);
+  page.change("moduleLanguage", "en");
+  assert.deepEqual(moduleOptions(page), ["", "mod-1", "mod-2"]);
+  page.change("readingModule", "mod-1");
+  // Switching language drops the English choice and lists only Filipino modules.
+  page.change("moduleLanguage", "fil");
+  assert.deepEqual(moduleOptions(page), ["", "mod-3"]);
+  assert.equal(page.byId("readingModule").props.value, "");
+});
+
+test("a module outside the classroom language is not saved", async () => {
+  const page = await mount();
+  page.click("Assign Module");
+  page.change("moduleLanguage", "en");
+  page.change("readingModule", "mod-3");
+  await page.submit("readingModule");
+  assert.equal(page.alert(), "Please select a reading module in the classroom language.");
   assert.deepEqual(page.calls, []);
 });

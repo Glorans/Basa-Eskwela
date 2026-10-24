@@ -23,7 +23,7 @@ export default function OralReadingSummary({ attemptId, language }: { attemptId:
     <h2>{t("Oral Reading")}</h2>
     {error ? <p role="alert">{ui.message(error, "Unable to load oral reading.")} <button onClick={() => setRetry(value => value + 1)}>{t("Retry")}</button></p>
       : !attempt ? <p role="status">{t("Loading oral reading...")}</p> : <>
-        <p>{t("Pronunciation accuracy (transcript-based): ")}<strong>{Math.round(attempt.pronunciationAccuracy)}%</strong>.{" "}
+        <p>{t("Reading accuracy (transcript-based): ")}<strong>{Math.round(attempt.pronunciationAccuracy)}%</strong>.{" "}
           <Link state={{ readingActivityLanguage: ui.language }} to={`/dashboard/read-aloud/results/${attempt.id}`}>{t("See my reading feedback")}</Link></p>
       </>}
   </section>;

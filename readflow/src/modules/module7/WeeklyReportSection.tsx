@@ -281,7 +281,7 @@ function downloadWeeklyReportPdf(
   );
 
   addField(
-    "Average Pronunciation Accuracy",
+    "Average Reading Accuracy",
     formatPercentage(
       report.reading.averagePronunciationAccuracy
     )
@@ -405,7 +405,7 @@ function downloadWeeklyReportPdf(
       );
 
       addField(
-        "Pronunciation",
+        "Reading Accuracy",
         formatPercentage(
           attempt.pronunciationAccuracy
         )
@@ -1042,7 +1042,7 @@ export default function WeeklyReportSection() {
               />
 
               <ReportMetric
-                label="Average Pronunciation Accuracy"
+                label="Average Reading Accuracy"
                 value={formatPercentage(
                   report.reading.averagePronunciationAccuracy
                 )}
@@ -1220,7 +1220,7 @@ export default function WeeklyReportSection() {
                         Completed
                       </th>
                       <th style={tableCellStyle}>
-                        Pronunciation
+                        Reading Accuracy
                       </th>
                       <th style={tableCellStyle}>
                         Reading Speed

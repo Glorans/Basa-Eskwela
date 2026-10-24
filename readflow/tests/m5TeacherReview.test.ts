@@ -132,7 +132,13 @@ test("Teacher detail is read-only and displays transcript, saved accuracy, and p
     "utf8",
   );
   assert.match(detail, /Read-Aloud Transcript/);
-  assert.match(detail, /Pronunciation Accuracy/);
+  // The saved score is transcript-based reading accuracy, never labelled as pronunciation.
+  assert.match(detail, /Reading Accuracy \(Transcript-based\)/);
+  assert.doesNotMatch(detail, /Pronunciation Accuracy/);
+  assert.match(detail, /Oral Reading Result and Transcript/);
+  assert.match(detail, /Reading and Pronunciation Feedback/);
+  assert.match(detail, /<RecordingPlayback attemptId=\{attempt\.id\} teacher language=\{attempt\.language \?\? "en"\} \/>/);
+  assert.match(detail, /Pronunciation scoring is not available for Filipino readings/);
   assert.match(detail, /Words to Practice/);
   assert.match(detail, /getWordsToPractice\(attempt\.wordMetrics\)/);
   assert.match(detail, /Back to Reading Results/);

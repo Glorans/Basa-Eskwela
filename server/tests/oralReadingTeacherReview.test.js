@@ -192,6 +192,15 @@ test("Teacher opens an authorized Student attempt with immutable review fields",
   assert.equal(result.pronunciationAccuracy, 80);
   assert.equal(result.wordMetrics[0].expected, "seeds");
   assert.equal(result.passageSnapshot, "Seeds need sun and water.");
+  // Attempts saved before the language snapshot existed report no language.
+  assert.equal(result.language, null);
+});
+
+test("Teacher detail reports the saved reading language", async () => {
+  const database = createDatabase();
+  database.tables.oral_reading_attempts.find((row) => row.id === ATTEMPT_A).language_snapshot = "fil";
+  const result = await getTeacherOralReadingAttempt(requester(TEACHER_A), ATTEMPT_A, dependencies(database));
+  assert.equal(result.language, "fil");
 });
 
 test("Teacher cannot open another Teacher's Student or Independent Learner attempt", async () => {

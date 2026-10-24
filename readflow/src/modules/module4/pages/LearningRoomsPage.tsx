@@ -308,7 +308,7 @@ export default function LearningRoomsPage() {
                 </p>
               ) : (
                 <p className="mt-2 text-sm italic text-[#7b9290]">
-                  No classroom description.
+                  None
                 </p>
               )}
 

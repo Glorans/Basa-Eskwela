@@ -72,7 +72,8 @@ export function summarizePronunciation(parts: readonly PronunciationPartResult[]
 export interface AssessRecordingDependencies {
   loadRecording: (attemptId: string) => Promise<{ available: boolean; segments: string[] }>;
   fetchAudio: (url: string) => Promise<Blob>;
-  convert: (audio: Blob) => Promise<Blob>;
+  /** Returns the saved file as WAV parts short enough for one assessment each. */
+  convert: (audio: Blob) => Promise<Blob[]>;
   assessPart: (attemptId: string, wav: Blob) => Promise<PronunciationPartResult>;
 }
 
@@ -83,7 +84,7 @@ export class PronunciationUnavailableError extends Error {
   }
 }
 
-/** Assesses every saved part of an English reading, in recorder order. */
+/** Assesses every part of an English reading's saved recording, in recorder order. */
 export async function assessRecordingPronunciation(
   attemptId: string,
   { loadRecording, fetchAudio, convert, assessPart }: AssessRecordingDependencies,
@@ -92,8 +93,9 @@ export async function assessRecordingPronunciation(
   if (!recording.available || recording.segments.length === 0) throw new PronunciationUnavailableError();
   const parts: PronunciationPartResult[] = [];
   for (const url of recording.segments) {
-    const wav = await convert(await fetchAudio(url));
-    parts.push(await assessPart(attemptId, wav));
+    for (const wav of await convert(await fetchAudio(url))) {
+      parts.push(await assessPart(attemptId, wav));
+    }
   }
   return summarizePronunciation(parts);
 }

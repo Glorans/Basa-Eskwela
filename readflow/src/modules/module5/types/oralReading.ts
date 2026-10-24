@@ -131,6 +131,8 @@ export interface TeacherOralReadingAttemptDetail
   extends Omit<TeacherOralReadingAttemptSummary, "comprehension"> {
   comprehension: TeacherComprehensionDetail;
   difficulty: string;
+  /** Saved reading language; null for older attempts without one. */
+  language: DiagnosticLanguage | null;
   expectedWordCount: number;
   passageSnapshot: string;
   transcript: string;

@@ -294,7 +294,7 @@ export default function JoinClassroomPage() {
                 </p>
               ) : (
                 <p className="mt-2 text-sm italic text-[#7b9290]">
-                  No classroom description.
+                  None
                 </p>
               )}
 

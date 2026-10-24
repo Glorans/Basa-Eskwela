@@ -54,7 +54,7 @@ async function fixture(listFailsAfterSave = false, questionSets: any[] = [], exp
     getClassroomById: async () => ({ id: 'room', room_name: 'Readers', room_code: 'ABC' }),
     getRoomEnrollments: async () => [{ enrollment_id: 'enrollment', student_id: 'student', full_name: 'Reader', display_name: 'Reader' }],
     getPublishedModules: async () => [], getAssignedModules: async () => [],
-    getUploadedReadingMaterials: async () => [{ id: 'material', title: 'Story' }],
+    getUploadedReadingMaterials: async () => [{ id: 'material', title: 'Story', language: 'en' }],
     assignReadingActivity: (...args: unknown[]) => {
       calls++;
       assert.equal(JSON.stringify(args), JSON.stringify(['room', 'material', ['student'], null, expectedSetId]));
@@ -91,6 +91,9 @@ async function fixture(listFailsAfterSave = false, questionSets: any[] = [], exp
   render(); await new Promise(resolve => setImmediate(resolve));
   let tree = render();
   find(tree, node => node.props?.onClick?.name === 'handleToggleActivityForm').props.onClick();
+  tree = render();
+  // RoomLanguageSelect is not expanded here; its onChange takes the language code.
+  find(tree, node => node.props?.id === 'activityLanguage').props.onChange('en');
   tree = render();
   find(tree, node => node.props?.id === 'readingMaterial').props.onChange({ target: { value: 'material' } });
   find(tree, node => node.props?.type === 'checkbox').props.onChange();

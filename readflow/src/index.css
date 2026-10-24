@@ -10,6 +10,46 @@ body,
   height: 100%;
 }
 
+/* System-wide yellow scrollbars for every page, sidebar, modal and scroll area.
+   Components that hide their scrollbar on purpose keep their own rules. */
+*::-webkit-scrollbar {
+  width: var(--basa-scrollbar-size);
+  height: var(--basa-scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  margin-block: 6px;
+  border-radius: 999px;
+  background: var(--basa-scrollbar-track);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-color: var(--basa-scrollbar-thumb);
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px var(--basa-scrollbar-edge);
+}
+
+*::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--basa-scrollbar-thumb-hover);
+}
+
+/* Firefox has no ::-webkit-scrollbar. Chrome and Edge ignore the rules above
+   once these standard properties are set, so they are limited to Firefox. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--basa-scrollbar-thumb) transparent;
+  }
+}
+
 body {
   font-family:
     "Inter",

@@ -118,11 +118,11 @@ test("repeated Save clicks create one material, and success appears only after t
   tree = f.view();
   const text = textOf(tree);
   assert.match(text, /Material Saved Successfully/);
-  assert.match(text, /"The Lost Kite" is saved and now appears in My Materials\./);
+  assert.match(text, /"The Lost Kite" is saved and now appears in Reading Materials\./);
   assert.deepEqual(f.calls.saved, ["material-7"], "the material list is refreshed once, after saving");
   assert.equal(f.calls.unsaved.at(-1), false);
   assert.equal(f.listeners.has("beforeunload"), false, "no leave warning once saved");
-  byText(tree, "Go to My Materials").props.onClick();
+  byText(tree, "Go to Reading Materials").props.onClick();
   assert.equal(f.calls.viewed, 1);
   save();
   await tick();

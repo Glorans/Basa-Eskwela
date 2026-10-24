@@ -1,17 +1,19 @@
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "./activityLanguage";
 import { comprehensionTargetForReading } from "../../modules/module5/services/comprehensionNavigation";
-import { Headphones, Mic, Sparkles, Star, Volume2 } from "lucide-react";
+import { BookOpen, Headphones, History, Mic, Sparkles, Star, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import "@fontsource/fredoka/latin-600.css";
 import "@fontsource/nunito/latin-600.css";
 import "@fontsource/nunito/latin-700.css";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { synthesizeDiagnosticSpeech } from "../../modules/module2/services/diagnosticTts";
 import { getWordsToPractice } from "../../modules/module5/services/oralReadingProcessing";
-import { getOralReadingAttempt } from "../../modules/module5/services/oralReadingService";
+import { getOralReadingAttempt, peekOralReadingAttempt } from "../../modules/module5/services/oralReadingService";
 import RecordingPlayback from "../../modules/module5/components/RecordingPlayback";
 import PronunciationFeedback from "../../modules/module5/components/PronunciationFeedback";
+import M5Modal from "../../modules/module5/components/M5Modal";
+import ReadingHistoryPage from "../../modules/module5/pages/ReadingHistoryPage";
 import type {
   LearnerM5Role,
   OralReadingAttempt,
@@ -20,9 +22,18 @@ import type {
 import ActivityHeader from "./ActivityHeader";
 import "./ActivityPage.css";
 import "./ReadingResultPage.css";
+import "../../modules/module5/components/M5Loading.css";
 
 interface ReadingResultPageProps {
   role: LearnerM5Role;
+}
+
+/** F2 result and transcript, F3 feedback and practice, F4 saved assessments. */
+type ResultPanel = "result" | "feedback" | "saved";
+
+function panelFromParams(params: URLSearchParams): ResultPanel | null {
+  const view = params.get("view");
+  return view === "result" || view === "feedback" ? view : null;
 }
 
 // Student-facing wording only: always encouraging, never a level or a grade.
@@ -67,13 +78,30 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile } = useAuthenticatedProfile();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [panel, setPanel] = useState<ResultPanel | null>(() => panelFromParams(searchParams));
+  const [historyOpened, setHistoryOpened] = useState(false);
+  const [feedbackOpened, setFeedbackOpened] = useState(panelFromParams(searchParams) === "feedback");
+  // The open result or feedback panel is kept in the address, so a refresh or a
+  // Reading History link reopens it. Saved assessments are not.
+  const openPanel = (next: ResultPanel) => {
+    if (next === "saved") setHistoryOpened(true);
+    if (next === "feedback") setFeedbackOpened(true);
+    setPanel(next);
+    setSearchParams(next === "saved" ? {} : { view: next }, { replace: true });
+  };
+  const closePanel = () => {
+    setPanel(null);
+    setSearchParams({}, { replace: true });
+  };
 
-  const [loadedAttempt, setAttempt] = useState<OralReadingAttempt>();
-  const attempt = loadedAttempt?.id === attemptId ? loadedAttempt : undefined;
+  const cachedAttempt = peekOralReadingAttempt(attemptId, profile?.id);
+  const [loadedAttempt, setAttempt] = useState<OralReadingAttempt | undefined>(cachedAttempt);
+  const attempt = loadedAttempt?.id === attemptId && loadedAttempt?.userId === profile?.id ? loadedAttempt : cachedAttempt;
   const ui = getActivityText(attempt ? attempt.language : activityLanguageFromState(location.state));
   const { language, t } = ui;
   const activityState = activityLanguageState(language);
-  const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
   const [error, setError] = useState<string>();
   const [speakingWord, setSpeakingWord] = useState<string>();
   const [speechError, setSpeechError] = useState<string>();
@@ -87,13 +115,6 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
       : role === "student"
       ? "/dashboard/materials"
       : "/m3/general/modules";
-
-  const historyTarget =
-    role === "admin"
-      ? "/admin/reading-history"
-      : role === "student"
-      ? "/dashboard/reading-history"
-      : "/m3/general/reading-history";
 
   // Admin practice has no module-detail page; return to the passage list.
   const backTarget = role === "admin"
@@ -118,12 +139,11 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   useEffect(() => {
     let active = true;
 
-    setLoading(true);
     setError(undefined);
-    setAttempt(undefined);
+    setPanel(panelFromParams(searchParams));
+    if (panelFromParams(searchParams) === "feedback") setFeedbackOpened(true);
 
     if (!attemptId) {
-      setLoading(false);
       setError("Oral-reading result not found.");
 
       return () => {
@@ -131,7 +151,12 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
       };
     }
 
-    void getOralReadingAttempt(attemptId)
+    const cached = peekOralReadingAttempt(attemptId, profile?.id);
+    if (cached && revision === 0) {
+      setAttempt(cached);
+      return () => { active = false; };
+    }
+    void getOralReadingAttempt(attemptId, revision > 0)
       .then((loadedAttempt) => {
         if (active) setAttempt(loadedAttempt);
       })
@@ -143,15 +168,12 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
               : "Unable to load the result.",
           );
         }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [attemptId]);
+  }, [attemptId, profile?.id, revision]);
 
   useEffect(() => {
     return () => {
@@ -209,24 +231,32 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
     }
   };
 
-  if (loading || !attempt) {
+  if (!attempt) {
     return (
-      <div className="activity-page-shell" lang={language}>
+      <div className="activity-page-shell reading-result-page" lang={language}>
         <ActivityHeader uiLanguage={language}
           title={t("Oral Reading Result")}
           language=""
           onBack={() => navigate(backTarget)}
+          showAccount={false}
         />
 
         <div className="activity-page">
           <div
-            className="activity-missing"
+            className="result-feedback"
             role={error ? "alert" : "status"}
           >
-            <Mic size={36} />
+            <header className="result-feedback-hero m5-pending-content" aria-busy={!error}>
+              <h2>{t("Oral Reading Result")}</h2>
+              {!error && <span className="m5-loading-indicator" aria-hidden="true" />}
 
             <p>{error ? ui.message(error, "Unable to load the result.") : t("Loading your oral-reading result...")}</p>
 
+            </header>
+            {!error && <div className="result-panel-cards" aria-hidden="true">
+              {[1, 2, 3].map(index => <div className="m5-loading-placeholder" key={index} />)}
+            </div>}
+            {error && <button className="result-feedback-button" type="button" onClick={() => setRevision(value => value + 1)}>{t("Retry")}</button>}
             {error && (
               <button
                 type="button"
@@ -242,7 +272,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   }
 
   const wordsToPractice = getWordsToPractice(attempt.wordMetrics);
-  const notHeardWords = new Set(
+  const skippedWords = new Set(
     attempt.wordMetrics
       .filter((word) => word.type === "omission")
       .map((word) => word.expected),
@@ -267,20 +297,17 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
       : null;
 
   return (
-    <div className="activity-page-shell" lang={language}>
+    <div className="activity-page-shell reading-result-page" lang={language}>
       <ActivityHeader uiLanguage={language}
         title={attempt.moduleTitle}
         language={language === "fil" ? "Filipino" : "English"}
         onBack={() => navigate(backTarget)}
+        showAccount={false}
       />
 
       <div className="activity-page">
         <div className="result-feedback">
-          <Link
-            className="result-history-link"
-            to={historyTarget}
-          >{t("Reading History")}</Link>
-
+          {/* The reading summary stays on the page; each function opens in its own floating panel. */}
           <header className="result-feedback-hero" aria-labelledby="reading-feedback-title">
             <Sparkles className="result-feedback-hero-icon" size={40} aria-hidden="true" />
             <h2 id="reading-feedback-title">{t("Great reading, ")}{readerName}!</h2>
@@ -298,92 +325,164 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             <p className="result-feedback-message">{t(encouragement(accuracy))}</p>
           </header>
 
-          <section className="result-feedback-card result-feedback-score" aria-labelledby="accuracy-title">
-            <h3 id="accuracy-title">{t("Reading Accuracy")}</h3>
-            <p className="result-feedback-score-value">{accuracy}%</p>
-            <progress
-              className="result-feedback-progress"
-              value={accuracy}
-              max={100}
-              aria-labelledby="accuracy-title"
-            >
-              {accuracy}%
-            </progress>
-            <p className="result-feedback-note">{t("This score is transcript-based: it compares the words we heard with the story. Speech recognition can make mistakes.")}</p>
-          </section>
+          {attempt.readAloudOnly === true && <p className="result-feedback-message result-feedback-status" role="status">{attempt.readAloudCompleted
+            ? t("Read-aloud activity completed. Your oral-reading result has been saved.")
+            : t("Your oral-reading result has been saved. Reopen the activity from your Learning Room to finish updating its status.")}</p>}
 
-          <section className="result-feedback-card result-feedback-card--cream" aria-labelledby="words-to-practice-title">
-            <h3 id="words-to-practice-title">{t("Words to Practice")}</h3>
-            {wordsToPractice.length > 0 ? (
-              <ul className="result-feedback-words">
-                {wordsToPractice.map((word) => (
-                  <li key={word} className="result-feedback-word">
-                    <span>{word}</span>
-                    {notHeardWords.has(word) && <small>{t("not heard")}</small>}
-                    <button
-                      type="button"
-                      className="result-feedback-listen"
-                      disabled={Boolean(speakingWord)}
-                      aria-label={speakingWord === word ? t("Playing {word}", { word }) : t("Listen to {word}", { word })}
-                      onClick={() => void playWord(word)}
-                    >
-                      <Volume2 size={20} aria-hidden="true" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+          <nav className="result-panel-cards" aria-label={t("Reading result sections")}>
+            <button type="button" className="result-panel-card result-panel-card--result" aria-haspopup="dialog" onClick={() => openPanel("result")}>
+              <Star size={28} aria-hidden="true" />
+              <span className="result-panel-card-title">{t("Result & Transcript")}</span>
+              <span className="result-panel-card-text">{t("See your reading accuracy, the story, and what we heard.")}</span>
+              <strong className="result-panel-card-value">{accuracy}%</strong>
+            </button>
+            <button type="button" className="result-panel-card result-panel-card--feedback" aria-haspopup="dialog" onClick={() => openPanel("feedback")}>
+              <Volume2 size={28} aria-hidden="true" />
+              <span className="result-panel-card-title">{t("Feedback & Practice")}</span>
+              <span className="result-panel-card-text">{t("Practice words, check pronunciation, and listen to your recording.")}</span>
+            </button>
+            <button type="button" className="result-panel-card result-panel-card--saved" aria-haspopup="dialog" onClick={() => openPanel("saved")}>
+              <History size={28} aria-hidden="true" />
+              <span className="result-panel-card-title">{t("Saved Oral Reading Assessments")}</span>
+              <span className="result-panel-card-text">{t("Open your earlier readings without reading again.")}</span>
+            </button>
+          </nav>
+
+          <M5Modal
+            id="m5-panel-result"
+            title={t("Oral Reading Results and Transcript")}
+            closeLabel={t("Close")}
+            open={panel === "result"}
+            onClose={closePanel}
+          >
+            <section className="result-feedback-card result-feedback-score" aria-labelledby="accuracy-title">
+              <h3 id="accuracy-title">{t("Reading Accuracy")}</h3>
+              <p className="result-feedback-score-value">{accuracy}%</p>
+              <progress
+                className="result-feedback-progress"
+                value={accuracy}
+                max={100}
+                aria-labelledby="accuracy-title"
+              >
+                {accuracy}%
+              </progress>
+              <p className="result-feedback-note">{t("This score is transcript-based: it compares the words we heard with the story. Speech recognition can make mistakes.")}</p>
+            </section>
+
+            <section className="result-feedback-card" aria-labelledby="oral-result-title">
+              <h3 id="oral-result-title">{t("Your Reading Result")}</h3>
+              <dl className="result-feedback-summary">
+                <div>
+                  <dt>{t("Reading speed")}</dt>
+                  <dd>{Math.round(attempt.readingSpeedWpm)} {t("words per minute")}</dd>
+                </div>
+                <div>
+                  <dt>{t("Words read correctly")}</dt>
+                  <dd>{correctWordCount}{t(" of ")}{attempt.expectedWordCount}</dd>
+                </div>
+              </dl>
+            </section>
+
+            {attempt.passageSnapshot?.trim() && (
+              <section className="result-feedback-card" aria-labelledby="passage-title">
+                <h3 id="passage-title"><BookOpen size={22} aria-hidden="true" />{t("The story")}</h3>
+                <p className="result-feedback-transcript">{attempt.passageSnapshot}</p>
+              </section>
+            )}
+
+            <section className="result-feedback-card result-feedback-card--cream" aria-labelledby="transcript-title">
+              <h3 id="transcript-title">
+                <Headphones size={22} aria-hidden="true" />{t("What we heard")}</h3>
+              {attempt.transcript?.trim() ? (
+                <p className="result-feedback-transcript">
+                  {transcriptParts.map((part, index) => part.differs
+                    ? <mark key={index} className="result-feedback-different">{part.text}</mark>
+                    : part.text)}
+                </p>
+              ) : (
+                <p className="result-feedback-note">{t("No transcript was saved for this reading.")}</p>
+              )}
+              {transcriptParts.some((part) => part.differs) && (
+                <p className="result-feedback-note">{t("Highlighted words sounded different from the story.")}</p>
+              )}
+            </section>
+
+            <button className="result-feedback-button result-feedback-button--primary" type="button" onClick={() => openPanel("feedback")}>
+              <Volume2 size={20} aria-hidden="true" />{t("See what to practice")}
+            </button>
+          </M5Modal>
+
+          <M5Modal
+            id="m5-panel-feedback"
+            title={t("Reading and Pronunciation Feedback")}
+            closeLabel={t("Close")}
+            open={panel === "feedback"}
+            onClose={closePanel}
+          >
+
+            <section className="result-feedback-card result-feedback-card--cream" aria-labelledby="words-to-practice-title">
+              <h3 id="words-to-practice-title">{t("Words to Practice")}</h3>
+              {wordsToPractice.length > 0 ? (
+                <>
+                  <p className="result-feedback-message">{t("Listen to the word, say it slowly, and try reading it again.")}</p>
+                  <ul className="result-feedback-words">
+                    {wordsToPractice.map((word) => (
+                      <li key={word} className="result-feedback-word">
+                        <span>{word}</span>
+                        <small>{skippedWords.has(word) ? t("skipped") : t("read differently")}</small>
+                        <button
+                          type="button"
+                          className="result-feedback-listen"
+                          disabled={Boolean(speakingWord)}
+                          aria-label={speakingWord === word ? t("Playing {word}", { word }) : t("Listen to {word}", { word })}
+                          onClick={() => void playWord(word)}
+                        >
+                          <Volume2 size={20} aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="result-feedback-note">
+                    {t("\"Skipped\" means we did not hear the word. \"Read differently\" means we heard another word; it is not always a pronunciation mistake.")}
+                  </p>
+                </>
+              ) : (
+                <p className="result-feedback-message">{t("No words to practice. Amazing!")}</p>
+              )}
+              {speechError && (
+                <p className="result-feedback-note" role="alert">
+                  {ui.message(speechError, "Pronunciation audio is unavailable right now. Please try again.")}
+                </p>
+              )}
+            </section>
+
+            {language === "en" ? (feedbackOpened &&
+              <PronunciationFeedback key={attempt.id} attemptId={attempt.id} language={language} />
             ) : (
-              <p className="result-feedback-message">{t("No words to practice. Amazing!")}</p>
+              <section className="result-feedback-card" aria-labelledby="pronunciation-unsupported-title">
+                <h3 id="pronunciation-unsupported-title"><Mic size={22} aria-hidden="true" />{t("Pronunciation Check")}</h3>
+                <p className="result-feedback-note">{t("Pronunciation scoring is available for English readings only. Use the words above and your recording to practice.")}</p>
+              </section>
             )}
-            {notHeardWords.size > 0 && (
-              <p className="result-feedback-note">
-                {t('A word marked "not heard" may have been skipped, or speech recognition may have missed it.')}
-              </p>
-            )}
-            {speechError && (
-              <p className="result-feedback-note" role="alert">
-                {ui.message(speechError, "Pronunciation audio is unavailable right now. Please try again.")}
-              </p>
-            )}
-          </section>
 
-          <RecordingPlayback attemptId={attempt.id} language={language} />
+            {feedbackOpened && <RecordingPlayback key={attempt.id} attemptId={attempt.id} language={language} />}
 
-          <PronunciationFeedback attemptId={attempt.id} language={language} />
+            <button className="result-feedback-button" type="button" onClick={() => openPanel("result")}>
+              <Star size={20} aria-hidden="true" />{t("Back to my result")}
+            </button>
+          </M5Modal>
 
-          <section className="result-feedback-card result-feedback-card--cream" aria-labelledby="transcript-title">
-            <h3 id="transcript-title">
-              <Headphones size={22} aria-hidden="true" />{t("What we heard")}</h3>
-            <p className="result-feedback-transcript">
-              {transcriptParts.map((part, index) => part.differs
-                ? <mark key={index} className="result-feedback-different">{part.text}</mark>
-                : part.text)}
-            </p>
-            {transcriptParts.some((part) => part.differs) && (
-              <p className="result-feedback-note">{t("Highlighted words sounded different from the story.")}</p>
-            )}
-          </section>
-
-          <section className="result-feedback-card" aria-labelledby="oral-result-title">
-            <h3 id="oral-result-title">{t("Your Reading Result")}</h3>
-            <dl className="result-feedback-summary">
-              <div>
-                <dt>{t("Accuracy")}</dt>
-                <dd>{accuracy}%</dd>
-              </div>
-              <div>
-                <dt>{t("Reading speed")}</dt>
-                <dd>{Math.round(attempt.readingSpeedWpm)} {t("words per minute")}</dd>
-              </div>
-              <div>
-                <dt>{t("Words read correctly")}</dt>
-                <dd>{correctWordCount}{t(" of ")}{attempt.expectedWordCount}</dd>
-              </div>
-            </dl>
-            {attempt.readAloudOnly === true && <p className="result-feedback-message" role="status">{attempt.readAloudCompleted
-              ? t("Read-aloud activity completed. Your oral-reading result has been saved.")
-              : t("Your oral-reading result has been saved. Reopen the activity from your Learning Room to finish updating its status.")}</p>}
-          </section>
+          <M5Modal
+            id="m5-panel-saved"
+            title={t("Saved Oral Reading Assessments")}
+            closeLabel={t("Close")}
+            open={panel === "saved"}
+            onClose={closePanel}
+          >
+            {/* Fetch on first opening, then retain records and pending requests while hidden.
+                A different user, role or result gets a fresh, isolated history instance. */}
+            {historyOpened && <ReadingHistoryPage role={role} embedded key={`${profile?.id}:${role}:${attempt.id}`} />}
+          </M5Modal>
 
           <div className="result-feedback-actions">
             {comprehensionTarget && (
@@ -394,11 +493,11 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
               >{t("Continue to Questions")}</Link>
             )}
             {readAgainTarget && (
-              <Link className="result-feedback-button" to={readAgainTarget} state={activityState}>
+              <Link className="result-feedback-button result-feedback-button--primary" to={readAgainTarget} state={activityState}>
                 <Mic size={20} aria-hidden="true" />{t("Read again")}</Link>
             )}
             <button
-              className="result-feedback-button"
+              className="result-feedback-button result-feedback-button--primary"
               type="button"
               onClick={() => navigate(backTarget)}
             >{t("Back to my activities")}</button>

@@ -3,7 +3,16 @@ import { useEffect, useRef, useState } from "react";
 const INITIAL_MESSAGE = "Press the microphone button when you're ready.";
 const PREFERRED_MIME_TYPE = "audio/webm;codecs=opus";
 
+// How long a finished session waits for the continuous recorder's final data.
+const FULL_RECORDING_STOP_TIMEOUT_MS = 5000;
+
 interface AudioRecorderOptions {
+  /**
+   * Also records the whole session, start to stop, with one MediaRecorder on the
+   * same stream. The rotating segments are still produced for speech processing;
+   * the continuous file is the one to save and replay.
+   */
+  captureFullRecording?: boolean;
   createPlaybackUrls?: boolean;
   maxSegmentDurationSeconds?: number;
   maxTotalDurationSeconds?: number;
@@ -54,11 +63,16 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
   const [audioSegments, setAudioSegments] = useState<Blob[]>([]);
   const [audioURLs, setAudioURLs] = useState<string[]>([]);
   const [segmentDurationsSeconds, setSegmentDurationsSeconds] = useState<number[]>([]);
+  const [fullRecording, setFullRecording] = useState<Blob | null>(null);
+  const [fullRecordingURL, setFullRecordingURL] = useState<string | null>(null);
   const [message, setMessage] = useState(INITIAL_MESSAGE);
   const [recordingDurationSeconds, setRecordingDurationSeconds] = useState<
     number | null
   >(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const fullRecorderRef = useRef<MediaRecorder | null>(null);
+  // Identifies the session whose continuous recording may still be published.
+  const sessionTokenRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const capturedSegmentsRef = useRef<Blob[]>([]);
   const capturedDurationsRef = useRef<number[]>([]);
@@ -79,6 +93,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
   const trackEndedHandlersRef = useRef(
     new Map<MediaStreamTrack, () => void>(),
   );
+  const captureFullRecording = options.captureFullRecording ?? false;
   const createPlaybackUrls = options.createPlaybackUrls ?? true;
   const maxSegmentDurationSeconds = options.maxSegmentDurationSeconds;
   const maxTotalDurationSeconds = options.maxTotalDurationSeconds;
@@ -113,6 +128,30 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
     }
   }
 
+  /** Discards the continuous recording of a failed or abandoned session. */
+  function releaseFullRecorder() {
+    const recorder = fullRecorderRef.current;
+    fullRecorderRef.current = null;
+    if (!recorder) return;
+    recorder.ondataavailable = null;
+    recorder.onstop = null;
+    recorder.onerror = null;
+    if (recorder.state !== "inactive") {
+      try { recorder.stop(); } catch {
+        // The recorder already ended with its stream.
+      }
+    }
+  }
+
+  /** Ends the continuous recording; its onstop handler delivers the file. */
+  function stopFullRecorder() {
+    const recorder = fullRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    try { recorder.stop(); } catch {
+      // onerror or the stop timeout settles the pending file.
+    }
+  }
+
   function stopStream(reason: StreamStopReason) {
     const stream = streamRef.current;
     streamRef.current = null;
@@ -141,6 +180,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
       sessionFinalizedRef.current = true;
       clearTimers();
       releaseRecorder();
+      releaseFullRecorder();
       capturedSegmentsRef.current = [];
       capturedDurationsRef.current = [];
       stopStream("unmount");
@@ -153,12 +193,20 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
     };
   }, [audioURLs]);
 
+  useEffect(() => {
+    return () => {
+      if (fullRecordingURL) URL.revokeObjectURL(fullRecordingURL);
+    };
+  }, [fullRecordingURL]);
+
   const resetRecording = () => {
     if (isRecording || isStarting || isStopping) return;
     capturedSegmentsRef.current = [];
     capturedDurationsRef.current = [];
     setAudioSegments([]);
     setAudioURLs([]);
+    setFullRecording(null);
+    setFullRecordingURL(null);
     setSegmentDurationsSeconds([]);
     setRecordingDurationSeconds(null);
     setMessage(INITIAL_MESSAGE);
@@ -188,10 +236,14 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
 
       streamRef.current = stream;
       logRecorderLifecycle("microphone stream opened");
+      sessionTokenRef.current += 1;
+      const sessionToken = sessionTokenRef.current;
       capturedSegmentsRef.current = [];
       capturedDurationsRef.current = [];
       setAudioSegments([]);
       setAudioURLs([]);
+      setFullRecording(null);
+      setFullRecordingURL(null);
       setSegmentDurationsSeconds([]);
       setRecordingDurationSeconds(null);
       sessionActiveRef.current = true;
@@ -207,6 +259,8 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
         ? { mimeType: PREFERRED_MIME_TYPE }
         : undefined;
       let microphoneEnded = false;
+      // Resolves with the continuous file, or null if it could not be recorded.
+      let fullRecordingDone: Promise<Blob | null> = Promise.resolve(null);
 
       const abortRecording = (source: string) => {
         if (sessionFinalizedRef.current) return;
@@ -215,6 +269,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
         clearTimers();
         logRecorderLifecycle("fatal microphone error", { source });
         releaseRecorder();
+        releaseFullRecorder();
         stopStream("fatal");
         capturedSegmentsRef.current = [];
         capturedDurationsRef.current = [];
@@ -238,38 +293,65 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
         mediaRecorderRef.current = null;
         stopCurrentSegmentRef.current = null;
         stopSessionRef.current = null;
+        // Flush the continuous file before the microphone tracks end.
+        stopFullRecorder();
         stopStream(reason);
 
         if (!mountedRef.current) return;
 
         const segments = [...capturedSegmentsRef.current];
         const durations = [...capturedDurationsRef.current];
-        setIsRecording(false);
-        setIsStopping(false);
-
-        if (segments.length === 0) {
-          setRecordingDurationSeconds(null);
-          setMessage("No audio was captured. Please try again.");
-          return;
-        }
-
-        setAudioSegments(segments);
-        setAudioURLs(
-          createPlaybackUrls
-            ? segments.map((segment) => URL.createObjectURL(segment))
-            : [],
-        );
-        setSegmentDurationsSeconds(durations);
         const startedAt = sessionStartedAtRef.current;
         const endedAt = sessionEndedAtRef.current ?? performance.now();
-        setRecordingDurationSeconds(startedAt === null
-          ? durations.reduce((total, duration) => total + duration, 0)
-          : Math.max(0, (endedAt - startedAt) / 1000));
-        setMessage(
-          reason === "maximum"
-            ? "Recording reached the five-minute limit. Your reading was captured successfully."
-            : "Recording complete. Your reading was captured successfully.",
-        );
+        setIsRecording(false);
+
+        const publish = (full: Blob | null) => {
+          fullRecorderRef.current = null;
+          setIsStopping(false);
+
+          if (segments.length === 0) {
+            setRecordingDurationSeconds(null);
+            setMessage("No audio was captured. Please try again.");
+            return;
+          }
+
+          setAudioSegments(segments);
+          setAudioURLs(
+            createPlaybackUrls
+              ? segments.map((segment) => URL.createObjectURL(segment))
+              : [],
+          );
+          setFullRecording(full);
+          setFullRecordingURL(full && createPlaybackUrls ? URL.createObjectURL(full) : null);
+          setSegmentDurationsSeconds(durations);
+          setRecordingDurationSeconds(startedAt === null
+            ? durations.reduce((total, duration) => total + duration, 0)
+            : Math.max(0, (endedAt - startedAt) / 1000));
+          setMessage(
+            reason === "maximum"
+              ? "Recording reached the five-minute limit. Your reading was captured successfully."
+              : "Recording complete. Your reading was captured successfully.",
+          );
+        };
+
+        if (!captureFullRecording) {
+          publish(null);
+          return;
+        }
+        // Results appear only once the continuous file is final, so nothing is
+        // processed or saved from a partial recording.
+        let timeout: number | undefined;
+        void Promise.race([
+          fullRecordingDone,
+          new Promise<null>((resolve) => {
+            timeout = window.setTimeout(() => resolve(null), FULL_RECORDING_STOP_TIMEOUT_MS);
+          }),
+        ]).then((full) => {
+          window.clearTimeout(timeout);
+          if (!mountedRef.current || sessionTokenRef.current !== sessionToken) return;
+          if (!full) logRecorderLifecycle("continuous recording unavailable; keeping segments");
+          publish(full);
+        });
       };
 
       const startSegment = (): boolean => {
@@ -433,6 +515,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
         terminalStopReasonRef.current = reason;
         sessionEndedAtRef.current = performance.now();
         clearTimers();
+        stopFullRecorder();
         if (reason === "manual") {
           logRecorderLifecycle("manual Stop");
         }
@@ -449,6 +532,34 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
         }
         stopCurrentSegment(reason);
       };
+
+      if (captureFullRecording) {
+        // A failure here keeps the session: the segments are still saved instead.
+        try {
+          const fullRecorder = new MediaRecorder(stream, recorderOptions);
+          const fullChunks: Blob[] = [];
+          fullRecordingDone = new Promise((resolve) => {
+            fullRecorder.ondataavailable = (event) => {
+              if (event.data.size > 0) fullChunks.push(event.data);
+            };
+            fullRecorder.onstop = () => {
+              resolve(fullChunks.length
+                ? new Blob(fullChunks, { type: fullRecorder.mimeType })
+                : null);
+            };
+            fullRecorder.onerror = () => {
+              logRecorderLifecycle("continuous MediaRecorder error");
+              resolve(null);
+            };
+          });
+          fullRecorder.start();
+          fullRecorderRef.current = fullRecorder;
+          logRecorderLifecycle("continuous MediaRecorder start");
+        } catch {
+          fullRecordingDone = Promise.resolve(null);
+          logRecorderLifecycle("continuous MediaRecorder unavailable");
+        }
+      }
 
       if (!startSegment()) return;
       try { observerOptionsRef.current.onStreamReady?.(stream); } catch {
@@ -471,6 +582,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
       sessionActiveRef.current = false;
       sessionFinalizedRef.current = true;
       clearTimers();
+      releaseFullRecorder();
       stopStream("fatal");
       mediaRecorderRef.current = null;
 
@@ -500,6 +612,8 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
     audioURL: audioURLs.length === 1 ? audioURLs[0] : null,
     audioSegments,
     audioURLs,
+    fullRecording,
+    fullRecordingURL,
     segmentDurationsSeconds,
     isRecording,
     isStarting,

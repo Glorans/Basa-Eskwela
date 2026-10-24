@@ -184,20 +184,20 @@ export default function UploadMaterialForm({
             <CheckCircle2 size={28} />
           </span>
           <div>
-            <p className="m3-eyebrow">Saved to My Materials</p>
+            <p className="m3-eyebrow">Saved to Reading Materials</p>
             <h2 id="m3-upload-saved-title">Material Saved Successfully</h2>
           </div>
           <M3StatusBadge value="completed" label="Saved" />
         </div>
         <p className="m3-success-message" role="status">
-          "{title.trim() || uploadedMaterial.originalFilename}" is saved and now appears in My Materials.
+          "{title.trim() || uploadedMaterial.originalFilename}" is saved and now appears in Reading Materials.
         </p>
         <div className="m3-form-actions">
           <button className="m3-button m3-button--secondary" type="button" onClick={startAnotherUpload}>
             <UploadCloud size={18} /> Upload Another Material
           </button>
           <button className="m3-button m3-button--primary" type="button" onClick={onViewMaterials}>
-            Go to My Materials
+            Go to Reading Materials
           </button>
         </div>
       </section>
@@ -221,7 +221,7 @@ export default function UploadMaterialForm({
         </div>
         <p>Review the extracted text and correct any errors before saving.</p>
         <p className="m3-inline-notice" role="status">
-          <strong>Not saved yet.</strong> This material will not appear in My Materials until you select Save Reviewed Material.
+          <strong>Not saved yet.</strong> This material will not appear in Reading Materials until you select Save Reviewed Material.
         </p>
 
         <dl className="m3-upload-metadata">
@@ -289,7 +289,7 @@ export default function UploadMaterialForm({
           <p className="m3-inline-notice" role="status">
             <span className="m3-progress-label">
               <LoaderCircle className="m3-spinner" size={19} />
-              {savedMaterialId ? "Material saved. Updating My Materials..." : "Saving your reviewed material..."}
+              {savedMaterialId ? "Material saved. Updating Reading Materials..." : "Saving your reviewed material..."}
             </span>
           </p>
         )}

@@ -195,6 +195,33 @@ test("recording segments are stored and replayed in recorder order", async () =>
   assert.equal(db.uploads.length, 7, "a retry never replaces a saved recording");
 });
 
+test("HTTP: one continuous recording larger than a 25 s part is saved and replayed as one file", async () => {
+  const db = fakeDb();
+  const dependencies = { ...deps(db, STUDENT), getOralReadingAttempt: ownAttempt(STUDENT) };
+  await withRouter(dependencies, async (url) => {
+    const form = new FormData();
+    // About five minutes of Opus audio: over the old 2 MB part limit, under 25 MB.
+    form.append("audio", new Blob([Buffer.alloc(5 * 1024 * 1024, 1)], { type: "audio/webm;codecs=opus" }), "segment-000");
+    assert.equal((await fetch(`${url}/attempts/${ATTEMPT}/recording`, { method: "POST", body: form })).status, 200);
+    const { recording } = await (await fetch(`${url}/attempts/${ATTEMPT}/recording`)).json();
+    assert.equal(recording.available, true);
+    assert.equal(recording.segments.length, 1);
+  });
+  assert.equal(db.uploads.length, 1);
+  assert.equal(db.tables.oral_reading_recordings[0].segments.length, 1);
+});
+
+test("HTTP: a recording over the 25 MB budget is still rejected before storage", async () => {
+  const db = fakeDb();
+  const dependencies = { ...deps(db, STUDENT), getOralReadingAttempt: ownAttempt(STUDENT) };
+  await withRouter(dependencies, async (url) => {
+    const form = new FormData();
+    form.append("audio", new Blob([Buffer.alloc(25 * 1024 * 1024 + 1, 1)], { type: "audio/webm" }), "segment-000");
+    assert.equal((await fetch(`${url}/attempts/${ATTEMPT}/recording`, { method: "POST", body: form })).status, 400);
+  });
+  assert.deepEqual(db.uploads, []);
+});
+
 test("invalid recordings are rejected before upload", async () => {
   const db = fakeDb();
   const owner = requester(STUDENT, "student");

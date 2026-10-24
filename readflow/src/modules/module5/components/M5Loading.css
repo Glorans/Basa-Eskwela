@@ -1,0 +1,48 @@
+.m5-pending-content {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 180px;
+  text-align: center;
+}
+
+.m5-pending-content p { margin: 0; }
+
+.m5-pending-content button {
+  padding: 8px 16px;
+  border-radius: var(--basa-btn-radius);
+  background: var(--basa-yellow);
+  color: var(--basa-navy);
+  font-weight: 800;
+}
+
+.m5-pending-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.m5-loading-indicator {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--basa-yellow);
+  border-top-color: var(--basa-navy);
+  border-radius: 50%;
+  animation: m5-loading-turn 800ms linear infinite;
+}
+
+.m5-loading-placeholder {
+  min-height: 170px;
+  border-radius: var(--basa-radius-md);
+  background: var(--basa-cream);
+}
+
+@keyframes m5-loading-turn { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .m5-loading-indicator { animation: none; }
+}

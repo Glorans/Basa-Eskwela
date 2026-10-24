@@ -20,9 +20,41 @@ import {
   type ReadingModule,
   type AssignedReadingModule,
   type UploadedReadingMaterial,
+  type ReadingLanguage,
 } from "../services/classroomService";
 import { getMaterialQuestionSets, getMaterialServiceError } from "../../module3/services/materialService";
 import type { MaterialQuestionSetSummary } from "../../module3/types/content";
+
+const LANGUAGE_NAMES: Record<ReadingLanguage, string> = { en: "English", fil: "Filipino" };
+
+// Rooms do not store a language, so the teacher chooses it here; only
+// modules and materials in that language can then be assigned.
+function RoomLanguageSelect({ id, value, disabled, onChange }: {
+  id: string;
+  value: ReadingLanguage | "";
+  disabled?: boolean;
+  onChange: (language: ReadingLanguage | "") => void;
+}) {
+  return (
+    <div className="mb-4">
+      <label htmlFor={id} className="mb-2 block text-sm font-bold text-[#173f3b]">
+        Classroom Language
+      </label>
+      <select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as ReadingLanguage | "")}
+        required
+        className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-sm text-[#173f3b] outline-none transition focus:border-[#f7cf4a]"
+      >
+        <option value="">Select the classroom language</option>
+        <option value="en">English</option>
+        <option value="fil">Filipino</option>
+      </select>
+    </div>
+  );
+}
 
 function questionSetLabel(set: MaterialQuestionSetSummary) {
   return `${set.name} (${set.questionCount} questions: ${set.counts.literal} literal, ${set.counts.inferential} inferential, ${set.counts.critical} critical)`;
@@ -307,8 +339,10 @@ type ModuleAssignmentSectionProps = {
   selectedModuleId: string;
   assigningModule: boolean;
   moduleError: string;
+  roomLanguage: ReadingLanguage | "";
   onToggleForm: () => void;
   onSelectModule: (moduleId: string) => void;
+  onRoomLanguageChange: (language: ReadingLanguage | "") => void;
   onAssignModule: (event: React.FormEvent<HTMLFormElement>) => void;
 };
 
@@ -319,8 +353,10 @@ function ModuleAssignmentSection({
   selectedModuleId,
   assigningModule,
   moduleError,
+  roomLanguage,
   onToggleForm,
   onSelectModule,
+  onRoomLanguageChange,
   onAssignModule,
 }: ModuleAssignmentSectionProps) {
   return (
@@ -348,7 +384,7 @@ function ModuleAssignmentSection({
         >
           {showModuleForm
             ? "Cancel"
-            : "+ Assign Module"}
+            : "Assign Module"}
         </button>
       </div>
 
@@ -358,6 +394,13 @@ function ModuleAssignmentSection({
           onSubmit={onAssignModule}
           className="mb-5 rounded-2xl bg-white/70 p-4"
         >
+          <RoomLanguageSelect
+            id="moduleLanguage"
+            value={roomLanguage}
+            disabled={assigningModule}
+            onChange={onRoomLanguageChange}
+          />
+
           <label
             htmlFor="readingModule"
             className="mb-2 block text-sm font-bold text-[#173f3b]"
@@ -367,7 +410,7 @@ function ModuleAssignmentSection({
 
           <select
             id="readingModule"
-            disabled={assigningModule}
+            disabled={assigningModule || !roomLanguage}
             value={selectedModuleId}
             onChange={(event) =>
               onSelectModule(event.target.value)
@@ -393,9 +436,13 @@ function ModuleAssignmentSection({
           </select>
 
           <p role="alert" className="mt-3 text-sm font-bold text-[#a9443c]">{moduleError}</p>
-          {unassignedModules.length === 0 ? (
+          {!roomLanguage ? (
             <p className="mt-3 text-sm text-[#6d8582]">
-              No additional published modules available.
+              Select the classroom language to see matching modules.
+            </p>
+          ) : unassignedModules.length === 0 ? (
+            <p className="mt-3 text-sm text-[#6d8582]">
+              No additional published {LANGUAGE_NAMES[roomLanguage]} modules available.
             </p>
           ) : (
             <button
@@ -491,6 +538,8 @@ export default function ClassroomDetailsPage() {
   const [description, setDescription] = useState("");
 
   // Reading module assignment
+  // Shared by Assign Module and Assign Reading Activity; never saved to the room.
+  const [roomLanguage, setRoomLanguage] = useState<ReadingLanguage | "">("");
   const [showModuleForm, setShowModuleForm] = useState(false);
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [assigningModule, setAssigningModule] = useState(false);
@@ -727,6 +776,12 @@ export default function ClassroomDetailsPage() {
       return;
     }
 
+    const moduleLanguage = publishedModules.find((module) => module.id === selectedModuleId)?.language;
+    if (!roomLanguage || moduleLanguage !== roomLanguage) {
+      setModuleError("Please select a reading module in the classroom language.");
+      return;
+    }
+
     const alreadyAssigned = assignedModules.some(
       (module) => module.module_id === selectedModuleId
     );
@@ -822,6 +877,12 @@ export default function ClassroomDetailsPage() {
       return;
     }
 
+    const materialLanguage = uploadedMaterials.find((material) => material.id === selectedMaterialId)?.language;
+    if (!roomLanguage || materialLanguage !== roomLanguage) {
+      setActivityError("Please select a reading material in the classroom language.");
+      return;
+    }
+
     if (selectedStudentIds.length === 0) {
       setActivityError("Please select at least one student.");
       return;
@@ -896,10 +957,27 @@ export default function ClassroomDetailsPage() {
 
   const unassignedModules = publishedModules.filter(
     (module) =>
+      module.language === roomLanguage &&
       !assignedModules.some(
         (assigned) => assigned.module_id === module.id
       )
   );
+  const matchingMaterials = uploadedMaterials.filter(
+    (material) => material.language === roomLanguage
+  );
+
+  // A selection in the other language is cleared; saved assignments are untouched.
+  function handleRoomLanguageChange(language: ReadingLanguage | "") {
+    setRoomLanguage(language);
+    setModuleError("");
+    setActivityError("");
+    if (publishedModules.find((module) => module.id === selectedModuleId)?.language !== language) {
+      setSelectedModuleId("");
+    }
+    if (uploadedMaterials.find((material) => material.id === selectedMaterialId)?.language !== language) {
+      setSelectedMaterialId("");
+    }
+  }
 
   const wholeClassSelected =
     students.length > 0 &&
@@ -977,6 +1055,8 @@ export default function ClassroomDetailsPage() {
           selectedModuleId={selectedModuleId}
           assigningModule={assigningModule}
           moduleError={moduleError}
+          roomLanguage={roomLanguage}
+          onRoomLanguageChange={handleRoomLanguageChange}
           onToggleForm={() => {
             setModuleError("");
             setShowModuleForm((current) => !current);
@@ -1012,7 +1092,7 @@ export default function ClassroomDetailsPage() {
           >
             {showActivityForm
               ? "Cancel"
-              : "+ Assign Activity"}
+              : "Assign Activity"}
           </button>
         </div>
 
@@ -1048,7 +1128,7 @@ export default function ClassroomDetailsPage() {
 
             <p className="mt-1 text-sm text-[#6d8582]">
               Use a completed reading material uploaded through
-              My Materials.
+              Reading Materials.
             </p>
           </div>
         )}
@@ -1059,6 +1139,12 @@ export default function ClassroomDetailsPage() {
             className="mt-5 rounded-2xl bg-white/70 p-5"
           >
             <fieldset disabled={assigningActivity} aria-busy={assigningActivity} className="min-w-0">
+            <RoomLanguageSelect
+              id="activityLanguage"
+              value={roomLanguage}
+              onChange={handleRoomLanguageChange}
+            />
+
             {/* Reading Material */}
             <div>
               <label
@@ -1074,7 +1160,7 @@ export default function ClassroomDetailsPage() {
                 onChange={(event) =>
                   setSelectedMaterialId(event.target.value)
                 }
-                disabled={uploadedMaterials.length === 0}
+                disabled={matchingMaterials.length === 0}
                 required
                 className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-sm text-[#173f3b] outline-none transition focus:border-[#f7cf4a] disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -1082,7 +1168,7 @@ export default function ClassroomDetailsPage() {
                   Select an uploaded reading material
                 </option>
 
-                {uploadedMaterials.map((material) => (
+                {matchingMaterials.map((material) => (
                   <option
                     key={material.id}
                     value={material.id}
@@ -1092,10 +1178,18 @@ export default function ClassroomDetailsPage() {
                 ))}
               </select>
 
-              {uploadedMaterials.length === 0 && (
+              {uploadedMaterials.length === 0 ? (
                 <p className="mt-2 text-sm text-[#a9443c]">
                   No completed uploaded materials are available.
                   Upload and process a reading material first.
+                </p>
+              ) : !roomLanguage ? (
+                <p className="mt-2 text-sm text-[#6d8582]">
+                  Select the classroom language to see matching materials.
+                </p>
+              ) : matchingMaterials.length === 0 && (
+                <p className="mt-2 text-sm text-[#a9443c]">
+                  No completed {LANGUAGE_NAMES[roomLanguage]} reading materials are available.
                 </p>
               )}
             </div>
@@ -1175,7 +1269,7 @@ export default function ClassroomDetailsPage() {
                     }`}
                   >
                     {wholeClassSelected
-                      ? "✓ Whole Class Selected"
+                      ? "Whole Class Selected"
                       : "Select Whole Class"}
                   </button>
                 )}
@@ -1259,7 +1353,7 @@ export default function ClassroomDetailsPage() {
               disabled={
                 assigningActivity ||
                 loadingQuestionSets ||
-                uploadedMaterials.length === 0 ||
+                matchingMaterials.length === 0 ||
                 students.length === 0 ||
                 !selectedMaterialId ||
                 selectedStudentIds.length === 0

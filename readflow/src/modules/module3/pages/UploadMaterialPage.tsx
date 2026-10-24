@@ -42,7 +42,7 @@ export default function UploadMaterialPage({ role }: UploadMaterialPageProps) {
   return (
     <div className="m3-page-stack m3-page-stack--narrow">
       <Link className="m3-back-link" to={materialsPath} onClick={handleBackLink}>
-        <ArrowLeft size={17} /> Back to My Materials
+        <ArrowLeft size={17} /> Back to Reading Materials
       </Link>
       <M3PageHeader
         eyebrow={role === "teacher" ? "Teacher workspace" : "Personal workspace"}

@@ -19,7 +19,7 @@ import podiumGraphic from "./basa/podium-graphic.png";
 export const BASA_IMAGES = {
   /** Small star icon inside the XP pill in the top header. */
   xpStar,
-  /** Thumbs-up mascot pose on the My Badges page. */
+  /** Thumbs-up mascot pose on the Badges page. */
   mascotThumbsUp,
   /** Standing mascot pose on the Join Classroom card. */
   mascotClassroom,

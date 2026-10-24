@@ -167,7 +167,7 @@ try{
  const [one,two,three]=db.tables.material_question_sets;
  for(const set of [two,three])assert.deepEqual(['literal','inferential','critical'].map(type=>db.tables.comprehension_questions.filter(q=>q.question_set_id===set.id&&q.question_type===type).length),[2,2,2]);
  await send('Page.reload');await until(cards(3));passed('All three sets survive browser refresh');
- await click('Materials');await until(`document.body.textContent.includes('3 saved question sets')`);await click('View Question Sets');await until(cards(3));passed('Material list counts and navigation persist');
+ await click('Reading Materials');await until(`document.body.textContent.includes('3 saved question sets')`);await click('View Question Sets');await until(cards(3));passed('Material list counts and navigation persist');
  await click('Sign out');await until(`document.body.textContent.includes('Sign in as fixture Teacher')`);await click('Sign in as fixture Teacher');await until(cards(3));passed('Fixture logout/login reloads all three sets from server');
  await navigate(materialUrl+'/question-sets/'+two.id+'/edit');await until(`document.querySelectorAll('.m3-question-editor').length===6`);
  assert.equal(await evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Save Changes')).disabled`),true);
@@ -218,14 +218,14 @@ try{
  const previewShot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});fs.writeFileSync(path.join(output,'multi-page-preview.png'),Buffer.from(previewShot.data,'base64'));
  await click('Save Reviewed Material');
  await until(`document.body.textContent.includes('Material Saved Successfully')`);
- await click('Go to My Materials');
+ await click('Go to Reading Materials');
  await until(`document.body.textContent.includes('My Uploaded Materials') && document.body.textContent.includes('Browser Three Page Material')`);
  const uploaded=db.tables.uploaded_materials.find(m=>m.title==='Browser Three Page Material');
  assert.ok(uploaded);assert.equal(uploaded.content_text,approved);assert.equal(uploaded.raw_extracted_text,'PAGE ONE READING\n\nPAGE TWO READING\n\nPAGE THREE READING');
  const uploadedUrl='/m3/teacher/materials/'+uploaded.id;
  await navigate(uploadedUrl);await until(`document.body.textContent.includes('PAGE THREE READING')`);
  await send('Page.reload');await until(`document.body.textContent.includes('PAGE TWO EDITED READING')`);
- await click('Materials');await until(`document.body.textContent.includes('My Uploaded Materials')`);
+ await click('Reading Materials');await until(`document.body.textContent.includes('My Uploaded Materials')`);
  await navigate(uploadedUrl);await until(`document.body.textContent.includes('PAGE THREE READING')`);
  await click('Sign out');await until(`document.body.textContent.includes('Sign in as fixture Teacher')`);await click('Sign in as fixture Teacher');await until(`document.body.textContent.includes('PAGE TWO EDITED READING')`);
  assert.equal(uploaded.content_text,approved);passed('Real three-page PDF extraction, Teacher edit and save survive refresh, navigation and fixture sign-out/sign-in');

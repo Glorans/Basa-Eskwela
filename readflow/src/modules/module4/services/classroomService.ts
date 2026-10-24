@@ -1,5 +1,9 @@
 import { supabase } from "../../../lib/supabaseClient";
 import { getProfileDisplayName } from "../../module1/utils/profileFields.ts";
+import { normalizeLanguageAlias } from "../../module3/services/moduleModel.ts";
+
+/** Reading language of a module or material; null when it is missing or unsupported. */
+export type ReadingLanguage = "en" | "fil";
 
 export type Classroom = {
   id: string;
@@ -255,6 +259,8 @@ export type ReadingModule = {
   title: string;
   difficulty: string | null;
   status: string;
+  /** From the module's learning path. */
+  language: ReadingLanguage | null;
 };
 
 export type AssignedReadingModule = {
@@ -269,7 +275,7 @@ export type AssignedReadingModule = {
 export async function getPublishedModules(): Promise<ReadingModule[]> {
   const { data, error } = await supabase
     .from("modules")
-    .select("id, title, difficulty, status")
+    .select("id, title, difficulty, status, path_id")
     .eq("status", "published")
     .is("deleted_at", null)
     .order("title", { ascending: true });
@@ -279,7 +285,23 @@ export async function getPublishedModules(): Promise<ReadingModule[]> {
     throw error;
   }
 
-  return data ?? [];
+  const rows = data ?? [];
+  const pathIds = [...new Set(rows.map((row) => row.path_id).filter((id): id is string => Boolean(id)))];
+  const pathLanguages = new Map<string, ReadingLanguage | null>();
+  if (pathIds.length) {
+    const { data: paths, error: pathError } = await supabase
+      .from("learning_paths")
+      .select("id, language")
+      .in("id", pathIds);
+    // Without path languages the modules stay listed but cannot pass a language filter.
+    if (pathError) console.error("Error fetching module languages:", pathError);
+    (paths ?? []).forEach((path) => pathLanguages.set(path.id, normalizeLanguageAlias(path.language)));
+  }
+
+  return rows.map(({ path_id, ...module }) => ({
+    ...module,
+    language: path_id ? pathLanguages.get(path_id) ?? null : null,
+  }));
 }
 
 // Assign a module to a classroom
@@ -425,6 +447,7 @@ export type UploadedReadingMaterial = {
   id: string;
   title: string;
   uploaded_by: string;
+  language: ReadingLanguage | null;
 };
 export async function getUploadedReadingMaterials(): Promise<
   UploadedReadingMaterial[]
@@ -433,14 +456,17 @@ export async function getUploadedReadingMaterials(): Promise<
 
   const { data, error } = await supabase
     .from("uploaded_materials")
-    .select("id, title, uploaded_by")
+    .select("id, title, uploaded_by, language")
     .eq("uploaded_by", user.id)
     .eq("extraction_status", "completed")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
 
-  return (data ?? []) as UploadedReadingMaterial[];
+  return (data ?? []).map((material) => ({
+    ...material,
+    language: normalizeLanguageAlias(material.language),
+  }));
 }
 export type ReadingActivityAssignment = {
   id: string;

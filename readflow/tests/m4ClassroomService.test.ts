@@ -232,15 +232,52 @@ test("updateClassroom logs and rethrows the update error", async () => {
   assert.deepEqual(logged, [["Error updating classroom:", error]]);
 });
 
+// getPublishedModules
+
+test("getPublishedModules adds each module's learning-path language", async () => {
+  respond(
+    ok([
+      { id: "m-1", title: "Fables", difficulty: "Easy", status: "published", path_id: "p-en" },
+      { id: "m-2", title: "Alamat", difficulty: null, status: "published", path_id: "p-fil" },
+      { id: "m-3", title: "Loose", difficulty: null, status: "published", path_id: null },
+    ]),
+    ok([{ id: "p-en", language: "English" }, { id: "p-fil", language: "fil" }]),
+  );
+  assert.deepEqual(await service.getPublishedModules(), [
+    { id: "m-1", title: "Fables", difficulty: "Easy", status: "published", language: "en" },
+    { id: "m-2", title: "Alamat", difficulty: null, status: "published", language: "fil" },
+    { id: "m-3", title: "Loose", difficulty: null, status: "published", language: null },
+  ]);
+  assert.deepEqual(tables(), ["modules", "learning_paths"]);
+  assert.deepEqual(ops("in"), [["id", ["p-en", "p-fil"]]]);
+});
+
+test("getPublishedModules keeps modules listed without a language when paths cannot be read", async () => {
+  respond(
+    ok([{ id: "m-1", title: "Fables", difficulty: "Easy", status: "published", path_id: "p-en" }]),
+    fail({ code: "42501", message: "denied" }),
+  );
+  assert.deepEqual(await service.getPublishedModules(), [
+    { id: "m-1", title: "Fables", difficulty: "Easy", status: "published", language: null },
+  ]);
+  assert.equal(logged.length, 1);
+});
+
 // getUploadedReadingMaterials
 
 test("getUploadedReadingMaterials reads the signed-in teacher's completed materials newest first", async () => {
-  const materials = [{ id: "material-1", title: "Story", uploaded_by: "user-1" }];
+  const materials = [
+    { id: "material-1", title: "Story", uploaded_by: "user-1", language: "en" },
+    { id: "material-2", title: "Kuwento", uploaded_by: "user-1", language: "Filipino" },
+  ];
   respond(ok(materials));
-  assert.deepEqual(await service.getUploadedReadingMaterials(), materials);
+  assert.deepEqual(await service.getUploadedReadingMaterials(), [
+    materials[0],
+    { ...materials[1], language: "fil" },
+  ]);
   assert.deepEqual(calls[0], { operation: "getUser", args: [] });
   assert.deepEqual(tables(), ["uploaded_materials"]);
-  assert.deepEqual(ops("select"), [["id, title, uploaded_by"]]);
+  assert.deepEqual(ops("select"), [["id, title, uploaded_by, language"]]);
   assert.deepEqual(ops("eq"), [["uploaded_by", "user-1"], ["extraction_status", "completed"]]);
   assert.deepEqual(ops("order"), [["created_at", { ascending: false }]]);
 });

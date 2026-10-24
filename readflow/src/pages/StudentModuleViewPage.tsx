@@ -53,7 +53,7 @@ export default function StudentModuleViewPage({
     ? "Back to Classroom"
     : role === "general_user"
       ? "Back to Reading Modules"
-      : "Back to My Materials";
+      : "Back to Reading Materials";
 
   const [module, setModule] = useState<StudentModuleDetail>();
   const [activePassageId, setActivePassageId] = useState<string>();

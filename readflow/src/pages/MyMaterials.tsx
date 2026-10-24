@@ -18,7 +18,7 @@ export default function MyMaterials() {
 
   return (
     <>
-      <h1 className="basa-page-title">My Materials</h1>
+      <h1 className="basa-page-title">Reading Materials</h1>
       <ReadingLanguageSelector language={selectedLanguage} onChange={setSelectedLanguage} />
       <PlacementSummary placement={selectedPlacement} />
       <RecommendedStories placement={selectedPlacement} modules={recommendedModules} loading={modulesLoading} failed={!!modulesError} />

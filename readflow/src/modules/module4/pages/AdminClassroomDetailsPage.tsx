@@ -148,7 +148,7 @@ export default function AdminClassroomDetailsPage() {
                 </p>
               ) : (
                 <p className="text-sm italic text-[#7b9290]">
-                  No classroom description.
+                  None
                 </p>
               )}
             </div>

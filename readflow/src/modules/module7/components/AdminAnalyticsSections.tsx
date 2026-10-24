@@ -6,7 +6,7 @@ export const percentage = (value: number | null) => value === null ? 'No data' :
 const number = (value: number | null) => value === null ? 'No data' : value.toLocaleString();
 export function AdminMetrics({ data }: { data: Metrics }) {
   const entries = [['Saved readings', data.readingAttempts], ['Completed quizzes', data.completedQuizzes],
-    ['Comprehension', formatComprehension(data)], ['Pronunciation', percentage(data.pronunciationAccuracy)],
+    ['Comprehension', formatComprehension(data)], ['Reading accuracy', percentage(data.pronunciationAccuracy)],
     ['Reading speed', data.readingSpeedWpm === null ? 'No data' : `${data.readingSpeedWpm} WPM`]];
   return <div className="m7-metrics">{entries.map(([label, value]) => <div className="m7-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>;
 }
@@ -19,10 +19,10 @@ export function PerformanceSections({ data }: { data: Details }) {
       {data.unassignedClassroomReadings > 0 && <p>{data.unassignedClassroomReadings} readings reference classrooms that are no longer available. They remain included in system totals.</p>}
     </section>
     <section><h2>Weekly performance trends</h2><p>Weeks start Monday in Philippine time. Averages use saved attempts, with sample counts shown. Weeks without results are omitted; no scores are inferred.</p>
-      {!data.trends.length ? <p>No results available for a trend.</p> : <div className="m7-scroll"><table><thead><tr><th>Week starting</th><th>Readings</th><th>Pronunciation</th><th>Speed (WPM)</th><th>Quizzes</th><th>Comprehension</th></tr></thead><tbody>{data.trends.map(row => <tr key={row.weekStart}><td>{displayDate(row.weekStart)}</td><td>{row.readingAttempts}</td><td>{percentage(row.pronunciationAccuracy)}</td><td>{number(row.readingSpeedWpm)}</td><td>{row.completedQuizzes}</td><td>{formatComprehension(row)}</td></tr>)}</tbody></table></div>}
+      {!data.trends.length ? <p>No results available for a trend.</p> : <div className="m7-scroll"><table><thead><tr><th>Week starting</th><th>Readings</th><th>Reading accuracy</th><th>Speed (WPM)</th><th>Quizzes</th><th>Comprehension</th></tr></thead><tbody>{data.trends.map(row => <tr key={row.weekStart}><td>{displayDate(row.weekStart)}</td><td>{row.readingAttempts}</td><td>{percentage(row.pronunciationAccuracy)}</td><td>{number(row.readingSpeedWpm)}</td><td>{row.completedQuizzes}</td><td>{formatComprehension(row)}</td></tr>)}</tbody></table></div>}
     </section>
     <section><h2>Classroom comparisons</h2><p>Results are attributed by their saved classroom ID. Participation uses current enrollment; students enrolled in multiple rooms may appear in each room.</p>
-      {!data.classroomComparisons.length ? <p>No classrooms available.</p> : <div className="m7-scroll"><table><thead><tr><th>Classroom / teacher</th><th>Participating / enrolled</th><th>Readings</th><th>Pronunciation</th><th>Speed (WPM)</th><th>Quizzes</th><th>Comprehension</th><th>Completed / assigned</th></tr></thead><tbody>{data.classroomComparisons.map(row => <tr key={row.id}><td>{row.name}<br />{row.teacherName}</td><td>{row.participatingStudents} / {row.enrolledStudents}</td><td>{row.readingAttempts}</td><td>{percentage(row.pronunciationAccuracy)}</td><td>{number(row.readingSpeedWpm)}</td><td>{row.completedQuizzes}</td><td>{formatComprehension(row)}</td><td>{row.completed} / {row.assigned} ({percentage(row.completionRate)})</td></tr>)}</tbody></table></div>}
+      {!data.classroomComparisons.length ? <p>No classrooms available.</p> : <div className="m7-scroll"><table><thead><tr><th>Classroom / teacher</th><th>Participating / enrolled</th><th>Readings</th><th>Reading accuracy</th><th>Speed (WPM)</th><th>Quizzes</th><th>Comprehension</th><th>Completed / assigned</th></tr></thead><tbody>{data.classroomComparisons.map(row => <tr key={row.id}><td>{row.name}<br />{row.teacherName}</td><td>{row.participatingStudents} / {row.enrolledStudents}</td><td>{row.readingAttempts}</td><td>{percentage(row.pronunciationAccuracy)}</td><td>{number(row.readingSpeedWpm)}</td><td>{row.completedQuizzes}</td><td>{formatComprehension(row)}</td><td>{row.completed} / {row.assigned} ({percentage(row.completionRate)})</td></tr>)}</tbody></table></div>}
     </section>
   </>;
 }

@@ -95,3 +95,6 @@
   .m5-comprehension-table td { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 8px; padding: 8px 14px; border-top: 0; }
   .m5-comprehension-table td::before { content: attr(data-label); color: #60716a; font-size: 0.7rem; font-weight: 850; text-transform: uppercase; }
 }
+
+/* M5 review panel headings: Result and Transcript, then Feedback and Recording. */
+.m5-review-panel-title { margin: 0; padding: 20px clamp(22px, 4vw, 34px) 16px; color: #173d33; font-size: 1.2rem; }

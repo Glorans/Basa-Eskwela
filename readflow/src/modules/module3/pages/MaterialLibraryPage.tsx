@@ -52,7 +52,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
     <div className="m3-page-stack">
       <M3PageHeader
         eyebrow={role === "teacher" ? "Teacher workspace" : "Personal workspace"}
-        title="My Uploaded Materials"
+        title="Reading Materials"
         description={
           role === "teacher"
             ? "Manage your source files and review generated comprehension questions."

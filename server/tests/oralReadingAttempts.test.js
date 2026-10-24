@@ -386,6 +386,7 @@ test('deleted modules reject starts and saves for both learners but retain saved
     assert.equal(history[0].id, saved.id);
     assert.equal(history[0].moduleTitle, 'Seeds');
     assert.equal(history[0].pronunciationAccuracy, 100);
+    assert.equal(history[0].language, 'en');
     const reopened = await getOralReadingAttempt(owner, saved.id, dependencies(db));
     assert.equal(reopened.transcript, saved.transcript);
   }

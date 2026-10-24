@@ -56,7 +56,7 @@ function getNavItems(role: M3Role) {
 
   const items = [
     { label: "Reading Modules", to: `${root}/modules`, icon: BookOpenCheck, end: false },
-    { label: "My Materials", to: `${root}/materials`, icon: Files, end: true },
+    { label: "Reading Materials", to: `${root}/materials`, icon: Files, end: true },
     { label: "Upload Material", to: `${root}/materials/upload`, icon: FilePlus2, end: true },
   ];
 
@@ -76,7 +76,7 @@ function getNavItems(role: M3Role) {
 
   if (role === "general_user") {
     items.push({ label: "Leaderboard", to: "/m3/general/leaderboard", icon: Trophy, end: true });
-    items.push({ label: "My Badges", to: "/m3/general/badges", icon: Award, end: true });
+    items.push({ label: "Badges", to: "/m3/general/badges", icon: Award, end: true });
     items.push({ label: "Reading History", to: "/m3/general/reading-history", icon: Mic2, end: true });
   }
 

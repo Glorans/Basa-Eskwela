@@ -1,36 +1,6 @@
 .diagnostic-result-panel {
   scrollbar-gutter: stable;
   overscroll-behavior-y: contain;
-  scrollbar-width: thin;
-  scrollbar-color: #ffc755 #659f50;
-}
-
-.diagnostic-result-panel::-webkit-scrollbar {
-  width: 10px;
-}
-
-.diagnostic-result-panel::-webkit-scrollbar-track {
-  margin-block: 20px;
-  border-radius: 999px;
-  background: #659f50;
-}
-
-.diagnostic-result-panel::-webkit-scrollbar-thumb {
-  border: 2px solid #659f50;
-  border-radius: 999px;
-  background: #ffc755;
-}
-
-.diagnostic-result-panel::-webkit-scrollbar-thumb:hover {
-  background: #ffdb85;
-}
-
-/* Chromium also supports the Firefox properties, which otherwise override the rounded thumb. */
-@supports selector(::-webkit-scrollbar) {
-  .diagnostic-result-panel {
-    scrollbar-width: auto;
-    scrollbar-color: auto;
-  }
 }
 
 .diagnostic-result-content {

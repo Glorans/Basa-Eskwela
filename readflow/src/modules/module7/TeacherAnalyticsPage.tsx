@@ -335,7 +335,7 @@ export default function TeacherAnalyticsPage() {
           icon: Users,
         },
         {
-          label: "Pronunciation Accuracy",
+          label: "Reading Accuracy",
           value: formatPercentage(
             analytics.averagePronunciationAccuracy
           ),
@@ -868,7 +868,7 @@ export default function TeacherAnalyticsPage() {
                           },
                           {
                             label:
-                              "Pronunciation Accuracy",
+                              "Reading Accuracy",
                             value: formatPercentage(
                               room.averagePronunciationAccuracy
                             ),
@@ -1097,7 +1097,7 @@ export default function TeacherAnalyticsPage() {
                           },
                           {
                             label:
-                              "Pronunciation Accuracy",
+                              "Reading Accuracy",
                             value: formatPercentage(
                               student.averagePronunciationAccuracy
                             ),

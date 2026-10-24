@@ -592,6 +592,8 @@ async function getTeacherOralReadingAttempt(requester, attemptId, dependencies =
     ...toTeacherAttemptSummary(attempt, student, module),
     comprehension: comprehension.get(attempt.id) ?? { status: "unavailable" },
     difficulty: module.difficulty,
+    // Null for attempts saved before the language snapshot existed.
+    language: attempt.language_snapshot === "fil" || attempt.language_snapshot === "en" ? attempt.language_snapshot : null,
     expectedWordCount: attempt.expected_word_count,
     passageSnapshot: attempt.passage_snapshot,
     transcript: attempt.transcript,
@@ -641,7 +643,7 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
   const pageSize = 100;
   for (let offset = 0; ; offset += pageSize) {
     let query = supabase.from("oral_reading_attempts")
-      .select("id, module_id, material_id, activity_assignment_id, module_title_snapshot, passage_title_snapshot, completed_at, pronunciation_accuracy, reading_speed_wpm, detected_error_count")
+      .select("id, module_id, material_id, activity_assignment_id, module_title_snapshot, passage_title_snapshot, language_snapshot, completed_at, pronunciation_accuracy, reading_speed_wpm, detected_error_count")
       .eq("user_id", requester.user.id);
     if (moduleId) query = query.eq("module_id", moduleId);
     if (context.materialId) query = query.eq("material_id", context.materialId);
@@ -657,6 +659,7 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
     moduleId: row.module_id,
     moduleTitle: row.module_title_snapshot ?? "Reading module",
     passageTitle: row.passage_title_snapshot ?? "Reading result",
+    language: row.language_snapshot === "fil" || row.language_snapshot === "en" ? row.language_snapshot : null,
     pronunciationAccuracy: Number(row.pronunciation_accuracy),
     readingSpeedWpm: Number(row.reading_speed_wpm),
     detectedErrorCount: row.detected_error_count,

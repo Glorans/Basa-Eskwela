@@ -248,17 +248,36 @@ export default function TeacherOralReadingAttemptPage() {
         description={`${attempt.moduleTitle} · ${attempt.difficulty} · Completed ${formatCompletedAt(attempt.completedAt)}`}
       />
 
-      <section className="m5-review-detail-card">
+      <section className="m5-review-detail-card" aria-labelledby="m5-result-panel-title">
+        <h2 className="m5-review-panel-title" id="m5-result-panel-title">Oral Reading Result and Transcript</h2>
         <div className="m5-review-metrics">
-          <div><span>Pronunciation Accuracy (Transcript-based)</span><strong>{Math.round(attempt.pronunciationAccuracy)}%</strong></div>
+          {/* The saved field is transcript-based reading accuracy, not a pronunciation score. */}
+          <div><span>Reading Accuracy (Transcript-based)</span><strong>{Math.round(attempt.pronunciationAccuracy)}%</strong></div>
           <div><span>{attempt.scoringVersion === 2 ? "Recognized Words per Minute" : "Reading Speed (Legacy Passage WPM)"}</span><strong>{Math.round(attempt.readingSpeedWpm)} WPM</strong></div>
           <div><span>Expected Words</span><strong>{attempt.expectedWordCount}</strong></div>
-          <div><span>Detected Errors</span><strong>{attempt.detectedErrorCount}</strong></div>
+          <div><span>Recognized-word Differences</span><strong>{attempt.detectedErrorCount}</strong></div>
         </div>
+
+        <section className="m5-review-detail-section" aria-labelledby="m5-passage-title">
+          <h2 id="m5-passage-title"><BookOpen size={21} /> Reference Passage{attempt.passageTitle ? `: ${attempt.passageTitle}` : ""}</h2>
+          {attempt.language && <p>Language: {attempt.language === "fil" ? "Filipino" : "English"}</p>}
+          <p className="m5-review-reading-text">{attempt.passageSnapshot}</p>
+        </section>
+
+        <section className="m5-review-detail-section" aria-labelledby="m5-transcript-title">
+          <h2 id="m5-transcript-title"><Gauge size={21} /> Read-Aloud Transcript</h2>
+          {attempt.transcript?.trim()
+            ? <p className="m5-review-reading-text">{attempt.transcript}</p>
+            : <p className="m5-review-muted">No transcript was saved for this reading.</p>}
+        </section>
+      </section>
+
+      <section className="m5-review-detail-card" aria-labelledby="m5-feedback-panel-title">
+        <h2 className="m5-review-panel-title" id="m5-feedback-panel-title">Reading and Pronunciation Feedback</h2>
 
         <section className="m5-review-detail-section" aria-labelledby="m5-practice-title">
           <h2 id="m5-practice-title"><Mic2 size={21} /> Words to Practice</h2>
-          <p>These words may have been skipped or recognized differently during the read-aloud.</p>
+          <p>These words may have been skipped or recognized differently during the read-aloud. A recognized difference is not always a pronunciation mistake.</p>
           {wordsToPractice.length > 0 ? (
             <ul className="m5-review-word-list">
               {wordsToPractice.map((word) => <li key={word}>{word}</li>)}
@@ -274,18 +293,19 @@ export default function TeacherOralReadingAttemptPage() {
           )}
         </section>
 
-        <section className="m5-review-detail-section" aria-labelledby="m5-passage-title">
-          <h2 id="m5-passage-title"><BookOpen size={21} /> Reference Passage{attempt.passageTitle ? `: ${attempt.passageTitle}` : ""}</h2>
-          <p className="m5-review-reading-text">{attempt.passageSnapshot}</p>
+        <section className="m5-review-detail-section" aria-labelledby="m5-pronunciation-title">
+          <h2 id="m5-pronunciation-title"><Mic2 size={21} /> Pronunciation Check</h2>
+          <p>
+            {attempt.language === "fil"
+              ? "Pronunciation scoring is not available for Filipino readings. Use the words to practice and the recording to review this reading."
+              : "English pronunciation checks are shown to the student but are not saved yet, so they cannot be reviewed here. Use the recording to listen for pronunciation."}
+          </p>
         </section>
 
-        <RecordingPlayback attemptId={attempt.id} teacher />
+        <RecordingPlayback attemptId={attempt.id} teacher language={attempt.language ?? "en"} />
+      </section>
 
-        <section className="m5-review-detail-section" aria-labelledby="m5-transcript-title">
-          <h2 id="m5-transcript-title"><Gauge size={21} /> Read-Aloud Transcript</h2>
-          <p className="m5-review-reading-text">{attempt.transcript}</p>
-        </section>
-
+      <section className="m5-review-detail-card">
         <section className="m5-review-detail-section" aria-labelledby="m5-comprehension-title">
           <h2 id="m5-comprehension-title"><ListChecks size={21} /> Comprehension</h2>
           <ComprehensionReview

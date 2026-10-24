@@ -13,10 +13,10 @@ interface BasaSidebarProps {
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/dashboard", icon: Home },
   { label: "Learning Rooms", to: "/dashboard/join-classroom", icon: School },
-  { label: "My Materials", to: "/dashboard/materials", icon: BookOpen },
+  { label: "Reading Materials", to: "/dashboard/materials", icon: BookOpen },
   { label: "Leaderboard", to: "/dashboard/leaderboard", icon: Trophy },
-  { label: "My Badges", to: "/dashboard/badges", icon: Award },
-  { label: "My Progress & Results", to: "/dashboard/progress", icon: BookOpen },
+  { label: "Badges", to: "/dashboard/badges", icon: Award },
+  { label: "Progress & Result", to: "/dashboard/progress", icon: BookOpen },
   { label: "Reading History", to: "/dashboard/reading-history", icon: BookOpen },
   { label: "Settings", to: "/dashboard/settings", icon: Settings },
 ];

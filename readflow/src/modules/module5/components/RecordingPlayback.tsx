@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getOralReadingRecording } from "../services/oralReadingService";
 import { createSegmentPlaybackQueue } from "../services/recordingPlaybackQueue";
+import { resolveRecordingDuration } from "../services/recordingDuration";
 
 interface RecordingPlaybackProps {
   attemptId: string;
@@ -25,7 +26,8 @@ const TEXT = {
       "Hindi mapatugtog ang rekording o nag-expire na ang link nito. Pindutin ang “Kunin muli ang rekording” upang subukang muli.",
     reload: "Kunin muli ang rekording",
     part: (index: number, total: number) => `Bahagi ${index} sa ${total}`,
-    audioLabel: (index: number) => `Rekording ng pagbasa, bahagi ${index}`,
+    audioLabel: (index: number, total: number) =>
+      total > 1 ? `Rekording ng pagbasa, bahagi ${index}` : "Rekording ng pagbasa",
   },
   en: {
     region: "Read-aloud recording",
@@ -41,7 +43,8 @@ const TEXT = {
     playbackError: "Audio could not load or its link expired. Reload the recording to try again.",
     reload: "Reload recording",
     part: (index: number, total: number) => `Part ${index} of ${total}`,
-    audioLabel: (index: number) => `Read-aloud recording part ${index}`,
+    audioLabel: (index: number, total: number) =>
+      total > 1 ? `Read-aloud recording part ${index}` : "Read-aloud recording",
   },
 } as const;
 
@@ -95,8 +98,9 @@ export default function RecordingPlayback({ attemptId, teacher = false, language
             controls
             preload={index === 0 ? "metadata" : "none"}
             src={src}
-            aria-label={text.audioLabel(index + 1)}
+            aria-label={text.audioLabel(index + 1, segments.length)}
             style={{ width: "100%" }}
+            onLoadedMetadata={(event) => resolveRecordingDuration(event.currentTarget)}
             onPlay={() => queue.handlePlay(index)}
             onEnded={() => queue.handleEnded(index)}
             onError={() => setError("playback")}

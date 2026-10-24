@@ -8,9 +8,11 @@ interface ActivityHeaderProps {
   language: string;
   uiLanguage?: ActivityLanguage;
   onBack?: () => void;
+  /** The result page hides the account button; other activity pages keep it. */
+  showAccount?: boolean;
 }
 
-export default function ActivityHeader({ title, language, uiLanguage, onBack }: ActivityHeaderProps) {
+export default function ActivityHeader({ title, language, uiLanguage, onBack, showAccount = true }: ActivityHeaderProps) {
   const { t } = getActivityText(uiLanguage);
   const navigate = useNavigate();
 
@@ -29,11 +31,13 @@ export default function ActivityHeader({ title, language, uiLanguage, onBack }: 
         <span className="activity-language">{language}</span>
       </div>
 
-      <div className="activity-header-right">
-        <button className="activity-icon-button" type="button" aria-label={t("Account")}>
-          <User size={20} />
-        </button>
-      </div>
+      {showAccount && (
+        <div className="activity-header-right">
+          <button className="activity-icon-button" type="button" aria-label={t("Account")}>
+            <User size={20} />
+          </button>
+        </div>
+      )}
     </header>
   );
 }

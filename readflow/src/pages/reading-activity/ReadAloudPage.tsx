@@ -1,20 +1,34 @@
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "./activityLanguage";
 import { assignedReadingTarget } from "../../modules/module5/services/assignedReadingNavigation";
 import { updateReadingActivityStatus } from "../../modules/module4/services/classroomService";
-import { BookOpen, Mic, Square } from "lucide-react";
+import { Mic, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import ActivityHeader from "./ActivityHeader";
 import { useAudioRecorder } from "../../modules/module2/hooks/useAudioRecorder";
 import { uploadDiagnosticAudio } from "../../modules/module2/services/diagnosticAudio";
+
+// Each speech-to-text part is about 25 s of audio; a part still waiting after this
+// stops processing with a retryable message. The recording stays in memory.
+const SPEECH_PART_TIMEOUT_MS = 90_000;
+const uploadSpeechPart = (audio: Blob, language: "en" | "fil") => withTimeout(
+  uploadDiagnosticAudio(audio, language),
+  SPEECH_PART_TIMEOUT_MS,
+  () => new DiagnosticAudioUploadError("STT_PROVIDER_ERROR", SLOW_CONNECTION_MESSAGE),
+);
 import {
   RECORDING_UPLOAD_ERROR,
+  SLOW_CONNECTION_MESSAGE,
   createOralReadingAttempt,
+  rememberOralReadingAttempt,
   getOralReadingModule,
   getOwnOralReadingAttempts,
   getAssignedReadingProgress,
+  type AssignedReadingProgress,
   uploadOralReadingRecording,
+  withTimeout,
 } from "../../modules/module5/services/oralReadingService";
+import { DiagnosticAudioUploadError } from "../../modules/module2/services/diagnosticAudioError";
 import {
   ORAL_READING_MAX_RECORDING_SECONDS,
   ORAL_READING_SEGMENT_DURATION_SECONDS,
@@ -25,6 +39,7 @@ import type {
   LearnerM5Role,
   OralReadingModule,
 } from "../../modules/module5/types/oralReading";
+import { resolveRecordingDuration } from "../../modules/module5/services/recordingDuration";
 import { storyParagraphs } from "./storyDisplay";
 import { useVoiceFollowStoryScroll } from "./useVoiceFollowStoryScroll";
 import { tokenizePassageParagraphs } from "./voiceFollow";
@@ -32,6 +47,7 @@ import "@fontsource/fredoka/latin-600.css";
 import "@fontsource/nunito/latin-700.css";
 import "./ActivityPage.css";
 import "./ReadAloudPage.css";
+import "../../modules/module5/components/M5Loading.css";
 
 interface ReadAloudPageProps {
   role: LearnerM5Role;
@@ -54,7 +70,15 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const [savedAttempts, setSavedAttempts] = useState<{ id: string; passageTitle: string }[]>([]);
   const [historyError, setHistoryError] = useState<string>();
   const sourceKey = `${moduleId}:${materialId}:${passageId}:${roomId}:${assignmentId}:${activityAssignmentId}`;
-  const [loadedSource, setLoadedSource] = useState<{ key: string; value: OralReadingModule }>();
+  const entry = location.state as { readingActivity?: AssignedReadingProgress; oralReadingModule?: OralReadingModule } | null;
+  const entryActivity = entry?.readingActivity;
+  const preparedActivity = entryActivity?.materialId === materialId && entryActivity?.roomId === roomId
+    && entryActivity?.activityAssignmentId === activityAssignmentId ? entryActivity : undefined;
+  const entryModule = entry?.oralReadingModule;
+  const preparedModule = preparedActivity && entryModule?.materialId === materialId && entryModule?.roomId === roomId
+    && entryModule?.activityAssignmentId === activityAssignmentId ? entryModule : undefined;
+  const [loadedSource, setLoadedSource] = useState<{ key: string; value: OralReadingModule } | undefined>(
+    preparedModule ? { key: sourceKey, value: preparedModule } : undefined);
   const module = loadedSource?.key === sourceKey ? loadedSource.value : undefined;
   const setModule = (value: OralReadingModule | undefined) => setLoadedSource(value ? { key: sourceKey, value } : undefined);
   const ui = getActivityText(module ? module.language : activityLanguageFromState(location.state));
@@ -62,6 +86,9 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const activityState = activityLanguageState(language);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
+  const [loadRevision, setLoadRevision] = useState(0);
+  const loadRequest = useRef<{ key: string; promise: Promise<{ module?: OralReadingModule; target?: string; continueTarget?: string }> }>();
+  const historyRequest = useRef<{ key: string; promise: ReturnType<typeof getOwnOralReadingAttempts> }>();
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>("idle");
   const [processingError, setProcessingError] = useState<string | Error>();
   const [pendingAttempt, setPendingAttempt] = useState<CreateOralReadingAttemptInput>();
@@ -86,6 +113,8 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const {
     audioSegments,
     audioURLs,
+    fullRecording,
+    fullRecordingURL,
     segmentDurationsSeconds,
     isRecording,
     isStarting,
@@ -96,6 +125,9 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     startRecording,
     stopRecording,
   } = useAudioRecorder({
+    // Students hear and save one continuous recording; the ~25 s segments
+    // exist only for speech-to-text processing.
+    captureFullRecording: true,
     maxSegmentDurationSeconds: ORAL_READING_SEGMENT_DURATION_SECONDS,
     maxTotalDurationSeconds: ORAL_READING_MAX_RECORDING_SECONDS,
     // Shares the recorder's microphone stream; the recording itself is unchanged.
@@ -121,7 +153,6 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     generation.current += 1;
     setLoading(true);
     setLoadError(undefined);
-    setModule(undefined);
     setContinueTarget(undefined);
     setPendingAttempt(undefined);
     setSavedAttemptId(undefined);
@@ -135,31 +166,50 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     }
     setSavedAttempts([]);
     setHistoryError(undefined);
-    void getOwnOralReadingAttempts(moduleId, materialId ? { materialId, activityAssignmentId } : {}).then(attempts => { if (active) setSavedAttempts(attempts); })
-      .catch(() => { if (active) setHistoryError("Unable to load your saved results. Please refresh to retry."); });
-    void (async () => {
-      if (materialId && roomId && activityAssignmentId && !recordAgain) {
-        const progress = await getAssignedReadingProgress(roomId);
-        const saved = progress.find(item => item.activityAssignmentId === activityAssignmentId && item.materialId === materialId);
-        if (!saved) throw new Error("This reading activity is not assigned to you.");
-        if (saved.oralReadingAttemptId) {
-          if (saved.readAloudOnly === true) await updateReadingActivityStatus(saved.activityAssignmentId, "completed");
-          if (!viewReading) {
-            if (active) navigate(assignedReadingTarget(saved), { replace: true, state: activityState });
-            return;
+    const requestKey = `${sourceKey}:${recordAgain}:${viewReading}:${loadRevision}`;
+    if (!loadRequest.current || loadRequest.current.key !== requestKey) {
+      loadRequest.current = { key: requestKey, promise: (async () => {
+        let target: string | undefined;
+        if (materialId && roomId && activityAssignmentId && !recordAgain) {
+          const progress = preparedActivity && loadRevision === 0 ? [preparedActivity] : await getAssignedReadingProgress(roomId);
+          const saved = progress.find(item => item.activityAssignmentId === activityAssignmentId && item.materialId === materialId);
+          if (!saved) throw new Error("This reading activity is not assigned to you.");
+          if (saved.oralReadingAttemptId) {
+            if (saved.readAloudOnly === true) await updateReadingActivityStatus(saved.activityAssignmentId, "completed");
+            target = assignedReadingTarget(saved);
+            if (!viewReading) return { target };
           }
-          if (active) setContinueTarget(assignedReadingTarget(saved));
         }
+        const loadedModule = (loadRevision === 0 && preparedModule) || await getOralReadingModule(moduleId, { passageId, roomId, assignmentId, materialId, activityAssignmentId });
+        return { module: loadedModule, continueTarget: target };
+      })() };
+    }
+    void loadRequest.current.promise.then(result => {
+      if (!active) return;
+      if (result.target) {
+        // Stay in the pending layout until the destination mounts. Do not flash
+        // the history list or an empty activity between the two routes.
+        navigate(result.target, { replace: true, state: activityState });
+        return;
       }
-
-      const loadedModule = await getOralReadingModule(moduleId, { passageId, roomId, assignmentId, materialId, activityAssignmentId });
-      if (active) setModule(loadedModule);
-    })().catch((error: unknown) => {
-      if (active) setLoadError(error instanceof Error ? error.message : "Unable to load the activity.");
-    }).finally(() => { if (active) setLoading(false); });
+      setModule(result.module);
+      setContinueTarget(result.continueTarget);
+      setLoading(false);
+      // History is secondary and is unnecessary when redirecting to a saved result.
+      if (!historyRequest.current || historyRequest.current.key !== sourceKey) {
+        historyRequest.current = { key: sourceKey, promise: getOwnOralReadingAttempts(moduleId, materialId ? { materialId, activityAssignmentId } : {}) };
+      }
+      void historyRequest.current.promise.then(attempts => { if (active) setSavedAttempts(attempts); })
+        .catch(() => { if (active) setHistoryError("Unable to load your saved results. Please refresh to retry."); });
+    }).catch((error: unknown) => {
+      if (active) {
+        setLoadError(error instanceof Error ? error.message : "Unable to load the activity.");
+        setLoading(false);
+      }
+    });
     return () => { active = false; generation.current += 1; };
 
-  }, [moduleId, materialId, passageId, roomId, assignmentId, activityAssignmentId, recordAgain, viewReading]);
+  }, [moduleId, materialId, passageId, roomId, assignmentId, activityAssignmentId, recordAgain, viewReading, loadRevision]);
 
   const isProcessing = processingStatus === "processing" || processingStatus === "saving";
   const recordingBusy = isStarting || isStopping || isProcessing;
@@ -187,6 +237,8 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     const attempt = await createOralReadingAttempt(input);
     if (module?.readAloudOnly === true && module.activityAssignmentId) {
       await updateReadingActivityStatus(module.activityAssignmentId, "completed");
+      // Completion is confirmed by the server before seeding the result screen.
+      if (currentGeneration === generation.current) rememberOralReadingAttempt({ ...attempt, readAloudCompleted: true });
     }
     if (currentGeneration !== generation.current) return;
     await saveRecordingThenOpenResult(attempt.id);
@@ -203,7 +255,8 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     setProcessingStatus("saving");
     setProcessingError(undefined);
     try {
-      await uploadOralReadingRecording(attemptId, audioSegments);
+      // The segments are saved only if the continuous recording could not be made.
+      await uploadOralReadingRecording(attemptId, fullRecording ? [fullRecording] : audioSegments);
     } catch (error) {
       if (currentGeneration !== generation.current) return;
       setSavedAttemptId(attemptId);
@@ -241,7 +294,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
           audioSegments,
           segmentDurationsSeconds,
           recordingDurationSeconds,
-          uploadSegment: uploadDiagnosticAudio,
+          uploadSegment: uploadSpeechPart,
         });
         if (currentGeneration !== generation.current) return;
         setPendingAttempt(attemptInput);
@@ -289,17 +342,20 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     void handleProcess();
   }, [audioSegments, recordingDurationSeconds, isRecording, isStopping, isStarting, module, materialId]);
 
-  if (loading || !module) {
+  if (!module) {
     return (
       <div className="activity-page-shell" lang={language}>
         <ActivityHeader uiLanguage={language} title={t("Read Aloud")} language="" onBack={() => navigate(backTarget)} />
         <div className="activity-page">
-          <div className="activity-missing" role={loadError ? "alert" : "status"}>
-            <BookOpen size={36} />
-            <p>{loadError ? ui.message(loadError, "Unable to load the activity.") : t("Loading oral-reading activity...")}</p>
-            {loadError && <button type="button" onClick={() => window.location.reload()}>{t("Retry")}</button>}
+          <div className="read-aloud-body">
+            <h2 className="read-aloud-story-heading">{t("Read the Story Aloud")}</h2>
+            <div className="m5-pending-status" role={loadError ? "alert" : "status"} aria-busy={!loadError}>
+            {!loadError && <span className="m5-loading-indicator" aria-hidden="true" />}
+            <p>{loadError ? ui.message(loadError, "Unable to load the activity.") : t("Opening your reading activity...")}</p>
+            {loadError && <button type="button" onClick={() => setLoadRevision(value => value + 1)}>{t("Retry")}</button>}
             {loadError && <button type="button" onClick={() => navigate(backTarget)}>{t(backLabel)}</button>}
-            {savedAttempts.map((saved, index) => <p key={saved.id}><button type="button" onClick={() => navigate(resultPathFor(saved.id), { state: activityState })}>{saved.passageTitle} - {t("Saved Result")} {index + 1}</button></p>)}
+            </div>
+
           </div>
         </div>
       </div>
@@ -317,6 +373,8 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
 
       <div className="activity-page">
         <div className="read-aloud-body">
+          {loading && <p className="m5-pending-status" role="status"><span className="m5-loading-indicator" aria-hidden="true" />{t("Opening your reading activity...")}</p>}
+          {loadError && <p role="alert">{ui.message(loadError, "Unable to load the activity.")} <button type="button" onClick={() => setLoadRevision(value => value + 1)}>{t("Retry")}</button></p>}
           {savedAttempts.length > 0 && <details><summary>{t("Saved oral reading results")}</summary><section aria-label={t("Saved oral reading results")}><h2>{t("Your Saved Results")}</h2>
             {savedAttempts.map((saved, index) => <p key={saved.id}><button type="button" onClick={() => navigate(resultPathFor(saved.id), { state: activityState })}>{saved.passageTitle} - {t("Result")} {index + 1}</button></p>)}
           </section></details>}
@@ -354,7 +412,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
             <button
               className={`read-aloud-record-button ${isRecording ? "read-aloud-record-button--active" : ""}`}
               type="button"
-              disabled={recordingBusy || (materialId !== undefined && audioSegments.length > 0)}
+              disabled={loading || Boolean(loadError) || recordingBusy || (materialId !== undefined && audioSegments.length > 0)}
               onClick={handleRecordingButton}
             >
               {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={19} />}
@@ -382,7 +440,11 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
             {audioURLs.length > 0 && (
               <div className="read-aloud-review">
                 <details><summary>{t("Review Recording")}</summary>
-                {audioURLs.map((audioURL, index) => (
+                {fullRecordingURL ? (
+                  <div className="read-aloud-part">
+                    <audio controls src={fullRecordingURL} onLoadedMetadata={(event) => resolveRecordingDuration(event.currentTarget)} aria-label={t("Your reading recording")} />
+                  </div>
+                ) : audioURLs.map((audioURL, index) => (
                   <div className="read-aloud-part" key={audioURL}>
                     {audioURLs.length > 1 && <span>{t("Part")} {index + 1}</span>}
                     <audio controls src={audioURL} aria-label={t("Your reading recording part {part}", { part: index + 1 })} />
