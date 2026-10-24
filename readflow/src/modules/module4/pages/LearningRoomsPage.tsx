@@ -116,7 +116,7 @@ export default function LearningRoomsPage() {
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-extrabold text-white md:text-4xl">
-            Learning Rooms
+            {showCreateForm ? "Create Learning Room" : "Learning Rooms"}
           </h1>
           <p className="mt-1 text-sm text-white/75 md:text-base">
             Create and manage your reading classrooms.
@@ -125,7 +125,13 @@ export default function LearningRoomsPage() {
 
         <button
           type="button"
+          disabled={creating}
           onClick={() => {
+            if (showCreateForm) {
+              setRoomName("");
+              setSection("");
+              setDescription("");
+            }
             setShowCreateForm((current) => !current);
             setError("");
           }}
@@ -147,7 +153,7 @@ export default function LearningRoomsPage() {
       )}
 
       {/* Create Room Form */}
-      {showCreateForm && (
+      {showCreateForm ? (
         <form
           onSubmit={handleCreateRoom}
           className="mb-7 rounded-3xl bg-[#dce8e7] p-6 shadow-lg md:p-7"
@@ -229,8 +235,8 @@ export default function LearningRoomsPage() {
             </button>
           </div>
         </form>
-      )}
-
+      ) : (
+        <>
       {/* Room Count */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">
@@ -329,6 +335,8 @@ export default function LearningRoomsPage() {
             </article>
           ))}
         </div>
+      )}
+        </>
       )}
     </section>
   );

@@ -254,7 +254,7 @@ export default function Settings() {
                   onChange={(event) => setEmail(event.target.value)}
                 />
 
-                <label htmlFor="password">Password (leave blank if unchanged)</label>
+                <label htmlFor="password">Change Password</label>
                 <div className="basa-password-field">
                   <input
                     id="password"

@@ -69,7 +69,7 @@ test("Teacher upload runtime uses ASCII loading text without mojibake", async ()
   const runtime = [uploadForm, uploadPage, materialLibrary, questionSets].join("\n");
   assert.doesNotMatch(runtime, /â€¦|Â|Ã|�|…/);
   for (const label of [
-    "Adding Material...",
+    "Saving Reviewed Material...",
     "Uploading material...",
     "Processing image text...",
     "Extracting document text...",

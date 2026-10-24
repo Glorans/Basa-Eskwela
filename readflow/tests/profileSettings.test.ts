@@ -128,7 +128,7 @@ test("existing email and password settings remain delegated to authService", asy
 
   assert.match(settings, /await updateEmail\(normalizedEmail\)/);
   assert.match(settings, /await updatePassword\(password\)/);
-  assert.match(settings, /Password \(leave blank if unchanged\)/);
+  assert.match(settings, /Change Password/);
   assert.match(settings, /Confirm Password/);
   assert.doesNotMatch(settings, /supabase\.auth\.updateUser/);
 });

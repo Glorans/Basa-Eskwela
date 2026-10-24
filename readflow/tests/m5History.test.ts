@@ -48,7 +48,7 @@ function find(tree: any, predicate: (node: any) => boolean): any {
   }
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-for (const role of ['student','general_user']) {
+for (const role of ['student','general_user','admin']) {
   test(`${role} history renders only saved results and reopens the correct role route`, async () => {
     const f=fixture(role);
     assert.match(JSON.stringify(f.render()), /Loading reading history/);
@@ -57,7 +57,7 @@ for (const role of ['student','general_user']) {
     const tree=f.render();
     assert.match(JSON.stringify(tree), /Seeds/);
     assert.match(JSON.stringify(tree), /91.5/);
-    assert.equal(find(tree,node=>node.type==='a').props.to, `${role==='student'?'/dashboard':'/m3/general'}/read-aloud/results/saved`);
+    assert.equal(find(tree,node=>node.type==='a').props.to, `${role==='admin'?'/admin':role==='student'?'/dashboard':'/m3/general'}/read-aloud/results/saved`);
   });
 }
 test('history handles empty records and retry after failure', async () => {

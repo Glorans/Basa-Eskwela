@@ -119,7 +119,7 @@ export default function UserManagementPage() {
               <input
                 type="search"
                 aria-label="Search users"
-                placeholder="Search nickname, full name or email"
+                placeholder="Search name or email"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
               />

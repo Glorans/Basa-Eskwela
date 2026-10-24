@@ -1,5 +1,5 @@
-import { useId, useState, type FormEvent } from "react";
-import { FileCheck2, LoaderCircle, UploadCloud } from "lucide-react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { CheckCircle2, FileCheck2, LoaderCircle, UploadCloud } from "lucide-react";
 import M3StatusBadge from "./M3StatusBadge";
 import {
   getMaterialPersistenceError,
@@ -14,7 +14,11 @@ import type { MaterialLanguageCode } from "../types/content";
 
 interface UploadMaterialFormProps {
   onCancel: () => void;
-  onAddToLibrary: (materialId: string) => void | Promise<void>;
+  /** Runs after the material is saved, e.g. to refresh the material list. */
+  onSaved: (materialId: string) => void | Promise<void>;
+  onViewMaterials: () => void;
+  /** True while extracted text is waiting to be saved. */
+  onUnsavedChange?: (unsaved: boolean) => void;
 }
 
 type UploadStage = "idle" | "uploading" | "processing" | "success" | "error";
@@ -36,7 +40,9 @@ function isImageFile(file: File | undefined) {
 
 export default function UploadMaterialForm({
   onCancel,
-  onAddToLibrary,
+  onSaved,
+  onViewMaterials,
+  onUnsavedChange,
 }: UploadMaterialFormProps) {
   const fileInputId = useId();
   const [title, setTitle] = useState("");
@@ -48,7 +54,38 @@ export default function UploadMaterialForm({
   const [uploadedMaterial, setUploadedMaterial] = useState<TemporaryUploadedMaterial>();
   const [reviewedText, setReviewedText] = useState("");
   const [isPersisting, setIsPersisting] = useState(false);
+  const [savedMaterialId, setSavedMaterialId] = useState<string>();
+  // Synchronous guard: blocks a second save before React re-renders the disabled button.
+  const saveLock = useRef(false);
   const busy = stage === "uploading" || stage === "processing";
+  const unsaved = stage === "success" && Boolean(uploadedMaterial) && !savedMaterialId;
+
+  useEffect(() => {
+    onUnsavedChange?.(unsaved);
+  }, [unsaved, onUnsavedChange]);
+
+  // Warn before a refresh or tab close discards extracted text that is not saved yet.
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
+
+  function startAnotherUpload() {
+    saveLock.current = false;
+    setTitle("");
+    setSelectedFile(undefined);
+    setUploadedMaterial(undefined);
+    setReviewedText("");
+    setSavedMaterialId(undefined);
+    setReviewError("");
+    setError("");
+    setStage("idle");
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -94,11 +131,13 @@ export default function UploadMaterialForm({
     }
   }
 
-  async function addReviewedMaterial() {
+  async function saveReviewedMaterial() {
+    // Never create the same material twice: once saved, or while a save is running, do nothing.
+    if (saveLock.current || savedMaterialId) return;
     const contentText = reviewedText.trim();
 
     if (!contentText || !uploadedMaterial || !selectedFile) {
-      setReviewError("Reviewed text cannot be blank before adding this material.");
+      setReviewError("The reviewed text cannot be blank. Add the reading text before saving.");
       return;
     }
 
@@ -106,38 +145,84 @@ export default function UploadMaterialForm({
       setReviewError("The reviewed text is too long to save. Please shorten it before saving.");
       return;
     }
+    saveLock.current = true;
     setReviewError("");
     setIsPersisting(true);
 
+    let persistedId: string;
     try {
       const persistedMaterial = await persistUploadedMaterial({
         file: selectedFile,
         material: uploadedMaterial,
         contentText,
       });
-      await onAddToLibrary(persistedMaterial.id);
+      persistedId = persistedMaterial.id;
     } catch (persistenceError) {
-      setReviewError(getMaterialPersistenceError(persistenceError));
+      // Nothing was saved; the edited text stays in the text area for another try.
+      setReviewError(`Your material was not saved. ${getMaterialPersistenceError(persistenceError)} Your edits are still here, so you can try again.`);
+      saveLock.current = false;
+      setIsPersisting(false);
+      return;
+    }
+
+    // The save succeeded: lock it in before anything else can fail.
+    setSavedMaterialId(persistedId);
+    try {
+      await onSaved(persistedId);
+    } catch {
+      // The material is saved; refreshing the list is not required for that.
     } finally {
       setIsPersisting(false);
     }
+  }
+
+  if (stage === "success" && uploadedMaterial && savedMaterialId && !isPersisting) {
+    return (
+      <section className="m3-form-card m3-upload-result" aria-labelledby="m3-upload-saved-title">
+        <div className="m3-upload-result__heading">
+          <span className="m3-upload-result__icon" aria-hidden="true">
+            <CheckCircle2 size={28} />
+          </span>
+          <div>
+            <p className="m3-eyebrow">Saved to My Materials</p>
+            <h2 id="m3-upload-saved-title">Material Saved Successfully</h2>
+          </div>
+          <M3StatusBadge value="completed" label="Saved" />
+        </div>
+        <p className="m3-success-message" role="status">
+          "{title.trim() || uploadedMaterial.originalFilename}" is saved and now appears in My Materials.
+        </p>
+        <div className="m3-form-actions">
+          <button className="m3-button m3-button--secondary" type="button" onClick={startAnotherUpload}>
+            <UploadCloud size={18} /> Upload Another Material
+          </button>
+          <button className="m3-button m3-button--primary" type="button" onClick={onViewMaterials}>
+            Go to My Materials
+          </button>
+        </div>
+      </section>
+    );
   }
 
   if (stage === "success" && uploadedMaterial) {
     const isImage = uploadedMaterial.fileType === "JPG" || uploadedMaterial.fileType === "PNG";
 
     return (
-      <section className="m3-form-card m3-upload-result" aria-labelledby="m3-upload-result-title">
+      <section className="m3-form-card m3-upload-result" aria-labelledby="m3-upload-result-title" aria-busy={isPersisting}>
         <div className="m3-upload-result__heading">
           <span className="m3-upload-result__icon" aria-hidden="true">
             <FileCheck2 size={28} />
           </span>
           <div>
-            <p className="m3-eyebrow">Upload complete</p>
-            <h2 id="m3-upload-result-title">Text ready for review</h2>
+            <p className="m3-eyebrow">Step 2 of 2: Text Extracted Successfully</p>
+            <h2 id="m3-upload-result-title">Review &amp; Save Material</h2>
           </div>
-          <M3StatusBadge value={uploadedMaterial.extractionStatus} />
+          <M3StatusBadge value="pending" label="Ready for Review" />
         </div>
+        <p>Review the extracted text and correct any errors before saving.</p>
+        <p className="m3-inline-notice" role="status">
+          <strong>Not saved yet.</strong> This material will not appear in My Materials until you select Save Reviewed Material.
+        </p>
 
         <dl className="m3-upload-metadata">
           <div>
@@ -168,7 +253,7 @@ export default function UploadMaterialForm({
           {isImage && (
             <div>
               <dt>OCR status</dt>
-              <dd>Completed</dd>
+              <dd>Text extracted</dd>
             </div>
           )}
         </dl>
@@ -190,7 +275,7 @@ export default function UploadMaterialForm({
             }}
             rows={15}
             required
-            disabled={isPersisting}
+            disabled={isPersisting || Boolean(savedMaterialId)}
           />
         </label>
 
@@ -200,15 +285,33 @@ export default function UploadMaterialForm({
           </p>
         )}
 
+        {isPersisting && (
+          <p className="m3-inline-notice" role="status">
+            <span className="m3-progress-label">
+              <LoaderCircle className="m3-spinner" size={19} />
+              {savedMaterialId ? "Material saved. Updating My Materials..." : "Saving your reviewed material..."}
+            </span>
+          </p>
+        )}
+
         <div className="m3-form-actions">
+          <button
+            className="m3-button m3-button--secondary"
+            type="button"
+            onClick={onCancel}
+            disabled={isPersisting}
+          >
+            Cancel
+          </button>
           <button
             className="m3-button m3-button--primary"
             type="button"
-            onClick={addReviewedMaterial}
-            disabled={isPersisting}
+            onClick={() => void saveReviewedMaterial()}
+            disabled={isPersisting || Boolean(savedMaterialId)}
+            aria-busy={isPersisting}
           >
             {isPersisting && <LoaderCircle className="m3-spinner" size={18} />}
-            {isPersisting ? "Adding Material..." : "Save Material"}
+            {isPersisting ? "Saving Reviewed Material..." : "Save Reviewed Material"}
           </button>
         </div>
       </section>
@@ -217,6 +320,10 @@ export default function UploadMaterialForm({
 
   return (
     <form className="m3-form-card" onSubmit={handleSubmit} aria-busy={busy}>
+      <div>
+        <p className="m3-eyebrow">Step 1 of 2: Upload &amp; Extract Text</p>
+        <p>You will review the extracted text and save the material in the next step.</p>
+      </div>
       <div className="m3-image-guidance">
         <strong>Multi-page reading materials</strong>
         <span>Upload one text-based PDF (maximum 5 pages), a DOCX, or one clear JPG/PNG image. Scanned PDFs and multiple image files are not supported.</span>

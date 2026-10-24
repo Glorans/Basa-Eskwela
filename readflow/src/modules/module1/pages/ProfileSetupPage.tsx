@@ -128,7 +128,7 @@ export default function ProfileSetupPage() {
 
           <label className="profile-setup-prompt" htmlFor="age">Age</label>
           <input
-            className="profile-setup-input"
+            className="profile-setup-input profile-setup-input--age"
             id="age"
             name="age"
             type="number"

@@ -216,7 +216,9 @@ try{
  const approved='PAGE ONE READING\n\nPAGE TWO EDITED READING\n\nPAGE THREE READING';
  await evaluate(`(()=>{const e=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,${JSON.stringify(approved)});e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
  const previewShot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});fs.writeFileSync(path.join(output,'multi-page-preview.png'),Buffer.from(previewShot.data,'base64'));
- await click('Save Material');
+ await click('Save Reviewed Material');
+ await until(`document.body.textContent.includes('Material Saved Successfully')`);
+ await click('Go to My Materials');
  await until(`document.body.textContent.includes('My Uploaded Materials') && document.body.textContent.includes('Browser Three Page Material')`);
  const uploaded=db.tables.uploaded_materials.find(m=>m.title==='Browser Three Page Material');
  assert.ok(uploaded);assert.equal(uploaded.content_text,approved);assert.equal(uploaded.raw_extracted_text,'PAGE ONE READING\n\nPAGE TWO READING\n\nPAGE THREE READING');

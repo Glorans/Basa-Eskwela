@@ -122,8 +122,8 @@ for (const role of ["student", "general_user", "teacher", "admin"]) {
   });
 }
 
-test("nickname search is trimmed, case insensitive and respects role/status filters", () => {
-  assert.deepEqual(filterManagedUsers(users, { searchQuery: "  BOOKworm  ", role: "student", status: "active" }).map(user => user.id), ["student-id"]);
+test("nickname-only matches are excluded from name and email search", () => {
+  assert.deepEqual(filterManagedUsers(users, { searchQuery: "  BOOKworm  ", role: "student", status: "active" }).map(user => user.id), []);
   assert.deepEqual(filterManagedUsers(users, { searchQuery: "bookworm", role: "teacher", status: "" }), []);
   assert.deepEqual(filterManagedUsers(users, { searchQuery: "bookworm", role: "", status: "inactive" }), []);
 });

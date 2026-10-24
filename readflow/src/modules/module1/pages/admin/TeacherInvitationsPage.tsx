@@ -108,7 +108,7 @@ export default function TeacherInvitationsPage() {
       <button type="submit" disabled={busy || loading || !!revealed || refreshRequired}>{busy ? "Please wait..." : "Generate invitation"}</button>
       {refreshRequired && !loading && <p>Refresh the list before generating another invitation. Revoke any code you did not receive.</p>}
     </form>
-    <section><h2>Existing invitations</h2><p>Only metadata is available here. Refresh to check recent usage or expiration.</p>
+    <section><h2>Existing invitations</h2>
       {loading ? <p role="status">Loading invitations...</p> : invitations.length === 0 ? <p>No invitations to display.</p> :
         <div className="teacher-invitations-table"><table><thead><tr><th>Invitation ID</th><th>Created</th><th>Expires</th><th>Uses</th><th>Status</th><th>Action</th></tr></thead>
           <tbody>{invitations.map(invitation => <tr key={invitation.id}>

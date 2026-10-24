@@ -26,7 +26,6 @@ export function filterManagedUsers(users: ManagedUser[], filters: UserFilters) {
 
   return users.filter((user) => {
     const matchesSearch = !normalizedQuery
-      || (user.nickname ?? "").toLocaleLowerCase().includes(normalizedQuery)
       || user.fullName.toLocaleLowerCase().includes(normalizedQuery)
       || (user.email ?? "").toLocaleLowerCase().includes(normalizedQuery);
     const matchesRole = !filters.role || user.role === filters.role;
