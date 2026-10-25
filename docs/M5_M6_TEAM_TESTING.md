@@ -93,67 +93,100 @@ User role · activity and story · language · device, screen size and browser �
 2. Open `https://<frontend>/` and sign in. Refresh a deep link (e.g. `/dashboard/learning-rooms`); it must not 404.
 3. Run the English test above once on a laptop and once on a phone over HTTPS. The microphone prompt must appear.
 
-## 5. Deployment (do not run until approved)
+## 5. Deployment on Railway (do not run until approved)
 
-The order matters: backend first, then frontend, then the backend's allowed origins, then Supabase URLs.
+One Railway project, two services from the same GitHub repo (`Glorans/Basa-Eskwela`, branch `main`).
+Teammates only use the **frontend** URL. No repository changes are needed: Railway's builder
+(Railpack) detects both folders. Railway's `railway.json` config-as-code is deprecated (legacy
+files work until 2026-12-01), so everything below is set in the Railway dashboard.
 
-### 5.1 Backend: Express (Render web service, or any always-on Node host)
-Don't move the backend into Vercel serverless functions. A five-minute read-aloud upload is about 10 MB, and transcription can take more than three minutes. Both exceed typical serverless body and duration limits.
-
-| Setting | Value |
+### 5.1 Service `backend` (Express, folder `server`)
+| Setting (service → Settings) | Value |
 |---|---|
-| Root directory | `server` |
-| Build command | `npm ci` |
-| Start command | `npm start` (runs `node server.js`; it binds to `PORT` from the host) |
-| Health check path | `/api/health` |
-| Instances | **1** (rate limits and M2 transcript receipts are kept in memory) |
-| Node | set `NODE_VERSION=24` (the version tested locally) |
+| Source | GitHub `Glorans/Basa-Eskwela`, branch `main` |
+| Root Directory | `/server` |
+| Watch Paths | `/server/**` |
+| Build | Railpack (default); installs with `npm ci` |
+| Start Command | leave empty: Railpack runs `npm start` → `node server.js` |
+| Healthcheck Path | `/api/health` |
+| Replicas | 1 (rate limits and M2 transcript receipts are kept in memory) |
+| Networking | **Generate Domain** (HTTPS `*.up.railway.app`) |
 
-Environment variables. Set them on the host; never commit them. **Don't** set `DOTENV_PATH` there.
+The server listens on Railway's `PORT` on all interfaces (`server.listen(port)` with no host), so no code change is needed.
+
+Variables (service → Variables). Copy values from `%LOCALAPPDATA%\ReadFlow\basa-eskwela-server.env`.
+Never use the team project's `ReadFlow\server\.env`. Don't set `PORT` or `DOTENV_PATH`.
 
 | Name | Value |
 |---|---|
+| `RAILPACK_NODE_VERSION` | `24` (the version tested locally; the default is the newest LTS) |
 | `NODE_ENV` | `production` |
 | `SUPABASE_URL` | `https://oudfrdeqwotynihkkmze.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | staging secret key (from the local env file / Supabase dashboard) |
-| `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` | from the local env file (`southeastasia`) |
-| `AZURE_SPEECH_VOICE_EN`, `AZURE_SPEECH_VOICE_FIL` | optional; defaults `en-US-JennyNeural`, `fil-PH-BlessicaNeural` |
-| `AZURE_SPEECH_TIMEOUT_MS` | optional, default `60000` |
-| `DIAGNOSTIC_RECEIPT_SECRET` | same value as the local env file (≥ 32 characters) |
-| `FRONTEND_ORIGIN` | `https://<frontend-domain>` (comma-separate extra origins; keep localhost only if testing locally against the hosted backend) |
-| `DIAGNOSTIC_WS_ORIGINS` | `https://<frontend-domain>` |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | only needed for teacher/admin question generation |
+| `SUPABASE_SERVICE_ROLE_KEY` | staging secret key, from the env file |
+| `AZURE_SPEECH_KEY` | from the env file |
+| `AZURE_SPEECH_REGION` | `southeastasia` |
+| `DIAGNOSTIC_RECEIPT_SECRET` | from the env file |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | from the env file (only used for teacher/admin question generation) |
 | `M7_RISK_WORKER_ENABLED` | `false` |
+| `FRONTEND_ORIGIN` | `https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}` |
+| `DIAGNOSTIC_WS_ORIGINS` | `https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}` |
 
-### 5.2 Frontend: Vercel
+Optional: `AZURE_SPEECH_VOICE_EN`, `AZURE_SPEECH_VOICE_FIL`, `AZURE_SPEECH_TIMEOUT_MS` (defaults are fine).
+
+### 5.2 Service `frontend` (React/Vite, folder `readflow`)
 | Setting | Value |
 |---|---|
-| Root directory | `readflow` |
-| Framework preset | Vite |
-| Build command | `npm run build` (type check + Vite) |
-| Output directory | `dist` |
-| SPA routing | `readflow/vercel.json` rewrites every path to `index.html` |
+| Source | same repo and branch |
+| Root Directory | `/readflow` |
+| Watch Paths | `/readflow/**` |
+| Build Command | `npm run build` (Railpack's default for this package; type check + Vite) |
+| Start Command | **leave empty**. With no start command, Railpack serves `dist` with Caddy on `PORT`, with `index.html` fallback for React Router deep links. Setting a start command turns that off. |
+| Healthcheck Path | `/health` (answered by Railpack's Caddy server) |
+| Networking | **Generate Domain**: this is the URL teammates use |
 
-Environment variables (Production). Vite bakes them into the build, so **redeploy after changing them**:
+Variables. Vite bakes them in at build time, and Railway provides service variables to the build. **Redeploy after changing any of them.**
 
 | Name | Value |
 |---|---|
-| `VITE_API_URL` | `https://<backend-domain>` (no trailing slash; must be HTTPS) |
+| `RAILPACK_NODE_VERSION` | `24` |
+| `VITE_API_URL` | `https://${{backend.RAILWAY_PUBLIC_DOMAIN}}` |
 | `VITE_SUPABASE_URL` | `https://oudfrdeqwotynihkkmze.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | staging publishable key (`sb_publishable_…`) |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | the `sb_publishable_…` value from `readflow/.env.local` |
 
-Never add the service key, Azure, Gemini or receipt secrets to any `VITE_*` variable; those end up in the public build.
+- Don't set `NODE_ENV` on the frontend service; the build needs Vite and TypeScript from devDependencies.
+- Never put the service key, Azure, Gemini or receipt secrets in a `VITE_*` variable; they would end up in the public JavaScript.
+- `readflow/vercel.json` is unused on Railway and harmless.
+
+The service names `backend` and `frontend` must match the `${{…}}` references exactly. If you name them differently, change the references.
 
 ### 5.3 Supabase (ReadFlow-Staging dashboard)
-- **Authentication → URL Configuration:** Site URL `https://<frontend-domain>`. Redirect URLs `https://<frontend-domain>/**`, plus `http://localhost:5174/**` for local work. Password reset uses `<origin>/reset-password`.
+- **Authentication → URL Configuration:**
+  - Site URL `https://<frontend>.up.railway.app`.
+  - Redirect URLs `https://<frontend>.up.railway.app/**`, and keep `http://localhost:5174/**` and `http://127.0.0.1:5174/**` for local development.
+  - Password reset uses `<origin>/reset-password`.
 - No schema or migration changes are needed.
 
-### 5.4 HTTPS and microphone
-Browsers only allow microphone recording on HTTPS (or localhost). Vercel and Render both serve HTTPS. Mixed content (HTTPS page → HTTP API) is blocked, so `VITE_API_URL` must be HTTPS.
+### 5.4 Order
+1. Create the project and both services (Root Directories set) and generate both domains.
+2. Add the variables to both services.
+3. Deploy the backend, then the frontend.
+4. Update Supabase URLs.
+5. Run the smoke test in section 4.
 
-## 6. Hosting limits to expect
-- **Render free plan:** the service sleeps after about 15 minutes without traffic, so the first request takes about a minute. Open `/api/health` before a test session. It also has 512 MB of memory (image OCR during teacher uploads is the heaviest task) and a disk that is wiped on restart (temporary uploads only; recordings and materials live in Supabase Storage). Check the current plan terms before relying on them.
-- **Rate limits per user (in memory, reset on restart):** 60 transcription and 100 TTS requests per 10 minutes.
-- **Azure:** if the Speech resource is on the free F0 tier, simultaneous recordings from several testers can hit Azure's concurrency and quota limits ("Too many speech requests"). Check the tier in the Azure portal before a group session.
-- **Supabase free plan:** limited auth emails per hour, and projects pause after a period of inactivity.
-- **Vercel Hobby plan:** fine for a non-commercial capstone.
+### 5.5 Local development is unchanged
+`start-backend.cmd` with `DOTENV_PATH`, Vite on port 5174 with `readflow/.env.local`, and the localhost CORS and redirect entries all keep working.
+
+## 6. Railway limits checked against the M5/M6 implementation
+- **HTTPS and microphone:** all Railway traffic is HTTPS (TLS 1.2+), so browsers allow recording. `VITE_API_URL` must be the `https://` backend domain, because mixed content is blocked.
+- **Request time:** requests may run up to 15 minutes while data flows, but close after **5 minutes with no data**, and request bodies must finish uploading within 5 minutes.
+  - An M5 read-aloud (at most five minutes, about 10 MB WAV) waits at most 60 s + half the recording length (3.5 minutes) for Azure. The browser itself gives up at 150 s + half the recording (5 minutes at most).
+  - Both fit; slow mobile uploads of long readings are the only edge case.
+- **WebSockets** (M2 live transcription) are supported.
+- **Memory:** the backend uses about 100 MB idle, plus the recording being processed. The Free plan allows 0.5 GB and 1 vCPU per service. Image OCR during teacher uploads is the heaviest task.
+- **Cost:** RAM is $10/GB-month and CPU $20/vCPU-month. Two always-on services cost roughly $1.3–2/month of usage.
+  - The **Free plan's $1/month credit won't cover a full month.** The **Trial's one-time $5** covers a few weeks to a few months.
+  - When credit runs out, deployments stop. Hobby ($5/month) is a paid plan and needs approval.
+- **Disk:** container disk is temporary. Only temporary uploads use it; recordings and materials live in Supabase Storage.
+- **Rate limits per user (in memory, reset on redeploy):** 60 transcription and 100 TTS requests per 10 minutes.
+- **Azure:** if the Speech resource is on the free F0 tier, simultaneous recordings from several testers can hit Azure's limits ("Too many speech requests"). Check the tier in the Azure portal before a group session.
+- **Supabase free plan:** limited auth emails per hour (create testers in the dashboard), and projects pause after a period of inactivity.
