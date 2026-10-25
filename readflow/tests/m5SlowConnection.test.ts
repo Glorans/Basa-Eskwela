@@ -122,3 +122,33 @@ test("activity fetches share pending work and distinguish passage and assignment
   await service.getOralReadingModule("module", { passageId: "one", assignmentId: "new" });
   assert.equal(calls.length, 3);
 });
+
+
+test("activity history seeds stable result numbers without another history GET", async () => {
+  const rows = [
+    { id: "second", completedAt: "2026-10-25T02:00:00Z" },
+    { id: "first", completedAt: "2026-10-25T01:00:00Z" },
+  ];
+  reply = async () => ({ data: { attempts: rows } });
+  await service.getOwnOralReadingAttempts("module");
+  assert.equal(service.peekOralReadingAttemptNumber("second", "reader"), 2);
+  assert.equal(service.peekOralReadingAttemptNumber("second", "another-reader"), undefined);
+  const attempt = { id: "second", userId: "reader", moduleId: "module" } as Parameters<typeof service.getOralReadingAttemptNumber>[0];
+  assert.equal(await service.getOralReadingAttemptNumber(attempt), 2);
+  assert.equal(calls.length, 1);
+});
+
+test("refresh recovers the number from the saved activity context; global history never renumbers it", async () => {
+  const rows = [
+    { id: "second", completedAt: "2026-10-25T02:00:00Z" },
+    { id: "first", completedAt: "2026-10-25T01:00:00Z" },
+  ];
+  reply = async () => ({ data: { attempts: rows } });
+  await service.getOwnOralReadingAttempts();
+  assert.equal(service.peekOralReadingAttemptNumber("second", "reader"), undefined);
+  const attempt = { id: "second", userId: "reader", moduleId: null, materialId: "material", activityAssignmentId: "assignment" } as Parameters<typeof service.getOralReadingAttemptNumber>[0];
+  assert.equal(await service.getOralReadingAttemptNumber(attempt), 2);
+  assert.deepEqual(calls[1].config.params, { moduleId: undefined, materialId: "material", activityAssignmentId: "assignment" });
+  const missing = { ...attempt, id: "missing" };
+  assert.equal(await service.getOralReadingAttemptNumber(missing), undefined, "no invented number for a missing saved attempt");
+});

@@ -1,7 +1,7 @@
 .m7-page { width:100%; max-width:1200px; margin:0 auto; padding:clamp(16px,3vw,32px); color:#29374b; box-sizing:border-box; }
 .m7-page h1,.m7-page h2,.m7-page h3 { color:#265c47; }
 .m7-page section { background:white; border:1px solid #dbe9df; border-radius:18px; padding:20px; margin:20px 0; }
-.m7-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:12px; margin:16px 0; }
+.m7-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,155px),1fr)); gap:12px; margin:16px 0; }
 .m7-card { background:#f5faf5; border:1px solid #dbe9df; border-radius:14px; padding:16px; margin-bottom:10px; display:flex; flex-direction:column; gap:8px; }
 .m7-metrics strong { font-size:1.5rem; }
 .m7-page button { background:#e5f1e8; color:#245d46; border:1px solid #bdd8c7; padding:8px 12px; border-radius:9px; cursor:pointer; font:inherit; }
@@ -19,3 +19,9 @@
 .m7-error { padding:14px; background:#fff0ee; border-radius:10px; }
 .m7-notes { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(max-width:600px) { .m7-page section { padding:12px; } .m7-page th,.m7-page td { padding:8px; min-width:105px; } }
+
+/* Teacher and Admin analytics, support and report pages: the workspace already
+   pads its content, so the page adds none and uses the full width. The student
+   progress page (student shell) keeps its own padding and measure. */
+.m3-shell:not(.m3-shell--general) .m3-content:has(> .m7-page) { padding: clamp(12px, 1.5vw, 20px); }
+.m3-shell:not(.m3-shell--general) .m3-content > .m7-page { max-width: none; padding: 0; }

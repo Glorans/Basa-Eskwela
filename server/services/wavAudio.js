@@ -6,6 +6,10 @@ const { SpeechTranscriptionError } = require("./speechErrors");
 // Adapted from the tested Speech Lab validator (experiments/speech-lab/audioValidation.js).
 const SPEECH_SAMPLE_RATE = 16000;
 const MAX_PART_SECONDS = 30;
+// M5 sends one WAV of the whole read-aloud. The recorder stops at 300 s; the
+// margin covers the encoder's final frames. 305 s of PCM (about 9.8 MB) fits
+// within MAX_WAV_BYTES.
+const MAX_WHOLE_RECORDING_SECONDS = 305;
 const MAX_WAV_BYTES = 10 * 1024 * 1024;
 
 function invalid() {
@@ -55,4 +59,6 @@ function wavPcmArrayBuffer(buffer, wav) {
   return Uint8Array.from(buffer.subarray(wav.dataOffset, wav.dataOffset + wav.dataBytes)).buffer;
 }
 
-module.exports = { MAX_PART_SECONDS, MAX_WAV_BYTES, SPEECH_SAMPLE_RATE, readSpeechWav, wavPcmArrayBuffer };
+module.exports = {
+  MAX_PART_SECONDS, MAX_WAV_BYTES, MAX_WHOLE_RECORDING_SECONDS, SPEECH_SAMPLE_RATE, readSpeechWav, wavPcmArrayBuffer,
+};

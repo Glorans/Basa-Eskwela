@@ -2,16 +2,10 @@
   text-align: center;
 }
 
-/* Keep one accessible scroll container on short screens, without a visible
-   scrollbar. This specificity also overrides the shared panel's padding. */
+/* Keep one accessible scroll container on short screens.
+   This specificity also overrides the shared panel's padding. */
 .diagnostic-shell__panel.diagnostic-questions-panel {
   padding-block: clamp(18px, 2.5dvh, 28px);
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.diagnostic-shell__panel.diagnostic-questions-panel::-webkit-scrollbar {
-  display: none;
 }
 
 .diagnostic-questions-header {

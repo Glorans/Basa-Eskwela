@@ -1,5 +1,5 @@
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "../../../pages/reading-activity/activityLanguage";
-import OralReadingSummary from "../../module5/components/OralReadingSummary";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   Link,
@@ -337,6 +337,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         disabled={busy || hasPending}
         onClick={() => navigate(reviewingQuestions ? readingTarget : home, { state: activityState })}
       >
+        <ArrowLeft size={18} aria-hidden="true" />
         {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t("Back to Learning Room") : t("Back to dashboard")}
       </button>
 
@@ -397,9 +398,6 @@ export default function ComprehensionPage({ role, results = false }: Props) {
           )}
         </section>
       )}
-
-      {attempt?.status === "completed" && attempt.materialId && attempt.oralReadingAttemptId &&
-        <OralReadingSummary language={language} attemptId={attempt.oralReadingAttemptId} />}
 
       {attempt?.status === "completed" ? (
         <section className="m6-card">
@@ -571,9 +569,6 @@ export default function ComprehensionPage({ role, results = false }: Props) {
           )}
 
           <div className="m6-actions">
-            <button className="m6-button m6-button--previous" type="button"
-              disabled={busy || hasPending || index === 0}
-              onClick={() => { setIndex(index - 1); setSelected(drafts.current[index - 1] ?? null); setMessage(""); }}>{t("Previous Question")}</button>
             {!question.resolved && (
               <>
                 <button

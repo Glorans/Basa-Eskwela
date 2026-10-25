@@ -113,7 +113,7 @@ function ClassroomInfoSection({
             {classroom.room_name}
           </h1>
 
-          {classroom.description && (
+          {classroom.description?.trim() && classroom.description.trim().toLowerCase() !== "none" && (
             <p className="mt-3 max-w-2xl leading-7 text-[#5c7471]">
               {classroom.description}
             </p>

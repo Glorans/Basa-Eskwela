@@ -20,10 +20,12 @@ test("Admin M3 keeps the viewport shell fixed and scrolls only main content", as
     styles,
     /\.m3-shell--admin \.m3-workspace,[\s\S]*height: 100dvh;[\s\S]*overflow: hidden;/,
   );
-  assert.match(
-    styles,
-    /\.m3-shell--admin \.m3-content \{[\s\S]*min-height: 0;[\s\S]*overflow-x: hidden;[\s\S]*overflow-y: auto;/,
-  );
+  // Wide content (for example admin tables) scrolls sideways inside main content
+  // instead of being clipped, and the page stack may shrink below its content width.
+  const adminContent = /\.m3-shell--admin \.m3-content \{([^}]*)\}/.exec(styles)?.[1] ?? "";
+  assert.match(adminContent, /min-height: 0;[\s\S]*overflow-x: auto;[\s\S]*overflow-y: auto;/);
+  assert.doesNotMatch(adminContent, /overflow-x: hidden/);
+  assert.match(styles, /\.m3-page-stack \{[^}]*min-width: 0;/);
 });
 
 test("published-module helper omits the redundant Admin-only explanation", async () => {

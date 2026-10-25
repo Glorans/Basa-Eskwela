@@ -235,8 +235,11 @@ test("English pronunciation assessment returns Azure's own scores against the sa
   assert.deepEqual(calls.assessments, [{ reference: "Every Saturday morning.", grading: 2, granularity: 2, miscue: false }]);
   assert.equal(calls.recognizers[0].assessed, true);
   assert.equal(calls.configs[0].speechRecognitionLanguage, "en-US");
+  assert.ok(Number.isInteger(result.assessmentMs) && result.assessmentMs >= 0);
   assert.deepEqual(result, {
     provider: "azure", locale: "en-US", scale: "0-100",
+    // The whole uploaded recording was assessed in one session.
+    complete: true, durationSeconds: 2, assessmentMs: result.assessmentMs,
     utterances: [{
       text: "Every Saturday", accuracy: 68, fluency: 80,
       words: [

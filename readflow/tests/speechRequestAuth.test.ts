@@ -145,3 +145,24 @@ test("new speech access messages are translated on Filipino activity screens", (
     assert.notEqual(translated, filipino.t("Retry"));
   }
 });
+
+test("an M2 part longer than the 30 s limit fails clearly instead of uploading trimmed audio", async () => {
+  const globalAudio = globalThis as Record<string, unknown>;
+  globalAudio.AudioContext = class {
+    async decodeAudioData() { return { duration: 40, length: 40 * 48000 }; }
+    async close() {}
+  };
+  globalAudio.OfflineAudioContext = class {};
+  try {
+    await assert.rejects(uploadDiagnosticAudio(segment(), "fil"), (error: unknown) => {
+      assert.ok(error instanceof DiagnosticAudioUploadError);
+      assert.equal(error.code, "STT_INVALID_AUDIO");
+      assert.equal(error.message, "This part of the recording could not be prepared. Please record it again.");
+      return true;
+    });
+    assert.equal(posts.length, 0, "no partial transcript can be scored");
+  } finally {
+    delete globalAudio.AudioContext;
+    delete globalAudio.OfflineAudioContext;
+  }
+});

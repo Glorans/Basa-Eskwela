@@ -1,11 +1,13 @@
-// Azure Speech receives mono 16 kHz signed 16-bit PCM. Each recorded part
-// (a self-contained WebM/Opus file of at most 25 s) is decoded in the browser and
-// re-encoded as WAV before upload; the backend verifies the container again.
-// A continuous read-aloud recording is decoded once and cut into such parts.
+// Azure Speech receives mono 16 kHz signed 16-bit PCM. Recorded audio is decoded
+// in the browser and re-encoded as WAV before upload; the backend verifies the
+// container again. M2 sends each recorded part (a WebM/Opus file of about 25 s);
+// M5 sends its whole continuous recording as one WAV for speech-to-text, and the
+// pronunciation check cuts that recording into 25 s parts.
 // Adapted from the Speech Lab's tested audio preparation (experiments/speech-lab/audioPreparation.ts).
 export const SPEECH_WAV_SAMPLE_RATE = 16000;
-// Matches the backend part limit (server/services/wavAudio.js). The recorder's
-// final chunk can run slightly past 25 s, so longer audio is trimmed, not rejected.
+// Matches the backend part limit (server/services/wavAudio.js). The recorder
+// rotates parts at 25 s, leaving room for a late rotation. Audio past a limit is
+// never trimmed: conversion fails with SpeechWavTooLongError instead.
 export const SPEECH_WAV_MAX_SECONDS = 30;
 
 /** Encodes mono float samples (-1..1) as a 16-bit PCM WAV file. */
@@ -41,7 +43,15 @@ export class SpeechWavConversionError extends Error {
   }
 }
 
-/** Decodes recorded audio and resamples up to maxSeconds of it to mono 16 kHz samples. */
+/** The audio is longer than the conversion allows; none of it was dropped silently. */
+export class SpeechWavTooLongError extends SpeechWavConversionError {
+  constructor() {
+    super();
+    this.name = "SpeechWavTooLongError";
+  }
+}
+
+/** Decodes recorded audio and resamples all of it to mono 16 kHz samples; rejects audio over maxSeconds. */
 async function renderSpeechSamples(audio: Blob, maxSeconds: number): Promise<Float32Array> {
   if (!audio.size || typeof AudioContext === "undefined" || typeof OfflineAudioContext === "undefined") {
     throw new SpeechWavConversionError();
@@ -50,10 +60,8 @@ async function renderSpeechSamples(audio: Blob, maxSeconds: number): Promise<Flo
   try {
     const decoded = await context.decodeAudioData(await audio.arrayBuffer());
     if (!decoded.length) throw new SpeechWavConversionError();
-    const length = Math.min(
-      Math.ceil(decoded.duration * SPEECH_WAV_SAMPLE_RATE),
-      maxSeconds * SPEECH_WAV_SAMPLE_RATE,
-    );
+    const length = Math.ceil(decoded.duration * SPEECH_WAV_SAMPLE_RATE);
+    if (length > maxSeconds * SPEECH_WAV_SAMPLE_RATE) throw new SpeechWavTooLongError();
     // Rendering into one channel down-mixes stereo input.
     const offline = new OfflineAudioContext(1, length, SPEECH_WAV_SAMPLE_RATE);
     const source = offline.createBufferSource();
@@ -70,7 +78,7 @@ async function renderSpeechSamples(audio: Blob, maxSeconds: number): Promise<Flo
   }
 }
 
-/** Decodes a recorded part and resamples it to a mono 16 kHz WAV Blob. */
+/** Decodes a recorded part of at most 30 s and resamples it to a mono 16 kHz WAV Blob. */
 export async function convertToSpeechWav(audio: Blob): Promise<Blob> {
   const samples = await renderSpeechSamples(audio, SPEECH_WAV_MAX_SECONDS);
   return new Blob([encodePcm16Wav(samples)], { type: "audio/wav" });
@@ -102,4 +110,18 @@ export function splitSpeechSamples(
 export async function convertToSpeechWavParts(audio: Blob): Promise<Blob[]> {
   const samples = await renderSpeechSamples(audio, SPEECH_WAV_MAX_RECORDING_SECONDS);
   return splitSpeechSamples(samples).map((part) => new Blob([encodePcm16Wav(part)], { type: "audio/wav" }));
+}
+
+// An M5 read-aloud is sent for speech-to-text as one WAV of the whole
+// recording. Matches MAX_WHOLE_RECORDING_SECONDS in server/services/wavAudio.js:
+// the recorder stops at five minutes, plus a margin for its final frames.
+export const SPEECH_WAV_MAX_WHOLE_RECORDING_SECONDS = 305;
+
+/**
+ * Decodes an entire M5 recording once and returns all of it as one mono 16 kHz
+ * WAV, never trimmed or split; longer audio fails with SpeechWavTooLongError.
+ */
+export async function convertToSpeechWavRecording(audio: Blob): Promise<Blob> {
+  const samples = await renderSpeechSamples(audio, SPEECH_WAV_MAX_WHOLE_RECORDING_SECONDS);
+  return new Blob([encodePcm16Wav(samples)], { type: "audio/wav" });
 }

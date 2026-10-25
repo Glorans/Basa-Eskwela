@@ -5,6 +5,7 @@ const { randomUUID } = require("crypto");
 const multer = require("multer");
 
 const { createDiagnosticAudioHandler } = require("./diagnosticAudio");
+const { createReadAloudAudioHandler } = require("./readAloudAudio");
 const { synthesizeSpeech } = require("../services/azureSpeechService");
 const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { SpeechConfigurationError, SAFE_SPEECH_ERRORS } = require("../services/speechErrors");
@@ -15,9 +16,9 @@ const { createTranscriptReceiptService } = require("../services/diagnosticTransc
 // per request in the Speech Lab. Longer text is rejected with a clear message.
 const MAX_TTS_TEXT_LENGTH = 1000;
 
-// One recording part per request. 10 MB matches the WAV limit in wavAudio.js;
-// a 25-second 16 kHz PCM WAV part (about 800 KB) is far
-// smaller. This caps bytes per upload, not how long a learner may read.
+// One audio file per request. 10 MB matches the WAV limit in wavAudio.js: an M2
+// 25-second 16 kHz PCM WAV part is about 800 KB, and an M5 whole read-aloud of
+// at most five minutes is about 9.6 MB.
 // Fields: language, plus M2's recordingId, segmentIndex, assessmentId and assessmentVersion.
 const SPEECH_UPLOAD_LIMITS = Object.freeze({
   fileSize: 10 * 1024 * 1024,
@@ -95,6 +96,10 @@ function createSpeechRouter({
     receipts,
     log,
   });
+  const readAloudAudioHandler = createReadAloudAudioHandler({
+    ...(transcribe ? { transcribe } : {}),
+    log,
+  });
 
   router.post("/api/tts", requireSpeechAccess("tts"), async (req, res) => {
     const { text, language } = req.body || {};
@@ -156,6 +161,12 @@ function createSpeechRouter({
 
   router.post("/api/diagnostic/audio", requireSpeechAccess("stt"), (req, res) => {
     upload.single("audio")(req, res, (error) => diagnosticAudioHandler(req, res, error));
+  });
+
+  // M5 read-aloud: one request per reading, for the whole continuous recording.
+  router.post("/api/read-aloud/audio", requireSpeechAccess("stt"), (req, res) => {
+    req.readAloudReceivedAt = Date.now();
+    upload.single("audio")(req, res, (error) => readAloudAudioHandler(req, res, error));
   });
 
   return router;

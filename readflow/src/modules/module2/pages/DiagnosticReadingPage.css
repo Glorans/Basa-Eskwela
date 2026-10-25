@@ -38,8 +38,6 @@
   padding: clamp(30px, 3.5vw, 42px) clamp(26px, 4.5vw, 52px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
   border: 1px solid rgba(0, 74, 77, 0.13);
   border-radius: var(--diagnostic-card-radius);
   background: #fff9e9;
@@ -53,10 +51,6 @@
   width: min(100%, 680px);
   margin-inline: auto;
   text-align: left;
-}
-
-.diagnostic-story-card::-webkit-scrollbar {
-  display: none;
 }
 
 .diagnostic-story-card:focus-visible {

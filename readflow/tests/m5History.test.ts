@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { comprehensionTargetForReading } from "../src/modules/module5/services/comprehensionNavigation.ts";
 
 const require = createRequire(import.meta.url);
 const source = readFileSync(new URL('../src/modules/module5/pages/ReadingHistoryPage.tsx', import.meta.url), 'utf8');
@@ -39,7 +40,8 @@ function fixture(role: string) {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
   } }).outputText, { module, exports: module.exports, Error,
     require: (id: string) => id === 'react' ? react : id === 'react-router-dom' ? { Link: 'a' }
-      : id.includes('oralReadingService') ? { getOwnOralReadingAttempts: () => { requestCount++; return new Promise((yes,no) => { resolve = yes; reject = no; }); } } : require(id),
+      : id.includes('oralReadingService') ? { getOwnOralReadingAttempts: () => { requestCount++; return new Promise((yes,no) => { resolve = yes; reject = no; }); } }
+      : id.includes('comprehensionNavigation') ? { comprehensionTargetForReading } : require(id),
   });
   function render(embedded = false) {
     cursor=0;

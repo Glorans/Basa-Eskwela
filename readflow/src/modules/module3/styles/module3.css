@@ -213,13 +213,13 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
 }
 
 .m3-shell--general .m3-content {
   min-height: 0;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
 }
 
@@ -310,7 +310,7 @@
   flex: 1;
   margin-top: 18px;
   padding: clamp(22px, 4vw, 40px);
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   border-radius: var(--basa-radius-lg);
   background:
@@ -320,6 +320,7 @@
 
 .m3-page-stack {
   width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 22px;

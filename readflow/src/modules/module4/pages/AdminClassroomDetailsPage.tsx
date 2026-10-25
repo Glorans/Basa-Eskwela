@@ -142,13 +142,9 @@ export default function AdminClassroomDetailsPage() {
                 )}
               </div>
 
-              {classroom.description ? (
+              {classroom.description?.trim() && classroom.description.trim().toLowerCase() !== "none" && (
                 <p className="max-w-2xl text-sm leading-6 text-[#5c7471] md:text-base">
                   {classroom.description}
-                </p>
-              ) : (
-                <p className="text-sm italic text-[#7b9290]">
-                  None
                 </p>
               )}
             </div>

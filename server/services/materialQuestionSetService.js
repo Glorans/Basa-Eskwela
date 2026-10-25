@@ -12,6 +12,7 @@ const {
 } = require("./questionGenerationService");
 
 const QUESTION_TYPES = ["literal", "inferential", "critical"];
+const { checkEvidence } = require("./passageEvidence");
 
 function client(deps) {
   return deps.getSupabaseAdmin?.() ?? getSupabaseAdmin();
@@ -308,7 +309,32 @@ function validateSupportingEvidence(bank, contentText) {
         400,
       );
     }
+
+    // Saved as the complete sentence(s) from the material when the match is
+    // reliable; an incomplete fragment that cannot be completed is refused.
+    const checked = checkEvidence(contentText ?? "", question.supportingEvidence);
+    if (checked.incomplete) throw incompleteEvidence(bank.indexOf(question));
+    question.supportingEvidence = checked.evidence;
   }
+}
+
+function incompleteEvidence(index) {
+  return new MaterialPersistenceError(
+    `Question ${index + 1}'s supporting evidence is an incomplete sentence. Quote the complete sentence from the reading material.`,
+    400,
+  );
+}
+
+/**
+ * Before approval: stored evidence must be complete sentences, or a fragment
+ * that can be completed reliably from the material for display. Nothing is
+ * rewritten here; approval never edits a set.
+ */
+function requireCompleteEvidence(questions, contentText) {
+  questions.forEach((question, index) => {
+    if (typeof question.supportingEvidence !== "string" || !question.supportingEvidence.trim()) return;
+    if (checkEvidence(contentText ?? "", question.supportingEvidence).incomplete) throw incompleteEvidence(index);
+  });
 }
 
 async function write(
@@ -576,7 +602,7 @@ async function saveMaterialQuestionSet(
 }
 
 async function reviewMaterialQuestionSet(requester, materialId, setId, revision, deps = {}) {
-  await authorize(requester, materialId, deps);
+  const material = await authorize(requester, materialId, deps);
   requireRevision(revision);
   const set = await getMaterialQuestionSet(requester, materialId, setId, deps);
   if (set.revision !== revision) {
@@ -585,6 +611,7 @@ async function reviewMaterialQuestionSet(requester, materialId, setId, revision,
   if (set.hasStudentAttempts) throw new MaterialPersistenceError(ANSWERED_SET_MESSAGE, 409);
   // Validate persisted content and keys; approval never accepts edits from the client.
   const bank = validateReviewedQuestions(set.questions);
+  requireCompleteEvidence(set.questions, material.content_text);
   const count = validateQuestionCount(bank.length);
   if (QUESTION_TYPES.some(type => bank.filter(q => q.type === type).length !== count / 3)) {
     throw new MaterialPersistenceError("Distribute questions evenly across Literal, Inferential and Critical.", 400);

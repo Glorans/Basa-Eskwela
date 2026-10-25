@@ -10,18 +10,26 @@
   overflow-wrap: anywhere;
 }
 
+/* A plain arrow-and-text link, the same on the activity and on the results. */
 .m6-page .m6-back-button {
   display: inline-flex;
+  align-self: flex-start;
   align-items: center;
-  justify-content: center;
-  padding: 10px 18px;
-  border: 2px solid #173f3b;
-  border-radius: 999px;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
   color: #173f3b;
   font: inherit;
   font-weight: 800;
   cursor: pointer;
+}
+
+.m6-page .m6-back-button:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .m6-page > h1 {
@@ -177,7 +185,6 @@
 
 .m6-page .m6-feedback {
   padding: 14px 18px;
-  border-left: 4px solid #357a45;
   border-radius: 10px;
   background: #edf7e7;
 }
@@ -254,20 +261,21 @@
 
 /* Only the question flow is compact; saved results retain their existing layout.
    Natural height lets the parent scroll for long content, zoom and small screens. */
+/* Centered, wider and a little higher: the content area's top padding is trimmed
+   for the question flow only (student and Independent Learner shells). */
+:where(.basa-content, .m3-content):has(> .m6-page--questions) {
+  padding-top: clamp(8px, 1.2vw, 14px);
+}
 .m6-page--questions {
-  max-width: 920px;
+  max-width: 1120px;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.m6-page--questions .m6-back-button {
-  align-self: flex-start;
-  padding: 5px 12px;
-  min-height: 34px;
-}
 .m6-page--questions > h1 {
   margin: 0;
+  text-align: center;
   padding: 8px 16px;
   border-radius: 16px;
   font-size: clamp(1.35rem, 2vw, 1.65rem);
@@ -298,7 +306,6 @@
 .m6-page--questions input[type="radio"] { margin-top: 1px; }
 .m6-page--questions .m6-actions { margin: 2px 0 0; gap: 8px; }
 .m6-page--questions .m6-button { min-height: 40px; padding: 7px 14px; }
-.m6-page--questions .m6-button--previous { margin-right: auto; background: transparent; color: #173f3b; }
 .m6-page--questions .m6-feedback { margin: 0; padding: 6px 10px; line-height: 1.4; }
 .m6-page--questions aside { margin: 0; padding: 8px 12px; line-height: 1.4; }
 .m6-page--questions .m6-answer-details { line-height: 1.4; }

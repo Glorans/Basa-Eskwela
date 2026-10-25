@@ -28,6 +28,12 @@ const {
   saveOralReadingRecording,
 } = require("../services/oralReadingRecordingService");
 const { assessPronunciationWav } = require("../services/azureSpeechService");
+const { splitEmbeddedTitle } = require("../services/oralReadingScoring");
+
+// Durations only, in development: never audio, transcripts, tokens or user IDs.
+function developmentPronunciationTiming(details) {
+  if (process.env.NODE_ENV === "development") console.info("[Pronunciation] timing", details);
+}
 const { getSpeechErrorResponse, SAFE_SPEECH_ERRORS } = require("../services/speechErrors");
 const { MAX_WAV_BYTES } = require("../services/wavAudio");
 const { RATE_LIMITED_MESSAGE, SPEECH_RATE_LIMITS, createRequestLimiter } = require("../services/speechAccess");
@@ -73,6 +79,7 @@ function createOralReadingRouter(dependencies = {}) {
     limits: { fileSize: MAX_RECORDING_BYTES, files: MAX_SEGMENTS, fields: 0, parts: MAX_SEGMENTS },
   }).array("audio", MAX_SEGMENTS);
   const assessPronunciation = dependencies.assessPronunciation ?? assessPronunciationWav;
+  const pronunciationTiming = dependencies.pronunciationTiming ?? developmentPronunciationTiming;
   // Shares the per-user speech-to-text budget size (speechAccess.js); a full
   // five-minute reading is at most 12 parts.
   const pronunciationLimiter = dependencies.pronunciationLimiter
@@ -217,11 +224,14 @@ function createOralReadingRouter(dependencies = {}) {
     }
   });
 
-  // English only: Azure Pronunciation Assessment of one recorded part (16 kHz
-  // PCM WAV) against the passage saved with the learner's own attempt. The
-  // reference text never comes from the browser. Feedback is returned for
-  // display only; reading accuracy stays the separately saved transcript score.
+  // English only: Azure Pronunciation Assessment of the learner's whole saved
+  // recording (one 16 kHz PCM WAV, up to five minutes) in one continuous
+  // session, against the story text the read-aloud screen showed (the saved
+  // passage without a hidden title line). Older attempts saved as several
+  // parts send one request per part. The reference text never comes from the
+  // browser. Feedback is for display only; reading accuracy stays separate.
   router.post("/attempts/:attemptId/pronunciation", async (req, res) => {
+    const receivedAt = Date.now();
     let requester;
     let attempt;
     try {
@@ -249,11 +259,25 @@ function createOralReadingRouter(dependencies = {}) {
       if (uploadError || !req.file || !["audio/wav", "audio/x-wav"].includes(mimeType)) {
         return res.status(400).json({ success: false, code: "STT_INVALID_AUDIO", message: "Recording upload is invalid. Please try again." });
       }
+      const uploadedAt = Date.now();
+      // A browser that gives up closes the request; stop assessing for it.
+      const abandoned = new AbortController();
+      res.on("close", () => { if (!res.writableFinished) abandoned.abort(); });
+      const reference = splitEmbeddedTitle(attempt.passageSnapshot, attempt.passageTitle, "en").body;
+      const finished = () => {
+        const assessmentMs = Date.now() - uploadedAt;
+        res.set("Server-Timing", `checks;dur=${uploadedAt - receivedAt}, assessment;dur=${assessmentMs}`);
+        pronunciationTiming({
+          checksAndUploadMs: uploadedAt - receivedAt, assessmentMs, audioBytes: req.file.size, abandoned: abandoned.signal.aborted,
+        });
+      };
       try {
-        const pronunciation = await assessPronunciation(req.file.buffer, "en", attempt.passageSnapshot);
+        const pronunciation = await assessPronunciation(req.file.buffer, "en", reference, { signal: abandoned.signal });
+        finished();
         res.set("Cache-Control", "no-store");
         return res.json({ success: true, pronunciation });
       } catch (error) {
+        finished();
         const safe = getSpeechErrorResponse(error);
         // A silent part (for example a pause before Stop) has nothing to score.
         if (safe.code === "NO_SPEECH") {

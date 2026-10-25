@@ -1,6 +1,9 @@
+/* Fits the 1366 px laptop workspace; narrower screens scroll inside the table container. */
 .admin-diagnostic-results-table {
-  min-width: 1220px;
+  min-width: 980px;
 }
+
+.admin-diagnostic-results-table th { white-space: normal; }
 
 .admin-diagnostic-results-table td:nth-child(n + 4):nth-child(-n + 6) {
   font-variant-numeric: tabular-nums;

@@ -1,3 +1,4 @@
+import * as savedAttemptOrder from "../src/modules/module5/services/savedAttemptOrder.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -52,16 +53,17 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
   vm.runInNewContext(ts.transpileModule(readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8"), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText, {
-    module, exports: module.exports, Error, URLSearchParams, crypto: { randomUUID: () => "submission" },
+    module, exports: module.exports, Error, URLSearchParams, AbortController, crypto: { randomUUID: () => "submission" },
     window: { setInterval: () => 1, clearInterval() {}, location: { reload() {} } },
     require: (id: string) => {
       if (id === "react") return react;
       if (id.endsWith("/activityLanguage")) return activityLanguage;
+      if (id.endsWith("/savedAttemptOrder")) return savedAttemptOrder;
       if (id === "react-router-dom") return { Link: "a", useParams: () => params, useLocation: () => ({ state: mocks.locationState }),
         useSearchParams: () => [new URLSearchParams({ roomId: "room", activityAssignmentId: "assignment", oralReadingAttemptId: "oral", ...mocks.searchParams }), () => {}],
         useNavigate: () => (target: string) => navigations.push(target) };
       for (const [suffix, value] of Object.entries(mocks)) if (id.endsWith(suffix)) return suffix === "oralReadingService"
-        ? { peekOralReadingAttempt: () => undefined, rememberOralReadingAttempt() {}, ...value } : value;
+        ? { peekOralReadingAttemptNumber: () => undefined, getOralReadingAttemptNumber: async () => undefined, peekOralReadingAttempt: () => undefined, rememberOralReadingAttempt() {}, ...value } : value;
       if (id.endsWith(".css")) return {};
       if (id.includes("ActivityHeader")) return { default: "header" };
       if (id.includes("OralReadingSummary")) return { default: "oral-summary" };
@@ -85,13 +87,18 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
   };
 }
 
-async function recordingFixture(options: { saved?: boolean; saveError?: boolean; transcriptionError?: boolean; standalone?: boolean; readAloudOnly?: boolean; statusError?: boolean; viewReading?: boolean; recordingUploadError?: boolean; noContinuousRecording?: boolean; prepared?: boolean } = {}) {
+async function recordingFixture(options: { saved?: boolean; saveError?: boolean; transcriptionError?: boolean; standalone?: boolean; readAloudOnly?: boolean; statusError?: boolean; viewReading?: boolean; recordingUploadError?: boolean; prepared?: boolean; history?: any[];
+  callTranscription?: boolean; gates?: { transcription?: Promise<void>; save?: Promise<void>; upload?: Promise<void> } } = {}) {
+  const transcriptionOptions: any[] = [];
+  const stepTexts: string[] = [];
   let started = 0, stopped = 0, processed = 0;
   let historyRequests = 0, moduleRequests = 0, progressRequests = 0;
   const submissions: any[] = [];
   const statusUpdates: any[] = [];
   const uploads: { attemptId: string; segments: Blob[]; afterNavigations: number }[] = [];
-  let mounted: { navigations: string[] } | undefined;
+  const processedInputs: any[] = [];
+  let recorderOptions: Record<string, unknown> = {};
+  let mounted: { navigations: string[]; render: () => unknown } | undefined;
   const navigationCount = () => mounted?.navigations.length ?? 0;
   const recorder = {
     audioSegments: [] as Blob[], audioURLs: [] as string[], segmentDurationsSeconds: [] as number[],
@@ -100,9 +107,9 @@ async function recordingFixture(options: { saved?: boolean; saveError?: boolean;
     resetRecording() { recorder.audioSegments = []; recorder.audioURLs = []; recorder.fullRecording = null; recorder.fullRecordingURL = null; recorder.recordingDurationSeconds = null; },
     async startRecording() { started++; recorder.isRecording = true; },
     stopRecording() {
-      stopped++; recorder.isRecording = false; recorder.audioSegments = [new Blob(["one"]), new Blob(["two"])];
-      recorder.audioURLs = ["blob:one", "blob:two"]; recorder.segmentDurationsSeconds = [25, 5]; recorder.recordingDurationSeconds = 30;
-      if (!options.noContinuousRecording) { recorder.fullRecording = new Blob(["full"]); recorder.fullRecordingURL = "blob:full"; }
+      // M5 records with one MediaRecorder and no rotation: one file covering the whole 60 s reading.
+      stopped++; recorder.isRecording = false; recorder.audioSegments = [new Blob(["full"], { type: "audio/webm" })];
+      recorder.audioURLs = ["blob:full"]; recorder.segmentDurationsSeconds = [60]; recorder.recordingDurationSeconds = 60;
     },
   };
   const input = { submissionId: "fixed-submission", transcript: "recognized words" };
@@ -116,26 +123,45 @@ async function recordingFixture(options: { saved?: boolean; saveError?: boolean;
       statusUpdates.push(args);
       if (options.statusError && statusUpdates.length === 1) throw Error("Status update failed");
     } },
-    useAudioRecorder: { useAudioRecorder: () => recorder },
+    useAudioRecorder: { useAudioRecorder: (opts: Record<string, unknown>) => { recorderOptions = opts; return recorder; } },
+    oralReadingTranscription: {
+      startReadAloudTiming: () => () => {},
+      transcribeOralReadingRecording: async (_recording: Blob, _language: string, transcribeOptions: any) => {
+        transcriptionOptions.push(transcribeOptions);
+        for (const step of ["preparing", "uploading", "recognizing"]) {
+          transcribeOptions.onStep(step);
+          stepTexts.push(JSON.stringify(mounted!.render()));
+        }
+        if (options.gates?.transcription) await options.gates.transcription;
+        return { text: "Every word" };
+      },
+    },
     useVoiceFollowStoryScroll: { useVoiceFollowStoryScroll: () => ({ onStreamReady() {}, onStreamStopped() {} }) },
     voiceFollow,
     recordingDuration: { resolveRecordingDuration() {} },
     storyDisplay: { storyParagraphs },
     diagnosticAudio: { uploadDiagnosticAudio() {} },
     diagnosticAudioError: { DiagnosticAudioUploadError: Error },
-    oralReadingProcessing: { ORAL_READING_SEGMENT_DURATION_SECONDS: 25, ORAL_READING_MAX_RECORDING_SECONDS: 300,
-      processOralReading: async () => { processed++; if (options.transcriptionError) throw Error("NO_SPEECH"); return input; } },
+    oralReadingProcessing: { ORAL_READING_MAX_RECORDING_SECONDS: 300, readAloudTranscriptionTimeoutMs: () => 210_000,
+      processOralReading: async (body: any) => {
+        processed++; processedInputs.push(body);
+        if (options.callTranscription) await body.transcribeRecording(body.recording, "en");
+        if (options.transcriptionError) throw Error("NO_SPEECH");
+        return input;
+      } },
     oralReadingService: {
-      getOwnOralReadingAttempts: async () => { historyRequests++; return []; },
+      getOwnOralReadingAttempts: async () => { historyRequests++; return options.history ?? []; },
       getAssignedReadingProgress: async () => { progressRequests++; return [{ roomId: "room", materialId: "material", activityAssignmentId: "assignment", oralReadingAttemptId: options.saved ? "oral" : null, readAloudOnly: options.readAloudOnly ?? false }]; },
       getOralReadingModule: async () => { moduleRequests++; return { id: null, materialId: "material", activityAssignmentId: "assignment", roomId: "room", passage: "Full teacher assigned passage", language: "en", readAloudOnly: options.readAloudOnly ?? false }; },
       createOralReadingAttempt: async (body: any) => {
         submissions.push(body);
+        if (options.gates?.save) await options.gates.save;
         if (options.saveError && submissions.length === 1) throw Error("Network response lost");
         return { id: "oral", moduleId: null, materialId: "material", activityAssignmentId: "assignment", roomId: "room" };
       },
       uploadOralReadingRecording: async (attemptId: string, segments: Blob[]) => {
         uploads.push({ attemptId, segments: [...segments], afterNavigations: navigationCount() });
+        if (options.gates?.upload) await options.gates.upload;
         if (options.recordingUploadError && uploads.length === 1) throw Error("Recording upload failed");
       },
       RECORDING_UPLOAD_ERROR: "Your result is saved, but recording upload failed. Retry saving the recording before leaving this page.",
@@ -144,7 +170,7 @@ async function recordingFixture(options: { saved?: boolean; saveError?: boolean;
   }, options.standalone ? "general_user" : "student");
   mounted = page;
   page.render(); await tick();
-  return { ...page, recorder, submissions, statusUpdates, uploads, counts: () => ({ started, stopped, processed }), requests: () => ({ historyRequests, moduleRequests, progressRequests }) };
+  return { ...page, recorder, submissions, statusUpdates, uploads, processedInputs, transcriptionOptions, stepTexts, recorderOptions: () => recorderOptions, counts: () => ({ started, stopped, processed }), requests: () => ({ historyRequests, moduleRequests, progressRequests }) };
 }
 
 test("saved-activity redirects skip module/history fetches and never flash numbered saved results", async () => {
@@ -187,24 +213,37 @@ test("the saved result's recording is uploaded once, as one continuous file, bef
   assert.deepEqual(f.navigations, ["/dashboard/read-aloud/results/oral"]);
 });
 
-test("review shows one audio player for the continuous recording, not numbered parts", async () => {
+test("Read Aloud has no duplicate playback and Record Again still resets the recording", async () => {
   const f = await recordingFixture({ standalone: true });
   button(f.render(), "Start Recording").props.onClick();
   button(f.render(), "Stop Recording").props.onClick();
-  const players = (tree: any): any[] => !tree || typeof tree !== "object" ? []
-    : Array.isArray(tree) ? tree.flatMap(players)
-    : [...(tree.type === "audio" ? [tree] : []), ...players(tree.props?.children)];
-  const audio = players(f.render());
-  assert.deepEqual(audio.map((node) => node.props.src), ["blob:full"]);
-  assert.doesNotMatch(JSON.stringify(f.render()), /"Part"/);
+  const tree = f.render();
+  assert.equal(find(tree, node => node.type === "audio"), undefined);
+  assert.doesNotMatch(JSON.stringify(tree), /Review Recording|Your recording is saved with your result/);
+  assert.equal(f.recorder.audioSegments.length, 1);
+  button(tree, "Record Again").props.onClick();
+  assert.equal(f.recorder.audioSegments.length, 0);
+  button(f.render(), "Start Recording");
+  assert.deepEqual(f.navigations, []);
+  assert.equal(f.submissions.length, 0);
 });
 
-test("without a continuous file the recorder order segments are uploaded instead", async () => {
-  const f = await recordingFixture({ noContinuousRecording: true });
+test("M5 records one uninterrupted file, transcribes that file whole and saves the same file", async () => {
+  const f = await recordingFixture();
+  // No segment rotation and no second recorder: one MediaRecorder from Start to Stop.
+  assert.equal(f.recorderOptions().maxSegmentDurationSeconds, undefined);
+  assert.equal(f.recorderOptions().captureFullRecording, undefined);
+  assert.equal(f.recorderOptions().maxTotalDurationSeconds, 300);
   button(f.render(), "Start Recording").props.onClick();
   button(f.render(), "Stop Recording").props.onClick();
   f.render(); f.render(); await tick(); f.render();
-  assert.deepEqual(await Promise.all(f.uploads[0].segments.map((blob) => blob.text())), ["one", "two"]);
+  assert.equal(f.processedInputs.length, 1);
+  const [processedInput] = f.processedInputs;
+  assert.equal(processedInput.recording, f.recorder.audioSegments[0]);
+  assert.equal(processedInput.recordingDurationSeconds, 60);
+  assert.equal(processedInput.audioSegments, undefined, "no 25 s parts are sent for speech-to-text");
+  assert.equal(typeof processedInput.transcribeRecording, "function");
+  assert.deepEqual(f.uploads[0].segments, [processedInput.recording], "the transcribed file is the saved file");
 });
 
 test("a failed recording upload keeps the saved result: retry the upload or continue without it", async () => {
@@ -407,7 +446,11 @@ test("resolved assigned M6 completes automatically and routes to saved results",
   f.render();
   assert.ok(f.navigations.includes("/dashboard/comprehension/m6/results"));
   assert.match(JSON.stringify(f.render()), /Your Assessment Results/);
-  assert.ok(find(f.render(), node => node.type === "oral-summary" && node.props.attemptId === "oral"));
+  // The assessment results focus on comprehension; the oral-reading result stays in M5.
+  assert.equal(find(f.render(), node => node.type === "oral-summary"), undefined);
+  const back = find(f.render(), node => node.type === "button" && node.props.className === "m6-back-button");
+  assert.match(JSON.stringify(back.props.children), /Back to Learning Room/);
+  assert.ok([back.props.children].flat().some((child: any) => child?.props?.["aria-hidden"] === "true" && child.props.size === 18), "arrow icon");
   const revisit = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: service });
   revisit.render(); await tick();
   assert.match(JSON.stringify(revisit.render()), /Your Assessment Results/);
@@ -516,13 +559,15 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   // The summary, then the three cards, then the floating panels' content, then the shared actions.
   const order = ["Great reading, ", "Nice job! A few words need practice.", "Result & Transcript", "Feedback & Practice",
     "Saved Oral Reading Assessments", "Oral Reading Results and Transcript", "Reading Accuracy", "Your Reading Result",
-    "What we heard", "See what to practice", "Reading and Pronunciation Feedback", "Words to Practice",
-    "Listen to the word, say it slowly, and try reading it again.", "Back to my result",
+    "What we heard", "Reading and Pronunciation Feedback", "Words to Practice",
+    "Listen to the word, say it slowly, and try reading it again.",
     "Continue to Questions", "Read again", "Back to my activities"];
   order.reduce((last, label) => { const at = text.indexOf(label); assert.ok(at > last, `${label} is out of order`); return at; }, -1);
   assert.match(text, /"Ana"/);
-  // Skipped words and recognized differences are labelled apart; neither is called a mispronunciation.
-  assert.ok(find(tree, node => node.type === "small" && node.props.children === "skipped"));
+  assert.doesNotMatch(text, /See what to practice|Back to my result/);
+  // Undetected words and recognized differences are labelled apart; neither is called a skip or a mispronunciation.
+  assert.ok(find(tree, node => node.type === "small" && node.props.children === "not detected"));
+  assert.ok(!find(tree, node => node.type === "small" && node.props.children === "skipped"));
   assert.ok(find(tree, node => node.type === "small" && node.props.children === "read differently"));
   const panel = (id: string, current = f.render()) => find(current, node => node.props?.id === id);
   const card = (title: string) => find(f.render(), node => node.type === "button"
@@ -532,8 +577,12 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   assert.deepEqual(openPanels(), []);
   card("Result & Transcript").props.onClick();
   assert.deepEqual(openPanels(), ["m5-panel-result"]);
+  assert.equal(panel("m5-panel-result").props.closeLabel, "Close");
+  panel("m5-panel-result").props.onClose();
+  assert.deepEqual(openPanels(), []);
   card("Feedback & Practice").props.onClick();
   assert.deepEqual(openPanels(), ["m5-panel-feedback"]);
+  assert.equal(panel("m5-panel-feedback").props.closeLabel, "Close");
   panel("m5-panel-feedback").props.onClose();
   assert.deepEqual(openPanels(), []);
   // Saved assessments reuse Reading History, loaded only when that panel opens.
@@ -608,4 +657,193 @@ test("uncached results preserve errors and retry without displaying success prem
   f.render(); await tick();
   assert.match(JSON.stringify(f.render()), /Great reading/);
   assert.equal(calls, 2);
+});
+
+
+test("saved cards follow story, controls and instructions and navigate by actual saved IDs", async () => {
+  const history = [
+    { id: "new", passageTitle: "A Helping Hand", completedAt: "2026-10-25T02:00:00Z" },
+    { id: "old", passageTitle: "A Helping Hand", completedAt: "2026-10-25T01:00:00Z" },
+  ];
+  const f = await recordingFixture({ standalone: true, history });
+  const tree = f.render();
+  const text = JSON.stringify(tree);
+  const labels = ["Read the Story Aloud", "read-aloud-story-box", "Start Recording", "Recording Instructions", "Your Saved Oral Reading Results"];
+  for (let i = 1; i < labels.length; i++) assert.ok(text.indexOf(labels[i]) > text.indexOf(labels[i - 1]));
+  const cards = find(tree, node => node.props?.className === "read-aloud-saved-grid").props.children;
+  assert.deepEqual(cards.map((card: any) => card.key), ["old", "new"]);
+  cards.forEach((card: any) => card.props.onClick());
+  assert.deepEqual(f.navigations, ["/m3/general/read-aloud/results/old", "/m3/general/read-aloud/results/new"]);
+  assert.equal(f.submissions.length, 0);
+});
+
+test("reopened result derives its number from saved data and keeps every panel on that attempt", async () => {
+  const saved = { id: "second", userId: "reader", moduleId: "module", language: "en", moduleTitle: "Module",
+    passageTitle: "A Helping Hand", pronunciationAccuracy: 90, readingSpeedWpm: 60,
+    expectedWordCount: 1, transcript: "seed", wordMetrics: [] };
+  const numbered: string[] = [];
+  const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "second" }, {
+    searchParams: { view: "feedback" },
+    oralReadingService: { getOralReadingAttempt: async () => saved,
+      getOralReadingAttemptNumber: async (attempt: any) => { numbered.push(attempt.id); return 2; } },
+    oralReadingProcessing: { getWordsToPractice: () => [] }, diagnosticTts: {},
+    comprehensionNavigation: { comprehensionTargetForReading },
+    useAuthenticatedProfile: { default: () => ({ profile: { id: "reader", nickname: "Ana" } }) },
+  });
+  f.render(); await tick(); f.render(); await tick();
+  const tree = f.render();
+  assert.deepEqual(numbered, ["second"]);
+  const label = find(tree, node => node.props?.className === "result-feedback-story");
+  assert.match(JSON.stringify(label), /A Helping Hand/);
+  assert.match(JSON.stringify(label), /Result/);
+  assert.equal(label.props.children[1].props.children.at(-1), 2);
+  assert.equal(find(tree, node => node.type === "recording-playback").props.attemptId, "second");
+  assert.equal(find(tree, node => node.type === "pronunciation-feedback").props.attemptId, "second");
+  assert.match(JSON.stringify(find(tree, node => node.props?.className === "result-feedback-transcript")), /seed/);
+});
+
+function gate() {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => { open = resolve; });
+  return { promise, open };
+}
+
+test("the status names each step: preparing, sending, processing, saving the result, then the recording", async () => {
+  const transcription = gate(), save = gate(), upload = gate();
+  const f = await recordingFixture({ standalone: true, callTranscription: true,
+    gates: { transcription: transcription.promise, save: save.promise, upload: upload.promise } });
+  button(f.render(), "Start Recording").props.onClick();
+  button(f.render(), "Stop Recording").props.onClick();
+  button(f.render(), "Process Reading").props.onClick();
+  await tick();
+  assert.match(f.stepTexts[0], /Preparing your recording\.\.\./);
+  assert.match(f.stepTexts[1], /Sending your recording\.\.\./);
+  assert.match(f.stepTexts[2], /Processing your reading\.\.\./);
+  assert.doesNotMatch(f.stepTexts.join(""), /Saving your/);
+  // The request gets the reading length (for its deadline) and a signal that can cancel it.
+  assert.equal(f.transcriptionOptions[0].recordingDurationSeconds, 60);
+  assert.equal(f.transcriptionOptions[0].signal.aborted, false);
+  transcription.open(); await tick(); await tick();
+  assert.match(JSON.stringify(f.render()), /Saving your result\.\.\./);
+  save.open(); await tick(); await tick();
+  assert.match(JSON.stringify(f.render()), /Saving your recording\.\.\./);
+  upload.open(); await tick(); await tick();
+  assert.deepEqual(f.navigations, ["/m3/general/read-aloud/results/oral"]);
+  assert.equal(f.counts().processed, 1);
+  assert.equal(f.submissions.length, 1);
+  assert.equal(f.uploads.length, 1);
+});
+
+test("leaving the page or recording again cancels a speech-to-text request still in flight", async () => {
+  const transcription = gate();
+  const f = await recordingFixture({ standalone: true, callTranscription: true, gates: { transcription: transcription.promise } });
+  button(f.render(), "Start Recording").props.onClick();
+  button(f.render(), "Stop Recording").props.onClick();
+  button(f.render(), "Process Reading").props.onClick();
+  await tick();
+  f.unmount();
+  assert.equal(f.transcriptionOptions[0].signal.aborted, true);
+  transcription.open(); await tick();
+  assert.equal(f.submissions.length, 0, "a cancelled request never saves a result");
+});
+
+test("a failed save keeps the transcript and retries with the same submission, never re-transcribing", async () => {
+  const f = await recordingFixture({ standalone: true, saveError: true });
+  button(f.render(), "Start Recording").props.onClick();
+  button(f.render(), "Stop Recording").props.onClick();
+  button(f.render(), "Process Reading").props.onClick();
+  await tick(); await tick();
+  button(f.render(), "Try Saving Again").props.onClick();
+  await tick(); await tick();
+  assert.equal(f.counts().processed, 1);
+  assert.equal(f.submissions.length, 2);
+  assert.equal(f.submissions[0].submissionId, f.submissions[1].submissionId);
+  assert.equal(f.submissions[0], f.submissions[1], "the very same saved input is retried");
+});
+
+test("a learner reading without questions says so instead of hiding the next step", async () => {
+  const base = { id: "oral", materialId: null, roomId: null, activityAssignmentId: null, assignmentId: null,
+    language: "en", moduleTitle: "Story", pronunciationAccuracy: 80, readingSpeedWpm: 60, expectedWordCount: 4,
+    transcript: "The cat sat", wordMetrics: [] };
+  const show = async (role: string, saved: any) => {
+    const page = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "oral" }, {
+      oralReadingService: { getOralReadingAttempt: async () => saved },
+      oralReadingProcessing: { getWordsToPractice: () => [] }, diagnosticTts: {},
+      comprehensionNavigation: { comprehensionTargetForReading },
+      useAuthenticatedProfile: { default: () => ({ profile: { full_name: "Ana Cruz" } }) },
+    }, role);
+    page.render(); await tick();
+    return JSON.stringify(page.render());
+  };
+  const note = /Comprehension questions are not available for this story yet/;
+  // A module saved without a passage record has no comprehension activity.
+  const noPassage = await show("general_user", { ...base, moduleId: "module", passageId: null });
+  assert.match(noPassage, note);
+  assert.doesNotMatch(noPassage, /Continue to Questions/);
+  // With a passage, the exact activity is linked and no note is shown.
+  const withPassage = await show("general_user", { ...base, moduleId: "module", passageId: "passage" });
+  assert.match(withPassage, /Continue to Questions/);
+  assert.doesNotMatch(withPassage, note);
+  // Read-aloud-only activities and admin practice never had questions: nothing extra.
+  assert.doesNotMatch(await show("student", { ...base, materialId: "material", roomId: "room", activityAssignmentId: "a", moduleId: null, readAloudOnly: true }), note);
+  assert.doesNotMatch(await show("admin", { ...base, moduleId: "module", passageId: "passage" }), note);
+});
+
+test("Reading History reopens each module reading's own comprehension activity or results", async () => {
+  const rows = [
+    { id: "oral-1", moduleId: "module", passageId: "passage", roomId: null, assignmentId: null, materialId: null,
+      moduleTitle: "Stories", passageTitle: "A Helping Hand", language: "en", completedAt: "2026-10-25T08:00:00Z",
+      pronunciationAccuracy: 93, readingSpeedWpm: 90, detectedErrorCount: 2 },
+    { id: "oral-2", moduleId: "module", passageId: null, roomId: null, assignmentId: null, materialId: null,
+      moduleTitle: "Stories", passageTitle: "Legacy story", language: "en", completedAt: "2026-10-24T08:00:00Z",
+      pronunciationAccuracy: 90, readingSpeedWpm: 80, detectedErrorCount: 3 },
+    { id: "oral-3", moduleId: null, passageId: null, roomId: "room", assignmentId: null, materialId: "material",
+      activityAssignmentId: "activity", moduleTitle: "Assigned", passageTitle: "Assigned story", language: "fil",
+      completedAt: "2026-10-23T08:00:00Z", pronunciationAccuracy: 88, readingSpeedWpm: 70, detectedErrorCount: 4 },
+  ];
+  const links = async (role: string) => {
+    const page = mount("modules/module5/pages/ReadingHistoryPage.tsx", {}, {
+      oralReadingService: { getOwnOralReadingAttempts: async () => rows },
+      comprehensionNavigation: { comprehensionTargetForReading },
+    }, role);
+    page.render(); await tick();
+    const found: string[] = [];
+    (function walk(node: any) {
+      if (!node || typeof node !== "object") return;
+      if (node.type === "a" && JSON.stringify(node.props.children).includes("Questions")) found.push(node.props.to);
+      [node.props?.children].flat(Infinity).forEach(walk);
+    })(page.render());
+    return found;
+  };
+  assert.deepEqual(await links("general_user"),
+    ["/m3/general/modules/module/comprehension?passageId=passage&oralReadingAttemptId=oral-1"]);
+  assert.deepEqual(await links("student"), ["/dashboard/materials/module/comprehension?passageId=passage&oralReadingAttemptId=oral-1"]);
+  assert.deepEqual(await links("admin"), [], "admin practice has no comprehension");
+});
+
+test("the question flow moves forward only, with Help Me, answer checking and an arrow back link", async () => {
+  const summary = { totalQuestions: 2, firstCorrect: 1, hintsUsed: 0, firstAttemptPercentage: 50, allResolved: false,
+    byType: { literal: { total: 1, firstCorrect: 1 }, inferential: { total: 1, firstCorrect: 0 }, critical: { total: 0 } } };
+  const attempt = { id: "m6", materialId: "material", oralReadingAttemptId: "oral", roomId: "room", activityAssignmentId: "assignment",
+    status: "in_progress", language: "en", summary, questions: [
+      { id: "q1", type: "literal", resolved: true, options: ["A", "B", "C", "D"], answerHistory: [{ optionIndex: 0, correct: true }],
+        firstOptionIndex: 0, firstAnswerCorrect: true, questionText: "Who?", correctOptionIndex: 0 },
+      { id: "q2", type: "inferential", resolved: false, options: ["A", "B", "C", "D"], answerHistory: [], firstOptionIndex: null,
+        questionText: "Why?" },
+    ] };
+  const f = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, {
+    comprehensionService: { getComprehension: async () => attempt, sendComprehensionAction: async () => ({ attempt, outcome: {} }) },
+  });
+  f.render(); await tick();
+  const tree = f.render();
+  const text = JSON.stringify(tree);
+  // Reopens at the first unfinished question, and there is no way back to change answers.
+  assert.match(text, /Why\?/);
+  assert.doesNotMatch(text, /Previous Question/);
+  assert.ok(find(tree, node => node.type === "button" && JSON.stringify(node.props.children).includes("Help me")));
+  assert.ok(find(tree, node => node.type === "button" && JSON.stringify(node.props.children).includes("Submit")));
+  const back = find(tree, node => node.type === "button" && node.props.className === "m6-back-button");
+  assert.match(JSON.stringify(back.props.children), /Back to reading activity/);
+  back.props.onClick();
+  assert.deepEqual(f.navigations, ["/dashboard/reading-materials/material/read-aloud?roomId=room&activityAssignmentId=assignment&viewReading=1"]);
 });

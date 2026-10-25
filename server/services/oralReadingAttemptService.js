@@ -254,7 +254,9 @@ function buildAttemptInsert(requester, module, body) {
 
   let scoring;
   try {
-    scoring = scorePassage(module.passage, transcript, module.language);
+    // The title the read-aloud screen shows (ReadAloudPage), so a title line it
+    // hides from the story is not scored. passage_snapshot keeps the full text.
+    scoring = scorePassage(module.passage, transcript, module.language, module.passageTitle || module.title);
   } catch (error) {
     if (error.code === "SCORING_LIMIT") {
       throw new OralReadingPersistenceError(error.message, 422, error.code);
@@ -643,7 +645,7 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
   const pageSize = 100;
   for (let offset = 0; ; offset += pageSize) {
     let query = supabase.from("oral_reading_attempts")
-      .select("id, module_id, material_id, activity_assignment_id, module_title_snapshot, passage_title_snapshot, language_snapshot, completed_at, pronunciation_accuracy, reading_speed_wpm, detected_error_count")
+      .select("id, module_id, material_id, activity_assignment_id, passage_id, room_id, assignment_id, module_title_snapshot, passage_title_snapshot, language_snapshot, completed_at, pronunciation_accuracy, reading_speed_wpm, detected_error_count")
       .eq("user_id", requester.user.id);
     if (moduleId) query = query.eq("module_id", moduleId);
     if (context.materialId) query = query.eq("material_id", context.materialId);
@@ -657,6 +659,12 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
   return rows.map(row => ({
     id: row.id,
     moduleId: row.module_id,
+    // The saved reading's source, used to reopen its comprehension activity.
+    materialId: row.material_id ?? null,
+    activityAssignmentId: row.activity_assignment_id ?? null,
+    passageId: row.passage_id ?? null,
+    roomId: row.room_id ?? null,
+    assignmentId: row.assignment_id ?? null,
     moduleTitle: row.module_title_snapshot ?? "Reading module",
     passageTitle: row.passage_title_snapshot ?? "Reading result",
     language: row.language_snapshot === "fil" || row.language_snapshot === "en" ? row.language_snapshot : null,

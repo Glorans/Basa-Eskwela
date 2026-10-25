@@ -622,7 +622,11 @@
 }
 
 .result-panel-card--feedback {
-  background: #ffb5a5;
+  background: #b5d9ef;
+}
+
+.result-panel-card--feedback .result-panel-card-text {
+  color: var(--basa-navy);
 }
 
 .result-panel-card--saved {
@@ -672,4 +676,22 @@
   .result-feedback-hero {
     padding: 16px;
   }
+}
+
+/* Text action, separate from the 44px word-list speaker buttons. */
+.result-pronunciation-check {
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  color: #fff;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.result-pronunciation-check:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }

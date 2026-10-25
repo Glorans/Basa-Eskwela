@@ -2,7 +2,7 @@ const { EventEmitter } = require("node:events");
 const fs = require("node:fs/promises");
 const { getAzureSpeechConfig } = require("./azureSpeechConfig");
 const { SpeechTranscriptionError } = require("./speechErrors");
-const { SPEECH_SAMPLE_RATE, readSpeechWav, wavPcmArrayBuffer } = require("./wavAudio");
+const { MAX_WHOLE_RECORDING_SECONDS, SPEECH_SAMPLE_RATE, readSpeechWav, wavPcmArrayBuffer } = require("./wavAudio");
 
 // Azure Speech (microsoft-cognitiveservices-speech-sdk 1.52.0, pinned) for M2
 // diagnostics and M5 read-alouds. SDK handling follows the tested Speech Lab
@@ -63,7 +63,10 @@ async function releaseAudio(audioConfig) {
  * Recognizes one complete PCM part with continuous recognition and resolves at
  * the end of the session. `onRecognized` receives each final utterance.
  */
-async function recognizePcm({ sdk, config, locale, pcm, configure, onRecognized, cleanupMs = CLEANUP_MS }) {
+async function recognizePcm({
+  sdk, config, locale, pcm, configure, onRecognized, onNoMatch, cleanupMs = CLEANUP_MS, timeoutMs = config.timeoutMs, signal,
+}) {
+  if (signal?.aborted) throw new SpeechTranscriptionError("STT_PROVIDER_ERROR");
   const speechConfig = createSpeechConfig(sdk, config, locale);
   const stream = sdk.AudioInputStream.createPushStream(sdk.AudioStreamFormat.getWaveFormatPCM(SPEECH_SAMPLE_RATE, 16, 1));
   const audioConfig = sdk.AudioConfig.fromStreamInput(stream);
@@ -73,6 +76,7 @@ async function recognizePcm({ sdk, config, locale, pcm, configure, onRecognized,
   let extra;
   let finished = false;
   let timer;
+  let abort;
   try {
     extra = configure?.(recognizer);
     await new Promise((resolve, reject) => {
@@ -88,9 +92,15 @@ async function recognizePcm({ sdk, config, locale, pcm, configure, onRecognized,
           finish(error instanceof SpeechTranscriptionError ? error : new SpeechTranscriptionError("STT_PROVIDER_ERROR"));
         }
       };
-      timer = setTimeout(() => finish(new SpeechTranscriptionError("STT_DEADLINE")), config.timeoutMs);
+      timer = setTimeout(() => finish(new SpeechTranscriptionError("STT_DEADLINE")), timeoutMs);
+      // The caller gave up (the browser closed the request): end the session now
+      // instead of letting Azure keep recognizing audio nobody will receive.
+      if (signal?.aborted) finish(new SpeechTranscriptionError("STT_PROVIDER_ERROR"));
+      abort = () => finish(new SpeechTranscriptionError("STT_PROVIDER_ERROR"));
+      signal?.addEventListener("abort", abort, { once: true });
       recognizer.recognized = safe((_sender, event) => {
         if (event.result?.reason === sdk.ResultReason.RecognizedSpeech) onRecognized(event.result);
+        else if (event.result?.reason === sdk.ResultReason.NoMatch) onNoMatch?.(event.result);
       });
       recognizer.canceled = safe((_sender, event) => {
         if (event.reason === sdk.CancellationReason.EndOfStream) finish();
@@ -105,6 +115,7 @@ async function recognizePcm({ sdk, config, locale, pcm, configure, onRecognized,
   } finally {
     finished = true;
     clearTimeout(timer);
+    if (abort) signal?.removeEventListener("abort", abort);
     try { closeStream(); } catch { /* already closed */ }
     recognizer.recognized = recognizer.canceled = recognizer.sessionStopped = undefined;
     await closeClient(recognizer, cleanupMs);
@@ -112,6 +123,25 @@ async function recognizePcm({ sdk, config, locale, pcm, configure, onRecognized,
     try { extra?.close?.(); } catch { /* best effort */ }
   }
 }
+
+/**
+ * SDK 1.52 reports three different things as ResultReason.NoMatch
+ * (EnumTranslation.implTranslateRecognitionResult, NoMatchDetails.fromResult):
+ * InitialSilenceTimeout (only silence), InitialBabbleTimeout (only noise) and
+ * NotRecognized (audio Azure treated as speech but could not recognize). Only
+ * the last is speech that went unassessed; pauses and background noise are not.
+ */
+function noMatchKind(sdk, result) {
+  let reason;
+  try { reason = sdk.NoMatchDetails?.fromResult(result)?.reason; } catch { reason = undefined; }
+  const reasons = sdk.NoMatchReason ?? {};
+  if (reason !== undefined && reason === reasons.InitialSilenceTimeout) return "silence";
+  if (reason !== undefined && reason === reasons.InitialBabbleTimeout) return "noise";
+  // Unknown details are treated as unassessed speech, never as silence.
+  return "unrecognized";
+}
+
+const resultSeconds = (result) => (Number.isFinite(result?.duration) && result.duration >= 0 ? result.duration / 10_000_000 : null);
 
 function logProviderFailure(log, operation, error) {
   // Only the safe code is logged: never audio, transcripts, keys or SDK payloads.
@@ -125,13 +155,34 @@ function toSafeError(error) {
   return error instanceof SpeechTranscriptionError ? error : new SpeechTranscriptionError("STT_PROVIDER_ERROR");
 }
 
-/** Speech-to-text for one uploaded part (16 kHz mono PCM WAV file). */
+/**
+ * The pinned SDK sends the first 5 s of pushed audio at once, then throttles to
+ * twice real time (ServiceRecognizerBase "SPEECH-TransmitLengthBeforThrottleMs").
+ * A whole recording therefore needs about half its length to be sent, on top of
+ * the configured per-operation deadline.
+ */
+function wholeRecordingDeadlineMs(config, durationSeconds) {
+  return config.timeoutMs + Math.ceil(durationSeconds * 1000 / 2);
+}
+
+/**
+ * Speech-to-text for one uploaded 16 kHz mono PCM WAV file: an M2 part of at
+ * most 30 s or, with wholeRecording, an entire M5 read-aloud. Either way one
+ * continuous-recognition session hears the file start to finish, and the result
+ * is returned only after that session ends; final phrases are joined in the
+ * order Azure recognized them.
+ */
 async function transcribeWav(filePath, languageCode, {
-  sdkFactory = defaultSdkFactory, env = process.env, readFile = fs.readFile, log = console.error,
+  sdkFactory = defaultSdkFactory, env = process.env, readFile = fs.readFile, log = console.error, wholeRecording = false,
+  signal, onDiagnostics,
 } = {}) {
   const config = getAzureSpeechConfig(env);
   const buffer = await readFile(filePath);
-  const wav = readSpeechWav(buffer);
+  // Offsets and counts only (never text or audio): shows whether Azure heard
+  // speech at the start that it could not recognize.
+  const diagnostics = { phrases: 0, unrecognized: 0, silence: 0, noise: 0, firstPhraseOffsetMs: null, firstUnrecognizedOffsetMs: null };
+  const offsetMs = (result) => (Number.isFinite(result?.offset) ? Math.round(result.offset / 10_000) : null);
+  const wav = wholeRecording ? readSpeechWav(buffer, { maxSeconds: MAX_WHOLE_RECORDING_SECONDS }) : readSpeechWav(buffer);
   const texts = [];
   const confidences = [];
   let characters = 0;
@@ -139,9 +190,18 @@ async function transcribeWav(filePath, languageCode, {
     const sdk = sdkFactory();
     await recognizePcm({
       sdk, config, locale: languageCode, pcm: wavPcmArrayBuffer(buffer, wav),
+      ...(wholeRecording ? { timeoutMs: wholeRecordingDeadlineMs(config, wav.durationSeconds) } : {}),
+      signal,
+      onNoMatch: (result) => {
+        const kind = noMatchKind(sdk, result);
+        diagnostics[kind] += 1;
+        if (kind === "unrecognized") diagnostics.firstUnrecognizedOffsetMs ??= offsetMs(result);
+      },
       onRecognized: (result) => {
         const text = typeof result.text === "string" ? result.text.trim() : "";
         if (!text) return;
+        diagnostics.phrases += 1;
+        diagnostics.firstPhraseOffsetMs ??= offsetMs(result);
         characters += text.length;
         if (characters > MAX_RESULT_CHARACTERS) throw new SpeechTranscriptionError("STT_PROVIDER_ERROR");
         texts.push(text);
@@ -152,6 +212,8 @@ async function transcribeWav(filePath, languageCode, {
   } catch (error) {
     logProviderFailure(log, "transcribe", error);
     throw toSafeError(error);
+  } finally {
+    try { onDiagnostics?.(diagnostics); } catch { /* diagnostics never affect the result */ }
   }
   const text = texts.join(" ").replace(/\s+/g, " ").trim();
   if (!text) throw new SpeechTranscriptionError("NO_SPEECH");
@@ -188,17 +250,27 @@ function assessmentUtterance(sdk, result) {
  * the independent transcript.
  */
 async function assessPronunciationWav(buffer, language, referenceText, {
-  sdkFactory = defaultSdkFactory, env = process.env, log = console.error,
+  sdkFactory = defaultSdkFactory, env = process.env, log = console.error, signal,
 } = {}) {
   if (language !== "en") throw new SpeechTranscriptionError("PRONUNCIATION_UNSUPPORTED");
   if (typeof referenceText !== "string" || !referenceText.trim()) throw new SpeechTranscriptionError("STT_INVALID_AUDIO");
   const config = getAzureSpeechConfig(env);
-  const wav = readSpeechWav(buffer);
+  const wav = readSpeechWav(buffer, { maxSeconds: MAX_WHOLE_RECORDING_SECONDS });
   const utterances = [];
+  // Speech Azure could not assess. Silence and noise are expected and are not
+  // counted; anything else means the result does not cover the whole reading.
+  const unassessed = [];
+  const startedAt = Date.now();
   try {
     const sdk = sdkFactory();
     await recognizePcm({
       sdk, config, locale: "en-US", pcm: wavPcmArrayBuffer(buffer, wav),
+      signal, timeoutMs: wholeRecordingDeadlineMs(config, wav.durationSeconds),
+      // Not a failure: the same audio would fail again on every retry. It is
+      // reported, so the result is never shown as covering the whole reading.
+      onNoMatch: (result) => {
+        if (noMatchKind(sdk, result) === "unrecognized") unassessed.push(resultSeconds(result));
+      },
       configure: (recognizer) => {
         const assessment = new sdk.PronunciationAssessmentConfig(
           referenceText.trim(),
@@ -212,15 +284,30 @@ async function assessPronunciationWav(buffer, language, referenceText, {
       onRecognized: (result) => {
         if (utterances.length >= 200) throw new SpeechTranscriptionError("STT_PROVIDER_ERROR");
         const utterance = assessmentUtterance(sdk, result);
-        if (utterance.text.trim()) utterances.push(utterance);
+        if (!utterance.text.trim() || !utterance.words.length || utterance.accuracy === null || utterance.fluency === null) {
+          throw new SpeechTranscriptionError("STT_PROVIDER_ERROR");
+        }
+        utterances.push(utterance);
       },
     });
   } catch (error) {
     logProviderFailure(log, "pronunciation", error);
     throw toSafeError(error);
   }
-  if (!utterances.length) throw new SpeechTranscriptionError("NO_SPEECH");
-  return { provider: "azure", locale: "en-US", scale: "0-100", utterances };
+  // Only silence or noise: nothing to assess.
+  if (!utterances.length && !unassessed.length) throw new SpeechTranscriptionError("NO_SPEECH");
+  const coverage = unassessed.length
+    ? {
+      complete: false,
+      unassessedSegments: unassessed.length,
+      // Null when Azure gave no duration for some segment: the gap is real but unmeasured.
+      unassessedSeconds: unassessed.every((seconds) => seconds !== null)
+        ? Math.round(unassessed.reduce((total, seconds) => total + seconds, 0) * 10) / 10
+        : null,
+    }
+    : { complete: true };
+  return { provider: "azure", locale: "en-US", scale: "0-100", utterances, ...coverage,
+    durationSeconds: wav.durationSeconds, assessmentMs: Date.now() - startedAt };
 }
 
 /** Neural text-to-speech; returns MP3 bytes (served as audio/mpeg). */
@@ -348,6 +435,7 @@ function createRecognitionStream(request, { sdkFactory = defaultSdkFactory, env 
 }
 
 module.exports = {
+  wholeRecordingDeadlineMs,
   assessPronunciationWav,
   createRecognitionStream,
   synthesizeSpeech,

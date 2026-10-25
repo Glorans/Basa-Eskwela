@@ -13,7 +13,7 @@ export function ReadingLanguageSelector({ language, onChange }: {
   return <div className="m3-language-selector" role="group" aria-label="Reading language">
     {(["en", "fil"] as const).map(value => <button key={value} type="button"
       aria-pressed={language === value} onClick={() => onChange(value)}>
-      {labels[value]}{language === value && <span aria-hidden="true"> ✓</span>}
+      {labels[value]}
     </button>)}
   </div>;
 }

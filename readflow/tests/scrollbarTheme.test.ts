@@ -17,11 +17,11 @@ test("global CSS styles Chrome/Edge scrollbars and limits standard properties to
   assert.match(css, /\*::-webkit-scrollbar-thumb \{[^}]*background-color: var\(--basa-scrollbar-thumb\);[^}]*border-radius: 999px;|\*::-webkit-scrollbar-thumb \{[^}]*border-radius: 999px;[^}]*background-color: var\(--basa-scrollbar-thumb\);/s);
   assert.match(css, /\*::-webkit-scrollbar-thumb:hover[^{]*\{[^}]*var\(--basa-scrollbar-thumb-hover\)/s);
   // Chrome 121+ ignores ::-webkit-scrollbar once scrollbar-color is set, so the standard rule is Firefox-only.
-  assert.match(css, /@supports not selector\(::-webkit-scrollbar\) \{\s*\* \{\s*scrollbar-width: thin;\s*scrollbar-color: var\(--basa-scrollbar-thumb\) transparent;/);
+  assert.match(css, /@supports not selector\(::-webkit-scrollbar\) \{\s*\* \{\s*scrollbar-width: auto;\s*scrollbar-color: var\(--basa-scrollbar-thumb\) var\(--basa-scrollbar-track\);/);
 });
 
-test("components that hide their scrollbar on purpose keep doing so", async () => {
-  for (const path of ["pages/reading-activity/ReadAloudPage.css", "modules/module2/pages/DiagnosticReadingPage.css"]) {
-    assert.match(await read(path), /scrollbar-width: none/);
+test("reading panels inherit the visible global scrollbar", async () => {
+  for (const path of ["pages/reading-activity/ReadAloudPage.css", "modules/module2/pages/DiagnosticReadingPage.css", "modules/module2/pages/DiagnosticQuestionsPage.css"]) {
+    assert.doesNotMatch(await read(path), /scrollbar-width|scrollbar-color|::-webkit-scrollbar/);
   }
 });

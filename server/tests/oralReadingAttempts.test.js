@@ -418,3 +418,28 @@ test('history returns an explicit error when persistence is unavailable', async 
     }) }),
   }), /Unable to load your saved results/);
 });
+
+const TITLED_PASSAGE = "99999999-9999-4999-8999-999999999999";
+test("an embedded title the screen hides is not scored; snapshot and saved history stay unchanged", async () => {
+  const db = createDatabase();
+  db.tables.module_passages = [{ id: TITLED_PASSAGE, module_id: MODULE, title: "A Helping Hand",
+    passage_text: "A Helping Hand\nLia helps her lola.", display_order: 1 }];
+  const user = requester(GENERAL, "general_user");
+  // A result saved before this change keeps its stored score on a save retry.
+  db.tables.oral_reading_attempts.push({ id: ROOM, user_id: GENERAL, module_id: MODULE, passage_id: TITLED_PASSAGE,
+    submission_id: SECOND_PASSAGE, module_title_snapshot: "Seeds", language_snapshot: "en",
+    passage_snapshot: "A Helping Hand\nLia helps her lola.", transcript: "Lia helps her lola", duration_seconds: 30,
+    reading_speed_wpm: 8, pronunciation_accuracy: 57.142857, expected_word_count: 7, detected_error_count: 3,
+    word_metrics: [], completed_at: "2026-09-01T08:00:00.000Z" });
+  const legacy = await createOralReadingAttempt(user, perfectAttemptBody({
+    passageId: TITLED_PASSAGE, submissionId: SECOND_PASSAGE, transcript: "Lia helps her lola" }), dependencies(db));
+  assert.equal(legacy.detectedErrorCount, 3);
+  assert.equal(legacy.expectedWordCount, 7);
+
+  const saved = await createOralReadingAttempt(user, perfectAttemptBody({
+    passageId: TITLED_PASSAGE, transcript: "Lia helps her lola" }), dependencies(db));
+  assert.equal(saved.pronunciationAccuracy, 100);
+  assert.equal(saved.expectedWordCount, 4);
+  assert.deepEqual(saved.wordMetrics.filter(word => word.type !== "match"), []);
+  assert.equal(saved.passageSnapshot, "A Helping Hand\nLia helps her lola.");
+});

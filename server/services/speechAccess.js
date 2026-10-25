@@ -7,9 +7,10 @@ const {
   authorizeOralReadingPracticeRequest,
 } = require("./oralReadingAttemptService");
 
-// Per-user request budgets for the paid Azure Speech endpoints. A full-length
+// Per-user request budgets for the paid Azure Speech endpoints. A full-length M2
 // reading (five minutes in 25-second parts) needs at most 12 transcription
-// requests, and real time limits a learner to about 24 parts per 10 minutes, so
+// requests and an M5 read-aloud needs one (/api/read-aloud/audio); real time
+// limits a learner to about 24 parts per 10 minutes, so
 // these budgets leave room for slow readers and retries while capping abuse.
 // They limit request counts only; recording duration is not restricted here.
 const SPEECH_RATE_LIMITS = Object.freeze({

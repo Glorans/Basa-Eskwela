@@ -1,4 +1,5 @@
 @import "./styles/basa-theme.css";
+@import "./styles/responsive-layout.css";
 
 @tailwind base;
 @tailwind components;
@@ -10,8 +11,7 @@ body,
   height: 100%;
 }
 
-/* System-wide yellow scrollbars for every page, sidebar, modal and scroll area.
-   Components that hide their scrollbar on purpose keep their own rules. */
+/* Shared scrollbars for pages and every nested scroll area, including portals. */
 *::-webkit-scrollbar {
   width: var(--basa-scrollbar-size);
   height: var(--basa-scrollbar-size);
@@ -24,29 +24,36 @@ body,
 }
 
 *::-webkit-scrollbar-corner {
-  background: transparent;
+  background: var(--basa-scrollbar-track);
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
 }
 
 *::-webkit-scrollbar-thumb {
   min-height: 36px;
+  min-width: 36px;
   border: 2px solid transparent;
   border-radius: 999px;
   background-color: var(--basa-scrollbar-thumb);
+  background-image: linear-gradient(to bottom, var(--basa-scrollbar-thumb), var(--basa-scrollbar-thumb-end));
   background-clip: padding-box;
-  box-shadow: inset 0 0 0 1px var(--basa-scrollbar-edge);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%);
 }
 
 *::-webkit-scrollbar-thumb:hover,
 *::-webkit-scrollbar-thumb:active {
   background-color: var(--basa-scrollbar-thumb-hover);
+  background-image: linear-gradient(to bottom, var(--basa-scrollbar-thumb-hover), var(--basa-scrollbar-thumb-hover-end));
 }
 
 /* Firefox has no ::-webkit-scrollbar. Chrome and Edge ignore the rules above
    once these standard properties are set, so they are limited to Firefox. */
 @supports not selector(::-webkit-scrollbar) {
   * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--basa-scrollbar-thumb) transparent;
+    scrollbar-width: auto;
+    scrollbar-color: var(--basa-scrollbar-thumb) var(--basa-scrollbar-track);
   }
 }
 

@@ -9,7 +9,7 @@ import "@fontsource/nunito/latin-700.css";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { synthesizeDiagnosticSpeech } from "../../modules/module2/services/diagnosticTts";
 import { getWordsToPractice } from "../../modules/module5/services/oralReadingProcessing";
-import { getOralReadingAttempt, peekOralReadingAttempt } from "../../modules/module5/services/oralReadingService";
+import { getOralReadingAttempt, peekOralReadingAttempt, getOralReadingAttemptNumber, peekOralReadingAttemptNumber } from "../../modules/module5/services/oralReadingService";
 import RecordingPlayback from "../../modules/module5/components/RecordingPlayback";
 import PronunciationFeedback from "../../modules/module5/components/PronunciationFeedback";
 import M5Modal from "../../modules/module5/components/M5Modal";
@@ -38,7 +38,7 @@ function panelFromParams(params: URLSearchParams): ResultPanel | null {
 
 // Student-facing wording only: always encouraging, never a level or a grade.
 function encouragement(accuracy: number) {
-  if (accuracy >= 90) return "Wow, you read it very clearly!";
+  if (accuracy >= 90) return "Wow, we heard almost every word of the story!";
   if (accuracy >= 75) return "Nice job! A few words need practice.";
   return "Good try! Let's practice some words.";
 }
@@ -98,10 +98,30 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const cachedAttempt = peekOralReadingAttempt(attemptId, profile?.id);
   const [loadedAttempt, setAttempt] = useState<OralReadingAttempt | undefined>(cachedAttempt);
   const attempt = loadedAttempt?.id === attemptId && loadedAttempt?.userId === profile?.id ? loadedAttempt : cachedAttempt;
+  const [revision, setRevision] = useState(0);
+  const [numberedAttempt, setNumberedAttempt] = useState<{ id: string; userId: string; number: number }>();
+  const [numberError, setNumberError] = useState(false);
+  const [numberRevision, setNumberRevision] = useState(0);
+  const numberRequest = useRef<{ key: string; promise: Promise<number | undefined> }>();
+  const cachedNumber = peekOralReadingAttemptNumber(attemptId, profile?.id);
+  const resultNumber = numberedAttempt && numberedAttempt.id === attemptId && numberedAttempt.userId === profile?.id
+    ? numberedAttempt.number : cachedNumber;
+  useEffect(() => {
+    let active = true;
+    setNumberError(false);
+    if (!attempt || cachedNumber !== undefined) return;
+    const key = `${attempt.userId}:${attempt.id}:${numberRevision}`;
+    if (numberRequest.current?.key !== key) {
+      numberRequest.current = { key, promise: getOralReadingAttemptNumber(attempt) };
+    }
+    void numberRequest.current.promise.then(number => {
+      if (active && number !== undefined) setNumberedAttempt({ id: attempt.id, userId: attempt.userId, number });
+    }).catch(() => { if (active) setNumberError(true); });
+    return () => { active = false; };
+  }, [attempt, cachedNumber, numberRevision]);
   const ui = getActivityText(attempt ? attempt.language : activityLanguageFromState(location.state));
   const { language, t } = ui;
   const activityState = activityLanguageState(language);
-  const [revision, setRevision] = useState(0);
   const [error, setError] = useState<string>();
   const [speakingWord, setSpeakingWord] = useState<string>();
   const [speechError, setSpeechError] = useState<string>();
@@ -272,13 +292,17 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   }
 
   const wordsToPractice = getWordsToPractice(attempt.wordMetrics);
-  const skippedWords = new Set(
+  const notDetectedWords = new Set(
     attempt.wordMetrics
       .filter((word) => word.type === "omission")
       .map((word) => word.expected),
   );
 
   const comprehensionTarget = comprehensionTargetForReading(role, attempt);
+  // Learners are told when a reading has no comprehension activity, rather than
+  // the button silently disappearing. Read-aloud-only activities and admin
+  // self-practice never have questions, so they show nothing extra.
+  const comprehensionUnavailable = !comprehensionTarget && role !== "admin" && attempt.readAloudOnly !== true;
   const accuracy = Math.round(attempt.pronunciationAccuracy);
   const stars = starCount(accuracy);
   const correctWordCount = attempt.wordMetrics.filter((word) => word.type === "match").length;
@@ -311,7 +335,8 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           <header className="result-feedback-hero" aria-labelledby="reading-feedback-title">
             <Sparkles className="result-feedback-hero-icon" size={40} aria-hidden="true" />
             <h2 id="reading-feedback-title">{t("Great reading, ")}{readerName}!</h2>
-            <p className="result-feedback-story">{attempt.moduleTitle}</p>
+            <p className="result-feedback-story">{attempt.passageTitle || attempt.moduleTitle}{resultNumber !== undefined && <> — {t("Result")} {resultNumber}</>}</p>
+            {numberError && <p role="status">{t("Unable to load the result number.")} <button type="button" onClick={() => setNumberRevision(value => value + 1)}>{t("Retry")}</button></p>}
             <p className="result-feedback-stars" aria-label={t("{stars} out of 3 stars", { stars })}>
               {[1, 2, 3].map((value) => (
                 <Star
@@ -403,13 +428,9 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                 <p className="result-feedback-note">{t("No transcript was saved for this reading.")}</p>
               )}
               {transcriptParts.some((part) => part.differs) && (
-                <p className="result-feedback-note">{t("Highlighted words sounded different from the story.")}</p>
+                <p className="result-feedback-note">{t("Highlighted words did not match the story. Speech recognition can make mistakes.")}</p>
               )}
             </section>
-
-            <button className="result-feedback-button result-feedback-button--primary" type="button" onClick={() => openPanel("feedback")}>
-              <Volume2 size={20} aria-hidden="true" />{t("See what to practice")}
-            </button>
           </M5Modal>
 
           <M5Modal
@@ -429,7 +450,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                     {wordsToPractice.map((word) => (
                       <li key={word} className="result-feedback-word">
                         <span>{word}</span>
-                        <small>{skippedWords.has(word) ? t("skipped") : t("read differently")}</small>
+                        <small>{notDetectedWords.has(word) ? t("not detected") : t("read differently")}</small>
                         <button
                           type="button"
                           className="result-feedback-listen"
@@ -443,7 +464,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                     ))}
                   </ul>
                   <p className="result-feedback-note">
-                    {t("\"Skipped\" means we did not hear the word. \"Read differently\" means we heard another word; it is not always a pronunciation mistake.")}
+                    {t("\"Not detected\" means we did not hear the word in your reading. You may have skipped it, or the recording may have missed it. \"Read differently\" means we heard another word. Speech recognition can make mistakes, so this is not always a reading or pronunciation mistake.")}
                   </p>
                 </>
               ) : (
@@ -466,10 +487,6 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             )}
 
             {feedbackOpened && <RecordingPlayback key={attempt.id} attemptId={attempt.id} language={language} />}
-
-            <button className="result-feedback-button" type="button" onClick={() => openPanel("result")}>
-              <Star size={20} aria-hidden="true" />{t("Back to my result")}
-            </button>
           </M5Modal>
 
           <M5Modal
@@ -484,6 +501,11 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             {historyOpened && <ReadingHistoryPage role={role} embedded key={`${profile?.id}:${role}:${attempt.id}`} />}
           </M5Modal>
 
+          {comprehensionUnavailable && (
+            <p className="result-feedback-note result-feedback-status" role="note">
+              {t("Comprehension questions are not available for this story yet. Your reading result is saved.")}
+            </p>
+          )}
           <div className="result-feedback-actions">
             {comprehensionTarget && (
               <Link

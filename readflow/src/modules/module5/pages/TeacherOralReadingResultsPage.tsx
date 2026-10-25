@@ -104,9 +104,8 @@ export default function TeacherOralReadingResultsPage() {
   }
 
   return (
-    <div className="m3-page-stack m5-teacher-page">
+    <div className="m3-page-stack m5-teacher-page m5-teacher-results">
       <M3PageHeader
-        eyebrow="Module 5 and Module 6"
         title="Reading Results"
         description="Review read-aloud and comprehension results from students enrolled in your classrooms."
         actions={(
@@ -179,6 +178,12 @@ export default function TeacherOralReadingResultsPage() {
 
           <div className="m5-review-table-scroll">
             <table className="m5-review-table">
+              <colgroup>
+                <col style={{ width: "12%" }} /><col style={{ width: "14%" }} />
+                <col style={{ width: "12%" }} /><col style={{ width: "14%" }} />
+                <col style={{ width: "13%" }} /><col style={{ width: "15%" }} />
+                <col style={{ width: "12%" }} /><col style={{ width: "8%" }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Learner</th>

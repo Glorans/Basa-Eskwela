@@ -15,7 +15,7 @@ import {
 
 const validSegment = () => new Blob(["audio"], { type: "audio/webm;codecs=opus" });
 
-test("M5 combines multiple segment transcripts in order with whitespace normalization", () => {
+test("M2 combines multiple segment transcripts in order with whitespace normalization", () => {
   const combined = combineDiagnosticTranscriptions([
     { text: "  Seeds need " },
     { text: " sun   and water. " },
@@ -23,7 +23,7 @@ test("M5 combines multiple segment transcripts in order with whitespace normaliz
   assert.equal(combined.text, "Seeds need sun and water.");
 });
 
-test("M5 processing reuses ordered segmented STT and carries total active duration", async () => {
+test("M2 processing uses ordered segmented STT and carries total active duration", async () => {
   const transcripts = ["Seeds need", "sun and water"];
   let index = 0;
   const result = await processDiagnosticRecording({
@@ -43,37 +43,26 @@ test("M5 processing reuses ordered segmented STT and carries total active durati
   assert.equal(result.oralReadingMetrics.readingSpeedWpm, 10);
 });
 
-test("one failed segment prevents attempt input creation and a clean retry succeeds", async () => {
+test("a failed transcription prevents attempt input creation and a retry of the same recording succeeds", async () => {
   let calls = 0;
-  await assert.rejects(
-    processOralReading({
-      moduleId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      expectedText: "one two three",
-      language: "en",
-      audioSegments: [validSegment(), validSegment()],
-      segmentDurationsSeconds: [25, 5],
-      recordingDurationSeconds: 30,
-      uploadSegment: async () => {
-        calls += 1;
-        if (calls === 2) throw new DiagnosticAudioUploadError("STT_PROVIDER_ERROR");
-        return { success: true, message: "ok", transcription: { text: "one two" } };
-      },
-    }),
-  );
-
-  const retried = await processOralReading({
+  const recording = validSegment();
+  const input = {
     moduleId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     expectedText: "one two three",
-    language: "en",
-    audioSegments: [validSegment()],
-    segmentDurationsSeconds: [10],
-    recordingDurationSeconds: 10,
-    uploadSegment: async () => ({
-      success: true,
-      message: "ok",
-      transcription: { text: "one two three" },
-    }),
-  });
+    language: "en" as const,
+    recording,
+    recordingDurationSeconds: 30,
+    transcribeRecording: async (audio: Blob) => {
+      calls += 1;
+      assert.equal(audio, recording);
+      if (calls === 1) throw new DiagnosticAudioUploadError("STT_PROVIDER_ERROR");
+      return { text: "one two three" };
+    },
+  };
+  await assert.rejects(processOralReading(input));
+
+  const retried = await processOralReading(input);
+  assert.equal(calls, 2);
   assert.equal(retried.transcript, "one two three");
   assert.equal(retried.wordMetrics.every((word) => word.type === "match"), true);
 });
@@ -184,9 +173,8 @@ test("Independent Learner layout hides its role subtitle and scrolls only conten
 test("selected passage and classroom context survive processing into the save payload", async () => {
   const result = await processOralReading({
     moduleId: "module", passageId: "passage-2", roomId: "room", assignmentId: "assignment", submissionId: "submission",
-    expectedText: "Second passage", language: "en", audioSegments: [validSegment()],
-    segmentDurationsSeconds: [10], recordingDurationSeconds: 10,
-    uploadSegment: async () => ({ success: true, message: "ok", transcription: { text: "Second passage" } }),
+    expectedText: "Second passage", language: "en", recording: validSegment(), recordingDurationSeconds: 10,
+    transcribeRecording: async () => ({ text: "Second passage" }),
   });
   assert.equal(result.passageId, "passage-2");
   assert.equal(result.roomId, "room");

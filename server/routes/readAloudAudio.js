@@ -1,0 +1,83 @@
+const { unlink } = require("node:fs/promises");
+const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
+const { transcribeWav } = require("../services/azureSpeechService");
+const { getSpeechErrorResponse } = require("../services/speechErrors");
+
+const UPLOAD_TOO_LARGE_CODES = new Set(["LIMIT_FILE_SIZE", "LIMIT_FIELD_VALUE"]);
+
+// Durations and sizes only: never audio, transcripts, tokens or user IDs.
+function developmentTiming(details) {
+  if (process.env.NODE_ENV === "development") console.info("[ReadAloud] timing", details);
+}
+
+/**
+ * Module 5 only: speech-to-text for one entire read-aloud, sent once after the
+ * learner presses Stop as a single 16 kHz mono PCM WAV of the same continuous
+ * recording that is saved for playback. Azure hears it in one
+ * continuous-recognition session, so there are no part boundaries. Only the
+ * language field is accepted; Module 2 diagnostics keep /api/diagnostic/audio
+ * and their signed transcript receipts.
+ */
+function createReadAloudAudioHandler({
+  transcribe = transcribeWav, remove = unlink, log = console.error, timing = developmentTiming, now = Date.now,
+} = {}) {
+  return async function readAloudAudio(req, res, uploadError) {
+    // Set by the route before the upload is read (routes/speech.js).
+    const receivedAt = req.readAloudReceivedAt ?? now();
+    const uploadMs = now() - receivedAt;
+    let recognitionMs;
+    let recognition;
+    // A browser that gives up closes the request; stop recognizing for it.
+    const abandoned = new AbortController();
+    res.on("close", () => { if (!res.writableFinished) abandoned.abort(); });
+    try {
+      if (UPLOAD_TOO_LARGE_CODES.has(uploadError?.code)) {
+        return res.status(413).json({ success: false, code: "AUDIO_TOO_LARGE", message: "This recording is too large to process. Please record it again." });
+      }
+      if (uploadError || !req.file) {
+        return res.status(400).json({ success: false, code: "STT_INVALID_AUDIO", message: "Audio upload failed. Please try recording again." });
+      }
+      if (!["audio/wav", "audio/x-wav"].includes(req.file.mimetype.split(";", 1)[0].trim().toLowerCase())) {
+        return res.status(415).json({ success: false, code: "STT_INVALID_AUDIO", message: "This recording format cannot be transcribed. Please record it again." });
+      }
+      if (Object.keys(req.body ?? {}).some((field) => field !== "language")) {
+        return res.status(400).json({ success: false, code: "STT_INVALID_AUDIO", message: "Audio upload failed. Please try recording again." });
+      }
+      let languageCode;
+      try { languageCode = getSpeechLanguageCode(req.body?.language); }
+      catch { return res.status(400).json({ success: false, message: "Language must be either 'en' or 'fil'." }); }
+      // transcribeWav() verifies the WAV container and its duration itself.
+      const recognitionStartedAt = now();
+      let transcription;
+      try {
+        transcription = await transcribe(req.file.path, languageCode, {
+          wholeRecording: true, signal: abandoned.signal, onDiagnostics: (details) => { recognition = details; },
+        });
+      } finally {
+        recognitionMs = now() - recognitionStartedAt;
+      }
+      // Lets the browser's network panel show where the time went.
+      res.set("Server-Timing", `upload;dur=${uploadMs}, recognition;dur=${recognitionMs}`);
+      if (!transcription.text) return res.status(422).json({ success: false, code: "NO_SPEECH", message: "No speech could be recognized from the recording." });
+      res.set("Cache-Control", "no-store");
+      return res.json({ success: true, message: "Audio transcribed successfully.", transcription });
+    } catch (error) {
+      const safeError = getSpeechErrorResponse(error);
+      log("Read-aloud transcription failed", { code: safeError.code });
+      return res.status(safeError.status).json({ success: false, code: safeError.code, message: safeError.message });
+    } finally {
+      timing({
+        uploadMs, recognitionMs, audioBytes: req.file?.size, status: res.statusCode, abandoned: abandoned.signal.aborted,
+        ...(recognition ? { recognition } : {}),
+      });
+      if (req.file?.path) {
+        try { await remove(req.file.path); }
+        catch (error) {
+          if (error.code !== "ENOENT") log("Read-aloud temporary audio cleanup failed", { code: error.code });
+        }
+      }
+    }
+  };
+}
+
+module.exports = { createReadAloudAudioHandler };

@@ -1,8 +1,21 @@
-.m5-teacher-page { max-width: 1180px; margin: 0 auto; }
+.m5-teacher-page { width: 100%; min-width: 0; max-width: 1180px; margin: 0 auto; }
+
+/* The list uses the workspace width; detail pages keep their reading measure. */
+.m3-content:has(> .m5-teacher-results) { padding: clamp(12px, 1.5vw, 20px); }
+.m5-teacher-results { max-width: none; gap: 16px; }
+.m5-teacher-results .m3-page-header h1 { font-size: 1.8rem; }
+.m5-teacher-results .m5-review-filters { gap: 10px; padding: 14px; }
+.m5-teacher-results .m5-review-count { padding: 10px 14px; }
+.m5-teacher-results .m5-review-table { min-width: 880px; table-layout: fixed; }
+.m5-teacher-results .m5-review-table :is(th, td) { padding: 10px 8px; vertical-align: top; }
+/* Sentence case without letter spacing keeps long headings to two lines on laptops. */
+.m5-teacher-results .m5-review-table th { overflow-wrap: normal; word-break: normal; font-size: 0.78rem; font-weight: 800; letter-spacing: 0; text-transform: none; }
+.m5-teacher-results .m5-review-view { white-space: nowrap; }
 
 .m5-review-list-card,
 .m5-review-detail-card {
-  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid #cbd8d0;
   border-radius: 22px;
   background: #ffffff;
@@ -11,18 +24,21 @@
 
 .m5-review-filters {
   display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(140px, 0.8fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
   align-items: end;
   gap: 12px;
   padding: 20px;
+  border-radius: 21px 21px 0 0;
   border-bottom: 1px solid #dce5df;
   background: #f7faf8;
 }
 
-.m5-review-filters label { display: grid; gap: 7px; color: #38544b; font-size: 0.75rem; font-weight: 850; }
+.m5-review-filters label { display: grid; min-width: 0; gap: 7px; color: #38544b; font-size: 0.75rem; font-weight: 850; }
 .m5-review-filters input,
 .m5-review-filters select {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 42px;
   padding: 9px 11px;
   border: 1px solid #aebdb5;
@@ -37,7 +53,7 @@
 .m5-review-search-input input { padding-left: 38px; }
 .m5-review-clear { min-height: 42px; padding: 9px 14px; border: 0; background: transparent; color: #a94332; font-weight: 800; cursor: pointer; }
 .m5-review-count { margin: 0; padding: 13px 20px; color: #64766e; font-size: 0.78rem; }
-.m5-review-table-scroll { overflow-x: auto; }
+.m5-review-table-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
 .m5-review-table { width: 100%; min-width: 1080px; border-collapse: collapse; }
 .m5-review-table th,
 .m5-review-table td { padding: 14px 16px; border-top: 1px solid #e1e8e3; color: #304b42; font-size: 0.84rem; text-align: left; }
@@ -92,7 +108,7 @@
   .m5-comprehension-table { min-width: 0; }
   .m5-comprehension-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .m5-comprehension-table tr { display: block; border-top: 1px solid #e1e8e3; }
-  .m5-comprehension-table td { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 8px; padding: 8px 14px; border-top: 0; }
+  .m5-comprehension-table td { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 8px 14px; border-top: 0; }
   .m5-comprehension-table td::before { content: attr(data-label); color: #60716a; font-size: 0.7rem; font-weight: 850; text-transform: uppercase; }
 }
 

@@ -1,4 +1,5 @@
 const { randomUUID } = require("crypto");
+const { checkEvidence } = require("./passageEvidence");
 const { GoogleGenAI } = require("@google/genai");
 
 const MAX_QUESTION_CONTENT_LENGTH = 30_000;
@@ -350,6 +351,17 @@ function validateGeneratedQuestions(
           `Question ${index + 1} quotes evidence that does not appear in the passage.`,
         );
       }
+
+      // A quote cut at a line break ("...an elderly neighbor who") is widened to the
+      // complete sentence(s) copied from the passage; a fragment that cannot be
+      // completed reliably is rejected like any other invalid evidence.
+      const checked = checkEvidence(contentText, question.supportingEvidence);
+      if (checked.incomplete) {
+        throw invalidQuestionResponse(
+          `Question ${index + 1} quotes an incomplete sentence. Quote one or two complete sentences from the passage.`,
+        );
+      }
+      question.supportingEvidence = checked.evidence;
     }
   }
 
@@ -380,7 +392,8 @@ function buildQuestionPrompt(
     "Each answerExplanation must explain why the correct answer follows from the passage in one to three child-friendly sentences.",
     "For inferential questions, explain how the passage clues lead to the conclusion.",
     "For critical questions, explain why the judgment is supported by the passage.",
-    "Each supportingEvidence must be one short, contiguous, exact quote copied from the reading material.",
+    "Each supportingEvidence must be one or two complete sentences, copied as one contiguous, exact quote from the reading material.",
+    "A sentence may continue onto the next line of the source; always copy the whole sentence, from its first word to its ending punctuation.",
     "Do not add quotation marks around supportingEvidence, change its words, translate it, or join separate excerpts with ellipses.",
     "The supportingEvidence quote must directly support the explanation.",
     "Choose the supporting excerpt from the source FIRST, then write a question and explanation supported by that excerpt.",

@@ -8,7 +8,9 @@ const comparable = (text: string) =>
  * repeats the story title is dropped (the title is shown above the box), and a
  * short first line without ending punctuation, such as a heading, stays on its
  * own line instead of merging into the first sentence.
- * Scoring never uses this; it receives the saved passage unchanged.
+ * Scoring never uses this. The server applies the same two title rules
+ * (splitEmbeddedTitle in server/services/oralReadingScoring.js) so a hidden
+ * title is not scored; keep them in step (tests/m5ScoringParity.test.ts).
  */
 export function storyParagraphs(text: string, title = "") {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");

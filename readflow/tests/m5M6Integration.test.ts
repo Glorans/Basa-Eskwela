@@ -8,9 +8,8 @@ test("uploaded-story recording reuses M5 processing and preserves separate sourc
   const saved = await processOralReading({
     moduleId: null, materialId: "material", activityAssignmentId: "activity", roomId: "room",
     passageRevision: "revision", submissionId: "submission", expectedText: "Seeds need sun.", language: "en",
-    audioSegments: [new Blob(["recording"], { type: "audio/webm;codecs=opus" })],
-    segmentDurationsSeconds: [5], recordingDurationSeconds: 5,
-    uploadSegment: async () => ({ success: true, message: "ok", transcription: { text: "Seeds need sun." } }),
+    recording: new Blob(["recording"], { type: "audio/webm;codecs=opus" }), recordingDurationSeconds: 5,
+    transcribeRecording: async () => ({ text: "Seeds need sun." }),
   });
   assert.equal(saved.moduleId, null);
   assert.equal(saved.materialId, "material");

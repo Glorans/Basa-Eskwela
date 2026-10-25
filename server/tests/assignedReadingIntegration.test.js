@@ -247,13 +247,14 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     assert.deepEqual(calls.map(c => c.args.action_name), ["hint", "answer", "complete"]);
     assert.ok(calls.every(c => c.name === "m6_apply_action" && c.args.target_user === STUDENT && !("score" in c.args)));
   });
-  await t.test("an assigned question set supplies exactly its reviewed questions in saved order", async () => {
+  await t.test("an assigned question set supplies exactly its reviewed questions, Literal → Inferential → Critical", async () => {
     const SET = randomUUID();
     db.tables.material_question_sets.push({ id: SET, material_id: MATERIAL });
-    const setQuestions = ["critical", "literal", "inferential"].map((type, index) => ({
+    // Saved order (display_order 1..6): inferential B, literal B, critical B, inferential A, literal A, critical A.
+    const setQuestions = ["critical", "literal", "inferential", "critical", "literal", "inferential"].map((type, index) => ({
       id: randomUUID(), material_id: MATERIAL, module_id: null, passage_id: null, question_set_id: SET,
-      question_type: type, question_text: `Set ${type} question`, options: ["A", "B", "C", "D"],
-      scaffolding_hint: "Look again.", review_status: "reviewed", display_order: 3 - index,
+      question_type: type, question_text: `Set ${type} question ${index < 3 ? "A" : "B"}`, options: ["A", "B", "C", "D"],
+      scaffolding_hint: "Look again.", review_status: "reviewed", display_order: 6 - index,
     }));
     db.tables.comprehension_questions.push(...setQuestions);
     for (const question of setQuestions) {
@@ -265,7 +266,12 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     try {
       assert.equal((await loadAssignedReadingSource(owner, MATERIAL, context, deps)).questionSetId, SET);
       const saved = await startComprehensionAttempt(owner, start(await oral()));
-      assert.deepEqual(saved.questions.map(q => q.id), [...setQuestions].reverse().map(q => q.id));
+      // Grouped by type for this new attempt; within a type, the saved (teacher-approved) order is kept.
+      assert.deepEqual(saved.questions.map(q => q.questionText), [
+        "Set literal question B", "Set literal question A",
+        "Set inferential question B", "Set inferential question A",
+        "Set critical question B", "Set critical question A",
+      ]);
       assert.ok(saved.questions.every(q => q.questionText.startsWith("Set ")));
 
       setQuestions[0].review_status = "generated";

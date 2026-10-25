@@ -1,6 +1,6 @@
 .m3-language-selector { display:flex; flex-wrap:wrap; gap:12px; margin:16px 0; }
 .m3-language-selector button { min-height:44px; padding:10px 22px; border:2px solid var(--basa-navy, #17344b); border-radius:14px; background:var(--basa-card, white); color:var(--basa-text, #17344b); font:inherit; font-weight:800; cursor:pointer; }
-.m3-language-selector button[aria-pressed="true"] { background:var(--basa-navy, #17344b); color:white; text-decoration:underline; text-underline-offset:4px; }
+.m3-language-selector button[aria-pressed="true"] { background:var(--basa-navy, #17344b); color:white; text-decoration:none; }
 .m3-language-selector button:focus-visible, .m3-reading-link:focus-visible, .m3-catalog-filters button:focus-visible { outline:3px solid #17849c; outline-offset:4px; }
 .m3-placement { padding:20px; border:1px solid #d8e2e8; border-radius:18px; background:var(--basa-cream, #fff9ea); color:var(--basa-text, #17344b); min-width:0; overflow-wrap:anywhere; }
 .m3-placement h3 { margin:0 0 12px; font-size:1.1rem; }

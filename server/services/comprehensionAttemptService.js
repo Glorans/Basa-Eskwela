@@ -8,6 +8,7 @@ const {
   QUESTION_TYPES,
   summarizeComprehension,
 } = require("./comprehensionScoring");
+const { displayEvidence } = require("./passageEvidence");
 
 class ComprehensionError extends Error {
   constructor(message, statusCode = 500) {
@@ -240,7 +241,10 @@ async function loadReviewedQuestions(
     );
   }
 
-  return snapshot;
+  // New attempts present Literal, then Inferential, then Critical questions,
+  // each group in its saved order. Only the new snapshot is ordered; saved
+  // questions and earlier attempts' snapshots are unchanged.
+  return QUESTION_TYPES.flatMap((type) => snapshot.filter((question) => question.type === type));
 }
 
 async function loadOwnedAttempt(requester, attemptId) {
@@ -332,8 +336,11 @@ async function getComprehensionAttempt(requester, attemptId) {
         answerExplanation: resolved
           ? optionalText(question.answerExplanation)
           : null,
+        // Display only: a stored fragment is shown as the complete sentence(s)
+        // from this attempt's saved passage when the match is reliable; the
+        // stored question and answer are never changed.
         supportingEvidence: resolved
-          ? optionalText(question.supportingEvidence)
+          ? optionalText(displayEvidence(attempt.passage_text, question.supportingEvidence))
           : null,
       };
     }),
@@ -403,7 +410,8 @@ async function startComprehensionAttempt(requester, body = {}) {
       (saved.passage_id ?? null) !== (body.passageId ?? null) ||
       (saved.material_id ?? null) !== materialId ||
       (saved.activity_assignment_id ?? null) !== (body.activityAssignmentId ?? null) ||
-      (saved.oral_reading_attempt_id ?? null) !== (body.oralReadingAttemptId ?? null) ||
+      // A module request without the oral-reading ID is bound to the verified reading below.
+      (body.oralReadingAttemptId != null && (saved.oral_reading_attempt_id ?? null) !== body.oralReadingAttemptId) ||
       (saved.room_id ?? null) !== (body.roomId ?? null) ||
       (saved.assignment_id ?? null) !==
         (body.assignmentId ?? null)
@@ -489,6 +497,18 @@ async function startComprehensionAttempt(requester, body = {}) {
     );
   }
 
+  // Every new attempt belongs to one saved reading, so opening a module's
+  // comprehension without the oral-reading ID (an old link or bookmark)
+  // reopens that reading's activity instead of starting a duplicate.
+  const oralReadingAttemptId = body.oralReadingAttemptId ?? completedReadings[0].id;
+  if (!body.oralReadingAttemptId) {
+    const { data: resumed, error: resumeError } = await db.from("m6_comprehension_attempts")
+      .select("id,module_id,passage_id,room_id,assignment_id,material_id,activity_assignment_id,oral_reading_attempt_id")
+      .eq("user_id", requester.user.id).eq("oral_reading_attempt_id", oralReadingAttemptId).maybeSingle();
+    if (resumeError) throw databaseError(resumeError, "Unable to reopen comprehension.");
+    if (resumed) { verifySameRequest(resumed); return getComprehensionAttempt(requester, resumed.id); }
+  }
+
   const questions = await loadReviewedQuestions(
     module.id,
     module.passageId,
@@ -504,7 +524,7 @@ async function startComprehensionAttempt(requester, body = {}) {
       submission_id: body.submissionId,
       module_id: module.id,
       ...(materialId ? { material_id: materialId, activity_assignment_id: module.activityAssignmentId } : {}),
-      ...(body.oralReadingAttemptId ? { oral_reading_attempt_id: body.oralReadingAttemptId } : {}),
+      oral_reading_attempt_id: oralReadingAttemptId,
       passage_id: module.passageId,
       room_id: module.roomId,
       assignment_id: module.assignmentId,
@@ -518,14 +538,15 @@ async function startComprehensionAttempt(requester, body = {}) {
 
   // Handle identical start requests arriving together.
   if (saveError?.code === "23505") {
-    let duplicateQuery = db
+    // Either unique key may have been taken: this reading's activity, or this submission.
+    const findBy = (column, value) => db
       .from("m6_comprehension_attempts")
       .select("id,module_id,passage_id,room_id,assignment_id,material_id,activity_assignment_id,oral_reading_attempt_id")
-      .eq("user_id", requester.user.id);
-    duplicateQuery = body.oralReadingAttemptId
-      ? duplicateQuery.eq("oral_reading_attempt_id", body.oralReadingAttemptId)
-      : duplicateQuery.eq("submission_id", body.submissionId);
-    const { data: duplicate, error: duplicateError } = await duplicateQuery.maybeSingle();
+      .eq("user_id", requester.user.id)
+      .eq(column, value)
+      .maybeSingle();
+    let { data: duplicate, error: duplicateError } = await findBy("oral_reading_attempt_id", oralReadingAttemptId);
+    if (!duplicate && !duplicateError) ({ data: duplicate, error: duplicateError } = await findBy("submission_id", body.submissionId));
 
     if (duplicateError || !duplicate) {
       throw databaseError(

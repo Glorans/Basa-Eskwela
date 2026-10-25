@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getOwnOralReadingAttempts, type OwnOralReadingSummary } from "../services/oralReadingService";
+import { comprehensionTargetForReading } from "../services/comprehensionNavigation";
 import type { LearnerM5Role } from "../types/oralReading";
 
 /** embedded: shown inside the M5 result page's modal, which supplies the heading. */
@@ -36,7 +37,15 @@ export default function ReadingHistoryPage({ role, embedded = false }: { role: L
     </p> : error ? <div role="alert">
       <p>{error}</p><button className="mt-3 rounded-xl bg-[#f7cf4a] px-4 py-2 font-bold" onClick={() => setRevision(v => v + 1)}>Retry</button>
     </div> : attempts.length === 0 ? (role !== "admin" && <p role="status">No saved reading attempts yet. Complete a read-aloud activity to see it here.</p>) :
-      <ul className="space-y-4">{attempts.map(attempt => <li key={attempt.id} className="rounded-2xl border border-[#dce8e7] p-5">
+      <ul className="space-y-4">{attempts.map(attempt => {
+        // Module readings reopen their own comprehension activity (or its results once
+        // completed). Assigned materials are reopened from the reading result instead,
+        // because this list does not know whether an activity is read-aloud only.
+        const comprehension = attempt.materialId ? null : comprehensionTargetForReading(role, {
+          id: attempt.id, moduleId: attempt.moduleId, materialId: null, passageId: attempt.passageId ?? null,
+          roomId: attempt.roomId ?? null, assignmentId: attempt.assignmentId ?? null, activityAssignmentId: null,
+        });
+        return <li key={attempt.id} className="rounded-2xl border border-[#dce8e7] p-5">
         <h2 className="text-xl font-bold">{attempt.moduleTitle}</h2>
         <p>{attempt.passageTitle}</p>
         <p>
@@ -48,7 +57,9 @@ export default function ReadingHistoryPage({ role, embedded = false }: { role: L
         <div className="flex flex-wrap gap-3">
           <Link className="inline-block rounded-xl bg-[#f7cf4a] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}`}>View Result &amp; Transcript<span className="sr-only"> for {attempt.passageTitle}</span></Link>
           <Link className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}?view=feedback`}>Feedback &amp; Recording<span className="sr-only"> for {attempt.passageTitle}</span></Link>
+          {comprehension && <Link className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={comprehension}>Questions &amp; Results<span className="sr-only"> for {attempt.passageTitle}</span></Link>}
         </div>
-      </li>)}</ul>}
+      </li>;
+      })}</ul>}
   </section>;
 }

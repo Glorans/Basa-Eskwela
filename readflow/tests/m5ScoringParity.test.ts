@@ -30,3 +30,20 @@ test("M5 English equivalents do not forgive other words or apply to Filipino", (
   assert.equal(server.scorePassage("Mr. has 1", "mister has one", "fil").wordMetrics.filter((word: {type: string}) => word.type !== "match").length, 2);
   assert.equal(server.scorePassage("seed", "seeds", "en").wordMetrics[0].type, "substitution");
 });
+test("M5 scores exactly the story words the read-aloud screen shows", async () => {
+  const { storyParagraphs } = await import("../src/pages/reading-activity/storyDisplay.ts");
+  for (const [passage, title, language] of [
+    ["A Helping Hand\nEvery Saturday, Lia helps her lola.", "A Helping Hand", "en"],
+    ["A HELPING HAND!\r\n\r\nLia sweeps.", "A Helping Hand", "en"],
+    ["A Helping Hand Every Saturday, Lia sweeps.", "A Helping Hand", "en"],
+    ["A Helping Hand is what Lia gives.", "A Helping Hand", "en"],
+    ["Every Saturday, Lia sweeps.\nShe helps.", "A Helping Hand", "en"],
+    ["The Seed\nA small seed\nneeds sun.", "Seeds", "en"],
+    ["Ang Mabait na Bata\nTumutulong si Lia.", "Ang Mabait na Bata", "fil"],
+    ["Run\n\nRun, Tom, run!", "Run", "en"],
+  ] as const) {
+    const shown = storyParagraphs(passage, title).join(" ");
+    const scored = server.splitEmbeddedTitle(passage, title, language).body;
+    assert.deepEqual(server.getReadingWords(scored, language), server.getReadingWords(shown, language), passage);
+  }
+});

@@ -1,0 +1,57 @@
+/* Shared intrinsic sizing for all role workspaces. Wide tables keep their own
+   scroll containers; content must fit rather than being clipped by the shell. */
+:where(.basa-content, .m3-content, .m5-modal-body) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+:where(.basa-content, .m3-content, .m5-modal-body) > *,
+:where(.basa-content, .m3-content) :where(.grid, .flex) > *,
+.m3-page-stack > *,
+.m3-page-header > *,
+.m3-toolbar > *,
+.m3-form-grid > *,
+.m3-filter-group > *,
+.basa-settings-columns > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+:where(.basa-content, .m3-content, .m5-modal-body) :where(input, select, textarea, audio, video, img) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.m3-page-header,
+.m3-page-actions,
+.m3-toolbar,
+.m3-filter-group {
+  flex-wrap: wrap;
+}
+
+.m3-user-copy {
+  min-width: 0;
+}
+
+.m3-confirmation-modal {
+  min-width: 0;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+/* Teacher and Admin workspaces only (the Independent Learner shell is
+   .m3-shell--general and keeps the child-friendly layout). */
+
+/* A table's scroll area contains its absolutely positioned descendants, such
+   as visually hidden column labels, so they cannot widen the whole page. */
+.m3-shell:not(.m3-shell--general) .m3-content :where(.m5-review-table-scroll, .admin-users-table-scroll, .m7-scroll, .teacher-invitations-table) {
+  position: relative;
+}
+
+/* Headers break only between words: a table too wide for its space scrolls
+   inside its own container instead of splitting words such as "Readings". */
+.m3-shell:not(.m3-shell--general) .m3-content th {
+  overflow-wrap: normal;
+  word-break: normal;
+}

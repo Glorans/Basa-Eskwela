@@ -155,7 +155,7 @@ export default function StudentClassroomPage() {
                 )}
               </div>
 
-              {classroom.description?.trim() && (
+              {classroom.description?.trim() && classroom.description.trim().toLowerCase() !== "none" && (
                 <p className="max-w-2xl text-sm leading-6 text-[#5c7471] md:text-base">
                   {classroom.description}
                 </p>

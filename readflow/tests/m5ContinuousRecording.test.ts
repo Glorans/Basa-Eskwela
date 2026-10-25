@@ -7,8 +7,9 @@ import ts from "typescript";
 import { createHookRuntime, tick } from "./helpers/hookRuntime.ts";
 
 // Drives the real useAudioRecorder with a fake MediaRecorder and clock. Module 5
-// opts into one continuous recording for saving and replay, while ~25 s
-// segments are still produced for speech-to-text. Module 2 does not opt in.
+// (ReadAloudPage) sets no segment duration: one MediaRecorder runs from Start to
+// Stop and its single file is transcribed, saved and replayed. Module 2 rotates
+// ~25 s segments. The captureFullRecording option is covered here as well.
 
 const require = createRequire(import.meta.url);
 const hookUrl = new URL("../src/modules/module2/hooks/useAudioRecorder.ts", import.meta.url);
@@ -266,4 +267,58 @@ test("a saved WebM without a duration is measured once, then rewound to the star
   const known = { ...audio, duration: 40, currentTime: 0 };
   resolveRecordingDuration(known);
   assert.equal(known.currentTime, 0, "files with a known duration are left alone");
+});
+
+// ReadAloudPage's recorder options: a five-minute cap and no segment rotation.
+const M5_OPTIONS = { maxSegmentDurationSeconds: undefined };
+
+for (const seconds of [20, 40, 60]) {
+  test(`M5: a ${seconds} s reading is one MediaRecorder and one file, with no rotation at 25 s or 50 s`, async () => {
+    const recorder = setup();
+    await recorder.start(M5_OPTIONS);
+    let elapsed = 0;
+    // Just past each old 25 s rotation point, the first recorder is still the only one.
+    for (const at of [26, 51].filter((value) => value < seconds)) {
+      await recorder.advance(at * 1000 - elapsed);
+      elapsed = at * 1000;
+      assert.equal(recorder.recorders.length, 1, `no new recorder at ${at} s`);
+    }
+    await recorder.advance(seconds * 1000 - elapsed);
+    // Still the first and only recorder, still recording: nothing restarted at the old boundaries.
+    assert.equal(recorder.recorders.length, 1);
+    assert.equal(recorder.recorders[0].state, "recording");
+    recorder.render().stopRecording();
+    await recorder.settle();
+    const result = recorder.render();
+    assert.equal(result.isStopping, false);
+    assert.equal(result.audioSegments.length, 1);
+    assert.equal(await text(result.audioSegments[0]), `0-${seconds * 1000}`, "the one file spans Start to Stop");
+    assert.equal(result.audioURLs.length, 1, "one playback URL for the whole reading");
+    assert.equal(result.recordingDurationSeconds, seconds);
+    assert.equal(result.fullRecording, null, "no second recorder is opened");
+  });
+}
+
+test("M5: the five-minute session limit still stops the single recording", async () => {
+  const recorder = setup();
+  await recorder.start(M5_OPTIONS);
+  await recorder.advance(MAX_SECONDS * 1000 + 1000);
+  const result = recorder.render();
+  assert.equal(result.isRecording, false);
+  assert.equal(recorder.recorders.length, 1);
+  assert.equal(result.audioSegments.length, 1);
+  assert.equal(await text(result.audioSegments[0]), `0-${MAX_SECONDS * 1000}`);
+  assert.equal(result.recordingDurationSeconds, MAX_SECONDS);
+  assert.match(result.message, /five-minute limit/);
+});
+
+test("M2 still rotates its recorder every 25 s (unchanged)", async () => {
+  const recorder = setup();
+  await recorder.start({});
+  await recorder.advance(60_000);
+  recorder.render().stopRecording();
+  await recorder.settle();
+  const result = recorder.render();
+  assert.equal(recorder.recorders.length, 3);
+  assert.deepEqual([...result.segmentDurationsSeconds].map(Math.round), [25, 25, 10]);
 });

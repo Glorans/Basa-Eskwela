@@ -1,11 +1,14 @@
 .admin-users-page {
+  width: 100%;
+  min-width: 0;
   min-height: 0;
   display: flex;
-  flex: 1;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 20px;
-  overflow: hidden;
 }
+
+.m3-content:has(> .admin-users-page) { padding: clamp(12px, 1.5vw, 20px); }
 
 .admin-users-header {
   flex: 0 0 auto;
@@ -83,9 +86,11 @@
 }
 
 .admin-users-table-wrap {
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
   display: flex;
-  flex: 1;
+  flex: 0 0 auto;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid #dfe7e4;
@@ -103,6 +108,8 @@
 }
 
 .admin-users-control {
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -145,10 +152,11 @@
 }
 
 .admin-users-table-scroll {
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
-  flex: 1;
+  flex: 0 0 auto;
   overflow-x: auto;
-  overflow-y: auto;
   border-top: 1px solid #edf1ef;
 }
 
@@ -160,12 +168,15 @@
 
 .admin-users-table th,
 .admin-users-table td {
-  padding: 13px 14px;
+  padding: 10px;
   border-bottom: 1px solid #edf1ef;
   color: #263d38;
   text-align: left;
   white-space: nowrap;
 }
+
+.admin-users-table td { white-space: normal; overflow-wrap: anywhere; }
+.admin-users-table th { overflow-wrap: normal; word-break: normal; }
 
 .admin-users-table th {
   position: sticky;

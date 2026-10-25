@@ -20,10 +20,11 @@
 
   /* Scrollbars (shared by every role; rules live in index.css) */
   --basa-scrollbar-thumb: var(--basa-yellow);
-  --basa-scrollbar-thumb-hover: #f2b705; /* slightly darker yellow */
-  --basa-scrollbar-track: #fff3ce;       /* soft yellow rounded rail */
-  --basa-scrollbar-edge: #d6a428;        /* thin outline so the thumb shows on light panels */
-  --basa-scrollbar-size: 10px;
+  --basa-scrollbar-thumb-end: #f5a623;
+  --basa-scrollbar-thumb-hover: #ffdf78;
+  --basa-scrollbar-thumb-hover-end: #ffbc45;
+  --basa-scrollbar-track: #152d44;
+  --basa-scrollbar-size: 14px;
 
   /* Text */
   --basa-text: #24201b;      /* primary heading/body text */

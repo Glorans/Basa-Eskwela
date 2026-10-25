@@ -288,13 +288,9 @@ export default function JoinClassroomPage() {
                 {room.room_name}
               </h3>
 
-              {room.description ? (
+              {room.description?.trim() && room.description.trim().toLowerCase() !== "none" && (
                 <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#5c7471]">
                   {room.description}
-                </p>
-              ) : (
-                <p className="mt-2 text-sm italic text-[#7b9290]">
-                  None
                 </p>
               )}
 

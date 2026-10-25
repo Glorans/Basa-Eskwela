@@ -1,3 +1,4 @@
+import { numberSavedAttempts } from "../../modules/module5/services/savedAttemptOrder";
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "./activityLanguage";
 import { assignedReadingTarget } from "../../modules/module5/services/assignedReadingNavigation";
 import { updateReadingActivityStatus } from "../../modules/module4/services/classroomService";
@@ -6,32 +7,24 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import ActivityHeader from "./ActivityHeader";
 import { useAudioRecorder } from "../../modules/module2/hooks/useAudioRecorder";
-import { uploadDiagnosticAudio } from "../../modules/module2/services/diagnosticAudio";
-
-// Each speech-to-text part is about 25 s of audio; a part still waiting after this
-// stops processing with a retryable message. The recording stays in memory.
-const SPEECH_PART_TIMEOUT_MS = 90_000;
-const uploadSpeechPart = (audio: Blob, language: "en" | "fil") => withTimeout(
-  uploadDiagnosticAudio(audio, language),
-  SPEECH_PART_TIMEOUT_MS,
-  () => new DiagnosticAudioUploadError("STT_PROVIDER_ERROR", SLOW_CONNECTION_MESSAGE),
-);
+import {
+  type ReadAloudTranscriptionStep,
+  startReadAloudTiming,
+  transcribeOralReadingRecording,
+} from "../../modules/module5/services/oralReadingTranscription";
 import {
   RECORDING_UPLOAD_ERROR,
-  SLOW_CONNECTION_MESSAGE,
   createOralReadingAttempt,
   rememberOralReadingAttempt,
   getOralReadingModule,
   getOwnOralReadingAttempts,
   getAssignedReadingProgress,
   type AssignedReadingProgress,
+  type OwnOralReadingSummary,
   uploadOralReadingRecording,
-  withTimeout,
 } from "../../modules/module5/services/oralReadingService";
-import { DiagnosticAudioUploadError } from "../../modules/module2/services/diagnosticAudioError";
 import {
   ORAL_READING_MAX_RECORDING_SECONDS,
-  ORAL_READING_SEGMENT_DURATION_SECONDS,
   processOralReading,
 } from "../../modules/module5/services/oralReadingProcessing";
 import type {
@@ -39,7 +32,6 @@ import type {
   LearnerM5Role,
   OralReadingModule,
 } from "../../modules/module5/types/oralReading";
-import { resolveRecordingDuration } from "../../modules/module5/services/recordingDuration";
 import { storyParagraphs } from "./storyDisplay";
 import { useVoiceFollowStoryScroll } from "./useVoiceFollowStoryScroll";
 import { tokenizePassageParagraphs } from "./voiceFollow";
@@ -53,7 +45,14 @@ interface ReadAloudPageProps {
   role: LearnerM5Role;
 }
 
-type ProcessingStatus = "idle" | "processing" | "saving" | "transcription-error" | "save-error" | "recording-error";
+// "processing" covers speech-to-text (see transcriptionStep); "saving" the result; "saving-recording" its audio.
+type ProcessingStatus = "idle" | "processing" | "saving" | "saving-recording" | "transcription-error" | "save-error" | "recording-error";
+
+const TRANSCRIPTION_STEP_MESSAGES = {
+  preparing: "Preparing your recording...",
+  uploading: "Sending your recording...",
+  recognizing: "Processing your reading...",
+} as const;
 
 export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const { moduleId, materialId } = useParams<{ moduleId: string; materialId: string }>();
@@ -67,7 +66,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const viewReading = searchParams.get("viewReading") === "1";
   const [continueTarget, setContinueTarget] = useState<string>();
   const recordAgain = searchParams.get("recordAgain") === "1";
-  const [savedAttempts, setSavedAttempts] = useState<{ id: string; passageTitle: string }[]>([]);
+  const [savedAttempts, setSavedAttempts] = useState<OwnOralReadingSummary[]>([]);
   const [historyError, setHistoryError] = useState<string>();
   const sourceKey = `${moduleId}:${materialId}:${passageId}:${roomId}:${assignmentId}:${activityAssignmentId}`;
   const entry = location.state as { readingActivity?: AssignedReadingProgress; oralReadingModule?: OralReadingModule } | null;
@@ -90,6 +89,9 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const loadRequest = useRef<{ key: string; promise: Promise<{ module?: OralReadingModule; target?: string; continueTarget?: string }> }>();
   const historyRequest = useRef<{ key: string; promise: ReturnType<typeof getOwnOralReadingAttempts> }>();
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>("idle");
+  const [transcriptionStep, setTranscriptionStep] = useState<ReadAloudTranscriptionStep>("preparing");
+  // Cancels an in-flight speech-to-text request when the learner leaves or starts over.
+  const transcriptionAbort = useRef<AbortController>();
   const [processingError, setProcessingError] = useState<string | Error>();
   const [pendingAttempt, setPendingAttempt] = useState<CreateOralReadingAttemptInput>();
   // Set once the result is saved but its recording upload failed.
@@ -99,7 +101,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const generation = useRef(0);
   const [elapsed, setElapsed] = useState(0);
   const storyRef = useRef<HTMLDivElement>(null);
-  // Display only; scoring still receives module.passage unchanged.
+  // Display only. The server scores the same words: it leaves out the title line hidden here.
   const storyTokens = module
     ? tokenizePassageParagraphs(storyParagraphs(module.passage, module.passageTitle || module.title))
     : [];
@@ -113,9 +115,6 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const {
     audioSegments,
     audioURLs,
-    fullRecording,
-    fullRecordingURL,
-    segmentDurationsSeconds,
     isRecording,
     isStarting,
     isStopping,
@@ -125,10 +124,9 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     startRecording,
     stopRecording,
   } = useAudioRecorder({
-    // Students hear and save one continuous recording; the ~25 s segments
-    // exist only for speech-to-text processing.
-    captureFullRecording: true,
-    maxSegmentDurationSeconds: ORAL_READING_SEGMENT_DURATION_SECONDS,
+    // One MediaRecorder from Start to Stop: no segment rotation (no
+    // maxSegmentDurationSeconds), so audioSegments holds exactly one file, the
+    // whole reading. That file is transcribed, saved and replayed.
     maxTotalDurationSeconds: ORAL_READING_MAX_RECORDING_SECONDS,
     // Shares the recorder's microphone stream; the recording itself is unchanged.
     onStreamReady: storyFollow.onStreamReady,
@@ -207,17 +205,19 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
         setLoading(false);
       }
     });
-    return () => { active = false; generation.current += 1; };
+    return () => { active = false; generation.current += 1; transcriptionAbort.current?.abort(); };
 
   }, [moduleId, materialId, passageId, roomId, assignmentId, activityAssignmentId, recordAgain, viewReading, loadRevision]);
 
-  const isProcessing = processingStatus === "processing" || processingStatus === "saving";
+  const isProcessing = processingStatus === "processing" || processingStatus === "saving" || processingStatus === "saving-recording";
   const recordingBusy = isStarting || isStopping || isProcessing;
   const statusMessage = processingStatus === "processing"
-    ? "Processing your reading..."
+    ? TRANSCRIPTION_STEP_MESSAGES[transcriptionStep]
     : processingStatus === "saving"
-      ? "Saving your oral-reading result..."
-      : processingError ?? message;
+      ? "Saving your result..."
+      : processingStatus === "saving-recording"
+        ? "Saving your recording..."
+        : processingError ?? message;
 
   const handleRecordingButton = () => {
     if (isRecording) {
@@ -234,7 +234,9 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   const saveAttempt = async (input: CreateOralReadingAttemptInput) => {
     const currentGeneration = generation.current;
     setProcessingStatus("saving");
-    const attempt = await createOralReadingAttempt(input);
+    const savedResult = startReadAloudTiming("save result");
+    const attempt = await createOralReadingAttempt(input).catch((error: unknown) => { savedResult("failed"); throw error; });
+    savedResult();
     if (module?.readAloudOnly === true && module.activityAssignmentId) {
       await updateReadingActivityStatus(module.activityAssignmentId, "completed");
       // Completion is confirmed by the server before seeding the result screen.
@@ -252,12 +254,15 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   // retry the upload while the recording is still in memory, or continue without it.
   const saveRecordingThenOpenResult = async (attemptId: string) => {
     const currentGeneration = generation.current;
-    setProcessingStatus("saving");
+    setProcessingStatus("saving-recording");
     setProcessingError(undefined);
+    const savedRecording = startReadAloudTiming("save recording");
     try {
-      // The segments are saved only if the continuous recording could not be made.
-      await uploadOralReadingRecording(attemptId, fullRecording ? [fullRecording] : audioSegments);
+      // The one continuous recording that was transcribed.
+      await uploadOralReadingRecording(attemptId, audioSegments);
+      savedRecording();
     } catch (error) {
+      savedRecording("failed");
       if (currentGeneration !== generation.current) return;
       setSavedAttemptId(attemptId);
       setProcessingStatus("recording-error");
@@ -284,6 +289,10 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     try {
       if (!attemptInput) {
         setProcessingStatus("processing");
+        setTranscriptionStep("preparing");
+        transcriptionAbort.current?.abort();
+        const abort = new AbortController();
+        transcriptionAbort.current = abort;
         attemptInput = await processOralReading({
           moduleId: module.id,
           materialId: module.materialId, activityAssignmentId: module.activityAssignmentId, passageRevision: module.passageRevision,
@@ -291,10 +300,15 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
           submissionId: crypto.randomUUID(),
           expectedText: module.passage,
           language: module.language,
-          audioSegments,
-          segmentDurationsSeconds,
+          recording: audioSegments.length === 1 ? audioSegments[0] : undefined,
           recordingDurationSeconds,
-          uploadSegment: uploadSpeechPart,
+          // Times the upload by its progress and Azure by the server deadline; a request
+          // that times out is aborted. The recording stays in memory for a retry.
+          transcribeRecording: (recording, language) => transcribeOralReadingRecording(recording, language, {
+            recordingDurationSeconds,
+            signal: abort.signal,
+            onStep: (step) => { if (currentGeneration === generation.current) setTranscriptionStep(step); },
+          }),
         });
         if (currentGeneration !== generation.current) return;
         setPendingAttempt(attemptInput);
@@ -317,6 +331,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
   };
 
   const handleRecordAgain = () => {
+    transcriptionAbort.current?.abort();
     processingRef.current = false;
     setPendingAttempt(undefined);
     setSavedAttemptId(undefined);
@@ -375,10 +390,6 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
         <div className="read-aloud-body">
           {loading && <p className="m5-pending-status" role="status"><span className="m5-loading-indicator" aria-hidden="true" />{t("Opening your reading activity...")}</p>}
           {loadError && <p role="alert">{ui.message(loadError, "Unable to load the activity.")} <button type="button" onClick={() => setLoadRevision(value => value + 1)}>{t("Retry")}</button></p>}
-          {savedAttempts.length > 0 && <details><summary>{t("Saved oral reading results")}</summary><section aria-label={t("Saved oral reading results")}><h2>{t("Your Saved Results")}</h2>
-            {savedAttempts.map((saved, index) => <p key={saved.id}><button type="button" onClick={() => navigate(resultPathFor(saved.id), { state: activityState })}>{saved.passageTitle} - {t("Result")} {index + 1}</button></p>)}
-          </section></details>}
-          {historyError && <p role="alert">{ui.message(historyError, "Unable to load your saved results. Please refresh to retry.")}</p>}
           <h2 className="read-aloud-story-heading">{t("Read the Story Aloud")}</h2>
           <div className="read-aloud-story-box">
             {/* Exactly N lines tall with no vertical padding, so no line is ever cut. */}
@@ -430,27 +441,11 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
                 {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
               </span>
             )}
+            <h3 className="read-aloud-instructions-heading">{t("Recording Instructions")}</h3>
             <p className="read-aloud-status" role="status" aria-live="polite">
               {ui.message(statusMessage, processingStatus === "recording-error" ? RECORDING_UPLOAD_ERROR : processingStatus === "save-error" ? "Your result could not be saved. Please try again." : "We couldn't process your full reading. Please record it again.")}
             </p>
-            <p className="read-aloud-status">
-              {t(role === "student" ? "Your recording is saved with your result so you can listen again. For classroom activities, your teacher can review it too." : "Your recording is saved with your result so you can listen again.")}
-            </p>
-
             {audioURLs.length > 0 && (
-              <div className="read-aloud-review">
-                <details><summary>{t("Review Recording")}</summary>
-                {fullRecordingURL ? (
-                  <div className="read-aloud-part">
-                    <audio controls src={fullRecordingURL} onLoadedMetadata={(event) => resolveRecordingDuration(event.currentTarget)} aria-label={t("Your reading recording")} />
-                  </div>
-                ) : audioURLs.map((audioURL, index) => (
-                  <div className="read-aloud-part" key={audioURL}>
-                    {audioURLs.length > 1 && <span>{t("Part")} {index + 1}</span>}
-                    <audio controls src={audioURL} aria-label={t("Your reading recording part {part}", { part: index + 1 })} />
-                  </div>
-                ))}
-                </details>
                 <div className="read-aloud-actions">
                   {processingStatus === "recording-error" && savedAttemptId ? <>
                     <button className="read-aloud-continue" type="button" onClick={() => void saveRecordingThenOpenResult(savedAttemptId)}>{t("Retry Saving Recording")}</button>
@@ -461,7 +456,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
                     <button className="read-aloud-continue" type="button" disabled={isProcessing} onClick={handleProcess}>
                       {processingStatus === "processing"
                         ? t("Processing your reading...")
-                        : processingStatus === "saving"
+                        : processingStatus === "saving" || processingStatus === "saving-recording"
                           ? t("Saving result...")
                           : processingStatus === "save-error"
                             ? t("Try Saving Again")
@@ -470,11 +465,22 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
                   )}
                   </>}
                 </div>
-              </div>
             )}
             </>}
           </div>
-
+          <section className="read-aloud-saved-results" aria-labelledby="saved-reading-results-title">
+            <h2 id="saved-reading-results-title">{t("Your Saved Oral Reading Results")}</h2>
+            {historyError && <p role="alert">{ui.message(historyError, "Unable to load your saved results. Please refresh to retry.")}</p>}
+            <div className="read-aloud-saved-grid">
+              {numberSavedAttempts(savedAttempts).map(saved => (
+                <button className="read-aloud-saved-card" type="button" key={saved.id}
+                  onClick={() => navigate(resultPathFor(saved.id), { state: activityState })}>
+                  <span>{saved.passageTitle}</span>
+                  <strong>{t("Result")} {saved.resultNumber}</strong>
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
     </div>

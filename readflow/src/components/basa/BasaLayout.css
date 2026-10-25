@@ -27,7 +27,7 @@
   flex: 1;
   margin-top: 18px;
   padding: clamp(20px, 4vw, 36px);
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   border-radius: var(--basa-radius-lg);
   background: var(--basa-content-bg);

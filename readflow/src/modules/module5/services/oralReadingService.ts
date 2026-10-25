@@ -1,3 +1,4 @@
+import { numberSavedAttempts } from "./savedAttemptOrder.ts";
 import axios from "axios";
 import { ReadingDataCache } from "./readingDataCache.ts";
 import { supabase } from "../../../lib/supabaseClient";
@@ -14,7 +15,6 @@ import {
   parseTeacherComprehensionDetail,
   parseTeacherComprehensionSummary,
 } from "./teacherComprehension";
-import type { PronunciationPartResult } from "./pronunciationSummary";
 
 interface ModuleResponse {
   success: boolean;
@@ -191,18 +191,44 @@ export async function getTeacherOralReadingAttempt(attemptId: string) {
 
 export async function getOwnOralReadingAttempts(moduleId?: string, context: OralReadingContext = {}): Promise<OwnOralReadingSummary[]> {
   try {
+    const headers = await getAuthHeaders();
     const response = await api.get("/api/oral-reading/attempts", {
-      headers: await getAuthHeaders(), params: { moduleId, ...context }, timeout: REQUEST_TIMEOUT_MS,
+      headers, params: { moduleId, ...context }, timeout: REQUEST_TIMEOUT_MS,
     });
-    return response.data.attempts;
+    const attempts: OwnOralReadingSummary[] = response.data.attempts;
+    // Only activity-scoped history defines result numbers, never the all-activity list.
+    if (moduleId || context.materialId) {
+      for (const row of numberSavedAttempts(attempts)) {
+        readingData.put(headers.Authorization.slice(7), `attempt-number:${row.id}`, row.resultNumber);
+      }
+    }
+    return attempts;
   } catch (error) {
     throw toServiceError(error, "Unable to load your saved results.");
   }
 }
 
+export function peekOralReadingAttemptNumber(attemptId: string | undefined, userId?: string) {
+  return attemptId ? readingData.peek<number>(`attempt-number:${attemptId}`, userId) : undefined;
+}
+
+export async function getOralReadingAttemptNumber(attempt: OralReadingAttempt) {
+  const cached = peekOralReadingAttemptNumber(attempt.id, attempt.userId);
+  if (cached !== undefined) return cached;
+  if (!attempt.moduleId && !attempt.materialId) return undefined;
+  const rows = await getOwnOralReadingAttempts(attempt.moduleId ?? undefined, attempt.materialId
+    ? { materialId: attempt.materialId, activityAssignmentId: attempt.activityAssignmentId } : {});
+  return numberSavedAttempts(rows).find(row => row.id === attempt.id)?.resultNumber;
+}
+
 export interface OwnOralReadingSummary {
   id: string;
   moduleId: string;
+  materialId?: string | null;
+  activityAssignmentId?: string | null;
+  passageId?: string | null;
+  roomId?: string | null;
+  assignmentId?: string | null;
   moduleTitle: string;
   passageTitle: string;
   /** Saved reading language; null for attempts saved before it was recorded. */
@@ -262,28 +288,6 @@ export async function getOralReadingRecording(
     return response.data.recording;
   } catch (error) {
     throw toServiceError(error, "Unable to load recording. Please retry.");
-  }
-}
-
-/**
- * Azure Pronunciation Assessment of one saved recording part (16 kHz WAV) of an
- * English reading. The server compares it with the attempt's saved passage.
- */
-export async function assessOralReadingPronunciationPart(
-  attemptId: string,
-  wav: Blob,
-): Promise<PronunciationPartResult> {
-  try {
-    const form = new FormData();
-    form.append("audio", wav, "part.wav");
-    const response = await api.post(
-      `/api/oral-reading/attempts/${encodeURIComponent(attemptId)}/pronunciation`,
-      form,
-      { headers: await getAuthHeaders(), timeout: REQUEST_TIMEOUT_MS },
-    );
-    return response.data.pronunciation;
-  } catch (error) {
-    throw toServiceError(error, "Pronunciation feedback is unavailable right now. Please try again.");
   }
 }
 

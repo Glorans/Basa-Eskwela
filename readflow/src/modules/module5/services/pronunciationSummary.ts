@@ -20,6 +20,12 @@ export interface PronunciationPartResult {
   locale: "en-US";
   scale: "0-100";
   utterances: PronunciationUtterance[];
+  /** False when Azure heard speech it could not assess; silence and noise do not count. */
+  complete?: boolean;
+  durationSeconds?: number;
+  unassessedSegments?: number;
+  /** Null when the length of some unassessed speech is unknown. */
+  unassessedSeconds?: number | null;
 }
 
 export interface PronunciationSummary {
@@ -31,6 +37,12 @@ export interface PronunciationSummary {
   fluency: number | null;
   /** Words Azure marked as mispronounced or scored below 60. */
   wordsToPractice: string[];
+  /** Seconds of saved recording that were sent for assessment. */
+  assessedSeconds?: number;
+  /** True only when every part covered all of its speech. */
+  complete?: boolean;
+  /** Seconds of speech Azure could not assess (null if unmeasured); 0 when complete. */
+  unassessedSeconds?: number | null;
 }
 
 const PRACTICE_THRESHOLD = 60;
@@ -69,12 +81,16 @@ export function summarizePronunciation(parts: readonly PronunciationPartResult[]
   };
 }
 
+export type PronunciationCheckStep = "loading" | "preparing" | "uploading" | "assessing";
+
 export interface AssessRecordingDependencies {
   loadRecording: (attemptId: string) => Promise<{ available: boolean; segments: string[] }>;
-  fetchAudio: (url: string) => Promise<Blob>;
-  /** Returns the saved file as WAV parts short enough for one assessment each. */
+  fetchAudio: (url: string, signal?: AbortSignal) => Promise<Blob>;
+  /** Returns the saved file as WAV for assessment: the whole file as one WAV. */
   convert: (audio: Blob) => Promise<Blob[]>;
-  assessPart: (attemptId: string, wav: Blob) => Promise<PronunciationPartResult>;
+  assessPart: (attemptId: string, wav: Blob, options: { signal?: AbortSignal; onAssessing?: () => void }) => Promise<PronunciationPartResult>;
+  signal?: AbortSignal;
+  onStep?: (step: PronunciationCheckStep) => void;
 }
 
 export class PronunciationUnavailableError extends Error {
@@ -84,18 +100,50 @@ export class PronunciationUnavailableError extends Error {
   }
 }
 
-/** Assesses every part of an English reading's saved recording, in recorder order. */
+export class PronunciationIncompleteError extends Error {
+  constructor() {
+    super("Only part of your recording could be checked. Please try again.");
+    this.name = "PronunciationIncompleteError";
+  }
+}
+
+/**
+ * Assesses an English reading's whole saved recording. A recording saved as one
+ * file (every M5 reading since the continuous recorder) is one WAV and one
+ * Azure session; older readings saved as several files send one per file, in
+ * recorder order. Any failure or cancellation rejects with no summary. Speech
+ * Azure could not assess is reported in `complete` and `unassessedSeconds`, so
+ * the result is never presented as covering the whole reading when it does not.
+ */
 export async function assessRecordingPronunciation(
   attemptId: string,
-  { loadRecording, fetchAudio, convert, assessPart }: AssessRecordingDependencies,
+  { loadRecording, fetchAudio, convert, assessPart, signal, onStep }: AssessRecordingDependencies,
 ): Promise<PronunciationSummary> {
+  onStep?.("loading");
   const recording = await loadRecording(attemptId);
   if (!recording.available || recording.segments.length === 0) throw new PronunciationUnavailableError();
   const parts: PronunciationPartResult[] = [];
+  let assessedSeconds = 0;
+  let unassessedSeconds: number | null = 0;
   for (const url of recording.segments) {
-    for (const wav of await convert(await fetchAudio(url))) {
-      parts.push(await assessPart(attemptId, wav));
+    const audio = await fetchAudio(url, signal);
+    onStep?.("preparing");
+    for (const wav of await convert(audio)) {
+      if (signal?.aborted) throw new PronunciationIncompleteError();
+      onStep?.("uploading");
+      const result = await assessPart(attemptId, wav, { signal, onAssessing: () => onStep?.("assessing") });
+      if (result.complete === false) {
+        unassessedSeconds = unassessedSeconds === null || typeof result.unassessedSeconds !== "number"
+          ? null : unassessedSeconds + result.unassessedSeconds;
+      }
+      assessedSeconds += result.durationSeconds ?? Math.max(0, wav.size - 44) / 32000;
+      parts.push(result);
     }
   }
-  return summarizePronunciation(parts);
+  return {
+    ...summarizePronunciation(parts),
+    assessedSeconds: Math.round(assessedSeconds),
+    complete: parts.every((part) => part.complete !== false),
+    unassessedSeconds: unassessedSeconds === null ? null : Math.round(unassessedSeconds),
+  };
 }
