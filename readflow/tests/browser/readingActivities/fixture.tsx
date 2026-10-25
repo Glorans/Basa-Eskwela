@@ -67,6 +67,23 @@ export async function uploadDiagnosticAudio(_: Blob, language: string) {
   events.push(["transcribe", language]); await delay(); maybeFail("transcribe");
   return { success: true, transcription: { text: activeSource.passage } };
 }
+// Oral-reading service functions added since this fixture was written: no cache, no stored recording.
+export const RECORDING_UPLOAD_ERROR = "Your result is saved, but recording upload failed. Retry saving the recording before leaving this page.";
+export function peekOralReadingAttempt() { return undefined; }
+export function rememberOralReadingAttempt() {}
+export function peekOralReadingAttemptNumber() { return undefined; }
+export async function getOralReadingAttemptNumber() { return undefined; }
+export async function uploadOralReadingRecording(attemptId: string) { events.push(["upload", attemptId]); }
+export async function getOralReadingRecording() { return { available: false, segments: [] }; }
+// M5 now sends one continuous recording to the server; same events and failures as the old upload.
+export function startReadAloudTiming() { return () => {}; }
+export async function transcribeOralReadingRecording(_: Blob, language: string, options: any = {}) {
+  for (const step of ["preparing", "uploading", "recognizing"]) options.onStep?.(step);
+  events.push(["transcribe", language]); await delay(); maybeFail("transcribe");
+  return { text: activeSource.passage };
+}
+export async function assessOralReadingPronunciation() { throw Error("Pronunciation check unavailable in this fixture"); }
+export async function getSessionAuthHeaders() { return { Authorization: "Bearer fixture" }; }
 export async function synthesizeDiagnosticSpeech(_: string, language: string) { events.push(["tts", language]); throw Error("Audio unavailable"); }
 export function useVoiceFollowStoryScroll() { return { onStreamReady() {}, onStreamStopped() {} }; }
 export function useAudioRecorder() {

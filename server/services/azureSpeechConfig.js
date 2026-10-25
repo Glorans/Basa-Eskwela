@@ -1,8 +1,10 @@
 const { SpeechConfigurationError } = require("./speechErrors");
 
-// Allowlisted neural voices (same set as the Speech Lab, azureConfig.js).
+// Allowlisted neural voices. The first of each list is the default. The en-PH
+// voices are opt-in (AZURE_SPEECH_VOICE_EN) for Philippine-English feedback; the
+// voice only affects text-to-speech, never recognition or pronunciation scoring.
 const AZURE_VOICES = Object.freeze({
-  en: Object.freeze(["en-US-JennyNeural", "en-US-GuyNeural"]),
+  en: Object.freeze(["en-US-JennyNeural", "en-US-GuyNeural", "en-PH-RosaNeural", "en-PH-JamesNeural"]),
   fil: Object.freeze(["fil-PH-BlessicaNeural", "fil-PH-AngeloNeural"]),
 });
 const DEFAULT_TIMEOUT_MS = 60000;

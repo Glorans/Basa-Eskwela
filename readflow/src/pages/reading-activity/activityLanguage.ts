@@ -18,6 +18,10 @@ export function activityLanguageFromState(state: unknown): unknown {
 }
 
 const filipino = {
+  "View Story": "Tingnan ang Kuwento",
+  "Close story": "Isara ang kuwento",
+  "Reading passage": "Babasahing teksto",
+  "The saved story is unavailable. You can close this panel and continue your assessment.": "Hindi makuha ang naka-save na kuwento. Maaari mong isara ang panel at ipagpatuloy ang iyong pagtatasa.",
   "Read Aloud": "Pagbasa nang Malakas",
   "Go back": "Bumalik",
   "Account": "Aking Account",
@@ -248,6 +252,18 @@ const filipino = {
   "Recording storage is not installed yet. Your result is saved without its recording.": "Hindi pa handa ang imbakan ng rekording. Naka-save ang iyong resulta nang walang rekording.",
   "Retry Saving Recording": "Subukang I-save Muli ang Rekording",
   "Continue Without Recording": "Magpatuloy nang Walang Rekording",
+  // Spoken feedback controls and the reading mascot (components/reading-feedback)
+  "Listen": "Pakinggan",
+  "Listen again": "Pakinggan muli",
+  "Listen to the hint": "Pakinggan ang pahiwatig",
+  "Listen to the explanation": "Pakinggan ang paliwanag",
+  "Loading audio...": "Inihahanda ang audio...",
+  "Stop audio": "Ihinto ang audio",
+  "Mute audio": "I-mute ang audio",
+  "Audio is unavailable right now. Please try again.": "Hindi magamit ang audio ngayon. Pakisubukang muli.",
+  "You can do it! Read the story out loud at your own pace.": "Kaya mo ito! Basahin nang malakas ang kuwento sa sarili mong bilis.",
+  "Here is a hint. Read it, then try again.": "Narito ang isang pahiwatig. Basahin ito, pagkatapos ay subukang muli.",
+  "Great work finishing the questions! Here are your results.": "Magaling at natapos mo ang mga tanong! Narito ang iyong mga resulta.",
 } as const;
 
 export type ActivityText = keyof typeof filipino;

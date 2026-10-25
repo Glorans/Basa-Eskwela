@@ -14,7 +14,8 @@ fs.mkdirSync(output, { recursive: true });
 const fixture = path.join(root, 'tests/browser/readingActivities/fixture.tsx').replaceAll('\\', '/');
 const boundaries = ['/services/classroomService', '/services/oralReadingService', '/services/comprehensionService',
   '/hooks/useAudioRecorder', '/useVoiceFollowStoryScroll', '/services/diagnosticAudio', '/services/diagnosticTts',
-  '/hooks/useAuthenticatedProfile', '/services/authService'];
+  '/hooks/useAuthenticatedProfile', '/services/authService', '/services/authHeaders',
+  '/services/oralReadingTranscription'];
 const vite = await createServer({ root, configFile: false, envFile: false,
   optimizeDeps: { entries: ['tests/browser/readingActivities/fixture.tsx'] },
   plugins: [{ name: 'reading-activity-fixture', enforce: 'pre',
@@ -58,6 +59,24 @@ async function until(expression) {
 }
 async function click(text) {
   await evaluate(`(()=>{ const el=[...document.querySelectorAll('.basa-content button,.basa-content a')].find(e=>e.textContent.trim()===${JSON.stringify(text)}); if(!el||el.disabled) throw Error('Unavailable control: '+${JSON.stringify(text)}); el.click(); })()`);
+}
+// M6 feedback is shown automatically by the floating, text-only mascot (the old inline
+// .m6-feedback paragraph was replaced). Every action button must stay visible and tappable.
+const mascotText = `document.querySelector('.reading-mascot-dock--overlay .reading-mascot-bubble p')?.textContent`;
+async function mascotFeedback(check, expected) {
+  await until(`(${mascotText} ?? '').${check}(${JSON.stringify(expected)})`);
+  await pause(80);
+  const state = await evaluate(`(()=>{const pop=document.querySelector('.reading-mascot-dock--overlay');
+    const parts=[...pop.querySelectorAll('.reading-mascot-image,.reading-mascot-bubble')].map(e=>e.getBoundingClientRect());
+    const blocked=[...document.querySelectorAll('.m6-actions button')].filter(b=>{const r=b.getBoundingClientRect();
+      return parts.some(p=>p.left<r.right&&p.right>r.left&&p.top<r.bottom&&p.bottom>r.top);}).map(b=>b.textContent.trim());
+    return {blocked,audio:pop.querySelectorAll('.feedback-speech,audio').length,close:!!pop.querySelector('.reading-mascot-close')};})()`);
+  if (state.blocked.length) await screenshot(`mascot-blocked-${await evaluate('innerWidth')}`);
+  assert.deepEqual(state, { blocked: [], audio: 0, close: true });
+}
+async function dismissMascot() {
+  await evaluate(`document.querySelector('.reading-mascot-close').click()`);
+  await until(`!document.querySelector('.reading-mascot-dock--overlay')`);
 }
 async function room() {
   await evaluate(`fixtureNavigate('/dashboard/learning-rooms/room')`);
@@ -119,32 +138,38 @@ try {
           if (question === 0) {
             await click(filipino ? 'Tulungan ako' : 'Help me');
             await until(`document.querySelector('.m6-question-card aside')?.textContent.includes('Teacher hint:')`);
+            await mascotFeedback('startsWith', filipino ? 'Narito ang isang pahiwatig' : 'Here is a hint');
             await evaluate(`document.querySelectorAll('input[type=radio]')[1].click()`);
             await click(filipino ? 'Suriin ang sagot' : 'Check answer');
-            await until(`document.querySelector('.m6-feedback')?.textContent.includes(${JSON.stringify(filipino ? 'Hindi pa tama' : 'Not quite')})`);
+            await mascotFeedback('includes', filipino ? 'Hindi pa tama' : 'Not quite');
+            // Dismissed feedback stays closed and remains available in Review answer feedback.
+            await dismissMascot();
+            await evaluate(`document.querySelectorAll('input[type=radio]')[2].click()`);
+            await pause(80);
+            assert.equal(await evaluate(`!document.querySelector('.reading-mascot-dock--overlay')`), true);
+            assert.equal(await evaluate(`!!document.querySelector('.m6-answer-details summary')`), true);
           }
           await evaluate(`document.querySelector('input[type=radio]').click()`);
           await click(question === 0 ? (filipino ? 'Suriin ang ikalawang sagot' : 'Check second answer') : question === 5 ? (filipino ? 'Ipasa' : 'Submit') : (filipino ? 'Suriin ang sagot' : 'Check answer'));
           if (question < 5) {
-            await until(`document.querySelector('.m6-feedback')?.textContent.startsWith(${JSON.stringify(filipino ? 'Tama!' : 'Correct!')})`);
+            await mascotFeedback('startsWith', filipino ? 'Tama!' : 'Correct!');
             await layout(filipino);
-            if (question === 1) {
-              await click(filipino ? 'Nakaraang Tanong' : 'Previous Question');
-              assert.equal(await evaluate(`document.querySelector('input[type=radio]').checked`), true);
-              await click(filipino ? 'Susunod na Tanong' : 'Next Question');
-            }
+            // The flow moves forward only; Previous Question was removed on purpose.
+            assert.equal(await evaluate(`[...document.querySelectorAll('button')].some(b=>/Previous Question|Nakaraang Tanong/.test(b.textContent))`), false);
             if (question === 2 && filipino && mode === 'questions') await screenshot(`${width}-questions`);
             await click(filipino ? 'Susunod na Tanong' : 'Next Question');
             await until(`document.querySelector('.m6-question-progress').textContent.includes(${JSON.stringify((filipino ? 'Tanong ' : 'Question ') + (question + 2))})`);
           } else await until(`!!document.querySelector('.m6-score')`);
         }
-        await until(`document.querySelector('.m6-page a[href*="read-aloud/results"]')!==null`);
+        await until(`!!document.querySelector('.m6-score')`);
+        // Results focus on comprehension; the reading result stays in M5 (no link back from M6 results).
+        await mascotFeedback('startsWith', filipino ? 'Magaling at natapos mo' : 'Great work finishing');
         await layout(filipino);
         assert.equal(await evaluate(`document.querySelector('.m6-score strong').textContent.trim()`), '83%');
         assert.equal(await evaluate(`activityFixture.comprehension.get(${JSON.stringify(id)}).summary.hintsUsed`), 1);
         assert.equal(await evaluate(`activityFixture.comprehension.get(${JSON.stringify(id)}).questions.every((q,i)=>q.id==='reviewed-'+i&&q.correctOptionIndex===0&&q.options[0]==='In the garden')`), true);
         if (filipino && mode === 'questions') await screenshot(`${width}-results`);
-        await click(filipino ? 'Tingnan ang puna sa aking pagbasa' : 'See my reading feedback');
+        await evaluate(`fixtureNavigate('/dashboard/read-aloud/results/${id}', {state:{readingActivityLanguage:${JSON.stringify(filipino ? 'fil' : 'en')}}})`);
         await until(`!!document.querySelector('.result-feedback-score')`); await layout(filipino);
       }
       console.log(`PASS ${width}x${height} ${lang} ${mode}: M4 → M5 → results${mode === 'oral' ? '' : ' → M6 → results → M5'}`);
@@ -171,7 +196,7 @@ try {
   await click('Suriin ang sagot');
   await until(`!!document.querySelector('.m6-error')`); await layout(true);
   await click('Subukang i-save muli');
-  await until(`document.querySelector('.m6-feedback')?.textContent.startsWith('Tama!')`);
+  await mascotFeedback('startsWith', 'Tama!');
   assert.equal(await evaluate(`(()=>{const actions=activityFixture.events.filter(e=>e[0]==='action');return actions[0][2].requestId===actions[1][2].requestId})()`), true);
   assert.equal(await evaluate(`(()=>{const starts=activityFixture.events.filter(e=>e[0]==='start');return starts[0][1].submissionId===starts[1][1].submissionId})()`), true);
   await click('Bumalik sa gawain sa pagbasa');

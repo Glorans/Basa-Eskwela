@@ -1,0 +1,153 @@
+/* Shared by M5/M6 learner pages: spoken-feedback controls and the reading mascot. */
+.feedback-speech {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.feedback-speech .feedback-speech-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--basa-btn-radius, 12px);
+  background: var(--basa-navy, #0b3a3d);
+  color: #fff;
+  cursor: pointer;
+}
+
+.feedback-speech .feedback-speech-button--mute { background: #e7ebe5; color: var(--basa-navy, #0b3a3d); }
+.feedback-speech .feedback-speech-button--mute[aria-pressed="true"] { background: var(--basa-sidebar-item, #ff6f5b); color: #fff; }
+.feedback-speech .feedback-speech-button:disabled { opacity: 0.55; cursor: not-allowed; }
+.feedback-speech .feedback-speech-button:focus-visible { outline: 3px solid #f7cf4a; outline-offset: 2px; }
+.feedback-speech-error { flex-basis: 100%; font-size: 0.9rem; color: #8a2a1c; }
+.feedback-speech-spinner { animation: feedback-speech-spin 900ms linear infinite; }
+
+/* A transparent guide dock outside the scrolling card; no overlay over activity controls. */
+.reading-mascot-anchor { display: block; width: 0; height: 0; outline: none; }
+.reading-mascot-dock {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 12px 8px 0;
+  pointer-events: none;
+}
+.reading-mascot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  width: min(100%, 620px);
+  margin-left: auto;
+  text-align: left;
+}
+.reading-mascot-image {
+  flex: 0 0 180px;
+  width: 180px;
+  height: 200px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 5px rgb(23 63 59 / 16%));
+  transform-origin: 50% 100%;
+}
+.reading-mascot-bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 32px 28px 26px;
+  border: 2px solid #f5d77a;
+  border-radius: 26px;
+  background: #fffdf5;
+  color: var(--basa-navy, #0b3a3d);
+  box-shadow: 0 8px 22px rgb(23 63 59 / 12%);
+  pointer-events: auto;
+}
+.reading-mascot-bubble::before {
+  content: "";
+  position: absolute;
+  left: -11px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  background: #fffdf5;
+  border-left: 2px solid #f5d77a;
+  border-bottom: 2px solid #f5d77a;
+  transform: translateY(-50%) rotate(45deg);
+}
+.reading-mascot-bubble > p {
+  margin: 0;
+  max-height: min(180px, 24dvh);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  font-family: "Nunito", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+.reading-mascot-close {
+  position: absolute;
+  top: -10px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid #f5d77a;
+  border-radius: 50%;
+  background: #fffdf5;
+  color: var(--basa-navy, #0b3a3d);
+  cursor: pointer;
+}
+.reading-mascot-close:hover { background: #fff0bf; }
+.reading-mascot-close:focus-visible { outline: 3px solid var(--basa-navy, #0b3a3d); outline-offset: 3px; }
+.reading-mascot--encourage .reading-mascot-image,
+.reading-mascot--hint .reading-mascot-image { animation: reading-mascot-float 2.8s ease-in-out 2; }
+.reading-mascot--celebrate .reading-mascot-image,
+.reading-mascot--correct .reading-mascot-image { animation: reading-mascot-hop 700ms ease-out 2; }
+.reading-mascot--tryAgain .reading-mascot-image { animation: reading-mascot-tilt 1s ease-in-out 1; }
+@keyframes reading-mascot-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes reading-mascot-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-10px); } }
+@keyframes reading-mascot-tilt { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-4deg); } 70% { transform: rotate(3deg); } }
+@keyframes feedback-speech-spin { to { transform: rotate(360deg); } }
+@media (max-width: 600px), (max-height: 600px) {
+  .reading-mascot-dock { padding: 10px 4px 0; }
+  .reading-mascot { gap: 10px; }
+  .reading-mascot-image { flex-basis: 100px; width: 100px; height: 132px; }
+  .reading-mascot-bubble { padding: 24px 14px 16px; border-radius: 20px; }
+  .reading-mascot-bubble > p { font-size: 1rem; max-height: 24dvh; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reading-mascot-image,
+  .feedback-speech-spinner { animation: none !important; }
+}
+
+/* M6 is a true overlay: no flex item, spacer, or changes to the green panel. */
+.reading-mascot-dock--overlay {
+  position: fixed;
+  padding: 0;
+  visibility: hidden;
+}
+.reading-mascot-dock--overlay .reading-mascot { margin-left: 0; justify-content: flex-start; }
+
+.reading-mascot-dock--overlay .reading-mascot-close { width: 44px; height: 44px; }
+
+/* Phones: a compact popup placed by ReadingMascot clear of the action buttons.
+   The whole popup takes taps, so nothing behind it is clicked by accident. */
+.reading-mascot-dock--compact { pointer-events: auto; }
+.reading-mascot-dock--compact .reading-mascot { width: 100%; gap: 6px; align-items: flex-end; }
+.reading-mascot-dock--compact .reading-mascot-image { flex: 0 0 52px; width: 52px; height: 64px; }
+.reading-mascot-dock--compact .reading-mascot-bubble { padding: 10px 48px 10px 12px; border-radius: 16px; }
+.reading-mascot-dock--compact .reading-mascot-bubble::before { top: auto; bottom: 14px; transform: rotate(45deg); }
+.reading-mascot-dock--compact .reading-mascot-bubble > p { font-size: 0.95rem; line-height: 1.4; max-height: 30dvh; }
+.reading-mascot-dock--compact .reading-mascot-close { top: 50%; right: 4px; transform: translateY(-50%); border-width: 0; background: transparent; }

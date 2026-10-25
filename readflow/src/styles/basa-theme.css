@@ -6,6 +6,7 @@
   /* Page & panel backgrounds */
   --basa-bg: #0e3d30;         /* dark teal-green outer page background */
   --basa-content-bg: #c9d2da; /* light blue-gray content panel behind stat pills/cards */
+  --basa-main-content-bg: #b7d7ab; /* Teacher gradient: rgba(124, 193, 94, 0.34) over #d6e2d2 */
   --basa-card: #ececec;       /* module cards, settings card */
   --basa-cream: #e3e1c3;      /* pale khaki panels: stat pills, join-classroom card, quiz question box, leaderboard/badges card */
   --basa-green-card: #64be55; /* bright green feature cards: quiz card, reading result card */

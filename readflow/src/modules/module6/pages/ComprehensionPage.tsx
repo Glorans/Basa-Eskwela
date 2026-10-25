@@ -17,6 +17,9 @@ import {
   type ComprehensionQuestion,
 } from "../services/comprehensionService";
 import "./ComprehensionPage.css";
+import StoryDrawer from "../components/StoryDrawer";
+import ReadingMascot from "../../../components/reading-feedback/ReadingMascot";
+import FeedbackSpeechControls from "../../../components/reading-feedback/FeedbackSpeechControls";
 
 type Props = {
   role: "student" | "general_user";
@@ -45,11 +48,12 @@ const practiceTips = {
 } as const;
 
 function AnswerFeedback({
-  question, t,
+  question, ui,
 }: {
   question: ComprehensionQuestion;
-  t: ReturnType<typeof getActivityText>["t"];
+  ui: ReturnType<typeof getActivityText>;
 }) {
+  const { t } = ui;
   if (!question.resolved) return null;
 
   const correctIndex = question.correctOptionIndex;
@@ -57,9 +61,18 @@ function AnswerFeedback({
     typeof correctIndex === "number"
       ? question.options[correctIndex]
       : undefined;
+  // Spoken exactly as shown below.
+  const spoken = [
+    correctAnswer && t("Correct answer: ") + correctAnswer,
+    question.answerExplanation
+      ? t("Why this answer fits: ") + question.answerExplanation
+      : t("Think back to the story you just read and remember the clues that support the correct answer."),
+    question.supportingEvidence && t("Evidence from the passage: ") + question.supportingEvidence,
+  ].filter(Boolean).join(" ");
 
   return (
     <aside className="m6-answer-feedback">
+      <FeedbackSpeechControls text={spoken} language={ui.language} listenLabel="Listen to the explanation" />
       {correctAnswer && (
         <p>
           <strong>{t("Correct answer: ")}</strong>
@@ -331,6 +344,17 @@ export default function ComprehensionPage({ role, results = false }: Props) {
 
   return (
     <main lang={language} className={`m6-page${readingMaterialId ? " m6-page--assigned" : ""}${attempt?.status !== "completed" ? " m6-page--questions" : ""}`} aria-busy={busy}>
+      <ReadingMascot placement="overlay-left" key={sourceKey} language={language} live={Boolean(message)}
+        protectSelector=".m6-actions button, .m6-question-card > aside"
+        avoidSelector=".m6-option, .m6-question-card h2, .m6-answer-details > summary, .m6-back-button, .m6-story-trigger"
+        eventId={attempt?.status === "completed" ? `${attempt.id}:completed`
+          : `${attempt?.id}:${question?.id}:${question?.answerHistory.length}:${question?.hintUsed}:${message ? "answer" : "hint"}`}
+        mood={attempt?.status === "completed" ? "celebrate" : message
+          ? message === "Correct! Continue when you are ready." ? "correct" : "tryAgain" : "hint"}
+        message={attempt?.status === "completed" ? t("Great work finishing the questions! Here are your results.")
+          : busy ? "" : message ? ui.message(message, "Unable to save. Please retry.")
+          : question?.hintUsed && !question.resolved ? t("Here is a hint. Read it, then try again.") : ""} />
+      <div className="m6-activity-toolbar">
       <button
         className="m6-back-button"
         type="button"
@@ -340,6 +364,8 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         <ArrowLeft size={18} aria-hidden="true" />
         {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t("Back to Learning Room") : t("Back to dashboard")}
       </button>
+      {attempt && attempt.status !== "completed" && <StoryDrawer key={sourceKey} attempt={attempt} />}
+      </div>
 
       <h1>{attempt?.materialId && attempt.status === "completed" ? t("Your Assessment Results") : t("Comprehension Activity")}</h1>
       {materialId && roomId && activityAssignmentId && error && !attempt &&
@@ -402,6 +428,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
       {attempt?.status === "completed" ? (
         <section className="m6-card">
           <h2>{t("Your comprehension results")}</h2>
+
 
           <div className="m6-score">
             <span>{t("First-answer score")}</span>
@@ -496,7 +523,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
                   </aside>
                 )}
 
-                <AnswerFeedback t={t} question={item} />
+                <AnswerFeedback ui={ui} question={item} />
               </article>
             ))}
           </div>
@@ -543,14 +570,11 @@ export default function ComprehensionPage({ role, results = false }: Props) {
             <aside>
               <strong>{t("Hint: ")}</strong>
               {question.hint}
+              <FeedbackSpeechControls text={t("Hint: ") + question.hint} language={language} listenLabel="Listen to the hint" />
             </aside>
           )}
 
-          {message && (
-            <p className="m6-feedback" role="status">
-              {ui.message(message, "Unable to save. Please retry.")}
-            </p>
-          )}
+
 
           {question.firstOptionIndex !== null && (
             <details className="m6-answer-details" key={question.id}>
@@ -564,7 +588,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
                 ? t("Correct")
                 : t("Incorrect")}
             </p>
-            <AnswerFeedback t={t} question={question} />
+            <AnswerFeedback ui={ui} question={question} />
             </details>
           )}
 

@@ -128,6 +128,11 @@ test("Azure configuration requires a key and region and never falls back", () =>
   assert.deepEqual(config.voices, { en: "en-US-JennyNeural", fil: "fil-PH-BlessicaNeural" });
   assert.equal(config.region, "southeastasia");
   assert.equal(config.timeoutMs, 60000);
+  for (const voice of ["en-PH-RosaNeural", "en-PH-JamesNeural"]) {
+    assert.equal(getAzureSpeechConfig({ ...ENV, AZURE_SPEECH_VOICE_EN: voice }).voices.en, voice);
+  }
+  // Voices stay bound to their language.
+  assert.throws(() => getAzureSpeechConfig({ ...ENV, AZURE_SPEECH_VOICE_FIL: "en-PH-RosaNeural" }), SpeechConfigurationError);
   assert.deepEqual(getSpeechErrorResponse(new SpeechConfigurationError()), {
     code: "SPEECH_NOT_CONFIGURED", status: 503,
     message: "Speech services are not configured on the server. Please contact your administrator.",

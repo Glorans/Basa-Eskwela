@@ -10,7 +10,7 @@
   margin-top: 18px;
   padding: clamp(20px, 4vw, 36px);
   border-radius: var(--basa-radius-lg);
-  background: var(--basa-content-bg);
+  background: var(--basa-main-content-bg);
   color: var(--basa-text);
 }
 

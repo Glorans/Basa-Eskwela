@@ -70,6 +70,11 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
       if (id.includes("RecordingPlayback")) return { default: "recording-playback" };
       if (id.includes("PronunciationFeedback")) return { default: "pronunciation-feedback" };
       if (id.includes("M5Modal")) return { default: "m5-modal" };
+      if (id.includes("StoryDrawer")) return { default: "story-drawer" };
+      if (id.includes("/reading-feedback/")) return { default: id.endsWith("ReadingMascot") ? "reading-mascot" : "feedback-speech",
+        useFeedbackSpeechState: () => mocks.speechPlayer?.getState() ?? { status: "idle", key: null, muted: false } };
+      if (id.endsWith("/feedbackSpeech")) return { getFeedbackSpeech: () => mocks.speechPlayer ?? {
+        play: async () => true, stop() {}, getState: () => ({ status: "idle", key: null, muted: false }) } };
       if (id.includes("ReadingHistoryPage")) return { default: "reading-history" };
       return require(id);
     },
@@ -846,4 +851,95 @@ test("the question flow moves forward only, with Help Me, answer checking and an
   assert.match(JSON.stringify(back.props.children), /Back to reading activity/);
   back.props.onClick();
   assert.deepEqual(f.navigations, ["/dashboard/reading-materials/material/read-aloud?roomId=room&activityAssignmentId=assignment&viewReading=1"]);
+});
+
+test("the mascot encourages before reading, leaves before the microphone opens, and celebrates the saved reading", async () => {
+  const f = await recordingFixture();
+  const mascot = () => find(f.render(), node => node.type === "reading-mascot");
+  assert.equal(mascot().props.mood, "encourage");
+  assert.equal(mascot().props.message, "You can do it! Read the story out loud at your own pace.");
+  assert.equal(mascot().props.language, "en");
+  button(f.render(), "Start Recording").props.onClick();
+  await tick();
+  // No mascot audio can play into the recording.
+  assert.equal(mascot(), undefined);
+  const saved = await recordingFixture({ saved: true, viewReading: true });
+  const done = find(saved.render(), node => node.type === "reading-mascot");
+  assert.equal(done.props.mood, "celebrate");
+  assert.equal(done.props.live, true);
+  assert.equal(done.props.message, "Your reading is saved.");
+});
+
+test("the M5 result mascot shows the existing encouragement and word practice uses the shared player", async () => {
+  const played: string[][] = [];
+  const speech = { play: async (text: string, language: string) => { played.push([text, language]); return true; }, stop() {},
+    getState: () => ({ status: "idle", key: null, muted: false }) };
+  const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "oral" }, {
+    oralReadingService: { getOralReadingAttempt: async () => ({ id: "oral", materialId: null, roomId: null, activityAssignmentId: null,
+      moduleId: "module", passageId: null, language: "fil", moduleTitle: "Kuwento", readAloudOnly: false, pronunciationAccuracy: 92,
+      readingSpeedWpm: 50, expectedWordCount: 1, transcript: "aso", wordMetrics: [{ type: "match", expected: "aso", actual: "aso" }] }) },
+    oralReadingProcessing: { getWordsToPractice: () => ["pusa"] }, speechPlayer: speech,
+    comprehensionNavigation: { comprehensionTargetForReading },
+    useAuthenticatedProfile: { default: () => ({ profile: { nickname: "Ana" } }) },
+  }, "general_user");
+  f.render(); await tick();
+  const tree = f.render();
+  const mascot = find(tree, node => node.type === "reading-mascot");
+  assert.equal(mascot.props.mood, "celebrate");
+  assert.equal(mascot.props.language, "fil");
+  assert.equal(mascot.props.message, activityLanguage.getActivityText("fil").t("Wow, we heard almost every word of the story!"));
+  assert.notEqual(mascot.props.live, true);
+  await find(tree, node => node.type === "button" && node.props["aria-label"] === "Pakinggan ang pusa").props.onClick();
+  assert.deepEqual(played, [["pusa", "fil"]]);
+});
+
+test("the M6 mascot reacts to the page's hint and answer feedback without deciding correctness", async () => {
+  const base = { id: "q", type: "literal", resolved: false, options: ["A", "B", "C", "D"], answerHistory: [] as any[],
+    firstOptionIndex: null as number | null, hintUsed: false, hint: null as string | null, questionText: "Who?" };
+  let attempt: any = { id: "m6", materialId: null, status: "in_progress", language: "en", questions: [base],
+    summary: { allResolved: false, byType: { literal: { total: 1 }, inferential: { total: 0 }, critical: { total: 0 } } } };
+  const replies = [
+    { questions: [{ ...base, hintUsed: true, hint: "Look at the start." }], outcome: {} },
+    { questions: [{ ...base, hintUsed: true, hint: "Look at the start.", answerHistory: [{ optionIndex: 1, correct: false }],
+      firstOptionIndex: 1, firstAnswerCorrect: false }], outcome: { correct: false, resolved: false } },
+    { questions: [{ ...base, hintUsed: true, hint: "Look at the start.", resolved: true, correctOptionIndex: 0,
+      answerExplanation: "Ana is named first.", answerHistory: [{ optionIndex: 1, correct: false }, { optionIndex: 0, correct: true }],
+      firstOptionIndex: 1, firstAnswerCorrect: false }], outcome: { correct: true, resolved: true } },
+  ];
+  const f = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: {
+    getComprehension: async () => attempt,
+    sendComprehensionAction: async () => {
+      const reply = replies.shift()!;
+      attempt = { ...attempt, questions: reply.questions };
+      return { attempt, outcome: reply.outcome };
+    },
+  } });
+  const mascot = () => find(f.render(), node => node.type === "reading-mascot");
+  const choose = async (option: number, label: string) => {
+    find(f.render(), node => node.type === "input" && node.props.value === option).props.onChange();
+    button(f.render(), label).props.onClick(); await tick();
+  };
+  f.render(); await tick();
+  assert.equal(mascot().props.message, "");
+  button(f.render(), "Help me").props.onClick(); await tick();
+  assert.equal(mascot().props.mood, "hint");
+  const hintEvent = mascot().props.eventId;
+  const hintAudio = find(f.render(), node => node.type === "feedback-speech" && node.props.listenLabel === "Listen to the hint");
+  assert.deepEqual([hintAudio.props.text, hintAudio.props.language], ["Hint: Look at the start.", "en"]);
+  await choose(1, "Submit");
+  assert.equal(mascot().props.mood, "tryAgain");
+  assert.notEqual(mascot().props.eventId, hintEvent);
+  const answerEvent = mascot().props.eventId;
+  assert.equal(mascot().props.live, true);
+  assert.equal(mascot().props.message, "Not quite. Try to remember the story you just read, or use a hint, then try once more.");
+  await choose(0, "Check second answer");
+  assert.equal(mascot().props.mood, "correct");
+  assert.notEqual(mascot().props.eventId, answerEvent);
+  assert.equal(mascot().props.message, "Correct! Continue when you are ready.");
+  const answerFeedback = find(f.render(), node => node.type?.name === "AnswerFeedback");
+  const explanation = find(answerFeedback.type(answerFeedback.props), node => node.type === "feedback-speech");
+  assert.equal(explanation.props.listenLabel, "Listen to the explanation");
+  assert.equal(explanation.props.text, "Correct answer: A Why this answer fits: Ana is named first.");
+  // The mascot never receives scores or answer keys.
+  for (const node of [mascot(), explanation]) assert.doesNotMatch(JSON.stringify(Object.keys(node.props)), /score|correctOptionIndex|summary/i);
 });

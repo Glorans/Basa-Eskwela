@@ -7,7 +7,9 @@ import "@fontsource/fredoka/latin-600.css";
 import "@fontsource/nunito/latin-600.css";
 import "@fontsource/nunito/latin-700.css";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
-import { synthesizeDiagnosticSpeech } from "../../modules/module2/services/diagnosticTts";
+import { getFeedbackSpeech } from "../../services/feedbackSpeech";
+import ReadingMascot from "../../components/reading-feedback/ReadingMascot";
+import { useFeedbackSpeechState } from "../../components/reading-feedback/FeedbackSpeechControls";
 import { getWordsToPractice } from "../../modules/module5/services/oralReadingProcessing";
 import { getOralReadingAttempt, peekOralReadingAttempt, getOralReadingAttemptNumber, peekOralReadingAttemptNumber } from "../../modules/module5/services/oralReadingService";
 import RecordingPlayback from "../../modules/module5/components/RecordingPlayback";
@@ -125,9 +127,8 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const [error, setError] = useState<string>();
   const [speakingWord, setSpeakingWord] = useState<string>();
   const [speechError, setSpeechError] = useState<string>();
-
-  const audioRef = useRef<HTMLAudioElement>();
-  const audioUrlRef = useRef<string>();
+  const speech = getFeedbackSpeech();
+  const speechState = useFeedbackSpeechState();
 
   const moduleRoot =
     role === "admin"
@@ -195,60 +196,23 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
     };
   }, [attemptId, profile?.id, revision]);
 
-  useEffect(() => {
-    return () => {
-      audioRef.current?.pause();
+  // Leaving the result stops any word or feedback audio.
+  useEffect(() => () => speech.stop(), [speech]);
 
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
-    };
-  }, []);
-
+  // The shared player plays one clip at a time and reuses audio it already fetched.
   const playWord = async (word: string) => {
     if (!attempt || speakingWord) return;
 
     setSpeakingWord(word);
     setSpeechError(undefined);
 
-    try {
-      const audioBlob = await synthesizeDiagnosticSpeech(
-        word,
-        attempt.language,
-      );
-
-      audioRef.current?.pause();
-
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
-
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-
-      audioRef.current = audio;
-      audioUrlRef.current = audioUrl;
-
-      await new Promise<void>((resolve, reject) => {
-        audio.addEventListener("ended", () => resolve(), {
-          once: true,
-        });
-
-        audio.addEventListener(
-          "error",
-          () => reject(new Error("Audio playback failed.")),
-          { once: true },
-        );
-
-        void audio.play().catch(reject);
-      });
-    } catch {
+    const finished = await speech.play(word, attempt.language);
+    if (!finished && speech.getState().status === "error") {
       setSpeechError(
         "Pronunciation audio is unavailable right now. Please try again.",
       );
-    } finally {
-      setSpeakingWord(undefined);
     }
+    setSpeakingWord(undefined);
   };
 
   if (!attempt) {
@@ -347,7 +311,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                 />
               ))}
             </p>
-            <p className="result-feedback-message">{t(encouragement(accuracy))}</p>
+            <ReadingMascot mood="celebrate" message={t(encouragement(accuracy))} language={language} eventId={attempt.id} />
           </header>
 
           {attempt.readAloudOnly === true && <p className="result-feedback-message result-feedback-status" role="status">{attempt.readAloudCompleted
@@ -454,7 +418,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                         <button
                           type="button"
                           className="result-feedback-listen"
-                          disabled={Boolean(speakingWord)}
+                          disabled={Boolean(speakingWord) || speechState.muted}
                           aria-label={speakingWord === word ? t("Playing {word}", { word }) : t("Listen to {word}", { word })}
                           onClick={() => void playWord(word)}
                         >

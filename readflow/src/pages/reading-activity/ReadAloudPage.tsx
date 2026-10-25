@@ -6,6 +6,7 @@ import { Mic, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import ActivityHeader from "./ActivityHeader";
+import ReadingMascot from "../../components/reading-feedback/ReadingMascot";
 import { useAudioRecorder } from "../../modules/module2/hooks/useAudioRecorder";
 import {
   type ReadAloudTranscriptionStep,
@@ -413,12 +414,17 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
           </div>
           <div className="read-aloud-controls">
             {continueTarget ? <>
-              <p role="status">{t("Your reading is saved.")}</p>
+              <ReadingMascot mood="celebrate" live message={t("Your reading is saved.")} language={language} />
               <button className="read-aloud-continue" type="button" onClick={() => navigate(continueTarget, { state: activityState })}>
                 {module.readAloudOnly ? t("View Reading Result")
                   : continueTarget.includes("/read-aloud/results/") ? t("See My Reading Feedback") : t("Continue to Comprehension")}
               </button>
             </> : <>
+            {/* Show encouragement before recording begins. */}
+            {!loading && !loadError && !isRecording && !recordingBusy && audioURLs.length === 0 && (
+              <ReadingMascot mood="encourage" message={t("You can do it! Read the story out loud at your own pace.")}
+                language={language} />
+            )}
 
             <button
               className={`read-aloud-record-button ${isRecording ? "read-aloud-record-button--active" : ""}`}

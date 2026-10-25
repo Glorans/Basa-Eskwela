@@ -45,7 +45,8 @@ test("all shared recorder status messages have explicit Filipino translations", 
 });
 
 test("activity JSX contains no untranslated literal instructions", () => {
-  for (const path of ["pages/reading-activity/ReadAloudPage.tsx", "pages/reading-activity/ReadingResultPage.tsx", "pages/reading-activity/ActivityHeader.tsx", "modules/module6/pages/ComprehensionPage.tsx", "modules/module5/components/OralReadingSummary.tsx"]) {
+  for (const path of ["pages/reading-activity/ReadAloudPage.tsx", "pages/reading-activity/ReadingResultPage.tsx", "pages/reading-activity/ActivityHeader.tsx", "modules/module6/pages/ComprehensionPage.tsx", "modules/module5/components/OralReadingSummary.tsx",
+    "components/reading-feedback/ReadingMascot.tsx", "components/reading-feedback/FeedbackSpeechControls.tsx"]) {
     const ast = ts.createSourceFile(path, readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     function visit(node: ts.Node) {
       if (ts.isJsxText(node)) assert.doesNotMatch(node.text, /[A-Za-z]/, `${path}: ${node.text}`);

@@ -322,7 +322,6 @@ export default function UploadMaterialForm({
     <form className="m3-form-card" onSubmit={handleSubmit} aria-busy={busy}>
       <div>
         <p className="m3-eyebrow">Step 1 of 2: Upload &amp; Extract Text</p>
-        <p>You will review the extracted text and save the material in the next step.</p>
       </div>
       <div className="m3-image-guidance">
         <strong>Multi-page reading materials</strong>

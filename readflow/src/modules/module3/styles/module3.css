@@ -313,9 +313,7 @@
   overflow-x: auto;
   overflow-y: auto;
   border-radius: var(--basa-radius-lg);
-  background:
-    radial-gradient(circle at 100% 0%, rgba(124, 193, 94, 0.34), transparent 34%),
-    #d6e2d2;
+  background: var(--basa-main-content-bg);
 }
 
 .m3-page-stack {
