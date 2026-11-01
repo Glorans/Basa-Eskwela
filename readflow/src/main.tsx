@@ -1,3 +1,4 @@
+import "./auth/captureAuthRedirect.ts"; // must stay first: reads email-link results before anything else
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";

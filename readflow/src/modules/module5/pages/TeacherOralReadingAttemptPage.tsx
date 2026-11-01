@@ -243,7 +243,7 @@ export default function TeacherOralReadingAttemptPage() {
       </Link>
 
       <M3PageHeader
-        eyebrow="Module 5 and Module 6 · Student Review"
+        eyebrow="Reading Results"
         title={attempt.learnerName}
         description={`${attempt.moduleTitle} · ${attempt.difficulty} · Completed ${formatCompletedAt(attempt.completedAt)}`}
       />

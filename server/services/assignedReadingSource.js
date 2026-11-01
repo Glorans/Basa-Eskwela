@@ -5,6 +5,9 @@ function passageRevision(text) {
   return createHash("sha256").update(text.trim()).digest("hex");
 }
 
+const REMOVED_ACTIVITY_MESSAGE =
+  "Your teacher removed this activity. Your saved results are still in Reading History.";
+
 // Read existing M4 relationships only. Never update classroom completion.
 async function loadAssignedReadingSource(requester, materialId, context, dependencies = {}) {
   const { OralReadingAuthorizationError, OralReadingPersistenceError } = require("./oralReadingAttemptService");
@@ -18,12 +21,15 @@ async function loadAssignedReadingSource(requester, materialId, context, depende
     throw new OralReadingAuthorizationError();
   }
   const db = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  // "*" keeps working before and after the optional removed_at column exists.
   const { data: assignment, error } = await db.from("reading_activity_assignments")
-    .select("id,room_id,material_id,student_id,question_set_id,read_aloud_only").eq("id", context.activityAssignmentId)
+    .select("*").eq("id", context.activityAssignmentId)
     .eq("material_id", materialId).eq("room_id", context.roomId)
     .eq("student_id", requester.user.id).maybeSingle();
   if (error) throw new OralReadingPersistenceError("Unable to verify the reading assignment.");
   if (!assignment) throw new OralReadingAuthorizationError();
+  // A removed activity cannot be started again; saved results stay in Reading History.
+  if (assignment.removed_at) throw new OralReadingAuthorizationError(REMOVED_ACTIVITY_MESSAGE);
   const { data: enrollment, error: enrollmentError } = await db.from("enrollments")
     .select("room_id").eq("room_id", assignment.room_id).eq("student_id", requester.user.id).maybeSingle();
   if (enrollmentError) throw new OralReadingPersistenceError("Unable to verify classroom enrollment.");
@@ -45,4 +51,4 @@ async function loadAssignedReadingSource(requester, materialId, context, depende
   };
 }
 
-module.exports = { loadAssignedReadingSource, passageRevision };
+module.exports = { loadAssignedReadingSource, passageRevision, REMOVED_ACTIVITY_MESSAGE };

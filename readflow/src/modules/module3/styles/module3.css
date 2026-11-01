@@ -1500,6 +1500,14 @@
   margin-bottom: 7px;
 }
 
+/* Beside the material text (split layout above 1100px) the editor is only half
+   the page wide, so two columns cut long answer choices to a few words. */
+@media (min-width: 1101px) {
+  .m3-material-split__main .m3-options-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .m3-options-editor label {
   display: flex;
   align-items: center;

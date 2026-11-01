@@ -163,7 +163,7 @@ try {
         }
         await until(`!!document.querySelector('.m6-score')`);
         // Results focus on comprehension; the reading result stays in M5 (no link back from M6 results).
-        await mascotFeedback('startsWith', filipino ? 'Magaling at natapos mo' : 'Great work finishing');
+        await mascotFeedback('startsWith', filipino ? 'Ang galing! Natapos mo' : 'Great work finishing');
         await layout(filipino);
         assert.equal(await evaluate(`document.querySelector('.m6-score strong').textContent.trim()`), '83%');
         assert.equal(await evaluate(`activityFixture.comprehension.get(${JSON.stringify(id)}).summary.hintsUsed`), 1);

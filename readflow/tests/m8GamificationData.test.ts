@@ -27,7 +27,8 @@ test("M8 pages contain no fabricated rankings, scores or badge awards", async ()
 test("the classroom leaderboard reuses the M4 classroom service", async () => {
   const leaderboard = await read("../src/pages/Leaderboard.tsx");
   assert.match(leaderboard, /getStudentClassrooms\(user\.id\)/);
-  assert.match(leaderboard, /getRoomEnrollments\(selectedClassroomId\)/);
+  // Classmates come from the classmate-scoped RPC; students cannot read others' enrollments.
+  assert.doesNotMatch(leaderboard, /getRoomEnrollments/);
 });
 
 test("student and independent learner navigation both reach M8", async () => {

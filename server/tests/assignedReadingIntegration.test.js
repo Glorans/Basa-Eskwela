@@ -289,15 +289,68 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     assert.ok(legacy.questions.some(q => q.questionText.startsWith("Fixture ")));
   });
   await t.test("standalone independent and classroom module M5/M6 still use module passages", async () => {
+    for (const language of ["en", "fil"]) {
+      db.tables.learning_paths[0].language = language;
     for (const requester of [owner, { ...owner, profile: { role: "general_user" } }]) {
       const sourceContext = requester.profile.role === "student" ? { roomId: ROOM, assignmentId: ASSIGNMENT } : {};
       const reading = await createOralReadingAttempt(requester, { moduleId: MODULE, passageId: PASSAGE,
         ...sourceContext, transcript: "Reviewed reading text.", durationSeconds: 5, submissionId: randomUUID() }, deps);
       const saved = await startComprehensionAttempt(requester, { moduleId: MODULE, passageId: PASSAGE,
         ...sourceContext, oralReadingAttemptId: reading.id, submissionId: randomUUID() });
+      assert.equal(reading.language, language);
+      assert.equal(saved.language, language);
       assert.equal(saved.moduleId, MODULE);
       assert.equal(saved.passageId, PASSAGE);
       assert.equal(saved.materialId, null);
     }
+    }
+    db.tables.learning_paths[0].language = "en";
+  });
+  await t.test("a removed activity cannot be started again, but saved and in-progress work still reopens", async () => {
+    const reading = await oral();
+    const inProgress = await startComprehensionAttempt(owner, start(reading));
+    const second = await oral(); // saved before removal, comprehension not started yet
+    const assignment = db.tables.reading_activity_assignments[0];
+    const counts = () => ["oral_reading_attempts", "m6_comprehension_attempts"].map(table => db.tables[table].length);
+    const before = counts();
+    assignment.removed_at = "2026-11-02T00:00:00Z";
+    assignment.removed_by = "teacher";
+    try {
+      // New work is refused with an explanation; nothing is written.
+      await assert.rejects(loadAssignedReadingSource(owner, MATERIAL, context, deps),
+        { statusCode: 403, message: /removed this activity.*Reading History/ });
+      await assert.rejects(oral(), { statusCode: 403 });
+      await assert.rejects(startComprehensionAttempt(owner, start(second)), { statusCode: 403 });
+      assert.deepEqual(counts(), before);
+      // Saved results and the attempt already in progress stay available.
+      assert.equal((await getOralReadingAttempt(owner, reading.id, deps)).id, reading.id);
+      assert.equal((await startComprehensionAttempt(owner, start(reading))).id, inProgress.id);
+      assert.equal((await getComprehensionAttempt(owner, inProgress.id)).id, inProgress.id);
+    } finally {
+      delete assignment.removed_at;
+      delete assignment.removed_by;
+    }
+    // Restoring makes it startable again.
+    assert.equal((await loadAssignedReadingSource(owner, MATERIAL, context, deps)).activityAssignmentId, assignment.id);
+  });
+  await t.test("a removed classroom module cannot be started again; other assignments are unaffected", async () => {
+    const roomModule = db.tables.room_modules.find(row => row.id === ASSIGNMENT);
+    const moduleStart = () => createOralReadingAttempt(owner, { moduleId: MODULE, passageId: PASSAGE, roomId: ROOM,
+      assignmentId: ASSIGNMENT, transcript: "Reviewed reading text.", durationSeconds: 5, submissionId: randomUUID() }, deps);
+    const reading = await moduleStart();
+    roomModule.removed_at = "2026-11-02T00:00:00Z";
+    try {
+      await assert.rejects(moduleStart(), { statusCode: 403, message: /removed this module.*Reading History/ });
+      await assert.rejects(startComprehensionAttempt(owner, { moduleId: MODULE, passageId: PASSAGE, roomId: ROOM,
+        assignmentId: ASSIGNMENT, oralReadingAttemptId: reading.id, submissionId: randomUUID() }), { statusCode: 403 });
+      assert.equal((await getOralReadingAttempt(owner, reading.id, deps)).id, reading.id);
+      // Independent practice of the same published module is not a classroom assignment.
+      const general = { ...owner, profile: { role: "general_user" } };
+      assert.ok((await createOralReadingAttempt(general, { moduleId: MODULE, passageId: PASSAGE,
+        transcript: "Reviewed reading text.", durationSeconds: 5, submissionId: randomUUID() }, deps)).id);
+    } finally {
+      delete roomModule.removed_at;
+    }
+    assert.ok((await moduleStart()).id);
   });
 });

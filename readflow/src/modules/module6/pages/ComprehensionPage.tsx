@@ -61,11 +61,15 @@ function AnswerFeedback({
     typeof correctIndex === "number"
       ? question.options[correctIndex]
       : undefined;
+  // The explanation concerns the revealed correct answer, even after an incorrect response.
+  // Without a revealed answer, use a neutral Filipino label; retain approved English copy.
+  const explanationLabel = ui.language === "fil" && !correctAnswer
+    ? t("Answer explanation: ") : t("Why this answer fits: ");
   // Spoken exactly as shown below.
   const spoken = [
     correctAnswer && t("Correct answer: ") + correctAnswer,
     question.answerExplanation
-      ? t("Why this answer fits: ") + question.answerExplanation
+      ? explanationLabel + question.answerExplanation
       : t("Think back to the story you just read and remember the clues that support the correct answer."),
     question.supportingEvidence && t("Evidence from the passage: ") + question.supportingEvidence,
   ].filter(Boolean).join(" ");
@@ -82,7 +86,7 @@ function AnswerFeedback({
 
       {question.answerExplanation && (
         <p>
-          <strong>{t("Why this answer fits: ")}</strong>
+          <strong>{explanationLabel}</strong>
           {question.answerExplanation}
         </p>
       )}

@@ -538,8 +538,8 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
   assert.equal(find(tree, node => node.type === "pronunciation-feedback"), undefined);
   assert.match(text, /Pagsusuri ng Bigkas/);
   assert.match(text, /Ang pagsusuri ng bigkas ay para lamang sa mga babasahing Ingles/);
-  assert.match(text, /Pakinggan ang tamang pagbasa ng salita at subukang basahin itong muli\./);
-  assert.ok(find(tree, node => node.type === "small" && node.props.children === "iba ang nabasa"));
+  assert.match(text, /Pakinggan ang salita, bigkasin ito nang dahan-dahan, at subukang basahin ulit\./);
+  assert.ok(find(tree, node => node.type === "small" && node.props.children === "Iba ang salitang naitala"));
   assert.match(text, /Ang Kuwento/);
   assert.doesNotMatch(text, /Azure|Pronunciation accuracy|Katumpakan ng pagbigkas/);
 });

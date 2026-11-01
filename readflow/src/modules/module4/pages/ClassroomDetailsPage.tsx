@@ -12,6 +12,11 @@ import {
   assignModuleToRoom,
   getUploadedReadingMaterials,
   assignReadingActivity,
+  parseOptionalDueDate,
+  formatDueDateTime,
+  supportsOptionalColumn,
+  setReadingActivityRemoved,
+  setRoomModuleRemoved,
   getClassroomReadingActivities,
   getReadingActivityError,
   type ReadingActivityAssignment,
@@ -27,8 +32,7 @@ import type { MaterialQuestionSetSummary } from "../../module3/types/content";
 
 const LANGUAGE_NAMES: Record<ReadingLanguage, string> = { en: "English", fil: "Filipino" };
 
-// Rooms do not store a language, so the teacher chooses it here; only
-// modules and materials in that language can then be assigned.
+// Saved room subjects lock this existing picker. Legacy rooms retain their filter.
 function RoomLanguageSelect({ id, value, disabled, onChange }: {
   id: string;
   value: ReadingLanguage | "";
@@ -339,11 +343,20 @@ type ModuleAssignmentSectionProps = {
   selectedModuleId: string;
   assigningModule: boolean;
   moduleError: string;
+  subjectLocked: boolean;
   roomLanguage: ReadingLanguage | "";
+  /** Shown only once the optional room_modules.due_at migration is applied. */
+  deadlinesSupported: boolean;
+  moduleDueAt: string;
+  /** Remove/Restore buttons appear only once the optional unassign migration is applied. */
+  removalSupported: boolean;
+  changingModuleId: string;
   onToggleForm: () => void;
   onSelectModule: (moduleId: string) => void;
+  onModuleDueAtChange: (value: string) => void;
   onRoomLanguageChange: (language: ReadingLanguage | "") => void;
   onAssignModule: (event: React.FormEvent<HTMLFormElement>) => void;
+  onToggleModuleRemoved: (module: AssignedReadingModule) => void;
 };
 
 function ModuleAssignmentSection({
@@ -354,10 +367,17 @@ function ModuleAssignmentSection({
   assigningModule,
   moduleError,
   roomLanguage,
+  subjectLocked,
+  deadlinesSupported,
+  moduleDueAt,
+  removalSupported,
+  changingModuleId,
   onToggleForm,
   onSelectModule,
+  onModuleDueAtChange,
   onRoomLanguageChange,
   onAssignModule,
+  onToggleModuleRemoved,
 }: ModuleAssignmentSectionProps) {
   return (
     <div className="rounded-3xl bg-[#dce8e7] p-6 shadow-md">
@@ -397,7 +417,7 @@ function ModuleAssignmentSection({
           <RoomLanguageSelect
             id="moduleLanguage"
             value={roomLanguage}
-            disabled={assigningModule}
+            disabled={assigningModule || subjectLocked}
             onChange={onRoomLanguageChange}
           />
 
@@ -434,6 +454,29 @@ function ModuleAssignmentSection({
               </option>
             ))}
           </select>
+
+          {deadlinesSupported && (
+            <div className="mt-4">
+              <label
+                htmlFor="moduleDueAt"
+                className="mb-2 block text-sm font-bold text-[#173f3b]"
+              >
+                Due date and time (optional)
+              </label>
+              <input
+                id="moduleDueAt"
+                type="datetime-local"
+                value={moduleDueAt}
+                disabled={assigningModule}
+                onChange={(event) => onModuleDueAtChange(event.target.value)}
+                aria-describedby="moduleDueAtHelp"
+                className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-sm text-[#173f3b] outline-none transition focus:border-[#f7cf4a] sm:max-w-xs"
+              />
+              <p id="moduleDueAtHelp" className="mt-1 text-xs text-[#6d8582]">
+                Leave empty for no deadline. Students see the due date, and they can still finish after it.
+              </p>
+            </div>
+          )}
 
           <p role="alert" className="mt-3 text-sm font-bold text-[#a9443c]">{moduleError}</p>
           {!roomLanguage ? (
@@ -501,8 +544,35 @@ function ModuleAssignmentSection({
                         module.assigned_at
                       ).toLocaleDateString()}
                     </span>
+
+                    {module.due_at && (
+                      <span className="rounded-full bg-[#173f3b]/10 px-3 py-1 text-xs font-semibold text-[#173f3b]">
+                        Due {formatDueDateTime(module.due_at)}
+                      </span>
+                    )}
+
+                    {module.removed_at && (
+                      <span className="rounded-full bg-[#5c7471] px-3 py-1 text-xs font-bold text-white">
+                        Removed · hidden from students
+                      </span>
+                    )}
                   </div>
                 </div>
+
+                {removalSupported && (
+                  <button
+                    type="button"
+                    disabled={Boolean(changingModuleId)}
+                    onClick={() => onToggleModuleRemoved(module)}
+                    className="ml-auto shrink-0 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-[#173f3b] transition hover:bg-[#f4f7f5] disabled:opacity-60"
+                  >
+                    {changingModuleId === module.assignment_id
+                      ? "Saving..."
+                      : module.removed_at
+                        ? "Restore"
+                        : "Remove"}
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -542,6 +612,14 @@ export default function ClassroomDetailsPage() {
   const [roomLanguage, setRoomLanguage] = useState<ReadingLanguage | "">("");
   const [showModuleForm, setShowModuleForm] = useState(false);
   const [selectedModuleId, setSelectedModuleId] = useState("");
+  // Optional; empty means no deadline.
+  const [moduleDueAt, setModuleDueAt] = useState("");
+  // Optional features that need the proposed migrations; hidden until they are applied.
+  const [moduleDeadlinesSupported, setModuleDeadlinesSupported] = useState(false);
+  const [moduleRemovalSupported, setModuleRemovalSupported] = useState(false);
+  const [activityRemovalSupported, setActivityRemovalSupported] = useState(false);
+  const [changingModuleId, setChangingModuleId] = useState("");
+  const [changingActivityId, setChangingActivityId] = useState("");
   const [assigningModule, setAssigningModule] = useState(false);
 
   // Reading activity assignment
@@ -552,6 +630,8 @@ export default function ClassroomDetailsPage() {
   // Only reviewed sets of the selected material can be assigned.
   const [questionSets, setQuestionSets] = useState<MaterialQuestionSetSummary[]>([]);
   const [selectedQuestionSetId, setSelectedQuestionSetId] = useState("");
+  // Optional; empty means no deadline.
+  const [activityDueAt, setActivityDueAt] = useState("");
   const [loadingQuestionSets, setLoadingQuestionSets] = useState(false);
   const [questionSetError, setQuestionSetError] = useState("");
 
@@ -621,6 +701,21 @@ export default function ClassroomDetailsPage() {
   }, [roomId]);
 
   useEffect(() => {
+    let active = true;
+    const check = (
+      table: "room_modules" | "reading_activity_assignments",
+      column: "due_at" | "removed_at",
+      apply: (supported: boolean) => void
+    ) => supportsOptionalColumn(table, column)
+      .then((supported) => { if (active) apply(supported); })
+      .catch((err) => console.error("Unable to check optional classroom features:", err));
+    void check("room_modules", "due_at", setModuleDeadlinesSupported);
+    void check("room_modules", "removed_at", setModuleRemovalSupported);
+    void check("reading_activity_assignments", "removed_at", setActivityRemovalSupported);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     async function loadClassroom() {
       if (!roomId) {
         setError("Classroom not found.");
@@ -642,11 +737,12 @@ export default function ClassroomDetailsPage() {
           getClassroomById(roomId),
           getRoomEnrollments(roomId),
           getPublishedModules(),
-          getAssignedModules(roomId),
+          getAssignedModules(roomId, { includeRemoved: true }),
           getUploadedReadingMaterials(),
         ]);
 
         setClassroom(room);
+        setRoomLanguage(room.subject ?? "");
         setStudents(enrolledStudents);
         setPublishedModules(availableModules);
         setAssignedModules(roomModules);
@@ -782,13 +878,25 @@ export default function ClassroomDetailsPage() {
       return;
     }
 
-    const alreadyAssigned = assignedModules.some(
+    const alreadyAssigned = assignedModules.find(
       (module) => module.module_id === selectedModuleId
     );
 
     if (alreadyAssigned) {
-      setModuleError("This reading module is already assigned.");
+      setModuleError(alreadyAssigned.removed_at
+        ? "This reading module was removed earlier. Use Restore in the list to assign it again."
+        : "This reading module is already assigned.");
       return;
+    }
+
+    let dueAt: string | null = null;
+    if (moduleDeadlinesSupported) {
+      try {
+        dueAt = parseOptionalDueDate(moduleDueAt);
+      } catch (err) {
+        setModuleError(getReadingActivityError(err));
+        return;
+      }
     }
 
     try {
@@ -808,12 +916,13 @@ export default function ClassroomDetailsPage() {
         throw new Error("No authenticated teacher found.");
       }
 
-      await assignModuleToRoom(roomId, selectedModuleId, user.id);
+      await assignModuleToRoom(roomId, selectedModuleId, user.id, dueAt);
 
-      const updatedAssignments = await getAssignedModules(roomId);
+      const updatedAssignments = await getAssignedModules(roomId, { includeRemoved: true });
 
       setAssignedModules(updatedAssignments);
       setSelectedModuleId("");
+      setModuleDueAt("");
       setShowModuleForm(false);
     } catch (err) {
       console.error("Failed to assign reading module:", err);
@@ -821,6 +930,46 @@ export default function ClassroomDetailsPage() {
     } finally {
       moduleRequestPending.current = false;
       setAssigningModule(false);
+    }
+  }
+
+  // Soft removal: hides the item from students and blocks new attempts.
+  // Saved readings, comprehension results, history, analytics and XP are kept.
+  async function handleToggleModuleRemoved(module: AssignedReadingModule) {
+    if (!roomId || changingModuleId) return;
+    const removing = !module.removed_at;
+    const confirmed = await confirmReadFlow(removing
+      ? `Remove "${module.title}" from this classroom? Students will no longer see it or be able to start it. Their saved results, reading history and XP are kept, and you can restore it later.`
+      : `Restore "${module.title}" for this classroom? Students will see it again.`);
+    if (!confirmed) return;
+    setChangingModuleId(module.assignment_id);
+    try {
+      await setRoomModuleRemoved(module.assignment_id, removing);
+      setAssignedModules(await getAssignedModules(roomId, { includeRemoved: true }));
+    } catch (err) {
+      console.error("Failed to change module assignment:", err);
+      await showReadFlowDialog(err instanceof Error ? err.message : "Unable to update this module.");
+    } finally {
+      setChangingModuleId("");
+    }
+  }
+
+  async function handleToggleActivityRemoved(activity: ReadingActivityAssignment, title: string, studentName: string) {
+    if (!roomId || changingActivityId) return;
+    const removing = !activity.removed_at;
+    const confirmed = await confirmReadFlow(removing
+      ? `Remove "${title}" for ${studentName}? The student will no longer see it or be able to start it. Their saved results, reading history and XP are kept, and you can restore it later.`
+      : `Restore "${title}" for ${studentName}? The student will see it again.`);
+    if (!confirmed) return;
+    setChangingActivityId(activity.id);
+    try {
+      await setReadingActivityRemoved(activity.id, removing);
+      await refreshActivities(roomId);
+    } catch (err) {
+      console.error("Failed to change reading activity:", err);
+      await showReadFlowDialog(err instanceof Error ? err.message : "Unable to update this activity.");
+    } finally {
+      setChangingActivityId("");
     }
   }
 
@@ -888,6 +1037,14 @@ export default function ClassroomDetailsPage() {
       return;
     }
 
+    let dueAt: string | null;
+    try {
+      dueAt = parseOptionalDueDate(activityDueAt);
+    } catch (err) {
+      setActivityError(getReadingActivityError(err));
+      return;
+    }
+
     try {
       activityRequestPending.current = true;
       setAssigningActivity(true);
@@ -896,7 +1053,7 @@ export default function ClassroomDetailsPage() {
         roomId,
         selectedMaterialId,
         selectedStudentIds,
-        null,
+        dueAt,
         selectedQuestionSetId || null
       );
 
@@ -904,6 +1061,7 @@ export default function ClassroomDetailsPage() {
 
       setSelectedMaterialId("");
       setSelectedStudentIds([]);
+      setActivityDueAt("");
       setShowActivityForm(false);
       await refreshActivities(roomId);
     } catch (err) {
@@ -968,6 +1126,7 @@ export default function ClassroomDetailsPage() {
 
   // A selection in the other language is cleared; saved assignments are untouched.
   function handleRoomLanguageChange(language: ReadingLanguage | "") {
+    if (classroom?.subject) return;
     setRoomLanguage(language);
     setModuleError("");
     setActivityError("");
@@ -1035,7 +1194,7 @@ export default function ClassroomDetailsPage() {
           </p>
 
           <p className="mt-1 text-3xl font-black text-white">
-            {assignedModules.length}
+            {assignedModules.filter((module) => !module.removed_at).length}
           </p>
         </div>
       </div>
@@ -1055,14 +1214,21 @@ export default function ClassroomDetailsPage() {
           selectedModuleId={selectedModuleId}
           assigningModule={assigningModule}
           moduleError={moduleError}
+          subjectLocked={Boolean(classroom.subject)}
           roomLanguage={roomLanguage}
+          deadlinesSupported={moduleDeadlinesSupported}
+          moduleDueAt={moduleDueAt}
+          removalSupported={moduleRemovalSupported}
+          changingModuleId={changingModuleId}
           onRoomLanguageChange={handleRoomLanguageChange}
           onToggleForm={() => {
             setModuleError("");
             setShowModuleForm((current) => !current);
           }}
           onSelectModule={setSelectedModuleId}
+          onModuleDueAtChange={setModuleDueAt}
           onAssignModule={handleAssignModule}
+          onToggleModuleRemoved={(module) => void handleToggleModuleRemoved(module)}
         />
       </div>
 
@@ -1107,13 +1273,28 @@ export default function ClassroomDetailsPage() {
           )}
           {activities.length > 0 ? (
             <ul className="mt-3 space-y-2">
-              {activities.map(activity => (
-                <li key={activity.id} className="rounded-xl bg-white/70 px-4 py-3 text-[#173f3b]">
-                  <p className="font-bold">{uploadedMaterials.find(material => material.id === activity.material_id)?.title ?? "Reading Activity"}</p>
-                  <p className="text-sm">{activity.question_set_id ? activity.question_set_name ?? "Question set" : "Read-aloud only"}</p>
-                  <p className="text-sm">{students.find(student => student.student_id === activity.student_id)?.display_name ?? "Previously enrolled student"} · {activity.status.replace("_", " ")}</p>
-                </li>
-              ))}
+              {activities.map(activity => {
+                const title = uploadedMaterials.find(material => material.id === activity.material_id)?.title ?? "Reading Activity";
+                const studentName = students.find(student => student.student_id === activity.student_id)?.display_name ?? "Previously enrolled student";
+                return (
+                  <li key={activity.id} className="flex items-start gap-3 rounded-xl bg-white/70 px-4 py-3 text-[#173f3b]">
+                    <div className="min-w-0">
+                      <p className="font-bold">{title}</p>
+                      <p className="text-sm">{activity.question_set_id ? activity.question_set_name ?? "Question set" : "Read-aloud only"}</p>
+                      <p className="text-sm">{studentName} · {activity.status.replace("_", " ")}</p>
+                      {activity.due_at && <p className="text-sm">Due {formatDueDateTime(activity.due_at)}</p>}
+                      {activity.removed_at && <p className="text-sm font-bold text-[#5c7471]">Removed · hidden from the student</p>}
+                    </div>
+                    {activityRemovalSupported && (
+                      <button type="button" disabled={Boolean(changingActivityId)}
+                        onClick={() => void handleToggleActivityRemoved(activity, title, studentName)}
+                        className="ml-auto shrink-0 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-[#173f3b] transition hover:bg-[#f4f7f5] disabled:opacity-60">
+                        {changingActivityId === activity.id ? "Saving..." : activity.removed_at ? "Restore" : "Remove"}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           ) : !activityListError && <p className="mt-2 text-sm text-[#5c7471]">No reading activities assigned yet.</p>}
         </div>
@@ -1141,6 +1322,7 @@ export default function ClassroomDetailsPage() {
             <fieldset disabled={assigningActivity} aria-busy={assigningActivity} className="min-w-0">
             <RoomLanguageSelect
               id="activityLanguage"
+              disabled={Boolean(classroom.subject)}
               value={roomLanguage}
               onChange={handleRoomLanguageChange}
             />
@@ -1244,6 +1426,27 @@ export default function ClassroomDetailsPage() {
                 )}
               </div>
             )}
+
+            {/* Optional deadline: shown to students, late work is still accepted. */}
+            <div className="mt-6">
+              <label
+                htmlFor="activityDueAt"
+                className="mb-2 block text-sm font-bold text-[#173f3b]"
+              >
+                Due date and time (optional)
+              </label>
+              <input
+                id="activityDueAt"
+                type="datetime-local"
+                value={activityDueAt}
+                onChange={(event) => setActivityDueAt(event.target.value)}
+                aria-describedby="activityDueAtHelp"
+                className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-sm text-[#173f3b] outline-none transition focus:border-[#f7cf4a] sm:max-w-xs"
+              />
+              <p id="activityDueAtHelp" className="mt-1 text-xs text-[#6d8582]">
+                Leave empty for no deadline. Students see the due date, and they can still finish after it.
+              </p>
+            </div>
 
             {/* Students */}
             <div className="mt-6">

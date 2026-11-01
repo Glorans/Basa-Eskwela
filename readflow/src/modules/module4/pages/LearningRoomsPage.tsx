@@ -5,6 +5,7 @@ import {
   createClassroom,
   getTeacherClassrooms,
   type Classroom,
+  type ReadingLanguage,
 } from "../services/classroomService";
 
 export default function LearningRoomsPage() {
@@ -15,6 +16,7 @@ export default function LearningRoomsPage() {
   const [roomName, setRoomName] = useState("");
   const [section, setSection] = useState("");
   const [description, setDescription] = useState("");
+  const [subject, setSubject] = useState<ReadingLanguage | "">("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -59,6 +61,11 @@ export default function LearningRoomsPage() {
       return;
     }
 
+    if (!subject) {
+      setError("Please select English or Filipino.");
+      return;
+    }
+
     try {
       setCreating(true);
       setError("");
@@ -78,6 +85,7 @@ export default function LearningRoomsPage() {
 
       const newRoom = await createClassroom({
         teacherId: user.id,
+        subject,
         roomName,
         section,
         description,
@@ -88,10 +96,12 @@ export default function LearningRoomsPage() {
       setRoomName("");
       setSection("");
       setDescription("");
+      setSubject("");
       setShowCreateForm(false);
     } catch (err) {
       console.error("Failed to create learning room:", err);
-      setError("Unable to create learning room.");
+      setError(err instanceof Error && err.message.startsWith("Room subjects are not installed")
+        ? err.message : "Unable to create learning room.");
     } finally {
       setCreating(false);
     }
@@ -131,6 +141,7 @@ export default function LearningRoomsPage() {
               setRoomName("");
               setSection("");
               setDescription("");
+              setSubject("");
             }
             setShowCreateForm((current) => !current);
             setError("");
@@ -182,7 +193,7 @@ export default function LearningRoomsPage() {
                 type="text"
                 value={roomName}
                 onChange={(event) => setRoomName(event.target.value)}
-                placeholder="Example: Grade 5 Reading Class"
+                placeholder="e.g., Grade 5 Reading Group A"
                 required
                 className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-[#173f3b] outline-none transition placeholder:text-gray-400 focus:border-[#f7cf4a]"
               />
@@ -193,7 +204,7 @@ export default function LearningRoomsPage() {
                 htmlFor="section"
                 className="mb-2 block text-sm font-bold text-[#173f3b]"
               >
-                Section
+                Section (optional)
               </label>
 
               <input
@@ -201,10 +212,26 @@ export default function LearningRoomsPage() {
                 type="text"
                 value={section}
                 onChange={(event) => setSection(event.target.value)}
-                placeholder="Example: Grade 5 - Rizal"
+                placeholder="e.g., Rizal"
                 className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-[#173f3b] outline-none transition placeholder:text-gray-400 focus:border-[#f7cf4a]"
               />
             </div>
+          </div>
+
+          <div className="mt-5">
+            <label htmlFor="subject" className="mb-2 block text-sm font-bold text-[#173f3b]">
+              Subject <span className="text-[#e45f55]">*</span>
+            </label>
+            <select id="subject" value={subject} required disabled={creating} aria-describedby="subjectHelp"
+              onChange={(event) => setSubject(event.target.value as ReadingLanguage | "")}
+              className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-[#173f3b] outline-none transition focus:border-[#f7cf4a]">
+              <option value="">Choose a subject</option>
+              <option value="en">English</option>
+              <option value="fil">Filipino</option>
+            </select>
+            <p id="subjectHelp" className="mt-1 text-sm text-[#5c7471]">
+              Only reading materials matching this subject can be assigned to the room.
+            </p>
           </div>
 
           <div className="mt-5">
@@ -212,14 +239,14 @@ export default function LearningRoomsPage() {
               htmlFor="description"
               className="mb-2 block text-sm font-bold text-[#173f3b]"
             >
-              Description
+              Description (optional)
             </label>
 
             <textarea
               id="description"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="Add a short classroom description"
+              placeholder="e.g., Reading activities for Grade 5 students"
               rows={4}
               className="w-full resize-none rounded-xl border-2 border-transparent bg-white px-4 py-3 text-[#173f3b] outline-none transition placeholder:text-gray-400 focus:border-[#f7cf4a]"
             />

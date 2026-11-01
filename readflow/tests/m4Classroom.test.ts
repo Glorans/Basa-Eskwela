@@ -88,7 +88,26 @@ test("M4 classroom service preserves enrollment and assignment contracts", async
     });
     await t.test("assignment results combine saved assignment IDs with module metadata", async () => {
       respond([{ id: "assignment", module_id: "module", assigned_at: "2026-10-06" }], [{ id: "module", title: "Story", difficulty: "Easy" }]);
-      assert.deepEqual(await service.getAssignedModules("room"), [{ assignment_id: "assignment", module_id: "module", assigned_at: "2026-10-06", title: "Story", difficulty: "Easy" }]);
+      // Rows from a schema without the optional columns report no deadline and not removed.
+      assert.deepEqual(await service.getAssignedModules("room"), [{ assignment_id: "assignment", module_id: "module", assigned_at: "2026-10-06", title: "Story", difficulty: "Easy", due_at: null, removed_at: null }]);
+    });
+    await t.test("removed modules are hidden from students but listed for the teacher, with deadlines", async () => {
+      const rows = () => [
+        { id: "active", module_id: "module", assigned_at: "2026-10-06", due_at: "2026-11-20T08:45:00+00:00", removed_at: null },
+        { id: "removed", module_id: "module", assigned_at: "2026-10-05", due_at: null, removed_at: "2026-11-02T00:00:00+00:00" },
+      ];
+      const modules = [{ id: "module", title: "Story", difficulty: "Easy" }];
+      respond(rows(), modules);
+      const student = await service.getAssignedModules("room");
+      assert.deepEqual(student.map(row => [row.assignment_id, row.due_at]), [["active", "2026-11-20T08:45:00+00:00"]]);
+      respond(rows(), modules);
+      const teacher = await service.getAssignedModules("room", { includeRemoved: true });
+      assert.deepEqual(teacher.map(row => [row.assignment_id, row.removed_at]), [["active", null], ["removed", "2026-11-02T00:00:00+00:00"]]);
+    });
+    await t.test("a module deadline is sent only when the teacher sets one", async () => {
+      respond(null);
+      await service.assignModuleToRoom("room", "module", "teacher", "2026-11-20T08:45:00.000Z");
+      assert.deepEqual(calls.find((call) => call.operation === "insert")?.args, [{ room_id: "room", module_id: "module", assigned_by: "teacher", due_at: "2026-11-20T08:45:00.000Z" }]);
     });
     await t.test("deleted, unpublished, and unavailable module assignments are omitted", async () => {
       respond([

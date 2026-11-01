@@ -11,6 +11,7 @@ import {
 import {
   getPasswordValidationError,
   isValidSignupEmail,
+  normalizeAuthEmail,
 } from "../utils/authOnboarding.ts";
 
 export default function SignupPage() {
@@ -19,11 +20,13 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [showAccountHelp, setShowAccountHelp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+    setShowAccountHelp(false);
 
     if (!email.trim() || !password || !confirmPassword) {
       setError("Please fill in all fields.");
@@ -48,17 +51,18 @@ export default function SignupPage() {
 
     setSubmitting(true);
     try {
-      const { hasSession } = await register(email, password);
+      const { hasSession, confirmationSent } = await register(email, password);
 
       if (!hasSession) {
         navigate("/login", {
-          state: { signupPendingConfirmation: true },
+          state: { signupPendingConfirmation: true, confirmationSent, email: normalizeAuthEmail(email) },
         });
         return;
       }
 
       navigate("/select-role", { replace: true });
     } catch (signupError) {
+      setShowAccountHelp(signupError instanceof AuthServiceError && signupError.kind === "account_help");
       setError(
         signupError instanceof AuthServiceError
           ? signupError.message
@@ -116,6 +120,14 @@ export default function SignupPage() {
         />
 
         <AuthFormError message={error} />
+
+        {error && showAccountHelp && (
+          <p className="auth-footer-link">
+            <Link to="/login" className="auth-text-link">Log In</Link>
+            {" or "}
+            <Link to="/forgot-password" className="auth-text-link">Reset Password</Link>
+          </p>
+        )}
 
         <AuthSubmitButton
           label="Sign Up"

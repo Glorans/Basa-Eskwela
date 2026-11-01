@@ -8,6 +8,7 @@ import {
   getClassroomById,
   getAssignedModules,
   getStudentReadingActivities,
+  formatDueDateTime,
   type Classroom,
   type AssignedReadingModule,
   type StudentReadingActivity,
@@ -250,6 +251,18 @@ export default function StudentClassroomPage() {
                     day: "numeric",
                   })}
                 </p>
+
+                {module.due_at && (
+                  <>
+                    <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#6d8582]">
+                      Due
+                    </p>
+
+                    <p className="mt-1 text-sm font-bold text-[#173f3b]">
+                      {formatDueDateTime(module.due_at)}
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="mt-auto pt-5">
@@ -363,13 +376,7 @@ export default function StudentClassroomPage() {
                     </p>
 
                     <p className="mt-1 text-sm font-bold text-[#173f3b]">
-                      {new Date(
-                        activity.due_at
-                      ).toLocaleDateString(language === "fil" ? "fil-PH" : undefined, {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
+                      {formatDueDateTime(activity.due_at, language === "fil" ? "fil-PH" : undefined)}
                     </p>
                   </>
                 )}

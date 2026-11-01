@@ -737,6 +737,7 @@ export type Database = {
           id: string
           room_code: string
           room_name: string
+          subject?: "en" | "fil" | null
           section: string | null
           teacher_id: string
         }
@@ -746,6 +747,7 @@ export type Database = {
           id?: string
           room_code: string
           room_name: string
+          subject?: "en" | "fil" | null
           section?: string | null
           teacher_id: string
         }
@@ -755,6 +757,7 @@ export type Database = {
           id?: string
           room_code?: string
           room_name?: string
+          subject?: "en" | "fil" | null
           section?: string | null
           teacher_id?: string
         }

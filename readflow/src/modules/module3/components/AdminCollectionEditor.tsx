@@ -418,14 +418,16 @@ export default function AdminCollectionEditor({
         <p role="alert">{learningPathsError}</p>
       )}
 
-      {collection.publishedAt && (
-        <p>
-          Published content is preserved. Create a new draft
-          to prepare a revised collection.
+      {(collection.status !== "draft" || collection.publishedAt) && (
+        <p role="status">
+          This module has been published, so its passages and
+          questions are locked to protect learner results. Only
+          unpublished drafts can be edited or have questions
+          generated.
         </p>
       )}
 
-      {mode === "detail" && (
+      {mode === "detail" && collection.status === "draft" && !collection.publishedAt && (
         <Link to={`/m3/admin/modules/${collection.id}/edit`}>
           Edit passages and review questions
         </Link>

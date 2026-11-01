@@ -83,6 +83,7 @@ test("successful creation restores the updated list and prevents cancel during s
   const f = await fixture();
   f.button("+ Create Learning Room").props.onClick();
   f.field("roomName").props.onChange({ target: { value: "New class" } });
+  f.field("subject").props.onChange({ target: { value: "en" } });
   const pending = f.submit();
   assert.equal(f.button("Cancel").props.disabled, true);
   await pending;
@@ -98,7 +99,7 @@ test("validation and failed creation retain the form and entered fields", async 
   await f.submit();
   assert.match(JSON.stringify(f.render()), /Room name is required/);
   assert.equal(f.calls.length, 0);
-  for (const [id, value] of [["roomName", "My class"], ["section", "Section A"], ["description", "Reading"]]) {
+  for (const [id, value] of [["roomName", "My class"], ["section", "Section A"], ["description", "Reading"], ["subject", "fil"]]) {
     f.field(id).props.onChange({ target: { value } });
   }
   await f.submit();
@@ -107,4 +108,41 @@ test("validation and failed creation retain the form and entered fields", async 
   assert.equal(f.field("section").props.value, "Section A");
   assert.equal(f.field("description").props.value, "Reading");
   assert.doesNotMatch(JSON.stringify(f.render()), /Your Learning Rooms|No learning rooms yet/);
+});
+
+for (const subject of ["en", "fil"]) {
+  test(`room creation requires and saves the ${subject} subject`, async () => {
+    const f = await fixture();
+    f.button("+ Create Learning Room").props.onClick();
+    f.field("roomName").props.onChange({ target: { value: "New class" } });
+    assert.equal(f.field("subject").props.required, true);
+    await f.submit();
+    assert.equal(f.calls.length, 0);
+    assert.match(JSON.stringify(f.render()), /Please select English or Filipino/);
+    f.field("subject").props.onChange({ target: { value: subject } });
+    await f.submit();
+    assert.equal(f.calls[0].subject, subject);
+    f.button("+ Create Learning Room").props.onClick();
+    assert.equal(f.field("subject").props.value, "");
+  });
+}
+
+test("create form wording matches its validation: only room name and subject are required", async () => {
+  const f = await fixture();
+  f.button("+ Create Learning Room").props.onClick();
+  const text = JSON.stringify(f.render());
+  assert.equal(f.field("roomName").props.placeholder, "e.g., Grade 5 Reading Group A");
+  assert.equal(f.field("section").props.placeholder, "e.g., Rizal");
+  assert.equal(f.field("description").props.placeholder, "e.g., Reading activities for Grade 5 students");
+  assert.match(text, /Section \(optional\)/);
+  assert.match(text, /Description \(optional\)/);
+  assert.equal(f.field("roomName").props.required, true);
+  assert.equal(f.field("section").props.required, undefined);
+  assert.equal(f.field("description").props.required, undefined);
+  const subject = f.field("subject");
+  assert.equal(subject.props.required, true);
+  assert.equal(subject.props["aria-describedby"], "subjectHelp");
+  assert.deepEqual([subject.props.children].flat().map((o: any) => [o.props.value, o.props.children]),
+    [["", "Choose a subject"], ["en", "English"], ["fil", "Filipino"]]);
+  assert.equal(f.field("subjectHelp").props.children, "Only reading materials matching this subject can be assigned to the room.");
 });

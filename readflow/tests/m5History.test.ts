@@ -1,3 +1,4 @@
+import { activityLanguageState, getActivityText } from "../src/pages/reading-activity/activityLanguage.ts";
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -8,7 +9,7 @@ import { comprehensionTargetForReading } from "../src/modules/module5/services/c
 
 const require = createRequire(import.meta.url);
 const source = readFileSync(new URL('../src/modules/module5/pages/ReadingHistoryPage.tsx', import.meta.url), 'utf8');
-function fixture(role: string) {
+function fixture(role: string, language?: "en" | "fil") {
   const slots: any[] = [];
   let cursor = 0;
   let effects: (() => void)[] = [];
@@ -41,11 +42,12 @@ function fixture(role: string) {
   } }).outputText, { module, exports: module.exports, Error,
     require: (id: string) => id === 'react' ? react : id === 'react-router-dom' ? { Link: 'a' }
       : id.includes('oralReadingService') ? { getOwnOralReadingAttempts: () => { requestCount++; return new Promise((yes,no) => { resolve = yes; reject = no; }); } }
+      : id.includes('activityLanguage') ? { activityLanguageState, getActivityText }
       : id.includes('comprehensionNavigation') ? { comprehensionTargetForReading } : require(id),
   });
   function render(embedded = false) {
     cursor=0;
-    const tree=module.exports.default({role, embedded});
+    const tree=module.exports.default({role, embedded, language});
     const pending=effects; effects=[]; pending.forEach(fn=>fn());
     return tree;
   }
@@ -69,7 +71,7 @@ for (const role of ['student','general_user','admin']) {
     const text=JSON.stringify(tree);
     assert.match(text, /Seeds/);
     assert.match(text, /Filipino/);
-    assert.match(text, /"Reading accuracy: ","91.5"/);
+    assert.match(text, role === "admin" ? /"Reading accuracy: ","91.5"/ : /"Katumpakan ng pagbasa: ","91.5"/);
     assert.doesNotMatch(text, /Pronunciation/);
     const result=`${role==='admin'?'/admin':role==='student'?'/dashboard':'/m3/general'}/read-aloud/results/saved`;
     const links=[] as any[];
@@ -113,4 +115,41 @@ test('application source has no native browser popup calls', () => {
     }
   }
   scan(new URL('../src/',import.meta.url));
+});
+
+for (const language of ['en', 'fil'] as const) {
+  test(`embedded ${language} history localizes loading, errors and empty state without changing retries`, async () => {
+    const f = fixture('student', language);
+    const ui = getActivityText(language);
+    assert.ok(JSON.stringify(f.render(true)).includes(ui.t('Loading saved assessments…')));
+    f.reject(); await tick();
+    const tree = f.render(true);
+    assert.ok(JSON.stringify(tree).includes(language === 'fil' ? ui.t('Unable to load reading history.') : 'History is offline'));
+    assert.equal(find(tree, n => n.type === 'button').props.children, ui.t('Retry'));
+    find(tree, n => n.type === 'button').props.onClick(); f.render(true);
+    f.resolve([]); await tick();
+    assert.ok(JSON.stringify(f.render(true)).includes(ui.t('No saved reading attempts yet. Complete a read-aloud activity to see it here.')));
+    assert.equal(f.requests(), 2);
+  });
+}
+
+test('mixed history uses each saved language, never titles or the parent activity language', async () => {
+  const f = fixture('general_user', 'fil'); f.render(true);
+  f.resolve(['en', 'fil', undefined].map((language, index) => ({
+    id: String(index), moduleId: 'module', passageId: 'passage',
+    moduleTitle: language === 'en' ? 'Ang Kuwento' : 'An English Title',
+    passageTitle: 'Saved title unchanged', language, completedAt: '2026-10-08T10:00:00Z',
+    pronunciationAccuracy: 91.5, readingSpeedWpm: 75, detectedErrorCount: 2,
+  })));
+  await tick();
+  const rows = find(f.render(true), n => n.type === 'ul').props.children;
+  for (const [index, row] of rows.entries()) {
+    const expected = index === 1 ? 'fil' : 'en';
+    assert.equal(row.props.lang, expected);
+    assert.ok(JSON.stringify(row).includes(getActivityText(expected).t('Reading accuracy: ')));
+    assert.ok(JSON.stringify(row).includes('Saved title unchanged'));
+    const links = find(row, n => n.type === 'div').props.children.flat(Infinity).filter(Boolean);
+    assert.equal(links.length, 3);
+    assert.ok(links.every((link: any) => link.props.state.readingActivityLanguage === expected));
+  }
 });

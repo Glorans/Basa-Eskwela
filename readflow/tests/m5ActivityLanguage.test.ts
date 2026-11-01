@@ -58,3 +58,28 @@ test("activity JSX contains no untranslated literal instructions", () => {
     visit(ast);
   }
 });
+
+test("approved Filipino wording and editorial distinctions preserve English keys", () => {
+  const approved = {
+    "Recording Instructions": "Mga Panuto sa Pag-record",
+    "Your reading is saved.": "Nai-save na ang iyong pagbasa.",
+    "Words to Practice": "Mga Salitang Pagsasanayan",
+    "Listen to the word, say it slowly, and try reading it again.": "Pakinggan ang salita, bigkasin ito nang dahan-dahan, at subukang basahin ulit.",
+    "read differently": "Iba ang salitang naitala",
+    "Feedback & Practice": "Gabay at Pagsasanay",
+    "Comprehension Activity": "Gawain sa Pag-unawa sa Binasa",
+    "Why this answer fits: ": "Bakit ito ang tamang sagot: ",
+    "Answer explanation: ": "Paliwanag sa sagot: ",
+    "Finish Assessment": "Tapusin ang Gawain",
+    "Great work finishing the questions! Here are your results.": "Ang galing! Natapos mo ang mga tanong. Narito ang iyong mga resulta.",
+  } as const;
+  for (const key of Object.keys(approved) as Array<keyof typeof approved>) {
+    assert.equal(getActivityText('fil').t(key), approved[key]);
+    assert.equal(getActivityText('en').t(key), key);
+  }
+  for (const [key, value] of Object.entries({
+    "Start Recording": "Simulan ang Pagre-record", "Stop Recording": "Ihinto ang Pagre-record",
+    "Help me": "Tulungan ako", "Check answer": "Suriin ang sagot", "Next Question": "Susunod na Tanong",
+    "View Story": "Tingnan ang Kuwento", "Literal": "Literal", "Inferential": "Inferensyal", "Critical": "Kritikal",
+  })) assert.equal(getActivityText('fil').t(key as any), value);
+});

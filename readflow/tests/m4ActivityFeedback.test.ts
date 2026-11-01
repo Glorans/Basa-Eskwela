@@ -17,7 +17,7 @@ function loadService(supabase: unknown) {
   return module.exports;
 }
 
-async function fixture(listFailsAfterSave = false, questionSets: any[] = [], expectedSetId: string | null = null) {
+async function fixture(listFailsAfterSave = false, questionSets: any[] = [], expectedSetId: string | null = null, subject?: "en" | "fil") {
   const slots: any[] = [];
   let cursor = 0;
   let effects: (() => void)[] = [];
@@ -46,15 +46,25 @@ async function fixture(listFailsAfterSave = false, questionSets: any[] = [], exp
   let saved = false;
   const service = {
     getReadingActivityError: loadService({}).getReadingActivityError,
+    parseOptionalDueDate: loadService({}).parseOptionalDueDate,
+    formatDueDateTime: loadService({}).formatDueDateTime,
+    // Staging today: the optional due-date/unassign migrations are not applied.
+    supportsOptionalColumn: async () => false,
     getClassroomReadingActivities: async () => {
       if (saved && listFailsAfterSave) throw Error('offline');
       return saved ? [{ id: 'assignment', material_id: 'material', student_id: 'student', status: 'assigned',
         question_set_id: expectedSetId, question_set_name: expectedSetId ? 'Question Set 2' : null }] : [];
     },
-    getClassroomById: async () => ({ id: 'room', room_name: 'Readers', room_code: 'ABC' }),
+    getClassroomById: async () => ({ id: 'room', room_name: 'Readers', room_code: 'ABC', subject }),
     getRoomEnrollments: async () => [{ enrollment_id: 'enrollment', student_id: 'student', full_name: 'Reader', display_name: 'Reader' }],
-    getPublishedModules: async () => [], getAssignedModules: async () => [],
-    getUploadedReadingMaterials: async () => [{ id: 'material', title: 'Story', language: 'en' }],
+    getPublishedModules: async () => [
+      { id: 'english-module', title: 'Filipino title but English metadata', language: 'en' },
+      { id: 'filipino-module', title: 'English title but Filipino metadata', language: 'fil' },
+      { id: 'unknown-module', title: 'Unknown', language: null },
+    ], getAssignedModules: async () => [],
+    getUploadedReadingMaterials: async () => [{ id: 'material', title: 'Story', language: subject ?? 'en' },
+      { id: 'other-material', title: 'Other language', language: subject === 'fil' ? 'en' : 'fil' },
+      { id: 'unknown-material', title: 'Unknown', language: null }],
     assignReadingActivity: (...args: unknown[]) => {
       calls++;
       assert.equal(JSON.stringify(args), JSON.stringify(['room', 'material', ['student'], null, expectedSetId]));
@@ -331,4 +341,50 @@ test('assignment selector refreshes on focus and includes only fully reviewed se
   page.focus(); page.render();
   await new Promise(resolve => setImmediate(resolve));
   assert.doesNotMatch(page.text(), /Awaiting Approval|Still Unreviewed/);
+});
+
+for (const subject of ["en", "fil"] as const) {
+  test(`saved ${subject} subject locks both assignment pickers and filters by metadata`, async () => {
+    const page = await fixture(false, [], null, subject);
+    const picker = page.find(page.render(), node => node.props?.id === 'activityLanguage');
+    assert.equal(picker.props.value, subject);
+    assert.equal(picker.props.disabled, true);
+    picker.props.onChange(subject === 'en' ? 'fil' : 'en');
+    assert.equal(page.find(page.render(), node => node.props?.id === 'activityLanguage').props.value, subject);
+    const materialPicker = page.find(page.render(), node => node.props?.id === 'readingMaterial');
+    assert.match(JSON.stringify(materialPicker), /Story/);
+    assert.doesNotMatch(JSON.stringify(materialPicker), /Other language|Unknown/);
+    const section = page.find(page.render(), node => node.props?.unassignedModules);
+    assert.equal(section.props.subjectLocked, true);
+    assert.equal(section.props.unassignedModules.length, 1);
+    assert.equal(section.props.unassignedModules[0].language, subject);
+    const moduleTree = section.type({ ...section.props, showModuleForm: true });
+    assert.equal(page.find(moduleTree, node => node.props?.id === 'moduleLanguage').props.disabled, true);
+    const pending = page.submit(); page.save(); await pending;
+    assert.equal(page.calls(), 1);
+  });
+}
+
+test('optional activity due date: empty means no deadline, past or invalid values are rejected', () => {
+  const { parseOptionalDueDate } = loadService({});
+  const now = new Date('2026-11-02T08:00:00Z');
+  assert.equal(parseOptionalDueDate('', now), null);
+  assert.equal(parseOptionalDueDate('   ', now), null);
+  const due = parseOptionalDueDate('2026-11-09T15:30', now);
+  assert.equal(due, new Date('2026-11-09T15:30').toISOString());
+  assert.throws(() => parseOptionalDueDate('2026-10-01T09:00', now), /in the future/);
+  assert.throws(() => parseOptionalDueDate('not-a-date', now), /valid due date/);
+});
+
+test('a due date is saved with each new assignment and shown in the teacher list', async () => {
+  const f = serviceFixture();
+  await f.service.assignReadingActivity(roomId, materialId, [studentId, secondStudentId], '2026-11-09T07:30:00.000Z');
+  assert.deepEqual(f.rows.map((row: any) => row.due_at), ['2026-11-09T07:30:00.000Z', '2026-11-09T07:30:00.000Z']);
+  await assert.rejects(f.service.assignReadingActivity(roomId, materialId, [studentId], 'soon'), /valid due date/);
+  assert.match(source, /type="datetime-local"/);
+  assert.match(source, /Due date and time \(optional\)/);
+  assert.match(source, /activity\.due_at && <p className="text-sm">Due /);
+  // Deadlines never block late work: the student flow has no due-date gate.
+  const student = readFileSync(new URL('../src/modules/module4/pages/StudentClassroomPage.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(student, /due_at\s*[<>]|past due|overdue/i);
 });

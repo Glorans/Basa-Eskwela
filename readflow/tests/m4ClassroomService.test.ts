@@ -116,7 +116,7 @@ test("getTeacherClassrooms logs and rethrows the same query error", async () => 
 test("createClassroom draws 8-character codes from the 32-character alphabet without I, O, 0 or 1", async () => {
   pickIndexes([...Array(32).keys()]);
   respond(ok({ id: "taken" }), ok({ id: "taken" }), ok({ id: "taken" }), ok(null), ok(room));
-  await service.createClassroom({ teacherId: "user-1", roomName: "Readers", section: "", description: "" });
+  await service.createClassroom({ subject: "en", teacherId: "user-1", roomName: "Readers", section: "", description: "" });
   const checkedCodes = ops("eq").filter((args) => args[0] === "room_code").map((args) => args[1]);
   assert.deepEqual(checkedCodes, ["ABCDEFGH", "JKLMNPQR", "STUVWXYZ", "23456789"]);
   assert.deepEqual(ops("select").slice(0, 4), [["id"], ["id"], ["id"], ["id"]]);
@@ -126,10 +126,10 @@ test("createClassroom draws 8-character codes from the 32-character alphabet wit
 test("createClassroom inserts a trimmed payload with blank optional fields as null and returns the saved row", async () => {
   pickIndexes([0]);
   respond(ok(null), ok(room));
-  const saved = await service.createClassroom({ teacherId: "user-1", roomName: "  Readers  ", section: "   ", description: "  A class  " });
+  const saved = await service.createClassroom({ subject: "en", teacherId: "user-1", roomName: "  Readers  ", section: "   ", description: "  A class  " });
   assert.equal(saved, room);
   assert.deepEqual(tables(), ["rooms", "rooms"]);
-  assert.deepEqual(ops("insert"), [[{ teacher_id: "user-1", room_name: "Readers", section: null, description: "A class", room_code: "AAAAAAAA" }]]);
+  assert.deepEqual(ops("insert"), [[{ subject: "en", teacher_id: "user-1", room_name: "Readers", section: null, description: "A class", room_code: "AAAAAAAA" }]]);
   assert.equal(ops("single").length, 1);
 });
 
@@ -137,14 +137,14 @@ test("current behavior: createClassroom inserts a blank room name as an empty st
   // Odd: the service has no name validation; only the page blocks a blank name.
   pickIndexes([0]);
   respond(ok(null), ok(room));
-  await service.createClassroom({ teacherId: "user-1", roomName: "   ", section: "", description: "" });
+  await service.createClassroom({ subject: "en", teacherId: "user-1", roomName: "   ", section: "", description: "" });
   assert.equal((ops("insert")[0][0] as { room_name: string }).room_name, "");
 });
 
 test("createClassroom retries a taken code and inserts the next free one", async () => {
   pickIndexes([0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]);
   respond(ok({ id: "taken" }), ok(null), ok(room));
-  await service.createClassroom({ teacherId: "user-1", roomName: "Readers", section: "", description: "" });
+  await service.createClassroom({ subject: "en", teacherId: "user-1", roomName: "Readers", section: "", description: "" });
   assert.equal((ops("insert")[0][0] as { room_code: string }).room_code, "BBBBBBBB");
 });
 
@@ -152,7 +152,7 @@ test("createClassroom gives up after 10 taken codes without inserting", async ()
   pickIndexes([0]);
   respond(...Array.from({ length: 10 }, () => ok({ id: "taken" })));
   await assert.rejects(
-    service.createClassroom({ teacherId: "user-1", roomName: "Readers", section: "", description: "" }),
+    service.createClassroom({ subject: "en", teacherId: "user-1", roomName: "Readers", section: "", description: "" }),
     { message: "Unable to generate a unique classroom code. Please try again." },
   );
   assert.equal(ops("maybeSingle").length, 10);
@@ -163,7 +163,7 @@ test("createClassroom logs and rethrows a code-check error without inserting", a
   pickIndexes([0]);
   const error = { code: "PGRST301", message: "expired" };
   respond(fail(error));
-  await assert.rejects(service.createClassroom({ teacherId: "user-1", roomName: "Readers", section: "", description: "" }), sameError(error));
+  await assert.rejects(service.createClassroom({ subject: "en", teacherId: "user-1", roomName: "Readers", section: "", description: "" }), sameError(error));
   assert.deepEqual(logged, [["Error checking room code:", error]]);
   assert.deepEqual(ops("insert"), []);
 });
@@ -172,7 +172,7 @@ test("createClassroom logs and rethrows an insert error", async () => {
   pickIndexes([0]);
   const error = { code: "23505", message: "duplicate key" };
   respond(ok(null), fail(error));
-  await assert.rejects(service.createClassroom({ teacherId: "user-1", roomName: "Readers", section: "", description: "" }), sameError(error));
+  await assert.rejects(service.createClassroom({ subject: "en", teacherId: "user-1", roomName: "Readers", section: "", description: "" }), sameError(error));
   assert.deepEqual(logged, [["Error creating classroom:", error]]);
 });
 
@@ -340,4 +340,25 @@ test("getStudentAssignedReadingMaterial logs and rethrows the query error", asyn
   respond(fail(error));
   await assert.rejects(service.getStudentAssignedReadingMaterial("material-1"), sameError(error));
   assert.deepEqual(logged, [["Error fetching assigned reading material:", error]]);
+});
+
+test("new rooms persist Filipino and never silently retry without a subject", async () => {
+  respond(ok(null), ok({ ...room, subject: "fil" }));
+  const saved = await service.createClassroom({ subject: "fil", teacherId: "user-1", roomName: "Readers", section: "", description: "" });
+  assert.equal(saved.subject, "fil");
+  assert.equal((ops("insert")[0][0] as any).subject, "fil");
+  for (const code of ["42703", "PGRST204"]) {
+    calls.length = 0;
+    respond(ok(null), fail({ code, message: "subject missing" }));
+    await assert.rejects(service.createClassroom({ subject: "fil", teacherId: "user-1", roomName: "Readers", section: "", description: "" }), /Room subjects are not installed/);
+    assert.equal(ops("insert").length, 1);
+    assert.equal((ops("insert")[0][0] as any).subject, "fil");
+  }
+});
+test("invalid room subjects are rejected before any database call", async () => {
+  respond();
+  for (const subject of [undefined, "", "Spanish"]) {
+    await assert.rejects(service.createClassroom({ subject: subject as any, teacherId: "user-1", roomName: "Readers", section: "", description: "" }), /select English or Filipino/);
+  }
+  assert.deepEqual(calls, []);
 });

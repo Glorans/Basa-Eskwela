@@ -13,7 +13,9 @@ import {
 import { supabase } from "../lib/supabaseClient";
 
 import {
+  getClassroomLeaderboard,
   getWeeklyLeaderboard,
+  rankByXp,
 } from "../modules/module8/gamificationService";
 
 import type {
@@ -22,7 +24,6 @@ import type {
 
 import {
   getStudentClassrooms,
-  getRoomEnrollments,
 } from "../modules/module4/services/classroomService";
 
 import type {
@@ -60,18 +61,20 @@ export default function Leaderboard() {
   const [selectedClassroomId, setSelectedClassroomId] =
     useState("");
 
-  const [allLeaders, setAllLeaders] =
-    useState<LeaderboardEntry[]>([]);
-
   const [leaders, setLeaders] =
     useState<LeaderboardEntry[]>([]);
+
+  // False until m8_classroom_leaderboard is deployed: then the
+  // rankings combine every classroom the student joined.
+  const [roomScoped, setRoomScoped] = useState(true);
+
+  const [rankingsLoading, setRankingsLoading] =
+    useState(false);
 
   const [currentUserId, setCurrentUserId] =
     useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [rankingsLoading, setRankingsLoading] =
-    useState(false);
 
   const [error, setError] = useState("");
 
@@ -98,17 +101,13 @@ export default function Leaderboard() {
           throw new Error("Please log in first.");
         }
 
-        const [joinedRooms, leaderboardData] =
-          await Promise.all([
-            getStudentClassrooms(user.id),
-            getWeeklyLeaderboard(),
-          ]);
+        const joinedRooms =
+          await getStudentClassrooms(user.id);
 
         if (!active) return;
 
         setCurrentUserId(user.id);
         setClassrooms(joinedRooms);
-        setAllLeaders(leaderboardData);
 
         if (joinedRooms.length > 0) {
           setSelectedClassroomId(joinedRooms[0].id);
@@ -141,60 +140,37 @@ export default function Leaderboard() {
   }, []);
 
   // ========================================
-  // FILTER RANKINGS BY SELECTED CLASSROOM
+  // RANK CLASSMATES
   // ========================================
 
+  // Rankings come only from the security-definer M8 functions: students
+  // cannot read classmates' enrollments under RLS, so the page never
+  // filters by a room's enrollment list (that removed every classmate).
   useEffect(() => {
+    if (!selectedClassroomId) {
+      setLeaders([]);
+      return;
+    }
+
     let active = true;
 
-    async function loadClassroomRankings() {
-      if (!selectedClassroomId) {
-        setLeaders([]);
-        return;
-      }
-
+    async function loadRankings() {
       try {
         setRankingsLoading(true);
         setError("");
-        setLeaders([]);
 
-        const enrolledStudents =
-          await getRoomEnrollments(selectedClassroomId);
+        const roomRankings =
+          await getClassroomLeaderboard(selectedClassroomId);
+
+        // Fallback while the room-scoped function is not deployed.
+        const rankings = roomRankings ?? rankByXp(
+          await getWeeklyLeaderboard()
+        );
 
         if (!active) return;
 
-        const enrolledStudentIds = new Set(
-          enrolledStudents.map(
-            (student) => student.student_id
-          )
-        );
-
-        const studentNames = new Map(
-          enrolledStudents.map(
-            (student) => [
-              student.student_id,
-              student.display_name,
-            ] as const
-          )
-        );
-
-        const filteredLeaders = allLeaders
-          .filter((learner) =>
-            enrolledStudentIds.has(learner.user_id)
-          )
-          .map((learner) => ({
-            ...learner,
-            display_name:
-              studentNames.get(learner.user_id) ||
-              learner.display_name,
-          }))
-          .sort((a, b) => b.xp - a.xp)
-          .map((learner, index) => ({
-            ...learner,
-            rank: index + 1,
-          }));
-
-        setLeaders(filteredLeaders);
+        setRoomScoped(roomRankings !== null);
+        setLeaders(rankings);
       } catch (err) {
         if (!active) return;
 
@@ -203,6 +179,7 @@ export default function Leaderboard() {
           err
         );
 
+        setLeaders([]);
         setError(
           err instanceof Error
             ? err.message
@@ -215,12 +192,16 @@ export default function Leaderboard() {
       }
     }
 
-    void loadClassroomRankings();
+    void loadRankings();
 
     return () => {
       active = false;
     };
-  }, [selectedClassroomId, allLeaders]);
+  }, [selectedClassroomId]);
+
+  // Only the fallback combines classmates from every joined classroom.
+  const combinesClassrooms =
+    !roomScoped && classrooms.length > 1;
 
   const selectedClassroom = classrooms.find(
     (room) => room.id === selectedClassroomId
@@ -265,7 +246,7 @@ export default function Leaderboard() {
           onChange={(event) =>
             setSelectedClassroomId(event.target.value)
           }
-          disabled={loading || classrooms.length === 0}
+          disabled={loading || classrooms.length === 0 || combinesClassrooms}
           style={selectStyle}
         >
           {classrooms.length === 0 ? (
@@ -284,7 +265,13 @@ export default function Leaderboard() {
           )}
         </select>
 
-        {selectedClassroom && (
+        {combinesClassrooms ? (
+          <p style={selectedRoomStyle}>
+            Rankings include your classmates from
+            all {classrooms.length} classrooms you
+            joined.
+          </p>
+        ) : selectedClassroom && (
           <p style={selectedRoomStyle}>
             Showing rankings for{" "}
             <strong>
@@ -341,13 +328,14 @@ export default function Leaderboard() {
         ) : (
           <ol style={listStyle}>
             {leaders.map((learner, index) => {
-              const rank = index + 1;
+              // Equal XP shares a rank.
+              const rank = learner.rank;
 
               const isCurrentUser =
                 learner.user_id === currentUserId;
 
               const rankColor =
-                RANK_COLORS[index] ?? "#64748b";
+                RANK_COLORS[rank - 1] ?? "#64748b";
 
               const difficulty =
                 learner.difficulty || "Easy";
@@ -438,7 +426,7 @@ export default function Leaderboard() {
                     </div>
 
                     <small style={xpLabelStyle}>
-                      XP
+                      XP this week
                     </small>
                   </div>
                 </li>

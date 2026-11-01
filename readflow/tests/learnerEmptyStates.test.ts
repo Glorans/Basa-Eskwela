@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createRequire } from "node:module";
 import { createHookRuntime, findAll, loadComponentModule, textOf, tick } from "./helpers/hookRuntime.ts";
+import { rankByXp } from "../src/modules/module8/leaderboardRanking.ts";
 
 const require = createRequire(import.meta.url);
 async function mountLearnerPage(name: string, services: Record<string, unknown>, user: { id: string } | null = { id: "reader" }) {
@@ -40,46 +41,79 @@ test("Student leaderboard uses saved rankings and distinguishes empty classrooms
   assert.match(pageSource, /No leaderboard scores yet\./);
   assert.doesNotMatch(pageSource, /fullLeaderboard|classRanking/);
   assert.doesNotMatch(pageSource, MOCK_LEARNER_CONTENT);
+  // Students cannot read classmates' enrollments under RLS, so the page must not filter
+  // the classmate-scoped RPC through getRoomEnrollments (that hid every classmate).
+  assert.doesNotMatch(pageSource, /getRoomEnrollments/);
   assert.match(sidebarSource, /\/dashboard\/leaderboard/);
-  for (const scenario of ["no-classroom", "no-rankings", "ranked", "signed-out", "error"]) {
+  const you = { user_id: "reader", display_name: "You", xp: 37, rank: 0, difficulty: "Easy" };
+  const classmate = { user_id: "classmate", display_name: "Reader 1A2B3C", xp: 99, rank: 0, difficulty: "Medium" };
+  const otherRoommate = { user_id: "other", display_name: "Reader 9F8E7D", xp: 55, rank: 0, difficulty: "Easy" };
+  for (const scenario of ["no-classroom", "no-rankings", "ranked", "two-rooms", "tie", "fallback-two-rooms", "signed-out", "error"]) {
     const calls: string[] = [];
     const { initial, tree } = await mountLearnerPage("Leaderboard", {
+      rankByXp,
       getStudentClassrooms: async (id: string) => {
         assert.equal(id, "reader"); calls.push("rooms");
-        return scenario === "no-classroom" ? [] : [{ id: "room", room_name: "Reading class", section: null }];
+        if (scenario === "no-classroom") return [];
+        const rooms = [{ id: "room", room_name: "Reading class", section: null }];
+        return scenario.includes("two-rooms") ? [...rooms, { id: "room-2", room_name: "Filipino class", section: null }] : rooms;
       },
-      getWeeklyLeaderboard: async () => {
-        calls.push("rankings");
+      // m8_classroom_leaderboard: only the caller ("You") and classmates of THIS room (pseudonyms).
+      getClassroomLeaderboard: async (roomId: string) => {
+        calls.push(`room:${roomId}`);
         if (scenario === "error") throw new Error("Service unavailable");
-        return scenario === "no-rankings" ? [] : [
-          { user_id: "reader", display_name: "Saved reader", xp: 37, rank: 2, difficulty: "Easy" },
-          { user_id: "outsider", display_name: "Outside classroom", xp: 99, rank: 1, difficulty: "Easy" },
-        ];
+        if (scenario === "fallback-two-rooms") return null; // function not deployed yet
+        if (scenario === "no-rankings") return [];
+        if (scenario === "tie") return rankByXp([you, { ...classmate, xp: 37 }, { ...otherRoommate, xp: 12 }]);
+        return rankByXp(roomId === "room" ? [you, classmate] : [you, otherRoommate]);
       },
-      getRoomEnrollments: async (id: string) => {
-        assert.equal(id, "room"); calls.push("enrollments");
-        return [{ student_id: "reader", display_name: "Enrolled reader" }];
+      // m8_weekly_leaderboard: classmates from every joined room, combined.
+      getWeeklyLeaderboard: async () => {
+        calls.push("weekly");
+        return [you, classmate, otherRoommate];
       },
     }, scenario === "signed-out" ? null : { id: "reader" });
     const text = textOf(tree);
+    const rows = findAll(tree, node => node.type === "li").map(textOf);
     assert.match(initial, /Loading classroom rankings/);
     assert.doesNotMatch(text, MOCK_LEARNER_CONTENT);
     if (scenario === "no-classroom") {
       assert.match(text, /haven't joined a classroom/);
-      assert.ok(!calls.includes("enrollments"));
+      assert.deepEqual(calls, ["rooms"]);
     } else if (scenario === "no-rankings") {
       assert.match(text, /No leaderboard scores yet/);
-    } else if (scenario === "ranked") {
-      assert.match(text, /Enrolled reader/);
-      assert.match(text, /37/);
-      assert.doesNotMatch(text, /Outside classroom|No leaderboard scores/);
-      assert.equal(findAll(tree, node => node.type === "li").length, 1);
+    } else if (scenario === "ranked" || scenario === "two-rooms") {
+      // Only the selected room's classmates; no other room is mixed in.
+      assert.deepEqual(calls, ["rooms", "room:room"]);
+      assert.equal(rows.length, 2);
+      assert.match(rows[0], /^1.*Reader 1A2B3C.*99/);
+      assert.match(rows[1], /^2.*You.*37/);
+      assert.doesNotMatch(text, /Reader 9F8E7D|classmates from all/);
+      assert.match(text, /XP this week/);
+      assert.match(text, /Showing rankings for.*Reading class/);
+      const select = findAll(tree, node => node.type === "select")[0];
+      assert.equal(select.props.disabled, false, "students in several rooms can switch rooms");
+    } else if (scenario === "tie") {
+      assert.deepEqual(rows.map(row => row.match(/^\d+/)?.[0]), ["1", "1", "3"]);
+    } else if (scenario === "fallback-two-rooms") {
+      assert.deepEqual(calls, ["rooms", "room:room", "weekly"]);
+      assert.equal(rows.length, 3);
+      assert.match(text, /classmates from all 2 classrooms/);
+      assert.equal(findAll(tree, node => node.type === "select")[0].props.disabled, true);
     } else {
       assert.equal(findAll(tree, node => node.props?.role === "alert").length, 1);
       assert.doesNotMatch(text, /No leaderboard scores yet/);
       if (scenario === "signed-out") assert.deepEqual(calls, []);
     }
   }
+});
+
+test("equal weekly XP shares a rank without changing XP values", () => {
+  const ranked = rankByXp([
+    { id: "a", xp: 30, rank: 0 }, { id: "b", xp: 80, rank: 0 }, { id: "c", xp: 30, rank: 0 }, { id: "d", xp: 0, rank: 0 },
+  ]);
+  assert.deepEqual(ranked.map(entry => [entry.id, entry.xp, entry.rank]), [["b", 80, 1], ["a", 30, 2], ["c", 30, 2], ["d", 0, 4]]);
+  assert.deepEqual(rankByXp([]), []);
 });
 
 test("Student badges distinguish empty catalogs, locked badges and earned badges", async () => {

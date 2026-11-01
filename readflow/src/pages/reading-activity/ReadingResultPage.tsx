@@ -462,7 +462,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           >
             {/* Fetch on first opening, then retain records and pending requests while hidden.
                 A different user, role or result gets a fresh, isolated history instance. */}
-            {historyOpened && <ReadingHistoryPage role={role} embedded key={`${profile?.id}:${role}:${attempt.id}`} />}
+            {historyOpened && <ReadingHistoryPage role={role} language={language} embedded key={`${profile?.id}:${role}:${attempt.id}`} />}
           </M5Modal>
 
           {comprehensionUnavailable && (

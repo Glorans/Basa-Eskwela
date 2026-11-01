@@ -2,6 +2,7 @@
 import { supabase } from "../../lib/supabaseClient";
 import { toLearnerProgress } from "./learnerProgress";
 import type { LearnerProgressRow } from "./learnerProgress";
+import { rankByXp } from "./leaderboardRanking";
 
 export type Difficulty = "Easy" | "Medium" | "Hard";
 
@@ -168,6 +169,38 @@ export async function getWeeklyLeaderboard(): Promise<
       difficulty: entry.difficulty ?? "Easy",
       rank: index + 1,
     })
+  );
+}
+
+export { rankByXp };
+
+/**
+ * Weekly rankings for one Learning Room (m8_classroom_leaderboard, proposed migration).
+ * Returns null while that function is not deployed, so callers can fall back to
+ * m8_weekly_leaderboard (all of the student's classrooms combined).
+ */
+export async function getClassroomLeaderboard(
+  roomId: string
+): Promise<LeaderboardEntry[] | null> {
+  const { data, error } = await db.rpc("m8_classroom_leaderboard", {
+    p_room_id: roomId,
+  });
+
+  if (error) {
+    if (["PGRST202", "42883"].includes(String(error.code))) return null;
+    throw error;
+  }
+
+  return rankByXp(
+    (data ?? []).map(
+      (entry: { user_id: string; display_name?: string; xp?: number; difficulty?: string }) => ({
+        user_id: entry.user_id,
+        display_name: entry.display_name ?? "Student",
+        xp: Number(entry.xp ?? 0),
+        difficulty: entry.difficulty ?? "Easy",
+        rank: 0,
+      })
+    )
   );
 }
 

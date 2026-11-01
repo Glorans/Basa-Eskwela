@@ -92,9 +92,10 @@ function LegacyModuleDetailPage({ role }: ModuleDetailPageProps) {
         description="Reading module stored in the shared Basa Eskwela library."
         actions={
           role === "admin" ? (
-            <Link className="m3-button m3-button--coral" to={`/m3/admin/modules/${module.id}/edit`}>
+            // Only never-published drafts can be edited or have questions generated.
+            module.status === "draft" && !module.publishedAt ? <Link className="m3-button m3-button--coral" to={`/m3/admin/modules/${module.id}/edit`}>
               <Pencil size={17} /> Edit Module
-            </Link>
+            </Link> : undefined
           ) : role === "general_user" ? (
             <Link className="m3-button m3-button--coral" to={`/m3/general/modules/${module.id}/read-aloud`}>
               <Mic size={17} /> Start Read-Aloud

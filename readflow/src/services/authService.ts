@@ -1,11 +1,39 @@
 import { supabase } from "../lib/supabaseClient.ts";
 import { normalizeAuthEmail } from "../modules/module1/utils/authOnboarding.ts";
 
+/** account_help: the page should offer Log In and Forgot Password as next steps. */
+export type AuthServiceErrorKind = "account_help";
+
 export class AuthServiceError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly kind?: AuthServiceErrorKind) {
     super(message);
     this.name = "AuthServiceError";
   }
+}
+
+// Sign-up failures get clear next steps instead of Supabase's internal text. The wording never
+// confirms that an account exists; with email confirmation on, Supabase may hide that anyway.
+function signupError(error: { message: string; code?: string; status?: number }) {
+  const code = error.code ?? "";
+  if (["user_already_exists", "email_exists", "identity_already_exists"].includes(code)
+    || /already (registered|exists)/i.test(error.message)) {
+    return new AuthServiceError(
+      "We couldn't create a new account with this email. If you already have a Basa Eskwela account, log in or reset your password.",
+      "account_help",
+    );
+  }
+  if (code.startsWith("over_") || error.status === 429) {
+    return new AuthServiceError(
+      "Too many sign-up attempts right now. Please wait a few minutes and try again. If you already have an account, log in or reset your password.",
+      "account_help",
+    );
+  }
+  if (code === "weak_password") return new AuthServiceError("Choose a stronger password and try again.");
+  if (code === "email_address_invalid") return new AuthServiceError("Enter a valid email address.");
+  if (code === "signup_disabled" || code === "email_provider_disabled") {
+    return new AuthServiceError("New accounts can't be created right now. Please try again later.");
+  }
+  return new AuthServiceError("We couldn't create your account right now. Please try again.");
 }
 
 function throwIfAuthError(error: { message: string } | null) {
@@ -20,8 +48,42 @@ export async function register(email: string, password: string) {
     password,
   });
 
-  throwIfAuthError(error);
-  return { hasSession: Boolean(data.session) };
+  if (error) throw signupError(error);
+  // A new identity with a recorded send time is the only reliable sign that a confirmation email
+  // went out; Supabase hides existing accounts behind an empty identity list.
+  const identities = data.user?.identities ?? [];
+  return {
+    hasSession: Boolean(data.session),
+    confirmationSent: identities.length > 0 && Boolean(data.user?.confirmation_sent_at),
+  };
+}
+
+export type ResendConfirmationErrorKind = "rate_limited" | "network" | "unavailable";
+
+export class ResendConfirmationError extends Error {
+  constructor(readonly kind: ResendConfirmationErrorKind) {
+    super(kind);
+    this.name = "ResendConfirmationError";
+  }
+}
+
+/**
+ * Asks Supabase to send a new sign-up confirmation email. Resolves the same way whether or not
+ * the address has an account, so the result never reveals account existence.
+ */
+export async function resendSignupConfirmation(email: string) {
+  const { error } = await supabase.auth.resend({ type: "signup", email: normalizeAuthEmail(email) });
+  if (!error) return;
+  if ((error.code ?? "").startsWith("over_") || error.status === 429) throw new ResendConfirmationError("rate_limited");
+  if (!error.status || error.name === "AuthRetryableFetchError") throw new ResendConfirmationError("network");
+  if (error.status >= 500) throw new ResendConfirmationError("unavailable");
+  // Other client errors (for example, an already confirmed address) stay neutral on purpose.
+}
+
+/** True only when Supabase holds a session whose user has a confirmed email address. */
+export async function hasConfirmedEmailSession() {
+  const { data, error } = await supabase.auth.getSession();
+  return !error && Boolean(data.session?.user?.email_confirmed_at);
 }
 
 export function login(email: string, password: string) {

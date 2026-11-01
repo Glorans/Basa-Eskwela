@@ -7,8 +7,10 @@ import { login } from "../../../services/authService.ts";
 
 export {
   getLoginErrorMessage,
+  isEmailNotConfirmedError,
   LoginFlowError,
 } from "./authLoginFlow.ts";
+export { hasConfirmedEmailSession } from "../../../services/authService.ts";
 
 export function loginAndResolveDestination(email: string, password: string) {
   return runLoginFlow(email, password, {

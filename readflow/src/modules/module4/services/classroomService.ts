@@ -5,6 +5,74 @@ import { normalizeLanguageAlias } from "../../module3/services/moduleModel.ts";
 /** Reading language of a module or material; null when it is missing or unsupported. */
 export type ReadingLanguage = "en" | "fil";
 
+// ==========================
+// OPTIONAL ASSIGNMENT COLUMNS
+// ==========================
+// room_modules.due_at and removed_at/removed_by come from the proposed migrations
+// m4_module_due_dates_PROPOSED.sql and m4_unassign_PROPOSED.sql. Until they are applied,
+// assignment rows are read with "*" and these columns are simply absent, so nothing breaks.
+
+function optionalColumn(row: object, column: "due_at" | "removed_at"): string | null {
+  const value = (row as Record<string, unknown>)[column];
+  return typeof value === "string" ? value : null;
+}
+
+const MISSING_SCHEMA_CODES = ["42703", "42883", "PGRST202", "PGRST204"];
+const columnSupport = new Map<string, Promise<boolean>>();
+
+/** True when the optional migration that adds this column has been applied. */
+export function supportsOptionalColumn(
+  table: "room_modules" | "reading_activity_assignments",
+  column: "due_at" | "removed_at"
+): Promise<boolean> {
+  const key = `${table}.${column}`;
+  let check = columnSupport.get(key);
+  if (!check) {
+    // limit(0) reads no rows; PostgREST still rejects an unknown column.
+    check = Promise.resolve(supabase.from(table).select(column).limit(0)).then(({ error }) => {
+      if (!error) return true;
+      columnSupport.delete(key);
+      if (MISSING_SCHEMA_CODES.includes(String(error.code))) return false;
+      throw error;
+    });
+    columnSupport.set(key, check);
+  }
+  return check;
+}
+
+export class AssignmentRemovalError extends Error {}
+
+function assignmentRemovalError(error: { code?: string }, item: "activity" | "module"): AssignmentRemovalError {
+  if (MISSING_SCHEMA_CODES.includes(String(error.code))) {
+    return new AssignmentRemovalError(`Removing ${item}s is not available yet. Please contact your administrator.`);
+  }
+  if (error.code === "42501") {
+    return new AssignmentRemovalError(`Only the teacher who owns this classroom can change this ${item}.`);
+  }
+  return new AssignmentRemovalError(`Unable to update this ${item}. Please try again.`);
+}
+
+/**
+ * Soft-removes (or restores) one student's reading activity. Nothing is deleted:
+ * saved readings, comprehension results, history, analytics and XP stay as they are.
+ */
+export async function setReadingActivityRemoved(assignmentId: string, removed: boolean): Promise<boolean> {
+  const { data, error } = await supabase.rpc("m4_unassign_activity" as never, {
+    p_assignment_id: assignmentId, p_restore: !removed,
+  } as never);
+  if (error) throw assignmentRemovalError(error, "activity");
+  return data === true;
+}
+
+/** Soft-removes (or restores) a module assignment for the whole classroom. Nothing is deleted. */
+export async function setRoomModuleRemoved(roomModuleId: string, removed: boolean): Promise<boolean> {
+  const { data, error } = await supabase.rpc("m4_unassign_module" as never, {
+    p_room_module_id: roomModuleId, p_restore: !removed,
+  } as never);
+  if (error) throw assignmentRemovalError(error, "module");
+  return data === true;
+}
+
 export type Classroom = {
   id: string;
   teacher_id: string;
@@ -13,10 +81,13 @@ export type Classroom = {
   room_code: string;
   description: string | null;
   created_at: string;
+  /** Absent/null for rooms created before the proposed subject migration. */
+  subject?: ReadingLanguage | null;
 };
 
 export type CreateClassroomInput = {
   teacherId: string;
+  subject: ReadingLanguage;
   roomName: string;
   section: string;
   description: string;
@@ -92,12 +163,14 @@ async function generateUniqueRoomCode(): Promise<string> {
 export async function createClassroom(
   input: CreateClassroomInput
 ): Promise<Classroom> {
+  if (!["en", "fil"].includes(input.subject)) throw new Error("Please select English or Filipino.");
   const roomCode = await generateUniqueRoomCode();
 
   const { data, error } = await supabase
     .from("rooms")
     .insert({
       teacher_id: input.teacherId,
+      subject: input.subject,
       room_name: input.roomName.trim(),
       section: input.section.trim() || null,
       description: input.description.trim() || null,
@@ -108,6 +181,9 @@ export async function createClassroom(
 
   if (error) {
     console.error("Error creating classroom:", error);
+    if (["42703", "PGRST204"].includes(error.code)) {
+      throw new Error("Room subjects are not installed in this database yet. The proposed room-subject migration must be reviewed and applied before creating a subject-based room.");
+    }
     throw error;
   }
 
@@ -269,6 +345,10 @@ export type AssignedReadingModule = {
   title: string;
   difficulty: string | null;
   assigned_at: string;
+  /** Optional deadline; null when none was set (or before the due-date migration). */
+  due_at: string | null;
+  /** Set when the teacher removed the module; removed modules are hidden from students. */
+  removed_at: string | null;
 };
 
 // Get published modules that teachers can assign
@@ -308,15 +388,21 @@ export async function getPublishedModules(): Promise<ReadingModule[]> {
 export async function assignModuleToRoom(
   roomId: string,
   moduleId: string,
-  teacherId: string
+  teacherId: string,
+  dueAt: string | null = null
 ): Promise<void> {
+  if (dueAt !== null && Number.isNaN(Date.parse(dueAt))) {
+    throw new ReadingActivityValidationError("Enter a valid due date and time, or leave it empty.");
+  }
   const { error } = await supabase
     .from("room_modules")
     .insert({
       room_id: roomId,
       module_id: moduleId,
       assigned_by: teacherId,
-    });
+      // Sent only when set, so assigning without a deadline works before the migration.
+      ...(dueAt !== null ? { due_at: dueAt } : {}),
+    } as never);
 
   if (error) {
     console.error("Error assigning module to classroom:", error);
@@ -324,16 +410,21 @@ export async function assignModuleToRoom(
   }
 }
 
-// Get modules already assigned to a classroom
+// Get modules assigned to a classroom. Removed modules are left out unless the
+// classroom teacher asks for them (to show and restore them).
 export async function getAssignedModules(
-  roomId: string
+  roomId: string,
+  { includeRemoved = false }: { includeRemoved?: boolean } = {}
 ): Promise<AssignedReadingModule[]> {
-  const { data: assignments, error: assignmentError } =
+  const { data: rows, error: assignmentError } =
     await supabase
       .from("room_modules")
-      .select("id, module_id, assigned_at")
+      .select("*")
       .eq("room_id", roomId)
       .order("assigned_at", { ascending: false });
+  const assignments = (rows ?? []).filter(
+    (row) => includeRemoved || !optionalColumn(row, "removed_at")
+  );
 
   if (assignmentError) {
     console.error(
@@ -378,6 +469,8 @@ export async function getAssignedModules(
       title: module?.title ?? "Unknown Module",
       difficulty: module?.difficulty ?? null,
       assigned_at: assignment.assigned_at,
+      due_at: optionalColumn(assignment, "due_at"),
+      removed_at: optionalColumn(assignment, "removed_at"),
     };
   });
 }
@@ -480,6 +573,8 @@ export type ReadingActivityAssignment = {
   /** NULL means read-aloud only (or an assignment made before question sets). */
   question_set_id: string | null;
   question_set_name: string | null;
+  /** Set when the teacher removed the activity; null otherwise (or before the migration). */
+  removed_at: string | null;
 };
 
 export function getReadingActivityError(error: unknown): string {
@@ -502,7 +597,7 @@ class ReadingActivityValidationError extends Error {}
 
 export async function getClassroomReadingActivities(roomId: string): Promise<ReadingActivityAssignment[]> {
   const { data, error } = await supabase.from("reading_activity_assignments")
-    .select("id, room_id, material_id, student_id, assigned_by, assigned_at, due_at, status, question_set_id")
+    .select("*")
     .eq("room_id", roomId).order("assigned_at", { ascending: false });
   if (error) throw error;
   const rows = data ?? [];
@@ -518,7 +613,29 @@ export async function getClassroomReadingActivities(roomId: string): Promise<Rea
     ...row,
     question_set_id: row.question_set_id ?? null,
     question_set_name: row.question_set_id ? names.get(row.question_set_id) ?? null : null,
+    removed_at: optionalColumn(row, "removed_at"),
   })) as ReadingActivityAssignment[];
+}
+
+/**
+ * Converts the optional date-time field (local time, "YYYY-MM-DDTHH:mm") to an ISO timestamp.
+ * Empty means no deadline. Deadlines are informational: late work is never blocked.
+ */
+export function parseOptionalDueDate(value: string, now: Date = new Date()): string | null {
+  if (!value.trim()) return null;
+  const due = new Date(value);
+  if (Number.isNaN(due.getTime())) {
+    throw new ReadingActivityValidationError("Enter a valid due date and time, or leave it empty.");
+  }
+  if (due.getTime() <= now.getTime()) {
+    throw new ReadingActivityValidationError("Choose a due date and time in the future, or leave it empty.");
+  }
+  return due.toISOString();
+}
+
+/** Due date and time in the viewer's time zone, e.g. "Nov 9, 2026, 3:30 PM". */
+export function formatDueDateTime(dueAt: string, locale?: string): string {
+  return new Date(dueAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
 }
 
 export async function assignReadingActivity(
@@ -532,6 +649,7 @@ export async function assignReadingActivity(
   if (!uuid.test(roomId)) throw new ReadingActivityValidationError("The classroom is invalid. Reopen it from Learning Rooms.");
   if (!uuid.test(materialId)) throw new ReadingActivityValidationError("Please select a valid reading material.");
   if (questionSetId !== null && !uuid.test(questionSetId)) throw new ReadingActivityValidationError("Please select a valid question set, or choose read-aloud only.");
+  if (dueAt !== null && Number.isNaN(Date.parse(dueAt))) throw new ReadingActivityValidationError("Enter a valid due date and time, or leave it empty.");
   const uniqueStudentIds = [...new Set(studentIds)];
   if (!uniqueStudentIds.length || uniqueStudentIds.some(id => !uuid.test(id))) {
     throw new ReadingActivityValidationError("Please select at least one valid enrolled student.");
@@ -546,7 +664,7 @@ export async function assignReadingActivity(
     supabase.from("rooms").select("id, teacher_id").eq("id", roomId).maybeSingle(),
     supabase.from("uploaded_materials").select("id, uploaded_by, extraction_status").eq("id", materialId).maybeSingle(),
     supabase.from("enrollments").select("student_id").eq("room_id", roomId).in("student_id", uniqueStudentIds),
-    supabase.from("reading_activity_assignments").select("student_id").eq("room_id", roomId).eq("material_id", materialId).in("student_id", uniqueStudentIds),
+    supabase.from("reading_activity_assignments").select("*").eq("room_id", roomId).eq("material_id", materialId).in("student_id", uniqueStudentIds),
   ]);
   for (const result of [room, material, enrollments, existing]) {
     if (result.error) throw result.error;
@@ -562,6 +680,9 @@ export async function assignReadingActivity(
   }
   const unassignedStudentIds = uniqueStudentIds.filter(id => !existing.data?.some(row => row.student_id === id));
   if (!unassignedStudentIds.length) {
+    if (existing.data?.some(row => optionalColumn(row, "removed_at"))) {
+      throw new ReadingActivityValidationError("This reading activity was removed earlier for one or more selected students. Use Restore in the activity list to assign it again.");
+    }
     throw new ReadingActivityValidationError(getReadingActivityError({ code: "23505" }));
   }
 
@@ -606,15 +727,15 @@ export async function getStudentReadingActivities(
 
   // Get only the logged-in student's assignments
   // for the selected classroom.
-  const { data: assignments, error: assignmentError } =
+  const { data: rows, error: assignmentError } =
     await supabase
       .from("reading_activity_assignments")
-      .select(
-        "id, material_id, assigned_at, due_at, status, question_set_id"
-      )
+      .select("*")
       .eq("room_id", roomId)
       .eq("student_id", user.id)
       .order("assigned_at", { ascending: false });
+  // Activities the teacher removed are no longer active; their results stay in history.
+  const assignments = (rows ?? []).filter((row) => !optionalColumn(row, "removed_at"));
 
   if (assignmentError) {
     console.error(

@@ -5,7 +5,7 @@ const LOGIN_FLOW_ERROR_MESSAGE =
 
 interface PasswordSignInResult {
   data: { user: { id: string } | null };
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
 }
 
 export interface LoginFlowDependencies {
@@ -15,10 +15,19 @@ export interface LoginFlowDependencies {
 }
 
 export class LoginFlowError extends Error {
-  constructor(message: string) {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
     super(message);
     this.name = "LoginFlowError";
+    this.code = code;
   }
+}
+
+/** Supabase reports this only after the password matched, so it reveals nothing new. */
+export function isEmailNotConfirmedError(error: unknown) {
+  return error instanceof LoginFlowError
+    && (error.code === "email_not_confirmed" || /^email not confirmed$/i.test(error.message));
 }
 
 export async function runLoginFlow(
@@ -35,7 +44,7 @@ export async function runLoginFlow(
   }
 
   if (signInResult.error) {
-    throw new LoginFlowError(signInResult.error.message);
+    throw new LoginFlowError(signInResult.error.message, signInResult.error.code);
   }
 
   if (!signInResult.data.user) {

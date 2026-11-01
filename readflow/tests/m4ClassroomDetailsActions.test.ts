@@ -32,6 +32,9 @@ type Options = {
   assignError?: unknown;
   confirm?: boolean;
   user?: { id: string } | null;
+  /** True once the proposed due-date and unassign migrations are applied. */
+  optionalColumns?: boolean;
+  activities?: any[];
 };
 
 /** Replaces function-type elements with what they render, recursively. */
@@ -56,8 +59,21 @@ async function mount(options: Options = {}) {
       calls.push(["getAssignedModules", roomId]);
       return assigned.map((module) => ({ ...module }));
     },
-    getUploadedReadingMaterials: async () => [],
-    getClassroomReadingActivities: async () => [],
+    getUploadedReadingMaterials: async () => [{ id: "mat-1", title: "Kite story", language: "en" }],
+    getClassroomReadingActivities: async () => (options.activities ?? []).map((activity) => ({ ...activity })),
+    supportsOptionalColumn: async () => options.optionalColumns ?? false,
+    parseOptionalDueDate: (value: string) => (value ? new Date(value).toISOString() : null),
+    formatDueDateTime: (value: string) => `[${value}]`,
+    setRoomModuleRemoved: async (id: string, removed: boolean) => {
+      calls.push(["setRoomModuleRemoved", id, removed]);
+      for (const module of assigned) if (module.assignment_id === id) module.removed_at = removed ? "2026-11-02T00:00:00Z" : null;
+      return true;
+    },
+    setReadingActivityRemoved: async (id: string, removed: boolean) => {
+      calls.push(["setReadingActivityRemoved", id, removed]);
+      for (const activity of options.activities ?? []) if (activity.id === id) activity.removed_at = removed ? "2026-11-02T00:00:00Z" : null;
+      return true;
+    },
     getReadingActivityError: () => assert.fail("getReadingActivityError is not under test"),
     assignReadingActivity: async () => assert.fail("assignReadingActivity is not under test"),
     updateClassroom: async (roomId: string, input: { roomName: string; section: string; description: string }) => {
@@ -69,11 +85,12 @@ async function mount(options: Options = {}) {
       calls.push(["removeEnrolledStudent", enrollmentId]);
       if (options.removeError !== undefined) throw options.removeError;
     },
-    assignModuleToRoom: async (roomId: string, moduleId: string, teacherId: string) => {
-      calls.push(["assignModuleToRoom", roomId, moduleId, teacherId]);
+    assignModuleToRoom: async (roomId: string, moduleId: string, teacherId: string, dueAt: string | null = null) => {
+      calls.push(dueAt === null ? ["assignModuleToRoom", roomId, moduleId, teacherId] : ["assignModuleToRoom", roomId, moduleId, teacherId, dueAt]);
       if (options.assignError !== undefined) throw options.assignError;
       const module = modules.find((item) => item.id === moduleId)!;
-      assigned.push({ assignment_id: "assignment-1", module_id: moduleId, title: module.title, difficulty: module.difficulty, assigned_at: "2026-10-18" });
+      assigned.push({ assignment_id: `assignment-${assigned.length + 1}`, module_id: moduleId, title: module.title,
+        difficulty: module.difficulty, assigned_at: "2026-10-18", due_at: dueAt, removed_at: null });
     },
   };
   const supabase = {
@@ -127,6 +144,15 @@ async function mount(options: Options = {}) {
     /** Submits the form that contains the element with this id. */
     submit: (fieldId: string) => findAll(view(), (node) => node.type === "form"
       && findAll(node, (child) => child.props?.id === fieldId).length > 0)[0].props.onSubmit({ preventDefault() {} }),
+    /** Clicks the button with this label in the deepest element that shows this text. */
+    clickFor: (text: string, label: string) => {
+      const owners = findAll(view(), (node) => textOf(node).includes(text)
+        && findAll(node, (child) => child.type === "button" && textOf(child) === label).length === 1);
+      assert.ok(owners.length, `no "${label}" button for "${text}"`);
+      findAll(owners.at(-1), (node) => node.type === "button" && textOf(node) === label)[0].props.onClick();
+      // The handler confirms, saves and reloads asynchronously.
+      return (async () => { for (let i = 0; i < 6; i++) await tick(); })();
+    },
     /** Clicks Remove in the deepest element that shows this student's name. */
     remove: (name: string) => {
       const rows = findAll(view(), (node) => node.type === "div" && textOf(node).includes(name)
@@ -307,4 +333,84 @@ test("a module outside the classroom language is not saved", async () => {
   await page.submit("readingModule");
   assert.equal(page.alert(), "Please select a reading module in the classroom language.");
   assert.deepEqual(page.calls, []);
+});
+
+const completedActivity = () => [{ id: "act-1", material_id: "mat-1", student_id: "stu-1", status: "completed",
+  question_set_id: null, question_set_name: null, due_at: null, removed_at: null }];
+
+async function assignFables(page: Awaited<ReturnType<typeof mount>>, dueAt?: string) {
+  page.click("Assign Module");
+  page.change("moduleLanguage", "en");
+  page.change("readingModule", "mod-1");
+  if (dueAt !== undefined) page.change("moduleDueAt", dueAt);
+  await page.submit("readingModule");
+}
+
+test("before the optional migrations, module deadlines and Remove/Restore stay hidden", async () => {
+  const page = await mount({ activities: completedActivity() });
+  page.click("Assign Module");
+  assert.equal(page.byId("moduleDueAt"), undefined);
+  page.click("Cancel");
+  await assignFables(page);
+  // No due_at is sent, so the insert also works on a schema without the column.
+  assert.deepEqual(page.calls[1], ["assignModuleToRoom", "room", "mod-1", "teacher-1"]);
+  assert.throws(() => page.clickFor("Fables", "Remove"));
+  assert.throws(() => page.clickFor("Kite story", "Remove"));
+});
+
+test("an optional module deadline is saved and shown; empty means no deadline", async () => {
+  const page = await mount({ optionalColumns: true });
+  await assignFables(page, "2026-11-20T16:45");
+  const due = new Date("2026-11-20T16:45").toISOString();
+  assert.deepEqual(page.calls[1], ["assignModuleToRoom", "room", "mod-1", "teacher-1", due]);
+  assert.ok(page.text().includes(`Due [${due}]`));
+  page.click("Assign Module");
+  assert.equal(page.byId("moduleDueAt").props.value, "", "the field resets after saving");
+  page.change("moduleLanguage", "en");
+  page.change("readingModule", "mod-2");
+  await page.submit("readingModule");
+  assert.deepEqual(page.calls.filter((call) => call[0] === "assignModuleToRoom").at(-1), ["assignModuleToRoom", "room", "mod-2", "teacher-1"]);
+});
+
+test("declining the module removal confirmation changes nothing", async () => {
+  const page = await mount({ optionalColumns: true, confirm: false });
+  await assignFables(page);
+  page.calls.length = 0;
+  await page.clickFor("Fables", "Remove");
+  assert.match(page.prompts.at(-1)!, /Remove "Fables" from this classroom\?.*saved results, reading history and XP are kept/);
+  assert.deepEqual(page.calls, []);
+  assert.doesNotMatch(page.text(), /Removed · hidden/);
+});
+
+test("a confirmed module removal is soft, updates the count, and Restore brings it back", async () => {
+  const page = await mount({ optionalColumns: true });
+  await assignFables(page);
+  page.calls.length = 0;
+  await page.clickFor("Fables", "Remove");
+  assert.deepEqual(page.calls[0], ["setRoomModuleRemoved", "assignment-1", true]);
+  assert.match(page.text(), /Removed · hidden from students/);
+  assert.match(page.text(), new RegExp(overview(2, 0)));
+  // A removed module is not offered again; Restore is the way back.
+  page.click("Assign Module");
+  const options = findAll(page.byId("readingModule"), (node) => node.type === "option").map((node) => node.props.value);
+  assert.deepEqual(options, ["", "mod-2"]);
+  page.click("Cancel");
+  await page.clickFor("Fables", "Restore");
+  assert.match(page.prompts.at(-1)!, /Restore "Fables"/);
+  assert.ok(page.calls.some((call) => call[0] === "setRoomModuleRemoved" && call[2] === false));
+  assert.doesNotMatch(page.text(), /Removed · hidden/);
+  assert.match(page.text(), new RegExp(overview(2, 1)));
+});
+
+test("a completed reading activity is removed for one student only after confirmation, then restored", async () => {
+  const page = await mount({ optionalColumns: true, activities: completedActivity() });
+  await page.clickFor("Kite story", "Remove");
+  assert.match(page.prompts.at(-1)!, /Remove "Kite story" for Ana Reyes\?.*saved results, reading history and XP are kept/);
+  assert.deepEqual(page.calls.filter((call) => call[0] === "setReadingActivityRemoved"), [["setReadingActivityRemoved", "act-1", true]]);
+  assert.match(page.text(), /Removed · hidden from the student/);
+  await page.clickFor("Kite story", "Restore");
+  assert.deepEqual(page.calls.filter((call) => call[0] === "setReadingActivityRemoved").at(-1), ["setReadingActivityRemoved", "act-1", false]);
+  assert.doesNotMatch(page.text(), /Removed · hidden from the student/);
+  // Students are never removed from the roster by these actions.
+  assert.ok(!page.calls.some((call) => call[0] === "removeEnrolledStudent"));
 });

@@ -136,15 +136,23 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
     if (!rooms.length || (context.roomId && !rooms.includes(context.roomId))) {
       throw new OralReadingAuthorizationError();
     }
-    let query = supabase.from("room_modules").select("id, room_id, module_id")
+    // "*" keeps working before and after the optional removed_at column exists.
+    let query = supabase.from("room_modules").select("*")
       .eq("module_id", moduleId).in("room_id", rooms);
     if (context.roomId) query = query.eq("room_id", context.roomId);
     if (context.assignmentId) query = query.eq("id", context.assignmentId);
-    const { data: assignments, error: assignmentError } = await query;
+    const { data: rows, error: assignmentError } = await query;
     if (assignmentError) {
       throw new OralReadingPersistenceError("Unable to verify the classroom assignment.");
     }
-    if (!assignments?.length) {
+    // A removed module cannot be started again; saved results stay in Reading History.
+    const assignments = (rows ?? []).filter(row => !row.removed_at);
+    if (rows?.length && !assignments.length) {
+      throw new OralReadingAuthorizationError(
+        "Your teacher removed this module from the classroom. Your saved results are still in Reading History.",
+      );
+    }
+    if (!assignments.length) {
       throw new OralReadingAuthorizationError(
         "This module must be assigned in a classroom where you are enrolled.",
       );

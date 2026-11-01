@@ -1,3 +1,4 @@
+import { activityLanguageState, getActivityText, type ActivityLanguage } from "../../../pages/reading-activity/activityLanguage";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getOwnOralReadingAttempts, type OwnOralReadingSummary } from "../services/oralReadingService";
@@ -5,7 +6,10 @@ import { comprehensionTargetForReading } from "../services/comprehensionNavigati
 import type { LearnerM5Role } from "../types/oralReading";
 
 /** embedded: shown inside the M5 result page's modal, which supplies the heading. */
-export default function ReadingHistoryPage({ role, embedded = false }: { role: LearnerM5Role; embedded?: boolean }) {
+export default function ReadingHistoryPage({ role, embedded = false, language }: { role: LearnerM5Role; embedded?: boolean; language?: ActivityLanguage }) {
+  // Embedded shell follows its saved parent activity; mixed standalone history has no single activity language.
+  const ui = getActivityText(role === "admin" ? "en" : language);
+  const { t } = ui;
   const [attempts, setAttempts] = useState<OwnOralReadingSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -28,16 +32,19 @@ export default function ReadingHistoryPage({ role, embedded = false }: { role: L
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [revision]);
-  return <section className={embedded ? "rounded-3xl bg-white p-6 text-[#173f3b]" : "m-4 rounded-3xl bg-white p-6 text-[#173f3b] md:m-8"}>
-    {!embedded && <h1 className="text-3xl font-extrabold">Reading History</h1>}
-    {role !== "admin" && <p className="my-3">Reopen your saved results, transcripts, feedback, and recordings without reading again.</p>}
+  return <section lang={ui.language} className={embedded ? "rounded-3xl bg-white p-6 text-[#173f3b]" : "m-4 rounded-3xl bg-white p-6 text-[#173f3b] md:m-8"}>
+    {!embedded && <h1 className="text-3xl font-extrabold">{t("Reading History")}</h1>}
+    {role !== "admin" && <p className="my-3">{t("Reopen your saved results, transcripts, feedback, and recordings without reading again.")}</p>}
     {loading ? <p role="status" className="flex items-center gap-2 text-sm">
       <span aria-hidden="true" className="h-3 w-3 rounded-full border-2 border-[#173f3b]/20 border-t-[#173f3b] motion-safe:animate-spin" />
-      <span>{embedded ? "Loading saved assessments…" : "Loading reading history..."}</span>
+      <span>{t(embedded ? "Loading saved assessments…" : "Loading reading history...")}</span>
     </p> : error ? <div role="alert">
-      <p>{error}</p><button className="mt-3 rounded-xl bg-[#f7cf4a] px-4 py-2 font-bold" onClick={() => setRevision(v => v + 1)}>Retry</button>
-    </div> : attempts.length === 0 ? (role !== "admin" && <p role="status">No saved reading attempts yet. Complete a read-aloud activity to see it here.</p>) :
+      <p>{ui.message(error, "Unable to load reading history.")}</p><button className="mt-3 rounded-xl bg-[#f7cf4a] px-4 py-2 font-bold" onClick={() => setRevision(v => v + 1)}>{t("Retry")}</button>
+    </div> : attempts.length === 0 ? (role !== "admin" && <p role="status">{t("No saved reading attempts yet. Complete a read-aloud activity to see it here.")}</p>) :
       <ul className="space-y-4">{attempts.map(attempt => {
+        const rowUi = getActivityText(role === "admin" ? "en" : attempt.language);
+        const rowT = rowUi.t;
+        const activityState = activityLanguageState(attempt.language);
         // Module readings reopen their own comprehension activity (or its results once
         // completed). Assigned materials are reopened from the reading result instead,
         // because this list does not know whether an activity is read-aloud only.
@@ -45,7 +52,7 @@ export default function ReadingHistoryPage({ role, embedded = false }: { role: L
           id: attempt.id, moduleId: attempt.moduleId, materialId: null, passageId: attempt.passageId ?? null,
           roomId: attempt.roomId ?? null, assignmentId: attempt.assignmentId ?? null, activityAssignmentId: null,
         });
-        return <li key={attempt.id} className="rounded-2xl border border-[#dce8e7] p-5">
+        return <li lang={rowUi.language} key={attempt.id} className="rounded-2xl border border-[#dce8e7] p-5">
         <h2 className="text-xl font-bold">{attempt.moduleTitle}</h2>
         <p>{attempt.passageTitle}</p>
         <p>
@@ -53,11 +60,11 @@ export default function ReadingHistoryPage({ role, embedded = false }: { role: L
           {attempt.language && <> · {attempt.language === "fil" ? "Filipino" : "English"}</>}
         </p>
         {/* The saved field is transcript-based reading accuracy, not a pronunciation score. */}
-        <p className="my-3">Reading accuracy: {attempt.pronunciationAccuracy.toFixed(1)}% · Speed: {Math.round(attempt.readingSpeedWpm)} WPM · Recognized-word differences: {attempt.detectedErrorCount}</p>
+        <p className="my-3">{rowT("Reading accuracy: ")}{attempt.pronunciationAccuracy.toFixed(1)}% · {rowT("Speed: ")}{Math.round(attempt.readingSpeedWpm)} {rowT("WPM")} · {rowT("Recognized-word differences: ")}{attempt.detectedErrorCount}</p>
         <div className="flex flex-wrap gap-3">
-          <Link className="inline-block rounded-xl bg-[#f7cf4a] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}`}>View Result &amp; Transcript<span className="sr-only"> for {attempt.passageTitle}</span></Link>
-          <Link className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}?view=feedback`}>Feedback &amp; Recording<span className="sr-only"> for {attempt.passageTitle}</span></Link>
-          {comprehension && <Link className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={comprehension}>Questions &amp; Results<span className="sr-only"> for {attempt.passageTitle}</span></Link>}
+          <Link state={activityState} className="inline-block rounded-xl bg-[#f7cf4a] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}`}>{rowT("View Result & Transcript")}<span className="sr-only">{rowT(" for {passageTitle}", { passageTitle: attempt.passageTitle ?? "" })}</span></Link>
+          <Link state={activityState} className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}?view=feedback`}>{rowT("Feedback & Recording")}<span className="sr-only">{rowT(" for {passageTitle}", { passageTitle: attempt.passageTitle ?? "" })}</span></Link>
+          {comprehension && <Link state={activityState} className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={comprehension}>{rowT("Questions & Results")}<span className="sr-only">{rowT(" for {passageTitle}", { passageTitle: attempt.passageTitle ?? "" })}</span></Link>}
         </div>
       </li>;
       })}</ul>}
