@@ -638,6 +638,131 @@ async function deletePersistedMaterial(
   }
 }
 
+const LANGUAGE_IN_USE_MESSAGE =
+  "This material is already assigned in a classroom or has student reading results, so its language cannot be changed. "
+  + "Upload the reading again with the correct language and assign the new copy instead. Existing results stay unchanged.";
+
+// Tables whose rows lock a material's language: assignments (room-subject filtering)
+// and saved M5/M6 attempts (results and XP are tied to the attempt's language).
+const LANGUAGE_LOCKING_TABLES = Object.freeze([
+  "reading_activity_assignments",
+  "oral_reading_attempts",
+  "m6_comprehension_attempts",
+]);
+
+async function isMaterialLanguageLocked(supabase, materialId) {
+  for (const table of LANGUAGE_LOCKING_TABLES) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("id")
+      .eq("material_id", materialId)
+      .limit(1);
+
+    if (error) {
+      throw new MaterialPersistenceError(
+        "Unable to verify whether this material is in use.",
+      );
+    }
+
+    if (data?.length) return true;
+  }
+  return false;
+}
+
+/**
+ * Corrects the language of the uploader's own saved material. Only unused materials
+ * can change, so assignments, results, scores and XP are never reinterpreted.
+ * Question sets are kept unchanged; the teacher reviews or generates new ones.
+ */
+async function updateMaterialLanguage(
+  requester,
+  materialId,
+  language,
+  dependencies = {},
+) {
+  const supabase =
+    dependencies.getSupabaseAdmin?.() ??
+    getSupabaseAdmin();
+
+  requireUploadRole(requester.profile);
+
+  if (!["en", "fil"].includes(language)) {
+    throw new MaterialPersistenceError(
+      "Choose English or Filipino.",
+      400,
+      "INVALID_MATERIAL_LANGUAGE",
+    );
+  }
+
+  const material = await getAuthorizedMaterialRow(
+    requester,
+    materialId,
+    dependencies,
+  );
+
+  if (material.uploaded_by !== requester.user.id) {
+    throw new MaterialAuthorizationError(
+      "Only the teacher who uploaded this material can change its language.",
+    );
+  }
+
+  if (material.language === language) {
+    return { id: material.id, language: material.language, changed: false };
+  }
+
+  if (await isMaterialLanguageLocked(supabase, materialId)) {
+    throw new MaterialPersistenceError(
+      LANGUAGE_IN_USE_MESSAGE,
+      409,
+      "MATERIAL_LANGUAGE_IN_USE",
+    );
+  }
+
+  // Matching the old language makes a concurrent change fail instead of being overwritten.
+  const { data: updated, error: updateError } = await supabase
+    .from("uploaded_materials")
+    .update({ language })
+    .eq("id", materialId)
+    .eq("language", material.language)
+    .select("id, language")
+    .maybeSingle();
+
+  if (updateError) {
+    // The room-subject trigger also blocks a change that conflicts with an assignment.
+    if (updateError.code === "23514") {
+      throw new MaterialPersistenceError(LANGUAGE_IN_USE_MESSAGE, 409, "MATERIAL_LANGUAGE_IN_USE");
+    }
+    throw new MaterialPersistenceError("The material language could not be changed. Please try again.");
+  }
+
+  if (!updated) {
+    throw new MaterialPersistenceError(
+      "This material changed while you were editing it. Reload the page and try again.",
+      409,
+      "MATERIAL_CHANGED",
+    );
+  }
+
+  // Legacy (subjectless) rooms have no database lock, so an assignment created between the
+  // check above and this update is caught here and the change is undone.
+  if (await isMaterialLanguageLocked(supabase, materialId)) {
+    const { error: revertError } = await supabase
+      .from("uploaded_materials")
+      .update({ language: material.language })
+      .eq("id", materialId)
+      .eq("language", language);
+    if (revertError) {
+      console.error("Material language change could not be undone after a concurrent assignment:", {
+        materialId,
+        code: revertError.code,
+      });
+    }
+    throw new MaterialPersistenceError(LANGUAGE_IN_USE_MESSAGE, 409, "MATERIAL_LANGUAGE_IN_USE");
+  }
+
+  return { id: updated.id, language: updated.language, changed: true };
+}
+
 module.exports = {
   MATERIAL_ROLES,
   QUESTION_REVIEW_ROLES,
@@ -654,5 +779,6 @@ module.exports = {
   listPersistedMaterials,
   requireUploadRole,
   toMaterialDto,
+  updateMaterialLanguage,
   validateReviewedQuestions,
 };

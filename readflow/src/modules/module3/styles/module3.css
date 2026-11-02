@@ -306,6 +306,9 @@
 }
 
 .m3-content {
+  /* Contain absolutely positioned descendants (screen-reader-only text, hidden table
+     headers) in this scroll area; otherwise they extend the document below the shell. */
+  position: relative;
   min-height: 0;
   flex: 1;
   margin-top: 18px;
@@ -938,7 +941,8 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin: -8px 0 24px;
+  /* Clear space below the "Step 1 of 2" heading; a negative top margin overlapped it. */
+  margin: 12px 0 24px;
   padding: 12px 15px;
   border: 1px solid #c7d8ce;
   border-radius: 13px;
@@ -1214,6 +1218,105 @@
 
 .m3-file-drop small {
   align-self: auto;
+}
+
+.m3-file-selected {
+  cursor: default;
+}
+
+.m3-file-selected__name {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.m3-file-selected__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.m3-language-auto {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  color: #50625c;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.m3-review-language {
+  max-width: 420px;
+}
+
+.m3-review-language small {
+  color: #50625c;
+  line-height: 1.45;
+}
+
+.m3-review-language .m3-review-language__warning {
+  color: #8a4b12;
+  font-weight: 650;
+}
+
+/* Keep short labels such as "Not saved yet." whole on narrow screens; the message wraps instead. */
+.m3-upload-result .m3-inline-notice > strong {
+  flex: none;
+}
+
+.m3-discard-confirm {
+  flex-wrap: wrap;
+}
+
+.m3-discard-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.m3-material-language {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border-top: 1px solid #d2ddd6;
+  background: #f8faf8;
+}
+
+.m3-material-language__current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.m3-material-language__current > span {
+  color: #738078;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.m3-material-language__current > strong {
+  color: #24443a;
+  font-size: 0.9rem;
+}
+
+.m3-material-language__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 520px;
+}
+
+.m3-material-language__form p {
+  margin: 0;
+  color: #50625c;
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 .m3-visually-hidden {

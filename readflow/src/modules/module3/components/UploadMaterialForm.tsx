@@ -1,13 +1,16 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { CheckCircle2, FileCheck2, LoaderCircle, UploadCloud } from "lucide-react";
+import axios from "axios";
+import { CheckCircle2, FileCheck2, LoaderCircle, RefreshCw, Trash2, UploadCloud } from "lucide-react";
 import M3StatusBadge from "./M3StatusBadge";
 import {
+  deleteTemporaryMaterial,
   getMaterialPersistenceError,
   getMaterialRequestError,
   MAX_MATERIAL_UPLOAD_BYTES,
   MAX_MATERIAL_TEXT_LENGTH,
   persistUploadedMaterial,
   uploadReadingMaterial,
+  type MaterialLanguageDetection,
   type TemporaryUploadedMaterial,
 } from "../services/materialUpload";
 import type { MaterialLanguageCode } from "../types/content";
@@ -25,6 +28,28 @@ type UploadStage = "idle" | "uploading" | "processing" | "success" | "error";
 
 const ACCEPTED_FILE_TYPES =
   ".pdf,.docx,.jpg,.jpeg,.png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png";
+const ACCEPTED_EXTENSIONS = ["pdf", "docx", "jpg", "jpeg", "png"];
+const LANGUAGE_NAMES: Record<MaterialLanguageCode, string> = { en: "English", fil: "Filipino" };
+
+function getFileProblem(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!ACCEPTED_EXTENSIONS.includes(extension)) return "Choose a PDF, DOCX, JPG, or PNG file.";
+  if (file.size > MAX_MATERIAL_UPLOAD_BYTES) return "The selected file is larger than the 25 MB upload limit.";
+  return "";
+}
+
+function describeDetection(detection: MaterialLanguageDetection | null | undefined, chosen: MaterialLanguageCode | "") {
+  if (!detection) return "";
+  if (detection.certain && detection.language) {
+    return chosen && chosen !== detection.language
+      ? `Detected as ${LANGUAGE_NAMES[detection.language]}; you changed it to ${LANGUAGE_NAMES[chosen]}.`
+      : `Detected automatically from the reading text: ${LANGUAGE_NAMES[detection.language]}. Change it if this is wrong.`;
+  }
+  const hint = detection.suggestedLanguage ? ` It looks mostly ${LANGUAGE_NAMES[detection.suggestedLanguage]}.` : "";
+  return detection.reason === "mixed"
+    ? `The text mixes English and Filipino, so the language could not be confirmed.${hint} Choose the main language before saving.`
+    : `There is not enough text to detect the language.${hint} Choose English or Filipino before saving.`;
+}
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024 * 1024) {
@@ -38,6 +63,10 @@ function isImageFile(file: File | undefined) {
   return Boolean(file && (file.type === "image/jpeg" || file.type === "image/png"));
 }
 
+function getFileTypeLabel(file: File) {
+  return (file.name.split(".").pop() ?? "").toUpperCase().replace("JPEG", "JPG");
+}
+
 export default function UploadMaterialForm({
   onCancel,
   onSaved,
@@ -45,18 +74,28 @@ export default function UploadMaterialForm({
   onUnsavedChange,
 }: UploadMaterialFormProps) {
   const fileInputId = useId();
+  const languageFieldId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const languageSelectRef = useRef<HTMLSelectElement>(null);
   const [title, setTitle] = useState("");
-  const [language, setLanguage] = useState<MaterialLanguageCode>("en");
   const [selectedFile, setSelectedFile] = useState<File>();
   const [stage, setStage] = useState<UploadStage>("idle");
   const [error, setError] = useState("");
+  const [fileError, setFileError] = useState("");
   const [reviewError, setReviewError] = useState("");
   const [uploadedMaterial, setUploadedMaterial] = useState<TemporaryUploadedMaterial>();
   const [reviewedText, setReviewedText] = useState("");
+  // Set once from detection when extraction finishes; afterwards only the teacher changes it.
+  const [languageChoice, setLanguageChoice] = useState<MaterialLanguageCode | "">("");
+  // A file picked in Step 2 while the extracted text has edits waits for confirmation.
+  const [pendingFile, setPendingFile] = useState<File>();
   const [isPersisting, setIsPersisting] = useState(false);
   const [savedMaterialId, setSavedMaterialId] = useState<string>();
   // Synchronous guard: blocks a second save before React re-renders the disabled button.
   const saveLock = useRef(false);
+  // Each upload gets a number; results from a removed or replaced file are ignored.
+  const uploadRun = useRef(0);
+  const uploadAbort = useRef<AbortController>();
   const busy = stage === "uploading" || stage === "processing";
   const unsaved = stage === "success" && Boolean(uploadedMaterial) && !savedMaterialId;
 
@@ -75,15 +114,74 @@ export default function UploadMaterialForm({
     return () => window.removeEventListener("beforeunload", warn);
   }, [unsaved]);
 
+  // Leaving the page cancels an extraction that is still running.
+  useEffect(() => () => {
+    uploadRun.current += 1;
+    uploadAbort.current?.abort();
+  }, []);
+
+  /** Forgets any extraction for the current file: a running request and an unsaved review. */
+  function discardFileWork() {
+    uploadRun.current += 1;
+    uploadAbort.current?.abort();
+    uploadAbort.current = undefined;
+    if (uploadedMaterial && !savedMaterialId) {
+      // Temporary uploads stay on the server until deleted, so release the discarded one.
+      void deleteTemporaryMaterial(uploadedMaterial.id).catch(() => undefined);
+    }
+    saveLock.current = false;
+    setUploadedMaterial(undefined);
+    setReviewedText("");
+    setLanguageChoice("");
+    setPendingFile(undefined);
+    setReviewError("");
+    setError("");
+    setFileError("");
+    setStage("idle");
+  }
+
+  function openFilePicker() {
+    if (isPersisting) return;
+    fileInputRef.current?.click();
+  }
+
+  function applyFile(file: File) {
+    discardFileWork();
+    setSelectedFile(file);
+    setFileError(getFileProblem(file));
+  }
+
+  function selectFile(file: File | undefined) {
+    if (!file) return;
+    const edited = Boolean(uploadedMaterial) && reviewedText !== (uploadedMaterial?.extractedText ?? "");
+    if (edited) {
+      setPendingFile(file);
+      return;
+    }
+    applyFile(file);
+  }
+
+  function removeFile() {
+    if (isPersisting) return;
+    discardFileWork();
+    setSelectedFile(undefined);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    // Keep keyboard users on the upload area after the file card disappears.
+    requestAnimationFrame(() => fileInputRef.current?.focus());
+  }
+
   function startAnotherUpload() {
     saveLock.current = false;
+    uploadRun.current += 1;
     setTitle("");
     setSelectedFile(undefined);
     setUploadedMaterial(undefined);
     setReviewedText("");
+    setLanguageChoice("");
     setSavedMaterialId(undefined);
     setReviewError("");
     setError("");
+    setFileError("");
     setStage("idle");
   }
 
@@ -103,31 +201,40 @@ export default function UploadMaterialForm({
       return;
     }
 
-    if (selectedFile.size > MAX_MATERIAL_UPLOAD_BYTES) {
-      setStage("error");
-      setError("The selected file is larger than the 25 MB upload limit.");
+    const problem = getFileProblem(selectedFile);
+    if (problem) {
+      setFileError(problem);
       return;
     }
 
     setError("");
     setReviewError("");
     setStage("uploading");
+    const run = ++uploadRun.current;
+    const controller = new AbortController();
+    uploadAbort.current = controller;
+    const isCurrent = () => run === uploadRun.current;
 
     try {
+      // No language is sent: the server detects English or Filipino from the text.
       const material = await uploadReadingMaterial(
-        {
-          file: selectedFile,
-          title: trimmedTitle,
-          language,
-        },
-        () => setStage("processing"),
+        { file: selectedFile, title: trimmedTitle, signal: controller.signal },
+        () => { if (isCurrent()) setStage("processing"); },
       );
+      if (!isCurrent()) {
+        void deleteTemporaryMaterial(material.id).catch(() => undefined);
+        return;
+      }
       setUploadedMaterial(material);
       setReviewedText(material.extractedText ?? "");
+      setLanguageChoice(material.language ?? "");
       setStage("success");
     } catch (uploadError) {
+      if (!isCurrent() || axios.isCancel(uploadError)) return;
       setError(getMaterialRequestError(uploadError));
       setStage("error");
+    } finally {
+      if (uploadAbort.current === controller) uploadAbort.current = undefined;
     }
   }
 
@@ -145,6 +252,12 @@ export default function UploadMaterialForm({
       setReviewError("The reviewed text is too long to save. Please shorten it before saving.");
       return;
     }
+
+    if (!languageChoice) {
+      setReviewError("Choose English or Filipino for this material before saving.");
+      languageSelectRef.current?.focus();
+      return;
+    }
     saveLock.current = true;
     setReviewError("");
     setIsPersisting(true);
@@ -155,6 +268,7 @@ export default function UploadMaterialForm({
         file: selectedFile,
         material: uploadedMaterial,
         contentText,
+        language: languageChoice,
       });
       persistedId = persistedMaterial.id;
     } catch (persistenceError) {
@@ -175,6 +289,24 @@ export default function UploadMaterialForm({
       setIsPersisting(false);
     }
   }
+
+  // One hidden picker serves Step 1 and Step 2. Its value is cleared after each pick so
+  // choosing the same file again still triggers a change.
+  const fileInput = (
+    <input
+      ref={fileInputRef}
+      className="m3-visually-hidden"
+      id={fileInputId}
+      type="file"
+      accept={ACCEPTED_FILE_TYPES}
+      disabled={isPersisting}
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        selectFile(file);
+      }}
+    />
+  );
 
   if (stage === "success" && uploadedMaterial && savedMaterialId && !isPersisting) {
     return (
@@ -206,9 +338,14 @@ export default function UploadMaterialForm({
 
   if (stage === "success" && uploadedMaterial) {
     const isImage = uploadedMaterial.fileType === "JPG" || uploadedMaterial.fileType === "PNG";
+    const detectionNote = describeDetection(uploadedMaterial.languageDetection, languageChoice);
+    const detectedLanguage = uploadedMaterial.languageDetection?.certain && uploadedMaterial.language
+      ? LANGUAGE_NAMES[uploadedMaterial.language]
+      : "Not confirmed - choose below";
 
     return (
       <section className="m3-form-card m3-upload-result" aria-labelledby="m3-upload-result-title" aria-busy={isPersisting}>
+        {fileInput}
         <div className="m3-upload-result__heading">
           <span className="m3-upload-result__icon" aria-hidden="true">
             <FileCheck2 size={28} />
@@ -238,8 +375,8 @@ export default function UploadMaterialForm({
             <dd>{formatFileSize(uploadedMaterial.size)}</dd>
           </div>
           <div>
-            <dt>Language</dt>
-            <dd>{uploadedMaterial.language === "en" ? "English" : "Filipino"}</dd>
+            <dt>Detected language</dt>
+            <dd>{detectedLanguage}</dd>
           </div>
           {typeof uploadedMaterial.pageCount === "number" && (
             <div><dt>Pages detected</dt><dd>{uploadedMaterial.pageCount}</dd></div>
@@ -257,6 +394,32 @@ export default function UploadMaterialForm({
             </div>
           )}
         </dl>
+
+        <label className="m3-field m3-review-language" htmlFor={languageFieldId}>
+          <span>Reading Language</span>
+          {detectionNote && (
+            <small id={`${languageFieldId}-note`} className={uploadedMaterial.languageDetection?.certain ? undefined : "m3-review-language__warning"}>
+              {detectionNote}
+            </small>
+          )}
+          <select
+            ref={languageSelectRef}
+            id={languageFieldId}
+            value={languageChoice}
+            aria-describedby={detectionNote ? `${languageFieldId}-note` : undefined}
+            aria-invalid={!languageChoice}
+            disabled={isPersisting}
+            onChange={(event) => {
+              setLanguageChoice(event.target.value as MaterialLanguageCode);
+              setReviewError("");
+            }}
+          >
+            <option value="" disabled>Choose English or Filipino</option>
+            <option value="en">English</option>
+            <option value="fil">Filipino</option>
+          </select>
+          <small>Learning Rooms only offer materials that match the room&apos;s language.</small>
+        </label>
 
         {!!uploadedMaterial.pagesWithoutText?.length && (
           <p className="m3-inline-notice" role="status">
@@ -294,6 +457,22 @@ export default function UploadMaterialForm({
           </p>
         )}
 
+        {pendingFile && (
+          <div className="m3-inline-notice m3-discard-confirm" role="alert">
+            <span>
+              <strong>Discard your edits?</strong> Using "{pendingFile.name}" removes the edited text for this file.
+            </span>
+            <span className="m3-discard-confirm__actions">
+              <button className="m3-button m3-button--secondary" type="button" onClick={() => setPendingFile(undefined)}>
+                Keep Editing
+              </button>
+              <button className="m3-button m3-button--danger" type="button" onClick={() => applyFile(pendingFile)}>
+                Discard and Change File
+              </button>
+            </span>
+          </div>
+        )}
+
         <div className="m3-form-actions">
           <button
             className="m3-button m3-button--secondary"
@@ -302,6 +481,14 @@ export default function UploadMaterialForm({
             disabled={isPersisting}
           >
             Cancel
+          </button>
+          <button
+            className="m3-button m3-button--secondary"
+            type="button"
+            onClick={openFilePicker}
+            disabled={isPersisting}
+          >
+            <RefreshCw size={17} /> Change File
           </button>
           <button
             className="m3-button m3-button--primary"
@@ -344,21 +531,12 @@ export default function UploadMaterialForm({
           />
         </label>
 
-        <label className="m3-field">
+        <div className="m3-field">
           <span>Language</span>
-          <select
-            value={language}
-            onChange={(event) => {
-              setLanguage(event.target.value as MaterialLanguageCode);
-              setError("");
-              setStage("idle");
-            }}
-            disabled={busy}
-          >
-            <option value="en">English</option>
-            <option value="fil">Filipino</option>
-          </select>
-        </label>
+          <p className="m3-language-auto">
+            Detected automatically as English or Filipino from the reading text. You can confirm or change it in Step 2.
+          </p>
+        </div>
 
         <div className="m3-field">
           <span>Supported formats</span>
@@ -371,31 +549,36 @@ export default function UploadMaterialForm({
         </div>
 
         <div className="m3-field m3-field--wide">
-          <span>File</span>
-          <label
-            className={`m3-file-drop ${selectedFile ? "m3-file-drop--selected" : ""}`}
-            htmlFor={fileInputId}
-          >
-            {selectedFile ? <FileCheck2 size={32} /> : <UploadCloud size={34} />}
-            <strong>{selectedFile ? selectedFile.name : "Choose a reading material"}</strong>
-            <small>
-              {selectedFile
-                ? `${formatFileSize(selectedFile.size)} selected locally`
-                : "PDF, DOCX, JPG, or PNG - maximum 25 MB"}
-            </small>
-          </label>
-          <input
-            className="m3-visually-hidden"
-            id={fileInputId}
-            type="file"
-            accept={ACCEPTED_FILE_TYPES}
-            disabled={busy}
-            onChange={(event) => {
-              setSelectedFile(event.target.files?.[0]);
-              setError("");
-              setStage("idle");
-            }}
-          />
+          <span id={`${fileInputId}-label`}>File</span>
+          {fileInput}
+          {selectedFile ? (
+            <div className="m3-file-drop m3-file-drop--selected m3-file-selected" aria-labelledby={`${fileInputId}-label`}>
+              <FileCheck2 size={32} aria-hidden="true" />
+              <strong className="m3-file-selected__name">{selectedFile.name}</strong>
+              <small>
+                {getFileTypeLabel(selectedFile)} &middot; {formatFileSize(selectedFile.size)} selected
+              </small>
+              <div className="m3-file-selected__actions">
+                <button className="m3-button m3-button--secondary" type="button" onClick={openFilePicker}>
+                  <RefreshCw size={17} /> Change File
+                </button>
+                <button className="m3-button m3-button--secondary" type="button" onClick={removeFile}>
+                  <Trash2 size={17} /> Remove File
+                </button>
+              </div>
+            </div>
+          ) : (
+            <label className="m3-file-drop" htmlFor={fileInputId}>
+              <UploadCloud size={34} />
+              <strong>Choose a reading material</strong>
+              <small>PDF, DOCX, JPG, or PNG - maximum 25 MB</small>
+            </label>
+          )}
+          {fileError && (
+            <p className="m3-error-message" role="alert">
+              {fileError}
+            </p>
+          )}
         </div>
       </div>
 
@@ -422,7 +605,7 @@ export default function UploadMaterialForm({
         <button className="m3-button m3-button--secondary" type="button" onClick={onCancel} disabled={busy}>
           Cancel
         </button>
-        <button className="m3-button m3-button--primary" type="submit" disabled={busy}>
+        <button className="m3-button m3-button--primary" type="submit" disabled={busy || Boolean(fileError)}>
           {busy ? <LoaderCircle className="m3-spinner" size={18} /> : <UploadCloud size={18} />}
           {busy ? "Working..." : stage === "error" ? "Retry Upload" : "Upload & Extract Text"}
         </button>

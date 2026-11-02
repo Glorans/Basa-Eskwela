@@ -142,9 +142,13 @@ async function validateMaterialFileSignature(filePath, fileType) {
   return true;
 }
 
+// A missing language means "detect it from the extracted text"; a supplied one
+// (older clients) must still be valid.
 function validateMaterialFields(fields = {}) {
   const title = typeof fields.title === "string" ? fields.title.trim() : "";
-  const language = validateMaterialLanguage(fields.language);
+  const language = fields.language === undefined || fields.language === ""
+    ? undefined
+    : validateMaterialLanguage(fields.language);
 
   if (!title) {
     throw new MaterialValidationError(
@@ -162,7 +166,7 @@ function validateMaterialFields(fields = {}) {
     );
   }
 
-  return { title, language };
+  return language === undefined ? { title } : { title, language };
 }
 
 module.exports = {

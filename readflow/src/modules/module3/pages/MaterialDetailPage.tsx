@@ -2,6 +2,7 @@ import { ArrowLeft, FileText, LoaderCircle } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import M3PageHeader from "../components/M3PageHeader";
 import M3StatusBadge from "../components/M3StatusBadge";
+import MaterialLanguageControl from "../components/MaterialLanguageControl";
 import MaterialQuestionSets from "../components/MaterialQuestionSets";
 import { useM3Content } from "../context/M3ContentContext";
 import useAuthenticatedProfile from "../../../hooks/useAuthenticatedProfile";
@@ -17,6 +18,7 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
   const {
     getMaterial,
     materialsLoading,
+    refreshMaterials,
   } = useM3Content();
   const { profile } = useAuthenticatedProfile();
   const material = getMaterial(materialId);
@@ -32,8 +34,13 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
   const canDeleteSets = Boolean(
     role === "teacher" && material && material.uploadedById === profile?.id,
   );
+  // Only the uploader corrects the language; Admin views but does not edit uploads.
+  const canEditLanguage = Boolean(
+    role !== "admin" && material && material.uploadedById === profile?.id,
+  );
 
-  if (materialsLoading) {
+  // A background refresh (e.g. after a language correction) keeps the loaded page visible.
+  if (materialsLoading && !material) {
     return (
       <div className="m3-empty-state m3-empty-state--page" role="status">
         <LoaderCircle className="m3-spinner" size={36} />
@@ -98,6 +105,14 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
             </div>
           )}
         </div>
+
+        <MaterialLanguageControl
+          materialId={material.id}
+          language={material.languageCode}
+          canEdit={canEditLanguage}
+          hasQuestionSets={role === "teacher"}
+          onChanged={refreshMaterials}
+        />
 
         <div className="m3-reading-preview">
           <p className="m3-eyebrow">Reviewed material text</p>

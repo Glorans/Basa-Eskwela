@@ -65,7 +65,9 @@ test('generation uses reviewed source and an atomic create RPC; regeneration sen
   const db = fixture(); const calls = [];
   db.rpc = async (name, args) => { calls.push({ name, args }); return { data: SET, error: null }; };
   const deps = dependencies(db), teacher = requester(TEACHER_A, 'teacher');
-  const generate = async args => { assert.equal(args.contentText, 'Reviewed reading text.'); assert.equal(args.language, 'en'); assert.equal(args.questionCount, 6); assert.equal(args.previousQuestions.length, calls.length ? 0 : 6); return generatedQuestions(); };
+  const generate = async args => { assert.equal(args.contentText, 'Reviewed reading text.'); assert.equal(args.language, 'en');
+    // New sets default to 9; regenerating keeps the saved 6-question set's own size.
+    assert.equal(args.questionCount, calls.length ? 6 : 9); assert.equal(args.previousQuestions.length, calls.length ? 0 : 6); return generatedQuestions(); };
   await generateMaterialQuestionSet(teacher, MATERIAL_A, null, null, generate, deps);
   await generateMaterialQuestionSet(teacher, MATERIAL_A, SET, 1, generate, deps);
   assert.equal(calls[0].name, 'm3_write_material_question_set');

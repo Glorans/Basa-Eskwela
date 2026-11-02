@@ -64,6 +64,10 @@ function startServer(port = process.env.PORT || 5000) {
   const speechSocket = attachDiagnosticSpeechSocket(server, { receipts: diagnosticReceipts });
   const stopRiskWorker = require("./services/m7RiskWorker").startRiskWorker();
   server.once("close", stopRiskWorker);
+  // Removes extracted uploads that were never saved (closed tabs, restarts); never saved materials.
+  const stopUploadCleanup = require("./services/temporaryMaterialRegistry").startTemporaryUploadCleanup(
+    require("./services/materialFileUpload").materialUploadDirectory);
+  server.once("close", stopUploadCleanup);
   server.closeDiagnosticSpeech = speechSocket.dispose;
   return server.listen(port, () => {
     console.log(`ReadFlow server running on http://localhost:${port}`);

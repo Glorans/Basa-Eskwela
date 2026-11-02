@@ -23,6 +23,10 @@
 }
 
 .basa-content {
+  /* Contain absolutely positioned descendants (e.g. screen-reader-only link text in
+     Reading History) in this scroll area; otherwise they extend the document past the
+     100dvh shell, adding a second page scrollbar and a blank white area. */
+  position: relative;
   min-height: 0;
   flex: 1;
   margin-top: 18px;

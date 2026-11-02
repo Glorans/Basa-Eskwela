@@ -7,6 +7,7 @@ const {
   validateMaterialFields,
   validateMaterialFile,
   validateMaterialFileSignature,
+  validateMaterialLanguage,
 } = require("../services/materialValidation");
 const {
   MaterialExtractionError,
@@ -33,6 +34,7 @@ const {
   getPersistedMaterial,
   listPersistedMaterials,
   requireUploadRole,
+  updateMaterialLanguage,
 } = require("../services/materialPersistenceService");
 const {
   materialFileUpload,
@@ -60,6 +62,9 @@ function sanitizeOriginalFilename(originalFilename) {
 }
 
 function sendMaterialError(res, error, fallbackMessage) {
+  if (error instanceof MaterialValidationError) {
+    return res.status(error.statusCode).json({ success: false, message: error.message });
+  }
   if (error instanceof SupabaseAuthenticationError) {
     return res.status(401).json({ success: false, message: error.message });
   }
@@ -103,8 +108,12 @@ function validateMaterialFinalization(body) {
     : "";
   const contentText = typeof body?.contentText === "string" ? body.contentText.trim() : "";
   const storagePath = typeof body?.storagePath === "string" ? body.storagePath.trim() : "";
+  // The teacher-confirmed language; older clients omit it and keep the upload-time choice.
+  const language = body?.language === undefined || body?.language === null
+    ? undefined
+    : validateMaterialLanguage(body.language);
   return temporaryMaterialId && contentText && storagePath
-    ? { temporaryMaterialId, contentText, storagePath }
+    ? { temporaryMaterialId, contentText, storagePath, language }
     : undefined;
 }
 
@@ -142,6 +151,7 @@ function createMaterialsRouter(dependencies = {}) {
   const removeMaterial = dependencies.deletePersistedMaterial ?? deletePersistedMaterial;
   const generateWithGemini = dependencies.generateComprehensionQuestions
     ?? generateComprehensionQuestions;
+  const extractMaterial = dependencies.extractTeacherMaterial ?? extractTeacherMaterial;
   const adminDependencies = dependencies.getSupabaseAdmin
     ? { getSupabaseAdmin: dependencies.getSupabaseAdmin }
     : {};
@@ -155,13 +165,17 @@ function createMaterialsRouter(dependencies = {}) {
       return sendMaterialError(res, error, "Unable to authorize the material upload.");
     }
 
+    // The teacher removed or replaced the file, or closed the page, before extraction finished.
+    let clientGone = false;
+    res.once("close", () => { if (!res.writableFinished) clientGone = true; });
+
     return materialFileUpload.single("file")(req, res, async (uploadError) => {
       if (uploadError) return sendUploadError(res, uploadError);
       try {
         const fileDetails = validateMaterialFile(req.file);
         const fields = validateMaterialFields(req.body);
         await validateMaterialFileSignature(req.file.path, fileDetails.fileType);
-        const extraction = await extractTeacherMaterial({
+        const extraction = await extractMaterial({
           filePath: req.file.path,
           fileType: fileDetails.fileType,
           language: fields.language,
@@ -170,7 +184,9 @@ function createMaterialsRouter(dependencies = {}) {
           id: randomUUID(),
           uploadedBy: requester.user.id,
           title: fields.title,
-          language: fields.language,
+          // null when detection is uncertain: the teacher must choose before saving.
+          language: extraction.language,
+          languageDetection: extraction.languageDetection,
           originalFilename: sanitizeOriginalFilename(req.file.originalname),
           storedFilename: req.file.filename,
           mimeType: fileDetails.mimeType,
@@ -183,6 +199,11 @@ function createMaterialsRouter(dependencies = {}) {
           pageCount: extraction.pageCount,
           pagesWithoutText: extraction.pagesWithoutText,
         };
+        // Nobody can save this result any more, so it is not kept.
+        if (clientGone) {
+          await removeUploadedMaterialFile(req.file);
+          return undefined;
+        }
         registerTemporaryMaterial(material, req.file.path);
         return res.status(201).json({ success: true, material });
       } catch (error) {
@@ -234,6 +255,14 @@ function createMaterialsRouter(dependencies = {}) {
       if (!isOwnedMaterialStoragePath(request.storagePath, requester.user.id, material.fileType)) {
         throw new MaterialAuthorizationError("The uploaded file path is not valid for your account.");
       }
+      const language = request.language ?? material.language;
+      if (!language) {
+        throw new MaterialPersistenceError(
+          "Select English or Filipino for this material before saving.",
+          400,
+          "MATERIAL_LANGUAGE_REQUIRED",
+        );
+      }
       const supabaseAdmin = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
       if (!await storedMaterialMatchesExtraction(supabaseAdmin, request.storagePath, material)) {
         throw new MaterialPersistenceError(
@@ -248,7 +277,7 @@ function createMaterialsRouter(dependencies = {}) {
         .insert({
           uploaded_by: requester.user.id,
           title: material.title,
-          language: material.language,
+          language,
           original_filename: material.originalFilename,
           storage_path: request.storagePath,
           mime_type: material.mimeType,
@@ -380,6 +409,17 @@ function createMaterialsRouter(dependencies = {}) {
         req.body?.revision, req.body?.questions, adminDependencies);
       return res.json({ success: true, set });
     } catch (error) { return sendMaterialError(res, error, "Unable to save the question set."); }
+  });
+
+  router.patch("/:materialId/language", async (req, res) => {
+    try {
+      const requester = await authorize(req, dependencies);
+      const result = await (dependencies.updateMaterialLanguage ?? updateMaterialLanguage)(
+        requester, requireMaterialId(req.params.materialId), req.body?.language, adminDependencies);
+      return res.json({ success: true, material: result });
+    } catch (error) {
+      return sendMaterialError(res, error, "Unable to change the material language.");
+    }
   });
 
   router.get("/:materialId", async (req, res) => {

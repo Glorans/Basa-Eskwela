@@ -9,10 +9,20 @@ import { getMaterialAuthHeaders } from "./materialService";
 
 export type MaterialExtractionStatus = "completed";
 
+/** How the server read the language from the extracted text. */
+export interface MaterialLanguageDetection {
+  language: MaterialLanguageCode | null;
+  certain: boolean;
+  reason: "clear" | "mixed" | "too_short" | "no_signal";
+  suggestedLanguage: MaterialLanguageCode | null;
+}
+
 export interface TemporaryUploadedMaterial {
   id: string;
   title: string;
-  language: MaterialLanguageCode;
+  /** Detected language; null when detection was uncertain and the teacher must choose. */
+  language: MaterialLanguageCode | null;
+  languageDetection?: MaterialLanguageDetection | null;
   uploadedBy: string;
   originalFilename: string;
   storedFilename: string;
@@ -55,13 +65,18 @@ interface MaterialApiError {
 export interface MaterialUploadInput {
   file: File;
   title: string;
-  language: MaterialLanguageCode;
+  /** Omitted: the server detects English or Filipino from the extracted text. */
+  language?: MaterialLanguageCode;
+  /** Cancels the request when the teacher removes or replaces the file. */
+  signal?: AbortSignal;
 }
 
 export interface PersistUploadedMaterialInput {
   file: File;
   material: TemporaryUploadedMaterial;
   contentText: string;
+  /** The teacher-confirmed language that is saved with the material. */
+  language: MaterialLanguageCode;
 }
 
 export const MAX_MATERIAL_TEXT_LENGTH = 1_000_000;
@@ -92,7 +107,7 @@ export async function uploadReadingMaterial(
   const formData = new FormData();
   formData.append("file", input.file);
   formData.append("title", input.title);
-  formData.append("language", input.language);
+  if (input.language) formData.append("language", input.language);
 
   let processingReported = false;
   const onUploadProgress = (event: AxiosProgressEvent) => {
@@ -105,6 +120,7 @@ export async function uploadReadingMaterial(
   const response = await api.post<MaterialUploadResponse>("/api/materials/upload", formData, {
     headers: await getMaterialAuthHeaders(),
     onUploadProgress,
+    signal: input.signal,
   });
   onUploadComplete?.();
   return response.data.material;
@@ -114,6 +130,7 @@ export async function persistUploadedMaterial({
   file,
   material,
   contentText,
+  language,
 }: PersistUploadedMaterialInput) {
   if (contentText.length > MAX_MATERIAL_TEXT_LENGTH) {
     throw new Error("The reviewed text is too long to save. Please shorten it before saving.");
@@ -152,6 +169,7 @@ export async function persistUploadedMaterial({
         temporaryMaterialId: material.id,
         storagePath,
         contentText,
+        language,
       },
       {
         headers: {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ASSIGNED_QUESTION_SET_MESSAGE, createMaterialQuestionSet, deleteMaterialQuestionSet, getMaterialQuestionSets, getMaterialServiceError } from '../services/materialService';
+import { ASSIGNED_QUESTION_SET_MESSAGE, DEFAULT_NEW_QUESTION_SET_COUNT, NEW_QUESTION_SET_COUNTS, createMaterialQuestionSet, deleteMaterialQuestionSet, getMaterialQuestionSets, getMaterialServiceError } from '../services/materialService';
 import type { MaterialQuestionSetSummary } from '../types/content';
 
 export default function MaterialQuestionSets({ materialId, root, canGenerate, canDelete }: {
@@ -9,7 +9,7 @@ export default function MaterialQuestionSets({ materialId, root, canGenerate, ca
   const [sets, setSets] = useState<MaterialQuestionSetSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [questionCount, setQuestionCount] = useState(6);
+  const [questionCount, setQuestionCount] = useState<number>(DEFAULT_NEW_QUESTION_SET_COUNT);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [error, setError] = useState('');
@@ -123,7 +123,9 @@ export default function MaterialQuestionSets({ materialId, root, canGenerate, ca
     {canGenerate && <div className="m3-question-set-generation">
       <label className="m3-field"><span>Number of questions</span>
         <select value={questionCount} disabled={busy || deleteBusy} onChange={event => setQuestionCount(Number(event.target.value))}>
-          {[3, 6, 9, 12].map(count => <option key={count} value={count}>{count} questions</option>)}
+          {NEW_QUESTION_SET_COUNTS.map(count => <option key={count} value={count}>
+            {count} questions ({count / 3} Literal, {count / 3} Inferential, {count / 3} Critical)
+          </option>)}
         </select>
       </label>
       <button type="button" className="m3-button m3-button--coral"

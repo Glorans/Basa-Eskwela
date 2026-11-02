@@ -2,6 +2,7 @@ import axios from "axios";
 import api from "../../../services/api";
 import { getSessionAuthHeaders } from "../../../services/authHeaders";
 import type {
+  MaterialLanguageCode,
   ReviewableComprehensionQuestion,
   UploadedMaterial,
   MaterialQuestionSet,
@@ -30,6 +31,20 @@ export async function deleteMaterial(materialId: string) {
   });
 }
 
+/** Corrects a saved material's language. The server refuses once it is assigned or has results. */
+export async function updateMaterialLanguage(materialId: string, language: MaterialLanguageCode) {
+  const { data } = await api.patch<{ material: { id: string; language: MaterialLanguageCode; changed: boolean } }>(
+    `/api/materials/${encodeURIComponent(materialId)}/language`,
+    { language },
+    { headers: await getMaterialAuthHeaders() },
+  );
+  return data.material;
+}
+
+/** New question sets offer 9 or 12 questions (3 or 4 of each type); older sets keep their size. */
+export const NEW_QUESTION_SET_COUNTS = [9, 12] as const;
+export const DEFAULT_NEW_QUESTION_SET_COUNT = 9;
+
 export function getMaterialServiceError(
   error: unknown,
   fallback = "Unable to process the material. Please try again.",
@@ -55,7 +70,7 @@ export async function getMaterialQuestionSet(materialId: string, setId: string) 
     { headers: await getMaterialAuthHeaders() });
   return data.set;
 }
-export async function createMaterialQuestionSet(materialId: string, questionCount = 6) {
+export async function createMaterialQuestionSet(materialId: string, questionCount: number = DEFAULT_NEW_QUESTION_SET_COUNT) {
   const { data } = await api.post<{ set: MaterialQuestionSet }>(setPath(materialId), { questionCount },
     { headers: await getMaterialAuthHeaders() });
   return data.set;

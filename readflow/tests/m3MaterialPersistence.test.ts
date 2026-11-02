@@ -110,8 +110,12 @@ test("Teacher opens, cancels, and confirms the accessible Question Set deletion 
   const service = await source("services/materialService.ts");
   const review = await source("pages/QuestionReviewPage.tsx");
   const detail = await source("pages/MaterialDetailPage.tsx");
-  assert.match(sets, /useState\(6\)/);
-  assert.match(sets, /\[3, 6, 9, 12\]/);
+  // New sets offer only 9 (default) or 12 questions, split evenly across the three types.
+  assert.match(sets, /useState<number>\(DEFAULT_NEW_QUESTION_SET_COUNT\)/);
+  assert.match(sets, /NEW_QUESTION_SET_COUNTS\.map/);
+  assert.match(service, /NEW_QUESTION_SET_COUNTS = \[9, 12\] as const/);
+  assert.match(service, /DEFAULT_NEW_QUESTION_SET_COUNT = 9;/);
+  assert.doesNotMatch(sets, /\[3, 6, 9, 12\]|useState\(6\)/);
   assert.match(sets, />Delete Set<\/button>/);
   assert.match(sets, /Delete \{deletingSet.name\}\? Its questions and answer keys will be permanently deleted\./);
   assert.match(sets, /setDeletingId\(set.id\)/);

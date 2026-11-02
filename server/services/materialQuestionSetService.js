@@ -14,6 +14,22 @@ const {
 const QUESTION_TYPES = ["literal", "inferential", "critical"];
 const { checkEvidence } = require("./passageEvidence");
 
+// New sets need at least 9 questions (3 of each type). Existing 3- and 6-question
+// sets stay valid: they can still be edited, reviewed, assigned and regenerated.
+const NEW_QUESTION_SET_COUNTS = Object.freeze([9, 12]);
+const DEFAULT_NEW_QUESTION_SET_COUNT = 9;
+
+function validateNewQuestionSetCount(value = DEFAULT_NEW_QUESTION_SET_COUNT) {
+  if (!NEW_QUESTION_SET_COUNTS.includes(value)) {
+    throw new MaterialPersistenceError(
+      "New question sets need 9 or 12 questions.",
+      400,
+      "INVALID_QUESTION_COUNT",
+    );
+  }
+  return value;
+}
+
 function client(deps) {
   return deps.getSupabaseAdmin?.() ?? getSupabaseAdmin();
 }
@@ -404,7 +420,7 @@ async function generateMaterialQuestionSet(
   revision,
   generate,
   deps = {},
-  requestedCount = 6,
+  requestedCount = DEFAULT_NEW_QUESTION_SET_COUNT,
 ) {
   const material = await authorize(
     requester,
@@ -413,7 +429,8 @@ async function generateMaterialQuestionSet(
     true,
   );
 
-  let questionCount = validateQuestionCount(requestedCount);
+  // Regeneration keeps the saved set's own size; only new sets use 9 or 12.
+  let questionCount = setId ? undefined : validateNewQuestionSetCount(requestedCount);
 
   if (setId) {
     requireRevision(revision);
@@ -624,6 +641,9 @@ async function reviewMaterialQuestionSet(requester, materialId, setId, revision,
 }
 
 module.exports = {
+  DEFAULT_NEW_QUESTION_SET_COUNT,
+  NEW_QUESTION_SET_COUNTS,
+  validateNewQuestionSetCount,
   listMaterialQuestionSets,
   getMaterialQuestionSet,
   generateMaterialQuestionSet,
