@@ -1,4 +1,3 @@
-const fs = require("fs");
 const path = require("path");
 const { createWorker, OEM } = require("tesseract.js");
 const {
@@ -10,11 +9,17 @@ const OCR_LANGUAGE_MAP = Object.freeze({
   en: "eng",
   fil: "tgl",
 });
-const OCR_LANGUAGE_DATA_URL =
-  "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata@main";
-const ocrCachePath = path.join(__dirname, "..", "uploads", "ocr-cache");
-
-fs.mkdirSync(ocrCachePath, { recursive: true });
+// Models ship as npm dependencies (@tesseract.js-data/*), so a fresh server needs no
+// download. The CDN copy of the tessdata repository is refused (files over 20 MB).
+// tgl is only published as the 4.0.0 model; eng uses the smaller LSTM-only best_int model.
+const OCR_MODEL_DIRECTORIES = Object.freeze({
+  eng: { packageName: "@tesseract.js-data/eng", directory: "4.0.0_best_int" },
+  tgl: { packageName: "@tesseract.js-data/tgl", directory: "4.0.0" },
+});
+const OCR_WORKER_START_TIMEOUT_MS = 60_000;
+const OCR_RECOGNIZE_TIMEOUT_MS = 120_000;
+const OCR_UNAVAILABLE_MESSAGE =
+  "Image text extraction is unavailable right now. Please try again later, or upload a text-based PDF or DOCX.";
 
 class MaterialOcrError extends Error {
   constructor(code, message, cause) {
@@ -41,33 +46,56 @@ function getOcrLanguage(applicationLanguage) {
   return ocrLanguage;
 }
 
+function getOcrModelPath(ocrLanguage) {
+  const model = OCR_MODEL_DIRECTORIES[ocrLanguage];
+
+  try {
+    const packageDirectory = path.dirname(require.resolve(`${model.packageName}/package.json`));
+    return path.join(packageDirectory, model.directory);
+  } catch (error) {
+    throw new MaterialOcrError("OCR_UNAVAILABLE", OCR_UNAVAILABLE_MESSAGE, error);
+  }
+}
+
+function withTimeout(promise, timeoutMs, onTimeout) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(onTimeout()), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function getWorker(ocrLanguage) {
+  // Each language loads from its own package directory, so switching languages
+  // starts a new worker instead of reinitializing the current one.
+  if (workerPromise && activeOcrLanguage !== ocrLanguage) {
+    await resetOcrWorkerAfterFailure();
+  }
+
   if (!workerPromise) {
-    workerPromise = createWorker(ocrLanguage, OEM.LSTM_ONLY, {
-      cachePath: ocrCachePath,
-      gzip: false,
-      langPath: OCR_LANGUAGE_DATA_URL,
+    const startingWorker = createWorker(ocrLanguage, OEM.LSTM_ONLY, {
+      cacheMethod: "none",
+      gzip: true,
+      langPath: getOcrModelPath(ocrLanguage),
     });
+    workerPromise = startingWorker;
+    activeOcrLanguage = ocrLanguage;
 
     try {
-      const worker = await workerPromise;
-      activeOcrLanguage = ocrLanguage;
-      return worker;
+      return await withTimeout(startingWorker, OCR_WORKER_START_TIMEOUT_MS, () =>
+        new MaterialOcrError("OCR_UNAVAILABLE", OCR_UNAVAILABLE_MESSAGE));
     } catch (error) {
       workerPromise = undefined;
       activeOcrLanguage = undefined;
-      throw error;
+      // A worker that finishes starting after the timeout is not left running.
+      startingWorker.then((worker) => worker.terminate()).catch(() => undefined);
+      throw error instanceof MaterialOcrError
+        ? error
+        : new MaterialOcrError("OCR_UNAVAILABLE", OCR_UNAVAILABLE_MESSAGE, error);
     }
   }
 
-  const worker = await workerPromise;
-
-  if (activeOcrLanguage !== ocrLanguage) {
-    await worker.reinitialize(ocrLanguage, OEM.LSTM_ONLY);
-    activeOcrLanguage = ocrLanguage;
-  }
-
-  return worker;
+  return workerPromise;
 }
 
 function serializeOcrJob(job) {
@@ -97,7 +125,8 @@ async function extractImageText({ filePath, language }) {
   return serializeOcrJob(async () => {
     try {
       const worker = await getWorker(ocrLanguage);
-      const result = await worker.recognize(filePath);
+      const result = await withTimeout(worker.recognize(filePath), OCR_RECOGNIZE_TIMEOUT_MS, () =>
+        new MaterialOcrError("OCR_TIMEOUT", "Image text extraction took too long. Try a smaller or clearer image."));
       const extractedText = normalizeExtractedText(result.data.text);
 
       if (!hasReadableText(extractedText)) {
@@ -115,6 +144,8 @@ async function extractImageText({ filePath, language }) {
       };
     } catch (error) {
       if (error instanceof MaterialOcrError) {
+        // A timed-out worker may still be busy, so it is replaced before the next image.
+        if (error.code === "OCR_TIMEOUT") await resetOcrWorkerAfterFailure();
         throw error;
       }
 
@@ -148,9 +179,8 @@ async function terminateOcrWorker() {
 module.exports = {
   MaterialOcrError,
   OCR_LANGUAGE_MAP,
-  OCR_LANGUAGE_DATA_URL,
   extractImageText,
   getOcrLanguage,
-  ocrCachePath,
+  getOcrModelPath,
   terminateOcrWorker,
 };

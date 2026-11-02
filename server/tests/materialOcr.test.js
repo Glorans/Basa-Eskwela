@@ -8,6 +8,7 @@ const {
   MaterialOcrError,
   OCR_LANGUAGE_MAP,
   extractImageText,
+  getOcrModelPath,
   terminateOcrWorker,
 } = require("../services/materialOcrService");
 
@@ -40,6 +41,13 @@ test.after(async () => {
 
 test("maps application languages to explicit Tesseract models", () => {
   assert.deepEqual(OCR_LANGUAGE_MAP, { en: "eng", fil: "tgl" });
+});
+
+test("loads every OCR model from installed packages, not a runtime download", async () => {
+  for (const ocrLanguage of Object.values(OCR_LANGUAGE_MAP)) {
+    const modelFile = path.join(getOcrModelPath(ocrLanguage), `${ocrLanguage}.traineddata.gz`);
+    assert.ok((await fs.stat(modelFile)).size > 1_000_000, `${modelFile} is installed`);
+  }
 });
 
 test("extracts readable English text and confidence from PNG", async () => {
