@@ -6,13 +6,14 @@ const { createOralReadingRouter } = require("../routes/oralReading");
 const { createRequestLimiter } = require("../services/speechAccess");
 const { OralReadingAuthorizationError } = require("../services/oralReadingAttemptService");
 const { SpeechConfigurationError, SpeechTranscriptionError } = require("../services/speechErrors");
+const { createPronunciationChecksTable } = require("./fixtures/pronunciationChecksTable");
 
 const ATTEMPT_EN = "11111111-1111-4111-8111-111111111111";
 const ATTEMPT_FIL = "22222222-2222-4222-8222-222222222222";
 const OTHERS = "33333333-3333-4333-8333-333333333333";
 const PASSAGE = "Every Saturday morning, Lina walks with her grandfather.";
 
-async function start(t, { assess, limit = 60 } = {}) {
+async function start(t, { assess, limit = 60, table = createPronunciationChecksTable() } = {}) {
   const calls = { assess: [] };
   const attempts = {
     [ATTEMPT_EN]: { id: ATTEMPT_EN, language: "en", passageSnapshot: PASSAGE },
@@ -34,6 +35,7 @@ async function start(t, { assess, limit = 60 } = {}) {
       return { provider: "azure", locale: "en-US", scale: "0-100", utterances: [{ text: "Every Saturday", accuracy: 88, fluency: 90, words: [] }] };
     },
     pronunciationLimiter: createRequestLimiter({ limit, windowMs: 60000 }),
+    getSupabaseAdmin: () => table.client,
   }));
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -53,14 +55,15 @@ async function start(t, { assess, limit = 60 } = {}) {
 
 test("English pronunciation uses the saved passage as the reference, never browser text", async (t) => {
   const app = await start(t);
-  const ok = await app.post(ATTEMPT_EN);
-  assert.equal(ok.status, 200);
-  assert.equal(ok.body.pronunciation.utterances[0].accuracy, 88);
-  assert.deepEqual(app.calls.assess, [{ bytes: 9, language: "en", reference: PASSAGE }]);
   // An extra field is a malformed upload; no client reference text is ever used.
   const injected = await app.post(ATTEMPT_EN, { extra: "forged reference" });
   assert.equal(injected.status, 400);
-  assert.equal(app.calls.assess.length, 1);
+  assert.equal(app.calls.assess.length, 0);
+  const ok = await app.post(ATTEMPT_EN);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.pronunciation.utterances[0].accuracy, 88);
+  assert.equal(ok.body.check.summary.accuracy, 88);
+  assert.deepEqual(app.calls.assess, [{ bytes: 9, language: "en", reference: PASSAGE }]);
 });
 
 test("Filipino readings get no Azure pronunciation call", async (t) => {
@@ -82,7 +85,8 @@ test("another learner's attempt, missing auth and non-WAV uploads are refused be
 });
 
 test("pronunciation requests are throttled per learner", async (t) => {
-  const app = await start(t, { limit: 1 });
+  // Without saved results (migration pending) every request is a paid assessment.
+  const app = await start(t, { limit: 1, table: createPronunciationChecksTable({ installed: false }) });
   assert.equal((await app.post(ATTEMPT_EN)).status, 200);
   const limited = await app.post(ATTEMPT_EN);
   assert.equal(limited.status, 429);

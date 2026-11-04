@@ -7,6 +7,7 @@ const multer = require("multer");
 const {
   SupabaseAuthenticationError,
   SupabaseServerConfigurationError,
+  getSupabaseAdmin,
 } = require("../services/supabaseAdmin");
 const {
   OralReadingAuthorizationError,
@@ -29,6 +30,28 @@ const {
 } = require("../services/oralReadingRecordingService");
 const { assessPronunciationWav } = require("../services/azureSpeechService");
 const { splitEmbeddedTitle } = require("../services/oralReadingScoring");
+const {
+  PronunciationCheckInProgressError,
+  SUMMARY_COLUMNS: PRONUNCIATION_SUMMARY_COLUMNS,
+  getSavedPronunciationCheck,
+  isStale,
+  loadPronunciationCheckRow,
+  loadRecordingPartCount,
+  recordingPartsMismatch,
+  runPronunciationCheck,
+  toCheckDto,
+} = require("../services/pronunciationCheckService");
+
+
+/**
+ * The single-part shape older browsers read (they summarize it themselves), so a
+ * backend deployed before the new frontend keeps working. Omitted otherwise.
+ */
+function legacyPronunciation(parts) {
+  return Array.isArray(parts) && parts.length === 1
+    ? { provider: "azure", locale: "en-US", scale: "0-100", ...parts[0] }
+    : undefined;
+}
 
 // Durations only, in development: never audio, transcripts, tokens or user IDs.
 function developmentPronunciationTiming(details) {
@@ -36,6 +59,8 @@ function developmentPronunciationTiming(details) {
 }
 const { getSpeechErrorResponse, SAFE_SPEECH_ERRORS } = require("../services/speechErrors");
 const { MAX_WAV_BYTES } = require("../services/wavAudio");
+
+const MAX_PRONUNCIATION_UPLOAD_BYTES = MAX_WAV_BYTES;
 const { RATE_LIMITED_MESSAGE, SPEECH_RATE_LIMITS, createRequestLimiter } = require("../services/speechAccess");
 
 function sendOralReadingError(res, error, fallbackMessage) {
@@ -84,10 +109,15 @@ function createOralReadingRouter(dependencies = {}) {
   // five-minute reading is at most 12 parts.
   const pronunciationLimiter = dependencies.pronunciationLimiter
     ?? createRequestLimiter({ ...SPEECH_RATE_LIMITS.stt });
-  const uploadPronunciationPart = multer({
+  // One WAV per saved recording file (normally exactly one), in recorder order.
+  // A whole five-minute reading is about 9.6 MB, so the total is capped too.
+  const uploadPronunciationParts = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_WAV_BYTES, files: 1, fields: 0, parts: 1 },
-  }).single("audio");
+    limits: { fileSize: MAX_WAV_BYTES, files: MAX_SEGMENTS, fields: 0, parts: MAX_SEGMENTS },
+  }).array("audio", MAX_SEGMENTS);
+  const getAdmin = () => dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const now = dependencies.now ?? Date.now;
+  const runCheck = dependencies.runPronunciationCheck ?? runPronunciationCheck;
 
   router.get("/rooms/:roomId/progress", async (req, res) => {
     try {
@@ -150,6 +180,20 @@ function createOralReadingRouter(dependencies = {}) {
       return res.json({ success: true, recording });
     } catch (error) {
       return sendOralReadingError(res, error, "Unable to load recording.");
+    }
+  });
+
+  // The saved pronunciation check of a student this Teacher may review (same
+  // classroom rules as the attempt itself). Read-only; never calls the speech service.
+  router.get("/teacher/attempts/:attemptId/pronunciation", async (req, res) => {
+    try {
+      const requester = await authorizeTeacher(req, dependencies);
+      const attempt = await getTeacherAttempt(requester, req.params.attemptId, dependencies);
+      const saved = await getSavedPronunciationCheck(getAdmin(), attempt, now());
+      res.set("Cache-Control", "no-store");
+      return res.json({ success: true, ...saved });
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to load the saved pronunciation check.");
     }
   });
 
@@ -224,20 +268,57 @@ function createOralReadingRouter(dependencies = {}) {
     }
   });
 
+  // English only: the learner's saved pronunciation check (F2/F3/F4/F7). Reads
+  // the saved result only; it never calls the speech service, so opening a
+  // reading or a panel costs nothing.
+  router.get("/attempts/:attemptId/pronunciation", async (req, res) => {
+    try {
+      const requester = await authorizePractice(req, dependencies);
+      const attempt = await getAttempt(requester, req.params.attemptId, dependencies);
+      const saved = await getSavedPronunciationCheck(getAdmin(), attempt, now());
+      res.set("Cache-Control", "no-store");
+      return res.json({ success: true, ...saved });
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to load the saved pronunciation check.");
+    }
+  });
+
   // English only: Azure Pronunciation Assessment of the learner's whole saved
   // recording (one 16 kHz PCM WAV, up to five minutes) in one continuous
   // session, against the story text the read-aloud screen showed (the saved
   // passage without a hidden title line). Older attempts saved as several
-  // parts send one request per part. The reference text never comes from the
-  // browser. Feedback is for display only; reading accuracy stays separate.
+  // files upload one WAV per file in this same request. The reference text
+  // never comes from the browser, and neither do scores: the summary is
+  // computed here and saved once per attempt. A saved result is returned
+  // without a new assessment; a check already running for the attempt is
+  // never duplicated. Reading accuracy stays separate.
   router.post("/attempts/:attemptId/pronunciation", async (req, res) => {
     const receivedAt = Date.now();
     let requester;
     let attempt;
+    let supabase;
+    let installed = true;
+    let expectedParts = 0;
     try {
       requester = await authorizePractice(req, dependencies);
       // Ownership is verified before the upload body is read.
       attempt = await getAttempt(requester, req.params.attemptId, dependencies);
+      if (attempt.language === "en") {
+        supabase = getAdmin();
+        const existing = await loadPronunciationCheckRow(supabase, attempt.id, `${PRONUNCIATION_SUMMARY_COLUMNS},parts`);
+        installed = existing.installed;
+        // Reopening, refreshing or signing in again reuses the saved result: no new paid assessment.
+        if (existing.row?.status === "completed") {
+          res.set("Cache-Control", "no-store");
+          return res.json({ success: true, saved: true, reused: true, check: toCheckDto(existing.row),
+            pronunciation: legacyPronunciation(existing.row.parts) });
+        }
+        if (existing.row?.status === "running" && !isStale(existing.row, now())) {
+          throw new PronunciationCheckInProgressError();
+        }
+        // The trusted number of saved recording files (server-written metadata).
+        expectedParts = await loadRecordingPartCount(supabase, attempt.id);
+      }
     } catch (error) {
       return sendOralReadingError(res, error, "Unable to check pronunciation.");
     }
@@ -249,43 +330,78 @@ function createOralReadingRouter(dependencies = {}) {
     if (typeof attempt.passageSnapshot !== "string" || !attempt.passageSnapshot.trim()) {
       return res.status(422).json({ success: false, code: "STT_INVALID_AUDIO", message: "This reading has no saved passage to compare with." });
     }
+    if (expectedParts < 1) {
+      return res.status(422).json({ success: false, code: "PRONUNCIATION_RECORDING_MISSING", message: "There is no saved recording to check yet." });
+    }
     const decision = pronunciationLimiter.take(requester.user.id);
     if (!decision.allowed) {
       res.set("Retry-After", String(decision.retryAfterSeconds));
       return res.status(429).json({ success: false, code: "SPEECH_RATE_LIMITED", message: RATE_LIMITED_MESSAGE });
     }
-    return uploadPronunciationPart(req, res, async (uploadError) => {
-      const mimeType = req.file?.mimetype?.split(";", 1)[0].trim().toLowerCase();
-      if (uploadError || !req.file || !["audio/wav", "audio/x-wav"].includes(mimeType)) {
+    return uploadPronunciationParts(req, res, async (uploadError) => {
+      const files = req.files ?? [];
+      const totalBytes = files.reduce((total, file) => total + file.size, 0);
+      const validWav = (file) => ["audio/wav", "audio/x-wav"].includes(file.mimetype?.split(";", 1)[0].trim().toLowerCase());
+      if (uploadError || !files.length || !files.every(validWav) || totalBytes > MAX_PRONUNCIATION_UPLOAD_BYTES) {
         return res.status(400).json({ success: false, code: "STT_INVALID_AUDIO", message: "Recording upload is invalid. Please try again." });
       }
+      // Every saved recording file, once, in order: a partial upload is refused
+      // here, before any claim is taken or any paid assessment runs.
+      const mismatch = recordingPartsMismatch(files, expectedParts);
+      if (mismatch) {
+        return res.status(400).json({ success: false, code: "PRONUNCIATION_RECORDING_MISMATCH", message: mismatch });
+      }
       const uploadedAt = Date.now();
-      // A browser that gives up closes the request; stop assessing for it.
+      // Without saved results, a browser that gives up stops the assessment. Once a
+      // check is claimed it runs to the end and is saved, so a refresh does not pay twice.
       const abandoned = new AbortController();
-      res.on("close", () => { if (!res.writableFinished) abandoned.abort(); });
+      let persisted = false;
+      res.on("close", () => { if (!res.writableFinished && !persisted) abandoned.abort(); });
       const reference = splitEmbeddedTitle(attempt.passageSnapshot, attempt.passageTitle, "en").body;
       const finished = () => {
         const assessmentMs = Date.now() - uploadedAt;
-        res.set("Server-Timing", `checks;dur=${uploadedAt - receivedAt}, assessment;dur=${assessmentMs}`);
+        if (!res.headersSent) res.set("Server-Timing", `checks;dur=${uploadedAt - receivedAt}, assessment;dur=${assessmentMs}`);
         pronunciationTiming({
-          checksAndUploadMs: uploadedAt - receivedAt, assessmentMs, audioBytes: req.file.size, abandoned: abandoned.signal.aborted,
+          checksAndUploadMs: uploadedAt - receivedAt, assessmentMs, audioBytes: totalBytes, abandoned: abandoned.signal.aborted,
         });
       };
+      const assessParts = async ({ persisted: claimed, beforeNextPart }) => {
+        persisted = claimed;
+        const parts = [];
+        for (const [index, file] of files.entries()) {
+          // Renews the claim's lease between parts, so a long older multi-file
+          // check is never mistaken for an abandoned one.
+          if (index > 0) await beforeNextPart?.();
+          try {
+            parts.push(await assessPronunciation(file.buffer, "en", reference, { signal: abandoned.signal }));
+          } catch (error) {
+            // A silent part (for example a pause before Stop) has nothing to score.
+            if (getSpeechErrorResponse(error).code !== "NO_SPEECH") throw error;
+            parts.push({ provider: "azure", locale: "en-US", scale: "0-100", utterances: [] });
+          }
+        }
+        return { parts, partBytes: files.map((file) => file.size) };
+      };
+      let outcome;
       try {
-        const pronunciation = await assessPronunciation(req.file.buffer, "en", reference, { signal: abandoned.signal });
-        finished();
-        res.set("Cache-Control", "no-store");
-        return res.json({ success: true, pronunciation });
+        outcome = await runCheck({ supabase, attempt, userId: requester.user.id, assessParts, now, persisted: installed });
       } catch (error) {
         finished();
+        if (error instanceof OralReadingPersistenceError) return sendOralReadingError(res, error, "Unable to check pronunciation.");
         const safe = getSpeechErrorResponse(error);
-        // A silent part (for example a pause before Stop) has nothing to score.
-        if (safe.code === "NO_SPEECH") {
-          res.set("Cache-Control", "no-store");
-          return res.json({ success: true, pronunciation: { provider: "azure", locale: "en-US", scale: "0-100", utterances: [] } });
-        }
         return res.status(safe.status).json({ success: false, code: safe.code, message: safe.message });
       }
+      finished();
+      if (res.writableEnded || res.destroyed) return undefined;
+      res.set("Cache-Control", "no-store");
+      return res.json({
+        success: true,
+        saved: outcome.saved,
+        ...(outcome.reused ? { reused: true } : {}),
+        ...(outcome.saved ? {} : { code: outcome.code, message: outcome.message }),
+        check: outcome.check,
+        pronunciation: legacyPronunciation(outcome.parts),
+      });
     });
   });
 

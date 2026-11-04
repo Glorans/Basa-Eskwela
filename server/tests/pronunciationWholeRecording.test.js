@@ -5,13 +5,14 @@ const express = require("express");
 const { createOralReadingRouter } = require("../routes/oralReading");
 const { createRequestLimiter } = require("../services/speechAccess");
 const { assessPronunciationWav, transcribeWav } = require("../services/azureSpeechService");
+const { createPronunciationChecksTable } = require("./fixtures/pronunciationChecksTable");
 
 // The pronunciation route assesses the whole saved recording against the story
 // text the screen showed. No real Azure resource or request is involved.
 const ATTEMPT = "11111111-1111-4111-8111-111111111111";
 const PASSAGE = "A Helping Hand\nEvery Saturday, Ben visited Mrs. Santos.";
 
-async function start(t, { assess } = {}) {
+async function start(t, { assess, table = createPronunciationChecksTable() } = {}) {
   const calls = [];
   const timings = [];
   const app = express();
@@ -25,6 +26,7 @@ async function start(t, { assess } = {}) {
     },
     pronunciationLimiter: createRequestLimiter({ limit: 60, windowMs: 60000 }),
     pronunciationTiming: (details) => timings.push(details),
+    getSupabaseAdmin: () => table.client,
   }));
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -35,7 +37,7 @@ async function start(t, { assess } = {}) {
     form.append("audio", new Blob([Buffer.alloc(64)], { type: "audio/wav" }), "part.wav");
     return fetch(url, { method: "POST", headers: { Authorization: "Bearer learner" }, body: form, signal });
   };
-  return { calls, timings, post };
+  return { calls, timings, post, table };
 }
 
 test("the whole recording is assessed once against the story shown, without the hidden title", async (t) => {
@@ -52,9 +54,9 @@ test("the whole recording is assessed once against the story shown, without the 
   assert.doesNotMatch(JSON.stringify(app.timings), /Santos|Saturday|learner/);
 });
 
-test("a browser that gives up stops the Azure assessment", async (t) => {
+test("without saved results, a browser that gives up stops the Azure assessment", async (t) => {
   let seen;
-  const app = await start(t, { assess: (options) => new Promise((_resolve, reject) => {
+  const app = await start(t, { table: createPronunciationChecksTable({ installed: false }), assess: (options) => new Promise((_resolve, reject) => {
     seen = options.signal;
     options.signal.addEventListener("abort", () => reject(Object.assign(new Error("stopped"), { code: "STT_PROVIDER_ERROR" })));
   }) });
@@ -66,6 +68,34 @@ test("a browser that gives up stops the Azure assessment", async (t) => {
   for (let attempt = 0; attempt < 50 && !seen.aborted; attempt++) await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(seen.aborted, true);
   assert.equal(app.timings.at(-1)?.abandoned, true);
+});
+
+test("with saved results, a claimed check finishes and is saved even if the browser leaves", async (t) => {
+  let seen;
+  let finish;
+  const app = await start(t, { assess: (options) => new Promise((resolve) => {
+    seen = options.signal;
+    finish = () => resolve({ provider: "azure", locale: "en-US", scale: "0-100", complete: true, durationSeconds: 36,
+      utterances: [{ text: "Every Saturday", accuracy: 90, fluency: 85, words: [{ word: "every", accuracy: 90, errorType: "None" }] }] });
+  }) });
+  const controller = new AbortController();
+  const request = app.post(controller.signal).catch(() => "aborted");
+  while (!seen) await new Promise((resolve) => setTimeout(resolve, 5));
+  controller.abort();
+  assert.equal(await request, "aborted");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(seen.aborted, false, "a refresh does not throw away a paid, claimed check");
+  finish();
+  for (let attempt = 0; attempt < 50 && app.table.rows.get(ATTEMPT)?.status !== "completed"; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(app.table.rows.get(ATTEMPT).status, "completed");
+  // Reopening after the refresh reuses it: no second assessment.
+  const again = await app.post();
+  assert.equal(again.status, 200);
+  const body = await again.json();
+  assert.deepEqual([body.saved, body.reused, body.check.summary.accuracy], [true, true, 90]);
+  assert.equal(app.calls.length, 1);
 });
 
 test("transcription diagnostics report phrase offsets and unrecognized segments, never text", async () => {

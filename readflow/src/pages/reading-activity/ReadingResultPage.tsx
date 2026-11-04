@@ -360,13 +360,6 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             </button>
           </nav>
 
-          {/* The one notice that pronunciation check results are temporary (shown once, not in each panel). */}
-          {language === "en" && (
-            <p className="result-feedback-note result-pronunciation-notice" role="note">
-              {t("Pronunciation check results are kept only until you refresh or close this page. They are not saved yet.")}
-            </p>
-          )}
-
           {/* F2 Receive Pronunciation Feedback: words only, no scores, word list or transcript. */}
           <M5Modal
             id="m5-panel-feedback"

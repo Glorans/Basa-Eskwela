@@ -39,7 +39,7 @@ const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context);
 } });
 
-const { RECOGNITION_TIMEOUT_MESSAGE, SLOW_UPLOAD_MESSAGE, UPLOAD_STALL_TIMEOUT_MS, assessOralReadingPronunciation, recognitionTimeoutMs, transcribeOralReadingRecording } = await import(serviceUrl) as typeof import("../src/modules/module5/services/oralReadingTranscription.ts");
+const { RECOGNITION_TIMEOUT_MESSAGE, SLOW_UPLOAD_MESSAGE, UPLOAD_STALL_TIMEOUT_MS, assessOralReadingPronunciation, pronunciationTimeoutMs, recognitionTimeoutMs, transcribeOralReadingRecording } = await import(serviceUrl) as typeof import("../src/modules/module5/services/oralReadingTranscription.ts");
 const { DiagnosticAudioUploadError } = await import(errorUrl) as typeof import("../src/modules/module2/services/diagnosticAudioError.ts");
 const { SpeechWavTooLongError } = await import(speechWavUrl) as typeof import("../src/modules/module2/services/speechWav.ts");
 
@@ -223,8 +223,48 @@ test("the pronunciation check sends the whole recording once and waits for its f
   // A 36 s reading takes Azure about 18 s at twice real time: well past the 45 s stall window is still fine.
   mock.timers.tick(recognitionTimeoutMs(36) - 1);
   assert.equal(state.signal!.aborted, false);
-  state.reply!({ success: true, pronunciation: { provider: "azure", locale: "en-US", scale: "0-100", complete: true, durationSeconds: 36, utterances: [] } });
-  assert.equal((await work).durationSeconds, 36);
+  const summary = { parts: 1, utterances: 3, accuracy: 84, fluency: 77, wordsToPractice: ["orchard"], assessedSeconds: 36, complete: true, unassessedSeconds: 0 };
+  state.reply!({ success: true, saved: true, check: { status: "completed", saved: true, checkedAt: "2026-11-05T08:00:00Z", summary } });
+  const result = await work;
+  assert.deepEqual(result, { summary, saved: true, checkedAt: "2026-11-05T08:00:00Z" });
+});
+
+test("several saved files go in one request, in order, with a wait long enough for every file", async () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  const { state, post } = controlledPronunciation();
+  const work = assessOralReadingPronunciation("attempt-1", [wavOfSeconds(30), wavOfSeconds(30), wavOfSeconds(30)], { post });
+  await settle();
+  // The server matches these names against the saved recording's files.
+  assert.deepEqual(state.form!.getAll("audio").map((file) => (file as File).name), ["part-0.wav", "part-1.wav", "part-2.wav"]);
+  state.progress!({ loaded: 10, total: 10 });
+  // One file's deadline would expire here; three files are still being checked.
+  mock.timers.tick(recognitionTimeoutMs(90) + 1);
+  assert.equal(state.signal!.aborted, false);
+  assert.equal(pronunciationTimeoutMs(3, 90), 3 * 150_000 + 45_000);
+  mock.timers.tick(pronunciationTimeoutMs(3, 90));
+  await assert.rejects(work, (error: unknown) => error instanceof DiagnosticAudioUploadError && error.code === "STT_DEADLINE");
+});
+
+test("an unsaved result is never reported as saved", async () => {
+  const { state, post } = controlledPronunciation();
+  const work = assessOralReadingPronunciation("attempt-1", [wavOfSeconds(10), wavOfSeconds(5)], { post });
+  await settle();
+  assert.deepEqual([...state.form!.keys()], ["audio", "audio"]);
+  const summary = { parts: 2, utterances: 1, accuracy: 70, fluency: 60, wordsToPractice: [], assessedSeconds: 15, complete: true, unassessedSeconds: 0 };
+  state.reply!({ success: true, saved: false, code: "PRONUNCIATION_NOT_SAVED",
+    message: "Your pronunciation check finished, but its result could not be saved.", check: { saved: false, summary } });
+  const result = await work;
+  assert.equal(result.saved, false);
+  assert.match(result.notice ?? "", /could not be saved/);
+});
+
+test("a check already running for the reading is reported as in progress, not as a failure", async () => {
+  const post = async () => {
+    throw Object.assign(new Error("Request failed"), { isAxiosError: true,
+      response: { status: 409, data: { code: "PRONUNCIATION_CHECK_IN_PROGRESS", message: "A pronunciation check for this reading is already running." } } });
+  };
+  await assert.rejects(assessOralReadingPronunciation("attempt-1", wavOfSeconds(10), { post }),
+    (error: unknown) => error instanceof Error && error.name === "PronunciationCheckInProgressError");
 });
 
 test("a pronunciation check that runs past the deadline, or is cancelled, is aborted", async () => {

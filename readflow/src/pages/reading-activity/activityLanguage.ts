@@ -294,7 +294,10 @@ const filipino = {
   " for {passageTitle}": " para sa {passageTitle}",
   "View Result": "Tingnan ang Resulta",
   "View Transcript": "Tingnan ang Transkripsiyon",
-  "Pronunciation check results for English readings are not saved. Open a reading and check its pronunciation again when you need it.": "Hindi nase-save ang mga resulta ng pagsusuri ng bigkas para sa mga babasahing Ingles. Buksan ang isang pagbasa at suriin muli ang bigkas kapag kailangan mo.",
+  "Pronunciation checks for English readings are saved. Reopen a reading to review its pronunciation feedback, scores and words to practice.": "Naka-save ang mga pagsusuri ng bigkas para sa mga babasahing Ingles. Buksan muli ang isang pagbasa para makita ang puna, mga marka, at mga salitang dapat sanayin sa pagbigkas.",
+  "Saved pronunciation check: ": "Naka-save na pagsusuri ng bigkas: ",
+  "Fluency: ": "Katatasan: ",
+  "Some speech was not checked.": "May bahagi ng pagsasalita na hindi nasuri.",
   // M5 result panels, one per Appendix N function (F2-F6)
   "Pronunciation Feedback": "Puna sa Pagbigkas",
   "Get tips about how clearly you said the words.": "Alamin kung gaano kalinaw ang pagbigkas mo sa mga salita at kumuha ng mga tip.",
@@ -310,7 +313,6 @@ const filipino = {
   "Words We Heard Differently": "Mga Salitang Iba ang Narinig Namin",
   "These words come from comparing what we heard with the story. They are not a pronunciation check.": "Galing ang mga salitang ito sa paghahambing ng aming narinig sa kuwento. Hindi ito pagsusuri ng bigkas.",
   "Speech recognition can make mistakes.": "Maaaring magkamali ang pagkilala sa pagsasalita.",
-  "Pronunciation check results are kept only until you refresh or close this page. They are not saved yet.": "Mananatili lamang ang resulta ng pagsusuri ng bigkas hanggang i-refresh o isara mo ang pahinang ito. Hindi pa ito nase-save.",
   // M6 single attempt: one question, one final submitted answer
   "Great job! Keep going when you are ready.": "Ang galing! Magpatuloy kapag handa ka na.",
   "Keep going! Every question helps you learn.": "Tuloy lang! Natututo ka sa bawat tanong.",

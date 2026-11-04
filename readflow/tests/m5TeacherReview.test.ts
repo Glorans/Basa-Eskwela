@@ -134,12 +134,20 @@ test("Teacher detail is read-only and displays transcript, saved accuracy, and p
   assert.match(detail, /Read-Aloud Transcript/);
   // The saved score is transcript-based reading accuracy, never labelled as pronunciation.
   assert.match(detail, /Reading Accuracy \(Transcript-based\)/);
-  assert.doesNotMatch(detail, /Pronunciation Accuracy/);
+  // The only pronunciation score is the saved pronunciation check, labelled as such.
+  assert.equal(detail.match(/Pronunciation Accuracy/g)?.length, 1);
+  assert.match(detail, /Pronunciation Accuracy \(Pronunciation check\)/);
   // One card per function: result, transcript, words, and the (unsaved) pronunciation check.
   for (const title of ["Oral Reading Result", "Read-Aloud Transcript", "Words to Practice", "Pronunciation Feedback and Accuracy"]) {
     assert.match(detail, new RegExp(`className="m5-review-panel-title" id="[\\w-]+">${title}</h2>`), title);
   }
-  assert.match(detail, /are not saved yet, so their feedback, scores and words cannot be reviewed here/);
+  // The saved check is read through the Teacher route; a Teacher never runs a check.
+  assert.doesNotMatch(detail, /not saved yet/);
+  assert.match(detail, /getTeacherPronunciationCheck\(attemptId\)/);
+  assert.match(detail, /<PronunciationReview attemptId=\{attempt\.id\} \/>/);
+  assert.doesNotMatch(detail, /assessOralReadingPronunciation|pronunciationChecks\.start/);
+  assert.match(detail, /pronunciationFeedbackText\(summary\)/);
+  assert.match(detail, /has not checked the pronunciation of this reading yet/);
   assert.doesNotMatch(detail, /Azure/);
   assert.match(detail, /<RecordingPlayback attemptId=\{attempt\.id\} teacher language=\{attempt\.language \?\? "en"\} \/>/);
   assert.match(detail, /Pronunciation scoring is not available for Filipino readings/);

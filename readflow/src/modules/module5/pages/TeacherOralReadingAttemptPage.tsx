@@ -5,6 +5,8 @@ import M3PageHeader from "../../module3/components/M3PageHeader";
 import RecordingPlayback from "../components/RecordingPlayback";
 import { getWordsToPractice } from "../services/oralReadingProcessing";
 import { getTeacherOralReadingAttempt } from "../services/oralReadingService";
+import { getTeacherPronunciationCheck } from "../services/oralReadingTranscription";
+import { pronunciationFeedbackText, type SavedPronunciationCheck } from "../services/pronunciationSummary";
 import {
   TEACHER_COMPREHENSION_BADGE_CLASS,
   TEACHER_COMPREHENSION_STATUS_LABELS,
@@ -31,6 +33,76 @@ const EMPTY_COMPREHENSION_MESSAGES = {
 function formatOption(question: TeacherComprehensionQuestionReview, index: number | null | undefined) {
   if (index === null || index === undefined) return "Not answered";
   return `${String.fromCharCode(65 + index)}. ${question.options[index] ?? ""}`;
+}
+
+/**
+ * The student's saved English pronunciation check (F2 feedback, F3 scores, F4
+ * words), loaded through the Teacher route, which applies the same classroom
+ * rules as this result. Read-only: a Teacher never runs a check.
+ */
+function PronunciationReview({ attemptId }: { attemptId: string }) {
+  const [saved, setSaved] = useState<SavedPronunciationCheck>();
+  const [failed, setFailed] = useState(false);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setFailed(false);
+    setSaved(undefined);
+    getTeacherPronunciationCheck(attemptId)
+      .then((result) => { if (active) setSaved(result); })
+      .catch(() => { if (active) setFailed(true); });
+    return () => { active = false; };
+  }, [attemptId, revision]);
+
+  if (failed) {
+    return (
+      <div role="alert">
+        <p className="m5-review-muted">The saved pronunciation check could not be loaded.</p>
+        <button type="button" className="m3-button m3-button--secondary" onClick={() => setRevision((value) => value + 1)}>
+          <RefreshCw size={16} aria-hidden="true" /> Retry
+        </button>
+      </div>
+    );
+  }
+  if (!saved) return <p className="m5-review-muted" role="status">Loading the saved pronunciation check…</p>;
+  if (saved.status === "unsupported") {
+    return <p>Pronunciation scoring is not available for Filipino readings. Use the words to practice and the recording to review this reading.</p>;
+  }
+  if (saved.status !== "completed" || !saved.check) {
+    return (
+      <p className="m5-review-muted">
+        {saved.status === "running"
+          ? "The student's pronunciation check is still running. Reopen this page later to see it."
+          : saved.status === "unavailable"
+            ? "Saved pronunciation checks are not available yet. Use the recording to listen for pronunciation."
+            : "The student has not checked the pronunciation of this reading yet. Use the recording to listen for pronunciation."}
+      </p>
+    );
+  }
+  const { summary, checkedAt } = saved.check;
+  return (
+    <>
+      <div className="m5-review-metrics">
+        <div><span>Pronunciation Accuracy (Pronunciation check)</span><strong>{summary.accuracy !== null ? `${summary.accuracy}/100` : "Not available"}</strong></div>
+        <div><span>Fluency</span><strong>{summary.fluency !== null ? `${summary.fluency}/100` : "Not available"}</strong></div>
+        <div><span>Checked Speech</span><strong>{summary.assessedSeconds ?? 0} seconds</strong></div>
+      </div>
+      {summary.complete === false && (
+        <p className="m5-review-muted">
+          Some speech{typeof summary.unassessedSeconds === "number" ? ` (about ${summary.unassessedSeconds} seconds)` : ""} could not be checked,
+          so these results cover only the {summary.utterances} spoken {summary.utterances === 1 ? "phrase" : "phrases"} that were checked.
+        </p>
+      )}
+      <p><strong>Feedback the student received:</strong> {pronunciationFeedbackText(summary)}</p>
+      <h3>Words Needing Pronunciation Practice</h3>
+      {summary.wordsToPractice.length > 0
+        ? <ul className="m5-review-word-list">{summary.wordsToPractice.map((word) => <li key={word}>{word}</li>)}</ul>
+        : <p className="m5-review-muted">The pronunciation check did not flag any words.</p>}
+      <p className="m5-review-muted">
+        Saved {checkedAt ? formatCompletedAt(checkedAt) : ""}. Pronunciation checks can make mistakes; this is separate from the transcript-based Reading Accuracy.
+      </p>
+    </>
+  );
 }
 
 function QuestionResult({ question }: { question: TeacherComprehensionQuestionReview }) {
@@ -305,11 +377,7 @@ export default function TeacherOralReadingAttemptPage() {
         <h2 className="m5-review-panel-title" id="m5-pronunciation-panel-title">Pronunciation Feedback and Accuracy</h2>
         <section className="m5-review-detail-section" aria-labelledby="m5-pronunciation-title">
           <h2 id="m5-pronunciation-title"><Mic2 size={21} /> Pronunciation Check</h2>
-          <p>
-            {attempt.language === "fil"
-              ? "Pronunciation scoring is not available for Filipino readings. Use the words to practice and the recording to review this reading."
-              : "English pronunciation checks are shown to the student but are not saved yet, so their feedback, scores and words cannot be reviewed here. Use the recording to listen for pronunciation."}
-          </p>
+          <PronunciationReview attemptId={attempt.id} />
         </section>
       </section>
 

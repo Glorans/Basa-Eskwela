@@ -72,9 +72,9 @@ for (const role of ['student','general_user','admin']) {
     assert.match(text, /Seeds/);
     assert.match(text, /Filipino/);
     assert.match(text, role === "admin" ? /"Reading accuracy: ","91.5"/ : /"Katumpakan ng pagbasa: ","91.5"/);
-    // The saved score is reading accuracy; the only pronunciation text says its check results are not saved.
-    assert.doesNotMatch(text, /Pronunciation accuracy|Pronunciation Accuracy|Katumpakan ng Pagbigkas/i);
-    assert.match(text, /Pronunciation check results for English readings are not saved/);
+    // The saved score is reading accuracy; a Filipino reading never shows a pronunciation score.
+    assert.doesNotMatch(text, /Pronunciation accuracy|Pronunciation Accuracy|Katumpakan ng Pagbigkas|pagsusuri ng bigkas: /i);
+    assert.doesNotMatch(text, /are not saved/);
     const result=`${role==='admin'?'/admin':role==='student'?'/dashboard':'/m3/general'}/read-aloud/results/saved`;
     const links=[] as any[];
     (function walk(node:any){ if(!node||typeof node!=='object')return; if(node.type==='a')links.push(node); [node.props?.children].flat(Infinity).forEach(walk); })(tree);
@@ -82,6 +82,30 @@ for (const role of ['student','general_user','admin']) {
     assert.deepEqual(links.map(link=>link.props.to), [`${result}?view=result`, `${result}?view=transcript`, `${result}?view=feedback`]);
   });
 }
+test('F7: an English reading with a saved pronunciation check shows its scores and reopens them', async () => {
+  const f=fixture('student');
+  f.render();
+  f.resolve([{ id:'saved', moduleTitle:'Seeds', passageTitle:'Growing', language:'en', completedAt:'2026-10-08T10:00:00Z',
+    pronunciationAccuracy:91.5, readingSpeedWpm:75, detectedErrorCount:2,
+    pronunciationCheck:{ accuracy:82, fluency:74, complete:false, checkedAt:'2026-10-08T10:05:00Z' } },
+    { id:'unchecked', moduleTitle:'Rain', passageTitle:'Clouds', language:'en', completedAt:'2026-10-07T10:00:00Z',
+    pronunciationAccuracy:80, readingSpeedWpm:70, detectedErrorCount:3 }]);
+  await tick();
+  const tree=f.render();
+  const text=JSON.stringify(tree);
+  assert.match(text, /Pronunciation checks for English readings are saved/);
+  assert.match(text, /"Saved pronunciation check: ","82\/100"/);
+  assert.match(text, /"Fluency: ",74,"\/100"/);
+  assert.match(text, /Some speech was not checked\./);
+  assert.match(text, /"Reading accuracy: ","91.5"/, 'reading accuracy stays separate');
+  const links=[] as any[];
+  (function walk(node:any){ if(!node||typeof node!=='object')return; if(node.type==='a')links.push(node); [node.props?.children].flat(Infinity).forEach(walk); })(tree);
+  const targets=links.map(link=>link.props.to);
+  assert.ok(targets.includes('/dashboard/read-aloud/results/saved?view=accuracy'));
+  assert.ok(!targets.includes('/dashboard/read-aloud/results/unchecked?view=accuracy'), 'no saved check, no scores link');
+  assert.equal(text.match(/Saved pronunciation check: /g)?.length, 1);
+});
+
 test('history handles empty records and retry after failure', async () => {
   const f=fixture('student'); f.render(); f.reject(); await tick();
   const tree=f.render();

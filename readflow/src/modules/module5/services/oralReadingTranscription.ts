@@ -8,7 +8,12 @@ import {
   toDiagnosticAudioUploadError,
 } from "../../module2/services/diagnosticAudioError";
 import { SpeechWavTooLongError, convertToSpeechWavRecording } from "../../module2/services/speechWav";
-import type { PronunciationPartResult } from "./pronunciationSummary";
+import {
+  PronunciationCheckInProgressError,
+  type PronunciationCheckResult,
+  type PronunciationSummary,
+  type SavedPronunciationCheck,
+} from "./pronunciationSummary.ts";
 
 export type ReadAloudTranscriptionStep = "preparing" | "uploading" | "recognizing";
 
@@ -30,6 +35,14 @@ export function recognitionTimeoutMs(recordingDurationSeconds: number) {
   return 150_000 + Math.ceil(Math.max(0, recordingDurationSeconds) * 1000 / 2);
 }
 
+/**
+ * The server checks an older multi-file recording one file after another, each
+ * with its own deadline, so the wait after upload allows one deadline per file.
+ */
+export function pronunciationTimeoutMs(fileCount: number, recordingDurationSeconds: number) {
+  return 150_000 * Math.max(1, fileCount) + Math.ceil(Math.max(0, recordingDurationSeconds) * 1000 / 2);
+}
+
 type UploadProgress = { loaded: number; total?: number };
 type PostConfig = {
   headers: Record<string, string>;
@@ -37,7 +50,9 @@ type PostConfig = {
   onUploadProgress: (event: UploadProgress) => void;
 };
 type PostReadAloudAudio = (form: FormData, config: PostConfig) => Promise<{ data: DiagnosticAudioUploadResult }>;
-type PronunciationResponse = { success: boolean; code?: string; message?: string; pronunciation?: PronunciationPartResult };
+type ServerCheck = { summary?: PronunciationSummary; saved?: boolean; checkedAt?: string | null };
+type PronunciationResponse = { success: boolean; code?: string; message?: string; saved?: boolean; check?: ServerCheck };
+type SavedPronunciationResponse = { success: boolean; status?: SavedPronunciationCheck["status"]; check?: ServerCheck | null };
 type PostPronunciationAudio = (attemptId: string, form: FormData, config: PostConfig) => Promise<{ data: PronunciationResponse }>;
 
 const postReadAloudAudio: PostReadAloudAudio = (form, config) =>
@@ -57,8 +72,8 @@ export const speechWavSeconds = (wav: Blob) => Math.max(0, wav.size - 44) / 3200
  */
 async function sendWithProgressDeadline<T>(
   send: (config: Omit<PostConfig, "headers">) => Promise<{ data: T }>,
-  { wavBytes, recordingDurationSeconds, signal, onUploaded, timing }: {
-    wavBytes: number; recordingDurationSeconds: number; signal?: AbortSignal;
+  { wavBytes, recordingDurationSeconds, signal, onUploaded, timing, processingTimeoutMs }: {
+    wavBytes: number; recordingDurationSeconds: number; signal?: AbortSignal; processingTimeoutMs?: number;
     onUploaded?: () => void; timing: Record<string, unknown>;
   },
 ): Promise<T> {
@@ -85,7 +100,7 @@ async function sendWithProgressDeadline<T>(
           uploaded = true;
           timing.uploadMs = Date.now() - uploadStartedAt;
           onUploaded?.();
-          arm(recognitionTimeoutMs(recordingDurationSeconds),
+          arm(processingTimeoutMs ?? recognitionTimeoutMs(recordingDurationSeconds),
             new DiagnosticAudioUploadError("STT_DEADLINE", RECOGNITION_TIMEOUT_MESSAGE));
         } else {
           // Still moving: restart the stall window.
@@ -186,38 +201,84 @@ export async function transcribeOralReadingRecording(
   return { text: result.transcription.text, confidence: result.transcription.confidence };
 }
 
+function toCheckResult(check: ServerCheck | null | undefined, saved: boolean, notice?: string): PronunciationCheckResult | null {
+  if (!check?.summary || typeof check.summary.utterances !== "number") return null;
+  return { summary: check.summary, saved, checkedAt: check.checkedAt ?? null, ...(notice ? { notice } : {}) };
+}
+
 /**
- * English Azure Pronunciation Assessment of one prepared WAV of a saved
- * recording: normally the whole reading, assessed in one continuous session.
- * Uses the same progress deadline and cancellation as speech-to-text.
+ * English pronunciation check of a saved recording's prepared WAVs (normally
+ * one: the whole reading), sent in one request. The server returns a saved
+ * result without a new assessment, or assesses, summarizes and saves it.
+ * `saved` is true only when the server confirmed the save. Uses the same
+ * progress deadline and cancellation as speech-to-text.
  */
 export async function assessOralReadingPronunciation(
   attemptId: string,
-  wav: Blob,
+  wavs: Blob | readonly Blob[],
   { signal, onAssessing, post = postPronunciationAudio }: {
     signal?: AbortSignal; onAssessing?: () => void; post?: PostPronunciationAudio;
   } = {},
-): Promise<PronunciationPartResult> {
+): Promise<PronunciationCheckResult> {
+  const parts = Array.isArray(wavs) ? wavs : [wavs as Blob];
   const startedAt = Date.now();
-  const recordingDurationSeconds = speechWavSeconds(wav);
-  const timing: Record<string, unknown> = { recordingSeconds: Math.round(recordingDurationSeconds), wavBytes: wav.size };
+  const wavBytes = parts.reduce((total, wav) => total + wav.size, 0);
+  const recordingDurationSeconds = parts.reduce((total, wav) => total + speechWavSeconds(wav), 0);
+  const timing: Record<string, unknown> = { recordingSeconds: Math.round(recordingDurationSeconds), wavBytes, parts: parts.length };
   const headers = await sessionHeaders();
   const form = new FormData();
-  form.append("audio", wav, "part.wav");
+  parts.forEach((wav, index) => form.append("audio", wav, `part-${index}.wav`));
   let response: PronunciationResponse;
   try {
     response = await sendWithProgressDeadline((config) => post(attemptId, form, { ...config, headers }), {
-      wavBytes: wav.size, recordingDurationSeconds, signal, timing, onUploaded: onAssessing,
+      wavBytes, recordingDurationSeconds, signal, timing, onUploaded: onAssessing,
+      processingTimeoutMs: pronunciationTimeoutMs(parts.length, recordingDurationSeconds),
     });
+  } catch (error) {
+    if (error instanceof DiagnosticAudioUploadError && error.code === "PRONUNCIATION_CHECK_IN_PROGRESS") {
+      throw new PronunciationCheckInProgressError();
+    }
+    throw error;
   } finally {
     timing.totalMs = Date.now() - startedAt;
     developmentTiming({ step: "pronunciation", ...timing });
   }
-  if (!response.success || !response.pronunciation) {
+  const saved = response.success === true && response.saved === true;
+  const result = response.success
+    ? toCheckResult(response.check, saved, saved ? undefined : typeof response.message === "string" ? response.message : undefined)
+    : null;
+  if (!result) {
     throw new DiagnosticAudioUploadError("STT_PROVIDER_ERROR",
       typeof response.message === "string" && response.message.trim()
         ? response.message
         : "Pronunciation feedback is unavailable right now. Please try again.");
   }
-  return response.pronunciation;
+  return result;
+}
+
+const SAVED_CHECK_STATUSES = new Set(["none", "running", "completed", "unsupported", "unavailable"]);
+
+async function getSavedCheck(path: string, fallback: string): Promise<SavedPronunciationCheck> {
+  let data: SavedPronunciationResponse;
+  try {
+    data = (await api.get<SavedPronunciationResponse>(path, { headers: await sessionHeaders(), timeout: 30_000 })).data;
+  } catch (error) {
+    throw error instanceof DiagnosticAudioUploadError ? error : toDiagnosticAudioUploadError(error);
+  }
+  if (!data?.success || !data.status || !SAVED_CHECK_STATUSES.has(data.status)) throw new Error(fallback);
+  const check = data.status === "completed" ? toCheckResult(data.check, true) : null;
+  if (data.status === "completed" && !check) throw new Error(fallback);
+  return { status: data.status, check };
+}
+
+/** The learner's saved check for one attempt. Free: never runs a new check. */
+export function getSavedPronunciationCheck(attemptId: string) {
+  return getSavedCheck(`/api/oral-reading/attempts/${encodeURIComponent(attemptId)}/pronunciation`,
+    "Saved pronunciation results could not be loaded.");
+}
+
+/** A student's saved check, for a Teacher allowed to review the attempt. */
+export function getTeacherPronunciationCheck(attemptId: string) {
+  return getSavedCheck(`/api/oral-reading/teacher/attempts/${encodeURIComponent(attemptId)}/pronunciation`,
+    "The saved pronunciation check could not be loaded.");
 }

@@ -77,13 +77,25 @@ test("the pronunciation panels never auto-run the check and never name the provi
   const feedback = source("modules/module5/components/PronunciationFeedback.tsx");
   const result = source("pages/reading-activity/ReadingResultPage.tsx");
   // check() is called only from the button's onClick.
-  assert.deepEqual(feedback.match(/check\.check/g), ["check.check"]);
+  assert.deepEqual(feedback.match(/check\.check\b/g), ["check.check"]);
   assert.match(feedback, /onClick=\{check\.check\}/);
   assert.doesNotMatch(feedback.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""), /Azure|Microsoft/);
   assert.doesNotMatch(result.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""), /Azure|Microsoft/);
-  // Results are temporary: one notice on the result page, not one per panel.
-  assert.doesNotMatch(feedback, /not saved yet/);
-  assert.equal(result.match(/They are not saved yet\./g)?.length, 1);
+  // Results are saved now: the old "kept only until you refresh" warning is gone everywhere.
+  const language = source("pages/reading-activity/activityLanguage.ts");
+  const history = source("modules/module5/pages/ReadingHistoryPage.tsx");
+  for (const text of [feedback, result, language, history]) {
+    assert.doesNotMatch(text, /not saved yet|kept only until you refresh|are not saved\./);
+  }
+  // Opening a reading only reads the saved check (free); the paid check stays on the button.
+  assert.match(feedback, /pronunciationChecks\.load\(key, attemptId, loadSavedCheck\)/);
+  assert.equal(feedback.match(/pronunciationChecks\.start\(/g)?.length, 1);
+  // A result the server could not save says so instead of claiming it was saved,
+  // in every result branch: F2 and F3 always render SavedNote; F3 no-speech and
+  // all three F4 branches render it when the save failed.
+  assert.match(feedback, /if \(check\.saved === false\) \{\s*return <p className="result-feedback-note" role="alert">\{check\.notice\}<\/p>;/);
+  assert.equal(feedback.match(/<SavedNote check=\{check\} \/>/g)?.length, 6);
+  assert.equal(feedback.match(/\{check\.saved === false && <SavedNote check=\{check\} \/>\}/g)?.length, 4);
   // The check is shared through the attempt-scoped store, never component state.
   assert.match(feedback, /useSyncExternalStore\(pronunciationChecks\.subscribe/);
   assert.match(feedback, /pronunciationChecks\.start\(key, attemptId, runPronunciationCheck\)/);

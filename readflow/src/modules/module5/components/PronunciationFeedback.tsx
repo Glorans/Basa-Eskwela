@@ -1,15 +1,16 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Mic, Volume2 } from "lucide-react";
 import FeedbackSpeechControls, { useFeedbackSpeechState } from "../../../components/reading-feedback/FeedbackSpeechControls";
 import { getFeedbackSpeech } from "../../../services/feedbackSpeech";
 import { convertToSpeechWavRecording } from "../../module2/services/speechWav";
 import { getOralReadingRecording } from "../services/oralReadingService";
-import { assessOralReadingPronunciation } from "../services/oralReadingTranscription";
+import { assessOralReadingPronunciation, getSavedPronunciationCheck } from "../services/oralReadingTranscription";
 import {
   pronunciationCheckKey,
   pronunciationChecks,
   type PronunciationCheckRunner,
   type PronunciationCheckState,
+  type SavedPronunciationLoader,
 } from "../services/pronunciationCheckStore";
 import {
   assessRecordingPronunciation,
@@ -21,12 +22,13 @@ import {
 /*
  * English readings only. One pronunciation check of the saved recording feeds
  * three result panels: Pronunciation Feedback (F2), Pronunciation Accuracy (F3)
- * and Words to Practice (F4). The check runs only when the learner presses the
- * button, never when a panel opens, and its result is shared through
- * pronunciationChecks (keyed by account and attempt), so closing, switching or
- * remounting a panel keeps it. It is not saved: a page refresh needs a new
- * check. Filipino readings have no pronunciation check; the result page
- * explains that instead of showing a score.
+ * and Words to Practice (F4). Opening a reading reads its saved check (free);
+ * a new check runs only when the learner presses the button, never when a
+ * panel opens. The server saves the result once per reading, so refreshing,
+ * returning later or signing in again shows it without another check. It is
+ * shared through pronunciationChecks (keyed by account and attempt). Filipino
+ * readings have no pronunciation check; the result page explains that instead
+ * of showing a score.
  */
 
 async function fetchAudio(url: string, signal?: AbortSignal) {
@@ -42,33 +44,91 @@ const STEP_MESSAGES: Record<PronunciationCheckStep, string> = {
   assessing: "Checking your pronunciation…",
 };
 
-/** The one paid request: the whole saved recording, assessed once. */
+/** The one paid request: the whole saved recording, assessed and saved once by the server. */
 const runPronunciationCheck: PronunciationCheckRunner = (attemptId, { signal, onStep }) =>
   assessRecordingPronunciation(attemptId, {
     loadRecording: (id) => getOralReadingRecording(id),
     fetchAudio,
-    convert: async (audio) => [await convertToSpeechWavRecording(audio)],
-    assessPart: (id, wav, options) => assessOralReadingPronunciation(id, wav, options),
+    convert: (audio) => convertToSpeechWavRecording(audio),
+    assess: (id, wavs, options) => assessOralReadingPronunciation(id, wavs, options),
     signal,
     onStep,
   });
 
+/** Free: reads the saved result only. */
+const loadSavedCheck: SavedPronunciationLoader = (attemptId) => getSavedPronunciationCheck(attemptId);
+
+// While a check runs elsewhere (another tab, or before a refresh), re-read the
+// saved result now and then. These reads never start a check.
+const PENDING_RELOAD_MS = 10_000;
+const PENDING_MAX_RELOADS = 60;
+
 export interface PronunciationCheck extends PronunciationCheckState {
   check: () => void;
+  /** Re-reads the saved result; never starts a check. */
+  reload: () => void;
 }
 
-/** The shared check for one saved attempt of one account; never started by rendering. */
+/**
+ * The shared check for one saved attempt of one account. Rendering only reads the
+ * saved result; a check is never started without the learner pressing the button.
+ */
 export function usePronunciationCheck(attemptId: string | undefined, userId: string | undefined): PronunciationCheck {
   const key = pronunciationCheckKey(userId, attemptId);
   const state = useSyncExternalStore(pronunciationChecks.subscribe, () => pronunciationChecks.get(key));
+  useEffect(() => {
+    if (attemptId) void pronunciationChecks.load(key, attemptId, loadSavedCheck);
+  }, [key, attemptId]);
+  const pending = state.status === "pending";
+  useEffect(() => {
+    if (!pending || !attemptId) return undefined;
+    let reloads = 0;
+    const timer = setInterval(() => {
+      if (++reloads > PENDING_MAX_RELOADS) { clearInterval(timer); return; }
+      void pronunciationChecks.load(key, attemptId, loadSavedCheck, { force: true });
+    }, PENDING_RELOAD_MS);
+    return () => clearInterval(timer);
+  }, [pending, key, attemptId]);
   const check = useCallback(() => {
     if (attemptId) void pronunciationChecks.start(key, attemptId, runPronunciationCheck);
   }, [key, attemptId]);
-  return { ...state, check };
+  const reload = useCallback(() => {
+    if (attemptId) void pronunciationChecks.load(key, attemptId, loadSavedCheck, { force: true });
+  }, [key, attemptId]);
+  return { ...state, check, reload };
 }
 
-/** Shown in each panel until the learner has checked: the button never runs on its own. */
+/** Says when a finished result was saved, or that it could not be saved. */
+function SavedNote({ check }: { check: PronunciationCheck }) {
+  if (check.status !== "done") return null;
+  if (check.saved === false) {
+    return <p className="result-feedback-note" role="alert">{check.notice}</p>;
+  }
+  const date = check.checkedAt ? new Date(check.checkedAt) : null;
+  return (
+    <p className="result-feedback-note">
+      Saved pronunciation check{date && !Number.isNaN(date.getTime()) ? ` from ${date.toLocaleDateString()}` : ""}. You can come back to it any time.
+    </p>
+  );
+}
+
+/** Shown in each panel until there is a result: the button never runs on its own. */
 function CheckPrompt({ check, intro }: { check: PronunciationCheck; intro: string }) {
+  if (check.status === "loading") {
+    return <p className="result-feedback-note" role="status" aria-live="polite">Loading your saved pronunciation check…</p>;
+  }
+  if (check.status === "pending") {
+    return (
+      <>
+        <p className="result-feedback-note" role="status" aria-live="polite">
+          Your pronunciation check is still running. Your result will appear here when it is ready.
+        </p>
+        <button type="button" className="result-feedback-button result-pronunciation-check" onClick={check.reload}>
+          Show My Result
+        </button>
+      </>
+    );
+  }
   return (
     <>
       <p className="result-feedback-note">
@@ -90,6 +150,11 @@ function CheckPrompt({ check, intro }: { check: PronunciationCheck; intro: strin
         </p>
       )}
       {check.status === "error" && check.error && <p className="result-feedback-note" role="alert">{check.error}</p>}
+      {check.status === "idle" && check.loadError && (
+        <p className="result-feedback-note" role="note">
+          {check.loadError} If you already checked this reading, the button shows your saved result without checking again.
+        </p>
+      )}
     </>
   );
 }
@@ -107,6 +172,7 @@ export function PronunciationFeedbackPanel({ check }: { check: PronunciationChec
             {text}
             <FeedbackSpeechControls text={text} language="en" voice="philippine" listenLabel="Listen to feedback" />
           </p>
+          <SavedNote check={check} />
         </div>
       ) : (
         <CheckPrompt check={check} intro="Get tips about how clearly you said the words." />
@@ -124,7 +190,10 @@ export function PronunciationAccuracyPanel({ check }: { check: PronunciationChec
       {!summary ? (
         <CheckPrompt check={check} intro="Your pronunciation and fluency scores appear here after a pronunciation check." />
       ) : summary.utterances === 0 ? (
-        <p className="result-feedback-message">{noSpeechMessage(summary)}</p>
+        <div role="status">
+          <p className="result-feedback-message">{noSpeechMessage(summary)}</p>
+          {check.saved === false && <SavedNote check={check} />}
+        </div>
       ) : (
         <div role="status">
           {summary.accuracy !== null ? (
@@ -150,6 +219,7 @@ export function PronunciationAccuracyPanel({ check }: { check: PronunciationChec
             Pronunciation Accuracy shows how clearly you said the words. It is different from Reading Accuracy,
             which compares the words we heard with the story.
           </p>
+          <SavedNote check={check} />
         </div>
       )}
     </section>
@@ -190,7 +260,10 @@ export function PronunciationWordsPanel({ check }: { check: PronunciationCheck }
       {!summary ? (
         <CheckPrompt check={check} intro="Words that need clearer pronunciation appear here after a pronunciation check." />
       ) : summary.utterances === 0 ? (
-        <p className="result-feedback-message">{noSpeechMessage(summary)}</p>
+        <div role="status">
+          <p className="result-feedback-message">{noSpeechMessage(summary)}</p>
+          {check.saved === false && <SavedNote check={check} />}
+        </div>
       ) : summary.wordsToPractice.length > 0 ? (
         <div role="status">
           <p className="result-feedback-message">Listen to the word, say it slowly, and try reading it again.</p>
@@ -206,11 +279,13 @@ export function PronunciationWordsPanel({ check }: { check: PronunciationCheck }
           {summary.complete === false && (
             <p className="result-feedback-note" role="note">Some of your speech could not be checked, so this list may not include every word.</p>
           )}
+          {check.saved === false && <SavedNote check={check} />}
         </div>
       ) : (
         // The check scores only the words it recognized, so this never claims every word of the story.
         <div role="status">
           <p className="result-feedback-message">The words we checked sounded clear. Great job!</p>
+          {check.saved === false && <SavedNote check={check} />}
         </div>
       )}
     </section>

@@ -11,6 +11,7 @@ import type {
   TeacherOralReadingAttemptDetail,
   TeacherOralReadingAttemptSummary,
 } from "../types/oralReading";
+import type { SavedPronunciationScores } from "./pronunciationSummary";
 import {
   parseTeacherComprehensionDetail,
   parseTeacherComprehensionSummary,
@@ -237,6 +238,8 @@ export interface OwnOralReadingSummary {
   pronunciationAccuracy: number;
   readingSpeedWpm: number;
   detectedErrorCount: number;
+  /** F7: the saved English pronunciation check, when there is one. */
+  pronunciationCheck?: SavedPronunciationScores;
 }
 
 export interface AssignedReadingProgress {

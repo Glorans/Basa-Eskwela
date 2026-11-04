@@ -91,15 +91,24 @@ export async function transcribeOralReadingRecording(_: Blob, language: string, 
   events.push(["transcribe", language]); await delay(); maybeFail("transcribe");
   return { text: activeSource.passage };
 }
-export async function assessOralReadingPronunciation(attemptId: string, _wav: Blob, options: any = {}) {
+// Like the server: one saved, server-summarized check per attempt, reused after a reload.
+const savedPronunciation = new Map<string, any>();
+export async function assessOralReadingPronunciation(attemptId: string, _wavs: Blob | Blob[], options: any = {}) {
+  if (savedPronunciation.has(attemptId)) return savedPronunciation.get(attemptId);
   if (!pronunciation.enabled) throw Error("Pronunciation check unavailable in this fixture");
   pronunciation.calls.push(attemptId); options.onAssessing?.();
   await new Promise(resolve => setTimeout(resolve, pronunciation.delayMs));
   if (pronunciation.fail) throw Error("Speech processing is temporarily unavailable. Please try again later.");
-  return { provider: "azure", locale: "en-US", scale: "0-100", complete: true, durationSeconds: 12, utterances: [
-    { text: "Si Maya ay may hardin", accuracy: 78, fluency: 70, words: [
-      { word: "hardin", accuracy: 40, errorType: "Mispronunciation" }, { word: "Maya", accuracy: 95, errorType: "None" }] }] };
+  const result = { saved: true, checkedAt: "2026-11-05T08:00:00Z", summary: {
+    parts: 1, utterances: 1, accuracy: 78, fluency: 70, wordsToPractice: ["hardin"], assessedSeconds: 12, complete: true, unassessedSeconds: 0 } };
+  savedPronunciation.set(attemptId, result);
+  return result;
 }
+export async function getSavedPronunciationCheck(attemptId: string) {
+  const check = savedPronunciation.get(attemptId);
+  return check ? { status: "completed", check } : { status: "none", check: null };
+}
+export async function getTeacherPronunciationCheck(attemptId: string) { return getSavedPronunciationCheck(attemptId); }
 export async function getSessionAuthHeaders() { return { Authorization: "Bearer fixture" }; }
 export async function synthesizeDiagnosticSpeech(_: string, language: string, options: { voiceProfile?: string } = {}) {
   events.push(["tts", language, options.voiceProfile ?? "default"]); throw Error("Audio unavailable");

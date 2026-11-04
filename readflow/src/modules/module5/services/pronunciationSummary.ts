@@ -1,6 +1,7 @@
-// Azure Pronunciation Assessment results for English read-alouds. These are
-// Azure's own 0-100 scores, kept apart from the transcript-based reading
-// accuracy saved with the attempt. Filipino readings are never assessed.
+// Pronunciation check results for English read-alouds: the speech service's own
+// 0-100 scores, summarized and saved by the server (one result per attempt),
+// kept apart from the transcript-based reading accuracy saved with the attempt.
+// Filipino readings are never assessed.
 
 export interface PronunciationWord {
   word: string;
@@ -28,57 +29,55 @@ export interface PronunciationPartResult {
   unassessedSeconds?: number | null;
 }
 
+/** Computed and saved by the server; the browser never computes or sends scores. */
 export interface PronunciationSummary {
   parts: number;
   utterances: number;
-  /** Word-weighted mean of Azure's utterance accuracy scores, or null if Azure gave none. */
+  /** Word-weighted mean of the utterance accuracy scores, or null if none were given. */
   accuracy: number | null;
-  /** Word-weighted mean of Azure's utterance fluency scores, or null if Azure gave none. */
+  /** Word-weighted mean of the utterance fluency scores, or null if none were given. */
   fluency: number | null;
-  /** Words Azure marked as mispronounced or scored below 60. */
+  /** Words marked as mispronounced or scored below 60. */
   wordsToPractice: string[];
   /** Seconds of saved recording that were sent for assessment. */
   assessedSeconds?: number;
   /** True only when every part covered all of its speech. */
   complete?: boolean;
-  /** Seconds of speech Azure could not assess (null if unmeasured); 0 when complete. */
+  /** Seconds of speech that could not be assessed (null if unmeasured); 0 when complete. */
   unassessedSeconds?: number | null;
 }
 
-const PRACTICE_THRESHOLD = 60;
-const MAX_PRACTICE_WORDS = 10;
-
-function weightedMean(utterances: readonly PronunciationUtterance[], pick: (utterance: PronunciationUtterance) => number | null) {
-  let total = 0;
-  let weight = 0;
-  for (const utterance of utterances) {
-    const value = pick(utterance);
-    if (typeof value !== "number" || !Number.isFinite(value)) continue;
-    const words = Math.max(1, utterance.words.length);
-    total += value * words;
-    weight += words;
-  }
-  return weight ? Math.round(total / weight) : null;
+/** One pronunciation check as the server returns it. */
+export interface PronunciationCheckResult {
+  summary: PronunciationSummary;
+  /** True only when the server confirmed the result is permanently saved. */
+  saved: boolean;
+  checkedAt?: string | null;
+  /** Why an unsaved result was not saved, for the learner. */
+  notice?: string;
 }
 
-export function summarizePronunciation(parts: readonly PronunciationPartResult[]): PronunciationSummary {
-  const utterances = parts.flatMap((part) => part.utterances ?? []);
-  const practice = new Set<string>();
-  for (const utterance of utterances) {
-    for (const word of utterance.words) {
-      const text = word.word.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}'-]/gu, "");
-      if (!text) continue;
-      if (word.errorType === "Mispronunciation"
-        || (typeof word.accuracy === "number" && word.accuracy < PRACTICE_THRESHOLD)) practice.add(text);
-    }
+/** The saved state of one attempt's check, read without running a new check. */
+export type SavedPronunciationStatus = "none" | "running" | "completed" | "unsupported" | "unavailable";
+
+export interface SavedPronunciationCheck {
+  status: SavedPronunciationStatus;
+  check: PronunciationCheckResult | null;
+}
+
+/** Saved scores shown in Reading History (F7). */
+export interface SavedPronunciationScores {
+  accuracy: number | null;
+  fluency: number | null;
+  complete: boolean;
+  checkedAt: string;
+}
+
+export class PronunciationCheckInProgressError extends Error {
+  constructor(message = "A pronunciation check for this reading is already running. Please wait a moment.") {
+    super(message);
+    this.name = "PronunciationCheckInProgressError";
   }
-  return {
-    parts: parts.length,
-    utterances: utterances.length,
-    accuracy: weightedMean(utterances, (utterance) => utterance.accuracy),
-    fluency: weightedMean(utterances, (utterance) => utterance.fluency),
-    wordsToPractice: [...practice].slice(0, MAX_PRACTICE_WORDS),
-  };
 }
 
 /** Plain-language meaning of a 0-100 pronunciation score for young readers. */
@@ -118,9 +117,10 @@ export type PronunciationCheckStep = "loading" | "preparing" | "uploading" | "as
 export interface AssessRecordingDependencies {
   loadRecording: (attemptId: string) => Promise<{ available: boolean; segments: string[] }>;
   fetchAudio: (url: string, signal?: AbortSignal) => Promise<Blob>;
-  /** Returns the saved file as WAV for assessment: the whole file as one WAV. */
-  convert: (audio: Blob) => Promise<Blob[]>;
-  assessPart: (attemptId: string, wav: Blob, options: { signal?: AbortSignal; onAssessing?: () => void }) => Promise<PronunciationPartResult>;
+  /** Returns one saved file as one WAV: the server expects exactly one WAV per saved file. */
+  convert: (audio: Blob) => Promise<Blob>;
+  /** The one paid request: every WAV, in order; the server assesses, summarizes and saves. */
+  assess: (attemptId: string, wavs: Blob[], options: { signal?: AbortSignal; onAssessing?: () => void }) => Promise<PronunciationCheckResult>;
   signal?: AbortSignal;
   onStep?: (step: PronunciationCheckStep) => void;
 }
@@ -140,42 +140,27 @@ export class PronunciationIncompleteError extends Error {
 }
 
 /**
- * Assesses an English reading's whole saved recording. A recording saved as one
- * file (every M5 reading since the continuous recorder) is one WAV and one
- * Azure session; older readings saved as several files send one per file, in
- * recorder order. Any failure or cancellation rejects with no summary. Speech
- * Azure could not assess is reported in `complete` and `unassessedSeconds`, so
- * the result is never presented as covering the whole reading when it does not.
+ * Checks an English reading's whole saved recording. A recording saved as one
+ * file (every M5 reading since the continuous recorder) is one WAV; older
+ * readings saved as several files send one WAV per file, in recorder order,
+ * in the same single request. The server assesses them, computes the summary
+ * (including speech it could not assess) and saves it. Any failure or
+ * cancellation rejects with no summary.
  */
 export async function assessRecordingPronunciation(
   attemptId: string,
-  { loadRecording, fetchAudio, convert, assessPart, signal, onStep }: AssessRecordingDependencies,
-): Promise<PronunciationSummary> {
+  { loadRecording, fetchAudio, convert, assess, signal, onStep }: AssessRecordingDependencies,
+): Promise<PronunciationCheckResult> {
   onStep?.("loading");
   const recording = await loadRecording(attemptId);
   if (!recording.available || recording.segments.length === 0) throw new PronunciationUnavailableError();
-  const parts: PronunciationPartResult[] = [];
-  let assessedSeconds = 0;
-  let unassessedSeconds: number | null = 0;
+  const wavs: Blob[] = [];
   for (const url of recording.segments) {
     const audio = await fetchAudio(url, signal);
     onStep?.("preparing");
-    for (const wav of await convert(audio)) {
-      if (signal?.aborted) throw new PronunciationIncompleteError();
-      onStep?.("uploading");
-      const result = await assessPart(attemptId, wav, { signal, onAssessing: () => onStep?.("assessing") });
-      if (result.complete === false) {
-        unassessedSeconds = unassessedSeconds === null || typeof result.unassessedSeconds !== "number"
-          ? null : unassessedSeconds + result.unassessedSeconds;
-      }
-      assessedSeconds += result.durationSeconds ?? Math.max(0, wav.size - 44) / 32000;
-      parts.push(result);
-    }
+    wavs.push(await convert(audio));
+    if (signal?.aborted) throw new PronunciationIncompleteError();
   }
-  return {
-    ...summarizePronunciation(parts),
-    assessedSeconds: Math.round(assessedSeconds),
-    complete: parts.every((part) => part.complete !== false),
-    unassessedSeconds: unassessedSeconds === null ? null : Math.round(unassessedSeconds),
-  };
+  onStep?.("uploading");
+  return assess(attemptId, wavs, { signal, onAssessing: () => onStep?.("assessing") });
 }

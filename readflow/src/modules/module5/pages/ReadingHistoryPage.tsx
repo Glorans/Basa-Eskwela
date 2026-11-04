@@ -35,7 +35,7 @@ export default function ReadingHistoryPage({ role, embedded = false, language }:
   return <section lang={ui.language} className={embedded ? "rounded-3xl bg-white p-6 text-[#173f3b]" : "m-4 rounded-3xl bg-white p-6 text-[#173f3b] md:m-8"}>
     {!embedded && <h1 className="text-3xl font-extrabold">{t("Reading History")}</h1>}
     {role !== "admin" && <p className="my-3">{t("Reopen your saved results, transcripts, feedback, and recordings without reading again.")}</p>}
-    <p className="my-3 text-sm">{t("Pronunciation check results for English readings are not saved. Open a reading and check its pronunciation again when you need it.")}</p>
+    <p className="my-3 text-sm">{t("Pronunciation checks for English readings are saved. Reopen a reading to review its pronunciation feedback, scores and words to practice.")}</p>
     {loading ? <p role="status" className="flex items-center gap-2 text-sm">
       <span aria-hidden="true" className="h-3 w-3 rounded-full border-2 border-[#173f3b]/20 border-t-[#173f3b] motion-safe:animate-spin" />
       <span>{t(embedded ? "Loading saved assessments…" : "Loading reading history...")}</span>
@@ -62,10 +62,17 @@ export default function ReadingHistoryPage({ role, embedded = false, language }:
         </p>
         {/* The saved field is transcript-based reading accuracy, not a pronunciation score. */}
         <p className="my-3">{rowT("Reading accuracy: ")}{attempt.pronunciationAccuracy.toFixed(1)}% · {rowT("Speed: ")}{Math.round(attempt.readingSpeedWpm)} {rowT("WPM")} · {rowT("Recognized-word differences: ")}{attempt.detectedErrorCount}</p>
+        {/* F7: the saved English pronunciation check, separate from transcript-based reading accuracy. */}
+        {attempt.language !== "fil" && attempt.pronunciationCheck && <p className="my-3">
+          {rowT("Saved pronunciation check: ")}{attempt.pronunciationCheck.accuracy !== null ? `${attempt.pronunciationCheck.accuracy}/100` : "—"}
+          {attempt.pronunciationCheck.fluency !== null && <> · {rowT("Fluency: ")}{attempt.pronunciationCheck.fluency}/100</>}
+          {!attempt.pronunciationCheck.complete && <> · {rowT("Some speech was not checked.")}</>}
+        </p>}
         <div className="flex flex-wrap gap-3">
           <Link state={activityState} className="inline-block rounded-xl bg-[#f7cf4a] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}?view=result`}>{rowT("View Result")}<span className="sr-only">{rowT(" for {passageTitle}", { passageTitle: attempt.passageTitle ?? "" })}</span></Link>
           <Link state={activityState} className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}?view=transcript`}>{rowT("View Transcript")}<span className="sr-only">{rowT(" for {passageTitle}", { passageTitle: attempt.passageTitle ?? "" })}</span></Link>
           <Link state={activityState} className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}?view=feedback`}>{rowT("Feedback & Recording")}<span className="sr-only">{rowT(" for {passageTitle}", { passageTitle: attempt.passageTitle ?? "" })}</span></Link>
+          {attempt.language !== "fil" && attempt.pronunciationCheck && <Link state={activityState} className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={`${root}/read-aloud/results/${attempt.id}?view=accuracy`}>{rowT("Pronunciation Accuracy")}<span className="sr-only">{rowT(" for {passageTitle}", { passageTitle: attempt.passageTitle ?? "" })}</span></Link>}
           {comprehension && <Link state={activityState} className="inline-block rounded-xl border-2 border-[#173f3b] px-4 py-2 font-bold" to={comprehension}>{rowT("Questions & Results")}<span className="sr-only">{rowT(" for {passageTitle}", { passageTitle: attempt.passageTitle ?? "" })}</span></Link>}
         </div>
       </li>;

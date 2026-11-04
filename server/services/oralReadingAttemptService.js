@@ -681,6 +681,13 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
     rows.push(...(data ?? []));
     if (!data || data.length < pageSize) break;
   }
+  // F7: saved English pronunciation-check scores. Optional: history still loads
+  // without them (for example before the pronunciation-check table exists).
+  const english = rows.filter(row => row.language_snapshot !== "fil").map(row => row.id);
+  const { loadSavedPronunciationScores } = require("./pronunciationCheckService");
+  const pronunciation = english.length
+    ? await loadSavedPronunciationScores(supabase, requester.user.id, english)
+    : new Map();
   return rows.map(row => ({
     id: row.id,
     moduleId: row.module_id,
@@ -697,6 +704,7 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
     readingSpeedWpm: Number(row.reading_speed_wpm),
     detectedErrorCount: row.detected_error_count,
     completedAt: row.completed_at,
+    ...(pronunciation?.has(row.id) ? { pronunciationCheck: pronunciation.get(row.id) } : {}),
   }));
 }
 
