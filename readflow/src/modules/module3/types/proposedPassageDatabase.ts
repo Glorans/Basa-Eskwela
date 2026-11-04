@@ -31,6 +31,8 @@ export type ProposedPassageDatabase = Omit<Database, "public"> & {
         Returns: string;
       };
       m3_collection_publish_issues: { Args: { target_id: string }; Returns: string[] };
+      // Only exists once supabase/proposed/m3_variable_passage_banks_PROPOSED.sql is installed.
+      m3_passage_bank_sizes: { Args: Record<string, never>; Returns: number[] };
     };
   };
 };

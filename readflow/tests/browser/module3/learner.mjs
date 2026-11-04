@@ -67,5 +67,29 @@ try {
  await go('/dashboard');await until(section('English reading placement')+'.textContent.includes("Instructional")');assert.equal(await evaluate(section('Filipino reading placement')+'.textContent.includes("Independent")'),true);
  await go('/dashboard?fil=missing');await until(section('Filipino reading placement')+'.textContent.includes("Not completed")');
  assert.deepEqual(errors,[]);reports.push('both language missing/loading/error, no match and separate dashboard placements');
+ // Difficulty badges on the real Reading Materials page inside the learner shell (sidebar, header,
+ // content padding), with the real English/Filipino learning-path names.
+ for(const width of [320,375,768,1024,1280]) {
+  await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<520});
+  for(const language of ['English','Filipino']) {
+   await go('/materials?shell=1');await choose(language);
+   await until(section(language+' reading placement')+'!==null');
+   await until('document.querySelectorAll(".basa-module-card .basa-badge").length===4');
+   const problems=await evaluate(`[...document.querySelectorAll('.basa-module-card')].flatMap(card=>{
+    const badge=card.querySelector('.basa-badge'),box=e=>e.getBoundingClientRect(),b=box(badge),c=box(card),range=document.createRange();range.selectNodeContents(badge);
+    const overlaps=e=>{const r=box(e);return !(b.left>=r.right||b.right<=r.left||b.top>=r.bottom||b.bottom<=r.top)};
+    const meta=card.querySelector('.basa-module-meta'),issues=[];
+    if(range.getClientRects().length!==1)issues.push('wraps');
+    if(badge.scrollWidth>badge.clientWidth)issues.push('clipped');
+    if(b.left<c.left||b.right>c.right)issues.push('outside card');
+    if([card.querySelector('svg'),card.querySelector('.basa-module-title'),meta].some(overlaps))issues.push('overlaps');
+    if(box(meta).right>c.right+0.5||meta.scrollWidth>meta.clientWidth)issues.push('path overflows');
+    return issues.map(issue=>badge.textContent+' / '+meta.textContent+': '+issue)})`);
+   assert.deepEqual(problems,[],language+' badges at '+width+'px');
+   assert.ok(await evaluate('document.documentElement.scrollWidth')<=width,'No horizontal overflow in shell at '+width);
+   const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(output,'badges-'+language+'-'+width+'.png'),Buffer.from(shot.data,'base64'));
+  }
+ }
+ assert.deepEqual(errors,[]);reports.push('Easy/Medium/Hard badges on one line without overlap in the learner shell at 320/375/768/1024/1280px, English and Filipino');
  console.log(reports.join('\nPASS '));
 } finally {fs.writeFileSync(path.join(output,'learner-report.json'),JSON.stringify({reports,errors},null,2));await send('Page.close').catch(()=>{});ws.close();}

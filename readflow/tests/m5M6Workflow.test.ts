@@ -306,6 +306,7 @@ test("legacy false mode retains the identical student card, entry route and comp
       classroomService: {
         getClassroomById: async () => ({ id: "room", room_name: "Readers", room_code: "ABC" }),
         getAssignedModules: async () => [],
+        isRoomArchived: (room: any) => Boolean(room?.archived_at),
         getStudentReadingActivities: async () => [{ assignment_id: "assignment", material_id: "material", title: "Story",
           assigned_at: "2026-10-08", due_at: null, status: "in_progress", has_questions: false }],
       },
@@ -335,6 +336,7 @@ test("unfinished classroom activity stays on its card until the passage loads, e
     classroomService: {
       getClassroomById: async () => ({ id: "room", room_name: "Readers", room_code: "ABC" }),
       getAssignedModules: async () => [],
+      isRoomArchived: (room: any) => Boolean(room?.archived_at),
       getStudentReadingActivities: async () => [{ assignment_id: "assignment", material_id: "material", title: "Story",
         assigned_at: "2026-10-08", status: "completed", has_questions: false }],
     },

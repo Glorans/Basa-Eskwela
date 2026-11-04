@@ -41,10 +41,19 @@ test('publication retains authoritative readiness, propagates errors and returns
   } });
   try {
     const {publishModule} = await import(url);
-    for (const issue of ['Passage 1 has questions that need review', 'At least one passage is required',
-      'Passage 1 requires exactly two literal questions', 'Passage 1 requires exactly two inferential questions',
-      'Passage 1 requires exactly two critical questions', 'Passage 1 has missing or invalid answer keys']) {
-      issues = [issue]; await assert.rejects(publishModule('module'), {message:issue});
+    for (const [issue, shown] of [
+      ['Passage 1 has questions that need review', /Passage 1:\n• Review and save the question bank\./],
+      ['At least one passage is required', /Module:\n• At least one passage is required\./],
+      ['Passage 1 requires exactly two literal questions', /Passage 1:\n• Needs exactly two literal questions/],
+      ['Passage 1 requires exactly two inferential questions', /Needs exactly two inferential questions/],
+      ['Passage 1 requires exactly two critical questions', /Needs exactly two critical questions/],
+      ['Passage 1 has missing or invalid answer keys', /Fix the missing or invalid answer keys\./],
+    ] as const) {
+      // Every database issue still blocks publication; only its wording is grouped.
+      issues = [issue];
+      await assert.rejects(publishModule('module'), (e: Error & {causeValue?:{issues?:string[]}}) =>
+        e.message.startsWith('This module cannot be published yet.') && shown.test(e.message)
+        && JSON.stringify(e.causeValue?.issues) === JSON.stringify([issue]));
     }
     assert.deepEqual(writes, []);
     issues = []; rpcError = {message:'validation denied'};

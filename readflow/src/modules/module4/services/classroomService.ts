@@ -83,7 +83,33 @@ export type Classroom = {
   created_at: string;
   /** Absent/null for rooms created before the proposed subject migration. */
   subject?: ReadingLanguage | null;
+  /** Present only once the proposed m4_room_archive migration is installed; set while archived. */
+  archived_at?: string | null;
+  archived_by?: string | null;
 };
+
+/** Archive/Restore exists only once rooms.archived_at exists (proposed m4_room_archive migration). */
+export function supportsRoomArchive(room: Classroom | null | undefined): boolean {
+  return Boolean(room) && Object.prototype.hasOwnProperty.call(room, "archived_at");
+}
+
+export function isRoomArchived(room: Classroom | null | undefined): boolean {
+  return Boolean(room?.archived_at);
+}
+
+/** Archives or restores a learning room. Nothing is deleted; the database refuses new joins and activity while archived. */
+export async function setClassroomArchived(roomId: string, archive: boolean): Promise<boolean> {
+  const { data, error } = await supabase.rpc("m4_set_room_archived" as never, {
+    p_room_id: roomId, p_archive: archive,
+  } as never);
+  if (error) {
+    console.error("Error changing the learning room archive state:", error);
+    throw new Error(error.code === "42501"
+      ? "Only the room's Teacher or an Admin can archive or restore it."
+      : `Unable to ${archive ? "archive" : "restore"} this learning room. Nothing was changed.`);
+  }
+  return data === true;
+}
 
 export type CreateClassroomInput = {
   teacherId: string;
@@ -207,6 +233,54 @@ export async function getClassroomById(
 
   return data;
 }
+
+// ==========================
+// LEGACY ROOM SUBJECTS
+// ==========================
+// Older rooms (subject IS NULL) can be given a subject once, by their approved Teacher, through
+// m4_set_legacy_room_subject from supabase/proposed/m4_legacy_room_subject_PROPOSED.sql. The
+// database decides which subject is allowed from everything ever assigned to the room; mixed
+// English/Filipino rooms cannot be converted and keep the language picker.
+
+export type LegacyRoomSubjectOptions = {
+  subject: ReadingLanguage | null;
+  /** Languages of every module/activity ever assigned, including removed ones; "unknown" if unverifiable. */
+  contentLanguages: string[];
+  /** Subjects the database will accept for this room (empty for mixed or unknown content). */
+  choices: ReadingLanguage[];
+  canSet: boolean;
+};
+
+/** Null when the database does not support legacy conversion (proposal not installed) or the check fails. */
+export async function getLegacyRoomSubjectOptions(roomId: string): Promise<LegacyRoomSubjectOptions | null> {
+  try {
+    const { data, error } = await supabase.rpc("m4_legacy_room_subject_options" as never, { target_room: roomId } as never);
+    if (error || !data || typeof data !== "object") return null;
+    const value = data as Partial<LegacyRoomSubjectOptions>;
+    return {
+      subject: value.subject === "en" || value.subject === "fil" ? value.subject : null,
+      contentLanguages: Array.isArray(value.contentLanguages) ? value.contentLanguages.map(String) : [],
+      choices: Array.isArray(value.choices) ? value.choices.filter((c): c is ReadingLanguage => c === "en" || c === "fil") : [],
+      canSet: value.canSet === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function setLegacyRoomSubject(roomId: string, subject: ReadingLanguage): Promise<ReadingLanguage> {
+  const { data, error } = await supabase.rpc("m4_set_legacy_room_subject" as never, {
+    target_room: roomId, new_subject: subject,
+  } as never);
+  if (error) {
+    // The database's refusals are written for Teachers; anything else stays generic.
+    const message = typeof error.message === "string" ? error.message : "";
+    throw new Error(error.code === "23514" || error.code === "42501" || error.code === "22023"
+      ? message
+      : "The classroom subject could not be saved. Nothing was changed. Please try again.");
+  }
+  return data === "fil" ? "fil" : "en";
+}
 // STUDENT JOINS CLASSROOM
 
 export async function joinClassroomByCode(
@@ -287,6 +361,26 @@ export async function getRoomEnrollments(
   });
 }
 // REMOVE ENROLLED STUDENT
+/** Admin classroom actions the database allows (proposed m4_admin_classroom_actions); [] when not installed. */
+export async function getAdminClassroomActions(): Promise<string[]> {
+  try {
+    const { data, error } = await supabase.rpc("m4_admin_classroom_actions" as never);
+    return !error && Array.isArray(data) ? (data as unknown[]).map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Audited Admin removal of an enrolled student (the Admin is recorded as the actor). */
+export async function adminRemoveEnrolledStudent(enrollmentId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("m4_admin_remove_enrollment" as never, { p_enrollment_id: enrollmentId } as never);
+  if (error) {
+    console.error("Error removing enrolled student as Admin:", error);
+    throw new Error(error.code === "42501" ? "Admin access is required to remove students." : "Unable to remove this student. Nothing was changed.");
+  }
+  return data === true;
+}
+
 export async function removeEnrolledStudent(
   enrollmentId: string
 ): Promise<void> {
@@ -349,7 +443,49 @@ export type AssignedReadingModule = {
   due_at: string | null;
   /** Set when the teacher removed the module; removed modules are hidden from students. */
   removed_at: string | null;
+  /** "selected_students" only after the proposed m4_module_recipients migration; otherwise whole class. */
+  targeting: ModuleTargeting;
+  /** Recipient student IDs of a selected-students assignment (empty for whole class). */
+  recipient_ids: string[];
 };
+
+export type ModuleTargeting = "whole_class" | "selected_students";
+
+/** True only once m4_module_recipients is installed AND its separate enable step has run. */
+export async function getModuleTargetingEnabled(): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc("m4_module_targeting_enabled" as never);
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Selected-student assignment through the atomic m4_assign_module RPC (validated again in the database). */
+export async function assignModuleToSelectedStudents(
+  roomId: string,
+  moduleId: string,
+  studentIds: string[],
+  dueAt: string | null = null
+): Promise<string> {
+  if (!studentIds.length) throw new Error("Select at least one student.");
+  assertNewDueDate(dueAt);
+  const { data, error } = await supabase.rpc("m4_assign_module" as never, {
+    p_room_id: roomId, p_module_id: moduleId, p_mode: "selected_students",
+    p_students: [...new Set(studentIds)], p_due_at: dueAt,
+  } as never);
+  if (error) {
+    console.error("Error assigning module to selected students:", error);
+    const known: Record<string, string> = {
+      "22023": "Check the selected students and the due date, then try again.",
+      "42501": "Every selected student must be enrolled in this classroom, and only its Teacher can assign modules.",
+      "23514": "This reading module does not match the classroom subject.",
+      "55000": "Assigning to selected students is not available yet.",
+    };
+    throw new Error(known[error.code ?? ""] ?? "Unable to assign reading module.");
+  }
+  return String(data);
+}
 
 // Get published modules that teachers can assign
 export async function getPublishedModules(): Promise<ReadingModule[]> {
@@ -391,9 +527,7 @@ export async function assignModuleToRoom(
   teacherId: string,
   dueAt: string | null = null
 ): Promise<void> {
-  if (dueAt !== null && Number.isNaN(Date.parse(dueAt))) {
-    throw new ReadingActivityValidationError("Enter a valid due date and time, or leave it empty.");
-  }
+  assertNewDueDate(dueAt);
   const { error } = await supabase
     .from("room_modules")
     .insert({
@@ -458,6 +592,21 @@ export async function getAssignedModules(
     throw moduleError;
   }
 
+  // Recipients exist only for selected-student assignments (proposed migration); never queried otherwise.
+  const targetedIds = assignments.filter((row) => targetingOf(row) === "selected_students").map((row) => row.id);
+  let recipients: { room_module_id: string; student_id: string }[] = [];
+  if (targetedIds.length) {
+    const { data, error } = await supabase
+      .from("room_module_recipients" as never)
+      .select("room_module_id, student_id")
+      .in("room_module_id", targetedIds);
+    if (error) {
+      console.error("Error fetching module recipients:", error);
+      throw error;
+    }
+    recipients = (data ?? []) as unknown as typeof recipients;
+  }
+
   return assignments.filter(assignment => modules?.some(module => module.id === assignment.module_id)).map((assignment) => {
     const module = modules?.find(
       (item) => item.id === assignment.module_id
@@ -471,8 +620,14 @@ export async function getAssignedModules(
       assigned_at: assignment.assigned_at,
       due_at: optionalColumn(assignment, "due_at"),
       removed_at: optionalColumn(assignment, "removed_at"),
+      targeting: targetingOf(assignment),
+      recipient_ids: recipients.filter((row) => row.room_module_id === assignment.id).map((row) => row.student_id),
     };
   });
+}
+
+function targetingOf(row: object): ModuleTargeting {
+  return (row as Record<string, unknown>).targeting_mode === "selected_students" ? "selected_students" : "whole_class";
 }
 // ==========================
 // GET STUDENT CLASSROOMS
@@ -621,21 +776,60 @@ export async function getClassroomReadingActivities(roomId: string): Promise<Rea
  * Converts the optional date-time field (local time, "YYYY-MM-DDTHH:mm") to an ISO timestamp.
  * Empty means no deadline. Deadlines are informational: late work is never blocked.
  */
+// Classroom deadlines use Philippine time (Asia/Manila, UTC+8, no daylight saving),
+// whatever time zone the teacher's or student's device uses.
+export const DUE_DATE_TIME_ZONE = "Asia/Manila";
+const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+const LOCAL_DATE_TIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(:\d{2})?$/;
+
+/**
+ * New deadlines only: a datetime-local value ("2026-11-09T15:30") is read as Philippine
+ * time and must be later than now, including a time that has already passed today.
+ * Saved deadlines are never re-validated, so existing past deadlines are kept.
+ */
 export function parseOptionalDueDate(value: string, now: Date = new Date()): string | null {
-  if (!value.trim()) return null;
-  const due = new Date(value);
+  const text = value.trim();
+  if (!text) return null;
+  const local = LOCAL_DATE_TIME.exec(text);
+  const due = new Date(local ? `${local[1]}T${local[2]}${local[3] ?? ":00"}+08:00` : text);
   if (Number.isNaN(due.getTime())) {
     throw new ReadingActivityValidationError("Enter a valid due date and time, or leave it empty.");
   }
   if (due.getTime() <= now.getTime()) {
-    throw new ReadingActivityValidationError("Choose a due date and time in the future, or leave it empty.");
+    throw new ReadingActivityValidationError(
+      "This due date and time has already passed. Choose a date and time in the future (Philippine time), or leave it empty.",
+    );
   }
   return due.toISOString();
 }
 
-/** Due date and time in the viewer's time zone, e.g. "Nov 9, 2026, 3:30 PM". */
+/** Insert-time check for a new assignment's ISO deadline (a form may stay open until it passes). */
+function assertNewDueDate(dueAt: string | null, now: Date = new Date()) {
+  if (dueAt === null) return;
+  if (Number.isNaN(Date.parse(dueAt))) {
+    throw new ReadingActivityValidationError("Enter a valid due date and time, or leave it empty.");
+  }
+  parseOptionalDueDate(dueAt, now);
+}
+
+/** The current Philippine date and time as a datetime-local value, used as the picker's minimum. */
+export function currentDueDateMinimum(now: Date = new Date()): string {
+  return new Date(now.getTime() + MANILA_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+/** Inline message for a typed deadline, or "" when it is empty or valid. */
+export function dueDateIssue(value: string, now: Date = new Date()): string {
+  try {
+    parseOptionalDueDate(value, now);
+    return "";
+  } catch (err) {
+    return err instanceof Error ? err.message : "Enter a valid due date and time, or leave it empty.";
+  }
+}
+
+/** Due date and time in Philippine time, e.g. "Nov 9, 2026, 3:30 PM". */
 export function formatDueDateTime(dueAt: string, locale?: string): string {
-  return new Date(dueAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
+  return new Date(dueAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone: DUE_DATE_TIME_ZONE });
 }
 
 export async function assignReadingActivity(
@@ -649,7 +843,7 @@ export async function assignReadingActivity(
   if (!uuid.test(roomId)) throw new ReadingActivityValidationError("The classroom is invalid. Reopen it from Learning Rooms.");
   if (!uuid.test(materialId)) throw new ReadingActivityValidationError("Please select a valid reading material.");
   if (questionSetId !== null && !uuid.test(questionSetId)) throw new ReadingActivityValidationError("Please select a valid question set, or choose read-aloud only.");
-  if (dueAt !== null && Number.isNaN(Date.parse(dueAt))) throw new ReadingActivityValidationError("Enter a valid due date and time, or leave it empty.");
+  assertNewDueDate(dueAt);
   const uniqueStudentIds = [...new Set(studentIds)];
   if (!uniqueStudentIds.length || uniqueStudentIds.some(id => !uuid.test(id))) {
     throw new ReadingActivityValidationError("Please select at least one valid enrolled student.");

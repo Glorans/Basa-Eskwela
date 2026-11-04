@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createHookRuntime, findAll, loadComponentModule, textOf, tick } from "./helpers/hookRuntime.ts";
 
@@ -50,6 +51,7 @@ function mount(extract: (input: { file: unknown; learningPathLanguage: string })
       return {
         collectionError: (error: Error) => error.message,
         generateBank: async () => assert.fail("generateBank is not under test"),
+        getPassageBankSizes: async () => [6],
         loadCollection: async () => assert.fail("create mode must not load a collection"),
         saveBank: async () => assert.fail("saveBank is not under test"),
         saveCollection: async () => assert.fail("create mode saves through createDraft"),
@@ -64,6 +66,8 @@ function mount(extract: (input: { file: unknown; learningPathLanguage: string })
     if (id.endsWith("/ReadFlowDialog")) return { confirmReadFlow: async () => true };
     if (id.endsWith(".css")) return {};
     if (id.startsWith("./")) return { default: function StubComponent() { return null; } };
+    // Pure M3 helpers (labels, publish-issue grouping) run for real.
+    if (id.startsWith("../utils/")) return require(fileURLToPath(new URL(`../src/modules/module3/utils/${id.slice("../utils/".length).replace(/\.ts$/, "")}.ts`, import.meta.url)));
     return require(id);
   });
 
@@ -80,7 +84,8 @@ function mount(extract: (input: { file: unknown; learningPathLanguage: string })
       textarea,
       textareaFieldset: findAll(tree, (node) => node.type === "fieldset" && findAll(node, (child) => child === textarea).length > 0)[0],
       fileInput: findAll(tree, (node) => node.type === "input" && node.props.type === "file")[0],
-      pathSelect: findAll(labelled(tree, "Learning path"), (node) => node.type === "select")[0],
+      languageSelect: findAll(labelled(tree, "Language"), (node) => node.type === "select")[0],
+      levelSelect: findAll(labelled(tree, "Reading Level"), (node) => node.type === "select")[0],
       titleInput: findAll(labelled(tree, "Title"), (node) => node.type === "input")[0],
       saveDraft: findAll(tree, (node) => node.type === "button" && textOf(node) === "Save Draft")[0],
     };
@@ -112,7 +117,8 @@ test("create mode shows an editable passage textarea and an optional file input"
 
 test("a draft saves typed passage text without any extraction", async () => {
   const m = mount();
-  m.ui().pathSelect.props.onChange({ target: { value: PATH.id } });
+  m.ui().languageSelect.props.onChange({ target: { value: PATH.language } });
+  m.ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
   m.ui().titleInput.props.onChange({ target: { value: "Typed Module" } });
   m.ui().textarea.props.onChange({ target: { value: "A passage typed by hand." } });
   m.ui().saveDraft.props.onClick();
@@ -123,7 +129,8 @@ test("a draft saves typed passage text without any extraction", async () => {
 
 test("extracted text fills the passage and stays editable before saving", async () => {
   const m = mount(async () => ({ extractedText: "Extracted story text." }));
-  m.ui().pathSelect.props.onChange({ target: { value: PATH.id } });
+  m.ui().languageSelect.props.onChange({ target: { value: PATH.language } });
+  m.ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
   await m.chooseFile();
   assert.equal(m.extractCalls.length, 1);
   assert.equal(m.extractCalls[0].learningPathLanguage, "en");
@@ -153,7 +160,8 @@ test("extracting without a learning path is refused and leaves the passage edita
 
 test("a failed extraction keeps the typed passage text editable and shows the error", async () => {
   const m = mount(async () => { throw new Error("Unable to read this file."); });
-  m.ui().pathSelect.props.onChange({ target: { value: PATH.id } });
+  m.ui().languageSelect.props.onChange({ target: { value: PATH.language } });
+  m.ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
   m.ui().textarea.props.onChange({ target: { value: "Text typed before extracting." } });
   await m.chooseFile();
   const view = m.ui();

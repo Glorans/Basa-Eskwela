@@ -362,3 +362,24 @@ test("invalid room subjects are rejected before any database call", async () => 
   }
   assert.deepEqual(calls, []);
 });
+
+test("legacy room subject options: missing RPC or failure means not supported; data is sanitized", async () => {
+  replies = [{ data: null, error: { code: "PGRST202", message: "Could not find the function" } }];
+  assert.equal(await service.getLegacyRoomSubjectOptions("room-1"), null);
+  assert.deepEqual(calls[0], { operation: "rpc", args: ["m4_legacy_room_subject_options", { target_room: "room-1" }] });
+  replies = [{ data: { subject: null, contentLanguages: ["fil"], choices: ["fil", "es"], canSet: true }, error: null }];
+  assert.deepEqual(await service.getLegacyRoomSubjectOptions("room-1"),
+    { subject: null, contentLanguages: ["fil"], choices: ["fil"], canSet: true });
+  replies = [{ data: { subject: null, contentLanguages: ["en", "fil"], choices: [], canSet: "yes" }, error: null }];
+  assert.equal((await service.getLegacyRoomSubjectOptions("room-1"))?.canSet, false);
+});
+
+test("setting a legacy room subject passes Teacher-facing refusals through and hides other errors", async () => {
+  replies = [{ data: "fil", error: null }];
+  assert.equal(await service.setLegacyRoomSubject("room-1", "fil"), "fil");
+  assert.deepEqual(calls.at(-1), { operation: "rpc", args: ["m4_set_legacy_room_subject", { target_room: "room-1", new_subject: "fil" }] });
+  replies = [{ data: null, error: { code: "23514", message: "This room has both English and Filipino readings, so its subject cannot be set." } }];
+  await assert.rejects(service.setLegacyRoomSubject("room-1", "en"), /both English and Filipino readings/);
+  replies = [{ data: null, error: { code: "XX000", message: "internal detail at line 4" } }];
+  await assert.rejects(service.setLegacyRoomSubject("room-1", "en"), (error: Error) => !/internal detail/.test(error.message) && /Nothing was changed/.test(error.message));
+});

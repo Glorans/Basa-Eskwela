@@ -45,9 +45,16 @@ async function fixture(listFailsAfterSave = false, questionSets: any[] = [], exp
   };
   let saved = false;
   const service = {
+    supportsRoomArchive: (room: any) => Boolean(room) && Object.prototype.hasOwnProperty.call(room, "archived_at"),
+    isRoomArchived: (room: any) => Boolean(room?.archived_at),
+    setClassroomArchived: async () => true,
+    getLegacyRoomSubjectOptions: async () => null,
+    getModuleTargetingEnabled: async () => false,
     getReadingActivityError: loadService({}).getReadingActivityError,
     parseOptionalDueDate: loadService({}).parseOptionalDueDate,
     formatDueDateTime: loadService({}).formatDueDateTime,
+    currentDueDateMinimum: loadService({}).currentDueDateMinimum,
+    dueDateIssue: loadService({}).dueDateIssue,
     // Staging today: the optional due-date/unassign migrations are not applied.
     supportsOptionalColumn: async () => false,
     getClassroomReadingActivities: async () => {
@@ -75,7 +82,7 @@ async function fixture(listFailsAfterSave = false, questionSets: any[] = [], exp
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   vm.runInNewContext(code, {
     module, exports: module.exports,
-    require: (id: string) => id === 'react' ? react : id === 'react-router-dom' ? { useParams: () => ({ roomId: 'room' }), Link: 'a' } : id.includes('ReadFlowDialog') ? { confirmReadFlow: async () => true, showReadFlowDialog: async () => true } : id.includes('classroomService') ? service : id.includes('materialService') ? { getMaterialQuestionSets: async () => questionSets, getMaterialServiceError: (_: unknown, fallback: string) => fallback } : id.includes('supabaseClient') ? {} : require(id),
+    require: (id: string) => id === 'react' ? react : id === 'react-router-dom' ? { useParams: () => ({ roomId: 'room' }), Link: 'a' } : id.includes('ReadFlowDialog') ? { confirmReadFlow: async () => true, showReadFlowDialog: async () => true } : id.includes('classroomService') ? service : id.includes('materialService') ? { getMaterialQuestionSets: async () => questionSets, getMaterialServiceError: (_: unknown, fallback: string) => fallback } : id.includes('supabaseClient') ? {} : id.includes('RoomArchivePanel') ? { default: function RoomArchivePanel() { return null; } } : id.includes('LegacyRoomSubjectPanel') ? { default: function LegacyRoomSubjectPanel() { return null; } } : id.includes('EnrolledStudentsPanel') ? { default: function EnrolledStudentsPanel() { return null; }, EnrolledStudentsButton: function EnrolledStudentsButton() { return null; } } : require(id),
     console: { error() {} },
     window: {
       addEventListener(name: string, callback: () => void) { listeners.set(name, callback); },
@@ -349,6 +356,13 @@ for (const subject of ["en", "fil"] as const) {
     const picker = page.find(page.render(), node => node.props?.id === 'activityLanguage');
     assert.equal(picker.props.value, subject);
     assert.equal(picker.props.disabled, true);
+    assert.equal(picker.props.subject, subject);
+    // Rendered, the saved subject is plain text: no dropdown the teacher could change.
+    const field = picker.type(picker.props);
+    const flat = JSON.stringify(field);
+    assert.match(flat, /Classroom Subject/);
+    assert.match(flat, new RegExp(subject === 'en' ? '"English"' : '"Filipino"'));
+    assert.doesNotMatch(flat, /"select"|Select the classroom language/);
     picker.props.onChange(subject === 'en' ? 'fil' : 'en');
     assert.equal(page.find(page.render(), node => node.props?.id === 'activityLanguage').props.value, subject);
     const materialPicker = page.find(page.render(), node => node.props?.id === 'readingMaterial');
@@ -367,19 +381,42 @@ for (const subject of ["en", "fil"] as const) {
 
 test('optional activity due date: empty means no deadline, past or invalid values are rejected', () => {
   const { parseOptionalDueDate } = loadService({});
-  const now = new Date('2026-11-02T08:00:00Z');
+  const now = new Date('2026-11-02T08:00:00Z'); // 4:00 PM on Nov 2 in the Philippines
   assert.equal(parseOptionalDueDate('', now), null);
   assert.equal(parseOptionalDueDate('   ', now), null);
-  const due = parseOptionalDueDate('2026-11-09T15:30', now);
-  assert.equal(due, new Date('2026-11-09T15:30').toISOString());
-  assert.throws(() => parseOptionalDueDate('2026-10-01T09:00', now), /in the future/);
+  // The picker value is Philippine time, whatever the device time zone is.
+  assert.equal(parseOptionalDueDate('2026-11-09T15:30', now), '2026-11-09T07:30:00.000Z');
+  assert.throws(() => parseOptionalDueDate('2026-10-01T09:00', now), /already passed.*in the future \(Philippine time\)/);
   assert.throws(() => parseOptionalDueDate('not-a-date', now), /valid due date/);
+});
+
+test('a deadline later today is accepted, one earlier today is rejected (Asia/Manila)', () => {
+  const { parseOptionalDueDate, currentDueDateMinimum, dueDateIssue, formatDueDateTime } = loadService({});
+  const now = new Date('2026-11-02T08:00:00Z'); // 16:00 in Manila
+  assert.throws(() => parseOptionalDueDate('2026-11-02T15:59', now), /already passed/);
+  assert.throws(() => parseOptionalDueDate('2026-11-02T16:00', now), /already passed/);
+  assert.equal(parseOptionalDueDate('2026-11-02T16:01', now), '2026-11-02T08:01:00.000Z');
+  // 23:30 UTC is already the next morning in Manila.
+  assert.equal(currentDueDateMinimum(now), '2026-11-02T16:00');
+  assert.equal(currentDueDateMinimum(new Date('2026-11-02T23:30:00Z')), '2026-11-03T07:30');
+  assert.equal(dueDateIssue('', now), '');
+  assert.equal(dueDateIssue('2026-11-02T18:00', now), '');
+  assert.match(dueDateIssue('2026-11-02T09:00', now), /already passed/);
+  assert.equal(formatDueDateTime('2026-11-02T08:01:00.000Z', 'en-US'), 'Nov 2, 2026, 4:01 PM');
+});
+
+test('insert-time checks refuse a past deadline even if the form stayed open', async () => {
+  const f = serviceFixture();
+  await assert.rejects(f.service.assignReadingActivity(roomId, materialId, [studentId], '2020-01-01T00:00:00.000Z'), /already passed/);
+  assert.equal(f.rows.length, 0);
+  const moduleService = loadService({ from() { assert.fail('a past module deadline must not reach the database'); } });
+  await assert.rejects(moduleService.assignModuleToRoom('room', 'module', 'teacher', '2020-01-01T00:00:00.000Z'), /already passed/);
 });
 
 test('a due date is saved with each new assignment and shown in the teacher list', async () => {
   const f = serviceFixture();
-  await f.service.assignReadingActivity(roomId, materialId, [studentId, secondStudentId], '2026-11-09T07:30:00.000Z');
-  assert.deepEqual(f.rows.map((row: any) => row.due_at), ['2026-11-09T07:30:00.000Z', '2026-11-09T07:30:00.000Z']);
+  await f.service.assignReadingActivity(roomId, materialId, [studentId, secondStudentId], '2099-11-09T07:30:00.000Z');
+  assert.deepEqual(f.rows.map((row: any) => row.due_at), ['2099-11-09T07:30:00.000Z', '2099-11-09T07:30:00.000Z']);
   await assert.rejects(f.service.assignReadingActivity(roomId, materialId, [studentId], 'soon'), /valid due date/);
   assert.match(source, /type="datetime-local"/);
   assert.match(source, /Due date and time \(optional\)/);

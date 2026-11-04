@@ -41,6 +41,7 @@ async function fixture(rooms: any[] = [], fail = false) {
       : id.includes("supabaseClient") ? { supabase: { auth: { getUser: async () => ({ data: { user: { id: "teacher" } }, error: null }) } } }
       : id.includes("classroomService") ? {
         getTeacherClassrooms: async () => rooms,
+        isRoomArchived: (room: any) => Boolean(room?.archived_at),
         createClassroom: async (input: any) => {
           calls.push(input);
           if (fail) throw new Error("Failed");

@@ -89,7 +89,7 @@ test("M4 classroom service preserves enrollment and assignment contracts", async
     await t.test("assignment results combine saved assignment IDs with module metadata", async () => {
       respond([{ id: "assignment", module_id: "module", assigned_at: "2026-10-06" }], [{ id: "module", title: "Story", difficulty: "Easy" }]);
       // Rows from a schema without the optional columns report no deadline and not removed.
-      assert.deepEqual(await service.getAssignedModules("room"), [{ assignment_id: "assignment", module_id: "module", assigned_at: "2026-10-06", title: "Story", difficulty: "Easy", due_at: null, removed_at: null }]);
+      assert.deepEqual(await service.getAssignedModules("room"), [{ assignment_id: "assignment", module_id: "module", assigned_at: "2026-10-06", title: "Story", difficulty: "Easy", due_at: null, removed_at: null, targeting: "whole_class", recipient_ids: [] }]);
     });
     await t.test("removed modules are hidden from students but listed for the teacher, with deadlines", async () => {
       const rows = () => [

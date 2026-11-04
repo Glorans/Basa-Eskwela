@@ -4,6 +4,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import {
   getStudentClassrooms,
   joinClassroomByCode,
+  isRoomArchived,
   type Classroom,
 } from "../services/classroomService";
 
@@ -114,9 +115,10 @@ export default function JoinClassroomPage() {
     } catch (err) {
       console.error("Failed to join classroom:", err);
 
-      setError(
-        "Unable to join classroom. Please check the room code and try again."
-      );
+      // An archived room (proposed m4_room_archive) refuses new students with its own message.
+      setError((err as { code?: string } | null)?.code === "55000"
+        ? "This learning room is archived and is not accepting new students."
+        : "Unable to join classroom. Please check the room code and try again.");
     } finally {
       setJoining(false);
     }
@@ -276,11 +278,16 @@ export default function JoinClassroomPage() {
                   📖
                 </div>
 
-                {room.section && (
-                  <span className="rounded-full bg-[#ef7468] px-3 py-1 text-xs font-bold text-white">
-                    {room.section}
-                  </span>
-                )}
+                <div className="flex flex-wrap justify-end gap-2">
+                  {isRoomArchived(room) && (
+                    <span className="rounded-full bg-[#5c7471] px-3 py-1 text-xs font-bold text-white">Archived</span>
+                  )}
+                  {room.section && (
+                    <span className="rounded-full bg-[#ef7468] px-3 py-1 text-xs font-bold text-white">
+                      {room.section}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Room Details */}

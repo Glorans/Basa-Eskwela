@@ -12,11 +12,11 @@
 .m3-placement-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:16px 0 24px; }
 .m3-reading-section { margin:24px 0 32px; }
 .m3-reading-section h2 { font-size:1.2rem; margin:0 0 16px; }
-.m3-learner-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px; }
+/* Columns follow the space beside the sidebar, not the viewport, so cards never get too narrow. */
+.basa-module-grid.m3-learner-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,13rem),1fr)); gap:18px; }
 .m3-learner-card { min-width:0; display:flex; flex-direction:column; overflow-wrap:anywhere; }
 .m3-learner-card .basa-module-card { flex:1; }
 .m3-card-label { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; padding:8px 4px; font-size:.78rem; font-weight:700; color:var(--basa-text-soft, #455b69); }
 .m3-catalog-filters { flex-wrap:wrap; }
 .m3-catalog-filters button { min-height:44px; }
-@media(max-width:1000px) { .m3-learner-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media(max-width:560px) { .m3-placement-grid, .m3-learner-grid { grid-template-columns:1fr; } .m3-language-selector button { flex:1; } }
+@media(max-width:560px) { .m3-placement-grid { grid-template-columns:1fr; } .m3-language-selector button { flex:1; } }

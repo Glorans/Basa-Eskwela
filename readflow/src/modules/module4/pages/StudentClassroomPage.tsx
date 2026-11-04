@@ -9,6 +9,7 @@ import {
   getAssignedModules,
   getStudentReadingActivities,
   formatDueDateTime,
+  isRoomArchived,
   type Classroom,
   type AssignedReadingModule,
   type StudentReadingActivity,
@@ -155,6 +156,12 @@ export default function StudentClassroomPage() {
                   </span>
                 )}
               </div>
+
+              {isRoomArchived(classroom) && (
+                <p role="note" className="mb-2 rounded-xl bg-[#5c7471]/15 px-3 py-2 text-sm font-bold text-[#173f3b]">
+                  Your teacher archived this learning room. You can still see your saved work, but new activities cannot be started.
+                </p>
+              )}
 
               {classroom.description?.trim() && classroom.description.trim().toLowerCase() !== "none" && (
                 <p className="max-w-2xl text-sm leading-6 text-[#5c7471] md:text-base">

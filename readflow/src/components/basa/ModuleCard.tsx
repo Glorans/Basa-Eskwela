@@ -15,15 +15,17 @@ export default function ModuleCard({ mod }: { mod: StudentReadingModule }) {
 
   return (
     <article className="basa-module-card">
+      {/* The badge sits beside the icon, not after the learning-path name: long path names
+          (especially Filipino ones) would otherwise push it onto a row of its own. */}
       <div className="basa-module-card-top">
-        <BookOpen size={20} />
+        <BookOpen size={20} aria-hidden="true" />
+        <span className={`basa-badge ${DIFFICULTY_STYLES[mod.difficulty]}`}>{mod.difficulty}</span>
       </div>
 
       <h3 className="basa-module-title">{mod.title}</h3>
 
       <div className="basa-module-meta">
         <span>{mod.learningPath}</span>
-        <span className={`basa-badge ${DIFFICULTY_STYLES[mod.difficulty]}`}>{mod.difficulty}</span>
       </div>
 
       <div className="basa-module-footer">

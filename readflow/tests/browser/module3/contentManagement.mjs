@@ -51,6 +51,16 @@ const server = await createServer({root,configFile:false,server:{host:'127.0.0.1
    export const archiveModule=id=>mutate('archive',id);
    export const restoreModule=id=>mutate('restore',id);
    export const createModule=async()=>{};export const updateModule=async()=>{};export const publishModule=async()=>{};export const unpublishModule=async()=>{};
+   // Trash exists only with ?trash=1 (the m3_trashed_modules gate); otherwise null, like staging today.
+   const trashed=()=>JSON.parse(sessionStorage.getItem('trash')||'[]');
+   export async function getTrashedModules(){return new URLSearchParams(location.search).has('trash')?trashed():null;}
+   export async function trashModule(id){window.actionCalls.push(['trash',id]);const m=current().find(x=>x.id===id);
+     sessionStorage.setItem('modules',JSON.stringify(current().filter(x=>x.id!==id)));
+     sessionStorage.setItem('trash',JSON.stringify([...trashed(),{id,title:m.title,statusBefore:m.status,trashedAt:'2026-11-04T00:00:00Z',trashedByName:'Admin',everPublished:m.status!=='draft',hasHistory:id==='published'}]));return 'trashed';}
+   export async function restoreTrashedModule(id){window.actionCalls.push(['untrash',id]);const t=trashed().find(x=>x.id===id);const status=t.everPublished?'archived':'draft';
+     sessionStorage.setItem('trash',JSON.stringify(trashed().filter(x=>x.id!==id)));
+     sessionStorage.setItem('modules',JSON.stringify([...current(),{...rows.find(r=>r.id===id),status}]));return status;}
+   export async function purgeTrashedModule(id){window.actionCalls.push(['purge',id]);sessionStorage.setItem('trash',JSON.stringify(trashed().filter(x=>x.id!==id)));return 'deleted';}
   `;
  },
  configureServer(server){server.middlewares.use(async(req,res,next)=>{
@@ -108,22 +118,40 @@ try {
   await until("document.querySelectorAll('.m3-record-card').length===4");
   await navigate('');
   const clickAction=async label=>evaluate(`document.querySelector('button[aria-label="${label}"]').click()`);
+  const answerDialog=async choice=>{await until("!!document.querySelector('dialog[open]')");await evaluate(`[...document.querySelectorAll('dialog[open] button')].find(b=>b.textContent===${JSON.stringify(choice)}).click()`);await until("!document.querySelector('dialog')");};
+  const deleteAndConfirm=async label=>{await clickAction(label);await answerDialog('Confirm');};
+  // Delete asks first; Cancel deletes nothing.
+  await clickAction('Delete Garden story');
+  await until("!!document.querySelector('dialog[open]')");
+  const draftMessage=await evaluate("document.querySelector('#readflow-dialog-message').textContent");
+  assert.match(draftMessage,/Delete "Garden story"\?/);
+  assert.match(draftMessage,/never been published/);
+  assert.match(draftMessage,/permanently deleted\. This cannot be undone/);
+  assert.match(draftMessage,/hidden from active catalogs instead/);
+  await answerDialog('Cancel');
+  assert.deepEqual(await evaluate('window.actionCalls'),[]);
+  assert.equal(await evaluate("document.querySelectorAll('.m3-record-card').length"),4);
+  // Confirm deletes once, even after a double-click.
   await evaluate("(()=>{const b=document.querySelector('button[aria-label=\"Delete Garden story\"]');b.click();b.click();})()");
-  assert.equal(await evaluate("document.querySelector('dialog')"),null);
+  await answerDialog('Confirm');
   await until("document.querySelectorAll('.m3-record-card').length===3");
   assert.deepEqual(await evaluate('window.actionCalls'),[['delete','draft']]);
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.m3-admin-module-summary strong')].map(n=>n.textContent)"),['1','1','1']);
-  await send('Page.reload');await until("document.querySelectorAll('.m3-record-card').length===3");
+  const beforeReload=await evaluate('performance.timeOrigin');
+  await send('Page.reload');await until(`performance.timeOrigin!==${beforeReload} && document.querySelectorAll('.m3-record-card').length===3`);
   assert.equal(await evaluate("!!document.querySelector('button[aria-label=\"Delete Garden story\"]')"),false);
-  await clickAction('Delete Old draft');await until("document.querySelectorAll('.m3-record-card').length===2");
+  await deleteAndConfirm('Delete Old draft');await until("document.querySelectorAll('.m3-record-card').length===2");
   assert.match(await evaluate("document.querySelector('[role=status]').textContent"),/Existing assignments and reading history were preserved/);
-  await clickAction('Delete Forest story');await until("document.querySelectorAll('.m3-record-card').length===1");
+  await clickAction('Delete Forest story');
+  await until("!!document.querySelector('dialog[open]')");
+  assert.match(await evaluate("document.querySelector('#readflow-dialog-message').textContent"),/has been published, so rooms or learners may have records/);
+  await answerDialog('Confirm');await until("document.querySelectorAll('.m3-record-card').length===1");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.m3-admin-module-summary strong')].map(n=>n.textContent)"),['0','0','1']);
   assert.equal(await evaluate("document.querySelector('[data-learner-catalog]').dataset.learnerCatalog"),'');
   assert.equal(await evaluate("document.querySelector('[data-teacher-catalog]').dataset.teacherCatalog"),'archived');
   await evaluate("sessionStorage.removeItem('modules')");
   await navigate('denied');
-  await clickAction('Delete Garden story');await until("!!document.querySelector('[role=alert]')");
+  await deleteAndConfirm('Delete Garden story');await until("!!document.querySelector('[role=alert]')");
   assert.match(await evaluate("document.querySelector('[role=alert]').textContent"),/42501.*Admin access is required/);
   assert.equal(await evaluate("document.querySelectorAll('.m3-record-card').length"),4);
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.m3-admin-module-summary strong')].map(n=>n.textContent)"),['2','1','1']);
@@ -135,7 +163,34 @@ try {
   await until("!!document.querySelector('button[aria-label=\"Archive Forest story\"]')===false && document.querySelectorAll('.m3-admin-module-summary strong')[0].textContent==='3'");
   assert.equal(await evaluate("!!document.querySelector('a[aria-label=\"Edit Forest story\"]')"),false);
   await evaluate("sessionStorage.removeItem('modules')");
+  // Without the Trash gate there is no Trash section (staging today).
+  assert.equal(await evaluate("!!document.querySelector('#m3TrashHeading')"),false);
+  // With the Trash: Delete asks, moves to Trash; Restore and Delete Permanently follow the rules.
+  await send('Page.navigate',{url:'http://127.0.0.1:5180/m3/admin?trash=1'});
+  await until("document.querySelectorAll('.m3-record-card').length===4 && document.body.textContent.includes('The Trash is empty.')");
+  await clickAction('Delete Forest story');
+  await until("!!document.querySelector('dialog[open]')");
+  assert.match(await evaluate("document.querySelector('#readflow-dialog-message').textContent"),/moves to the Trash[\s\S]*comes back archived and must be published again/);
+  await answerDialog('Cancel');
+  assert.deepEqual(await evaluate("window.actionCalls.filter(c=>c[0]==='trash')"),[],'Cancel keeps the module');
+  await clickAction('Delete Forest story');await answerDialog('Confirm');
+  await until("document.body.textContent.includes('Forest story was moved to the Trash.')");
+  await clickAction('Delete Garden story');await answerDialog('Confirm');
+  await until("document.querySelectorAll('.m3-trash .m3-record-card').length===2");
+  assert.equal(await evaluate("!!document.querySelector('button[aria-label=\"Delete Forest story permanently\"]')"),false,'history blocks permanent deletion');
+  await clickAction('Restore Forest story from the Trash');
+  await until("document.body.textContent.includes('Forest story was restored as archived. Publish it again')");
+  await clickAction('Delete Garden story permanently');
+  await until("!!document.querySelector('dialog[open]')");
+  assert.match(await evaluate("document.querySelector('#readflow-dialog-message').textContent"),/cannot be undone/);
+  await answerDialog('Confirm');
+  await until("document.body.textContent.includes('Garden story was permanently deleted.') && document.body.textContent.includes('The Trash is empty.')");
+  assert.deepEqual(await evaluate("window.actionCalls.filter(c=>['trash','untrash','purge','delete'].includes(c[0]))"),[['trash','published'],['trash','draft'],['untrash','published'],['purge','draft']]);
+  for(const width of [375,1280]){await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<520});
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'Trash fits at '+width);}
+  await send('Emulation.clearDeviceMetricsOverride');
+  await evaluate("sessionStorage.removeItem('modules');sessionStorage.removeItem('trash')");
   assert.deepEqual(errors,[]);
-  console.log('PASS: Admin content list, metadata, totals, combined filters, eligible draft links, create/detail routes, empty/loading/error/retry states, one-click deletion, failed deletion, fixture refresh persistence, archive/restore, immediate counts and mobile/laptop widths.');
+  console.log('PASS: Trash (gate, Delete confirm/Cancel, restore published as archived, history blocks purge, purge confirm, 375/1280px), Admin content list, metadata, totals, combined filters, eligible draft links, create/detail routes, empty/loading/error/retry states, confirmed deletion (cancel keeps the module, draft vs published wording, one call on double-click), failed deletion, fixture refresh persistence, archive/restore, immediate counts and mobile/laptop widths.');
   await send('Page.close');
 } finally {ws?.close();await server.close();}

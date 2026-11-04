@@ -14,11 +14,22 @@ import {
   assignReadingActivity,
   parseOptionalDueDate,
   formatDueDateTime,
+  currentDueDateMinimum,
+  dueDateIssue,
   supportsOptionalColumn,
   setReadingActivityRemoved,
   setRoomModuleRemoved,
   getClassroomReadingActivities,
   getReadingActivityError,
+  getLegacyRoomSubjectOptions,
+  setLegacyRoomSubject,
+  getModuleTargetingEnabled,
+  assignModuleToSelectedStudents,
+  supportsRoomArchive,
+  isRoomArchived,
+  setClassroomArchived,
+  type ModuleTargeting,
+  type LegacyRoomSubjectOptions,
   type ReadingActivityAssignment,
   type Classroom,
   type EnrolledStudent,
@@ -29,16 +40,43 @@ import {
 } from "../services/classroomService";
 import { getMaterialQuestionSets, getMaterialServiceError } from "../../module3/services/materialService";
 import type { MaterialQuestionSetSummary } from "../../module3/types/content";
+import EnrolledStudentsPanel, { EnrolledStudentsButton } from "../components/EnrolledStudentsPanel";
+import LegacyRoomSubjectPanel from "../components/LegacyRoomSubjectPanel";
+import RoomArchivePanel from "../components/RoomArchivePanel";
 
 const LANGUAGE_NAMES: Record<ReadingLanguage, string> = { en: "English", fil: "Filipino" };
 
-// Saved room subjects lock this existing picker. Legacy rooms retain their filter.
-function RoomLanguageSelect({ id, value, disabled, onChange }: {
+// A room created with a subject shows it read-only and always filters by it; the
+// database still checks every assignment against the saved subject. Only older
+// rooms without a saved subject (subject IS NULL) keep the language picker.
+function RoomLanguageSelect({ id, subject, value, disabled, onChange }: {
   id: string;
+  subject: ReadingLanguage | null | undefined;
   value: ReadingLanguage | "";
   disabled?: boolean;
   onChange: (language: ReadingLanguage | "") => void;
 }) {
+  if (subject) {
+    return (
+      <div className="mb-4">
+        <p id={`${id}Label`} className="mb-2 block text-sm font-bold text-[#173f3b]">
+          Classroom Subject
+        </p>
+        <p
+          id={id}
+          data-subject={subject}
+          aria-labelledby={`${id}Label`}
+          aria-describedby={`${id}Help`}
+          className="w-full rounded-xl bg-white/80 px-4 py-3 text-sm font-extrabold text-[#173f3b]"
+        >
+          {LANGUAGE_NAMES[subject]}
+        </p>
+        <p id={`${id}Help`} className="mt-1 text-xs text-[#6d8582]">
+          Set when this learning room was created. Only {LANGUAGE_NAMES[subject]} content can be assigned here.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="mb-4">
       <label htmlFor={id} className="mb-2 block text-sm font-bold text-[#173f3b]">
@@ -56,6 +94,9 @@ function RoomLanguageSelect({ id, value, disabled, onChange }: {
         <option value="en">English</option>
         <option value="fil">Filipino</option>
       </select>
+      <p className="mt-1 text-xs text-[#6d8582]">
+        This older learning room has no saved subject. Choose the language of the content you are assigning.
+      </p>
     </div>
   );
 }
@@ -255,87 +296,6 @@ function ClassroomInfoSection({
   );
 }
 
-type EnrolledStudentsSectionProps = {
-  students: EnrolledStudent[];
-  onRemoveStudent: (enrollmentId: string, studentName: string) => void;
-};
-
-function EnrolledStudentsSection({
-  students,
-  onRemoveStudent,
-}: EnrolledStudentsSectionProps) {
-  return (
-    <div className="rounded-3xl bg-[#dce8e7] p-6 shadow-md">
-      <div className="mb-5">
-        <h2 className="text-2xl font-extrabold text-[#173f3b]">
-          Enrolled Students
-        </h2>
-
-        <p className="mt-1 text-sm text-[#5c7471]">
-          Students currently enrolled in this learning room.
-        </p>
-      </div>
-
-      {students.length === 0 ? (
-        <div className="rounded-2xl bg-white/60 px-5 py-8 text-center">
-          <div className="mb-2 text-3xl">👥</div>
-
-          <p className="font-bold text-[#173f3b]">
-            No enrolled students yet
-          </p>
-
-          <p className="mt-1 text-sm text-[#6d8582]">
-            Share the room code with students to let them join.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {students.map((student) => (
-            <div
-              key={student.enrollment_id}
-              className="flex flex-col gap-4 rounded-2xl bg-white/70 p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f7cf4a] font-black text-[#173f3b]">
-                  {student.display_name
-                    .charAt(0)
-                    .toUpperCase()}
-                </div>
-
-                <div>
-                  <p className="font-extrabold text-[#173f3b]">
-                    {student.display_name}
-                  </p>
-
-                  <p className="text-xs text-[#6d8582]">
-                    Joined{" "}
-                    {new Date(
-                      student.enrolled_at
-                    ).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  onRemoveStudent(
-                    student.enrollment_id,
-                    student.display_name
-                  )
-                }
-                className="rounded-xl bg-[#ef7468] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#df665c]"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 type ModuleAssignmentSectionProps = {
   assignedModules: AssignedReadingModule[];
   unassignedModules: ReadingModule[];
@@ -344,6 +304,8 @@ type ModuleAssignmentSectionProps = {
   assigningModule: boolean;
   moduleError: string;
   subjectLocked: boolean;
+  /** The room's saved subject; null for older rooms without one. */
+  subject: ReadingLanguage | null;
   roomLanguage: ReadingLanguage | "";
   /** Shown only once the optional room_modules.due_at migration is applied. */
   deadlinesSupported: boolean;
@@ -351,6 +313,15 @@ type ModuleAssignmentSectionProps = {
   /** Remove/Restore buttons appear only once the optional unassign migration is applied. */
   removalSupported: boolean;
   changingModuleId: string;
+  /** Whole Class / Selected Students appears only when the database reports targeting is enabled. */
+  targetingEnabled: boolean;
+  /** Archived rooms accept no new assignments (proposed m4_room_archive). */
+  archived: boolean;
+  students: EnrolledStudent[];
+  moduleTargeting: ModuleTargeting;
+  moduleStudentIds: string[];
+  onModuleTargetingChange: (targeting: ModuleTargeting) => void;
+  onToggleModuleStudent: (studentId: string) => void;
   onToggleForm: () => void;
   onSelectModule: (moduleId: string) => void;
   onModuleDueAtChange: (value: string) => void;
@@ -368,10 +339,18 @@ function ModuleAssignmentSection({
   moduleError,
   roomLanguage,
   subjectLocked,
+  subject,
   deadlinesSupported,
   moduleDueAt,
   removalSupported,
   changingModuleId,
+  targetingEnabled,
+  archived,
+  students,
+  moduleTargeting,
+  moduleStudentIds,
+  onModuleTargetingChange,
+  onToggleModuleStudent,
   onToggleForm,
   onSelectModule,
   onModuleDueAtChange,
@@ -394,7 +373,7 @@ function ModuleAssignmentSection({
 
         <button
           type="button"
-          disabled={assigningModule}
+          disabled={assigningModule || (archived && !showModuleForm)}
           onClick={onToggleForm}
           className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-extrabold transition ${
             showModuleForm
@@ -416,6 +395,7 @@ function ModuleAssignmentSection({
         >
           <RoomLanguageSelect
             id="moduleLanguage"
+            subject={subject}
             value={roomLanguage}
             disabled={assigningModule || subjectLocked}
             onChange={onRoomLanguageChange}
@@ -467,15 +447,72 @@ function ModuleAssignmentSection({
                 id="moduleDueAt"
                 type="datetime-local"
                 value={moduleDueAt}
+                min={currentDueDateMinimum()}
                 disabled={assigningModule}
                 onChange={(event) => onModuleDueAtChange(event.target.value)}
-                aria-describedby="moduleDueAtHelp"
+                aria-invalid={Boolean(dueDateIssue(moduleDueAt))}
+                aria-describedby="moduleDueAtHelp moduleDueAtIssue"
                 className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-sm text-[#173f3b] outline-none transition focus:border-[#f7cf4a] sm:max-w-xs"
               />
               <p id="moduleDueAtHelp" className="mt-1 text-xs text-[#6d8582]">
-                Leave empty for no deadline. Students see the due date, and they can still finish after it.
+                Philippine time. Leave empty for no deadline. Students see the due date, and they can still finish after it.
               </p>
+              <p id="moduleDueAtIssue" className="mt-1 text-xs font-bold text-[#a9443c]">{dueDateIssue(moduleDueAt)}</p>
             </div>
+          )}
+
+          {targetingEnabled && (
+            <fieldset className="mt-4">
+              <legend className="mb-2 block text-sm font-bold text-[#173f3b]">Assign to</legend>
+              <div className="flex flex-wrap gap-3">
+                {(["whole_class", "selected_students"] as const).map((option) => (
+                  <label key={option} className="flex cursor-pointer items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-[#173f3b]">
+                    <input
+                      type="radio"
+                      name="moduleTargeting"
+                      value={option}
+                      checked={moduleTargeting === option}
+                      disabled={assigningModule}
+                      onChange={() => onModuleTargetingChange(option)}
+                      className="accent-[#173f3b]"
+                    />
+                    {option === "whole_class" ? "Whole Class" : "Selected Students"}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-[#6d8582]">
+                {moduleTargeting === "whole_class"
+                  ? "Every enrolled student, including students who join later."
+                  : "Only the students you check. Students who join later are not included."}
+              </p>
+              {moduleTargeting === "selected_students" && (
+                students.length === 0 ? (
+                  <p className="mt-3 text-sm text-[#6d8582]">Students must join this learning room before they can be selected.</p>
+                ) : (
+                  <div id="moduleStudents" className="mt-3 grid gap-2 md:grid-cols-2">
+                    {students.map((student) => (
+                      <label key={student.enrollment_id} className="flex min-w-0 cursor-pointer items-center gap-3 rounded-xl bg-white p-3">
+                        <input
+                          type="checkbox"
+                          checked={moduleStudentIds.includes(student.student_id)}
+                          disabled={assigningModule}
+                          onChange={() => onToggleModuleStudent(student.student_id)}
+                          className="h-4 w-4 accent-[#173f3b]"
+                        />
+                        <span className="truncate text-sm font-bold text-[#173f3b]">{student.full_name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )
+              )}
+              {moduleTargeting === "selected_students" && (
+                <p className="mt-2 text-sm font-semibold text-[#173f3b]">
+                  {moduleStudentIds.length === 0
+                    ? "No students selected."
+                    : `${moduleStudentIds.length} ${moduleStudentIds.length === 1 ? "student" : "students"} selected.`}
+                </p>
+              )}
+            </fieldset>
           )}
 
           <p role="alert" className="mt-3 text-sm font-bold text-[#a9443c]">{moduleError}</p>
@@ -556,6 +593,17 @@ function ModuleAssignmentSection({
                         Removed · hidden from students
                       </span>
                     )}
+
+                    {module.targeting === "selected_students" && (
+                      <span
+                        className="rounded-full bg-[#173f3b] px-3 py-1 text-xs font-bold text-white"
+                        title={module.recipient_ids
+                          .map((id) => students.find((student) => student.student_id === id)?.full_name ?? "Former student")
+                          .join(", ")}
+                      >
+                        Selected students · {module.recipient_ids.length}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -600,6 +648,12 @@ export default function ClassroomDetailsPage() {
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [studentsPanelOpen, setStudentsPanelOpen] = useState(false);
+  // Closing the panel returns focus to the button that opened it.
+  function closeStudentsPanel() {
+    setStudentsPanelOpen(false);
+    window.setTimeout(() => document.getElementById("enrolledStudentsButton")?.focus(), 0);
+  }
   const savingRoom = useRef(false);
   const removingStudent = useRef(false);
 
@@ -610,6 +664,17 @@ export default function ClassroomDetailsPage() {
   // Reading module assignment
   // Shared by Assign Module and Assign Reading Activity; never saved to the room.
   const [roomLanguage, setRoomLanguage] = useState<ReadingLanguage | "">("");
+  // Older rooms only, and only when the database supports saving their subject.
+  const [legacySubject, setLegacySubject] = useState<LegacyRoomSubjectOptions | null>(null);
+  const [legacySubjectSaving, setLegacySubjectSaving] = useState(false);
+  const [legacySubjectError, setLegacySubjectError] = useState("");
+  const [legacySubjectChoice, setLegacySubjectChoice] = useState<ReadingLanguage | "">("");
+  // Module targeting appears only when the database reports it is enabled.
+  const [moduleTargetingEnabled, setModuleTargetingEnabled] = useState(false);
+  const [moduleTargeting, setModuleTargeting] = useState<ModuleTargeting>("whole_class");
+  const [moduleStudentIds, setModuleStudentIds] = useState<string[]>([]);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
   const [showModuleForm, setShowModuleForm] = useState(false);
   const [selectedModuleId, setSelectedModuleId] = useState("");
   // Optional; empty means no deadline.
@@ -636,6 +701,22 @@ export default function ClassroomDetailsPage() {
   const [questionSetError, setQuestionSetError] = useState("");
 
   const [questionSetRefresh, setQuestionSetRefresh] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void getModuleTargetingEnabled().then((enabled) => { if (live) setModuleTargetingEnabled(enabled); });
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!classroom || classroom.subject) {
+      setLegacySubject(null);
+      return;
+    }
+    let live = true;
+    void getLegacyRoomSubjectOptions(classroom.id).then((options) => { if (live) setLegacySubject(options); });
+    return () => { live = false; };
+  }, [classroom?.id, classroom?.subject]);
+
   useEffect(() => {
     const refresh = () => setQuestionSetRefresh(value => value + 1);
     window.addEventListener("focus", refresh);
@@ -889,6 +970,12 @@ export default function ClassroomDetailsPage() {
       return;
     }
 
+    const selectedOnly = moduleTargetingEnabled && moduleTargeting === "selected_students";
+    if (selectedOnly && moduleStudentIds.length === 0) {
+      setModuleError("Select at least one student, or choose Whole Class.");
+      return;
+    }
+
     let dueAt: string | null = null;
     if (moduleDeadlinesSupported) {
       try {
@@ -916,17 +1003,24 @@ export default function ClassroomDetailsPage() {
         throw new Error("No authenticated teacher found.");
       }
 
-      await assignModuleToRoom(roomId, selectedModuleId, user.id, dueAt);
+      if (selectedOnly) {
+        await assignModuleToSelectedStudents(roomId, selectedModuleId, moduleStudentIds, dueAt);
+      } else {
+        await assignModuleToRoom(roomId, selectedModuleId, user.id, dueAt);
+      }
 
       const updatedAssignments = await getAssignedModules(roomId, { includeRemoved: true });
 
       setAssignedModules(updatedAssignments);
       setSelectedModuleId("");
       setModuleDueAt("");
+      setModuleTargeting("whole_class");
+      setModuleStudentIds([]);
       setShowModuleForm(false);
     } catch (err) {
       console.error("Failed to assign reading module:", err);
-      setModuleError("Unable to assign reading module.");
+      const text = (err as { message?: unknown } | null)?.message;
+      setModuleError(selectedOnly && typeof text === "string" && text ? text : "Unable to assign reading module.");
     } finally {
       moduleRequestPending.current = false;
       setAssigningModule(false);
@@ -1124,6 +1218,45 @@ export default function ClassroomDetailsPage() {
     (material) => material.language === roomLanguage
   );
 
+  async function handleToggleArchive() {
+    if (!classroom || archiveBusy) return;
+    const archive = !isRoomArchived(classroom);
+    if (!(await confirmReadFlow(archive
+      ? `Archive "${classroom.room_name}"? Students will not be able to join or start new activities. Nothing is deleted, and you can restore it later.`
+      : `Restore "${classroom.room_name}"? Students can join and start activities again.`))) return;
+    setArchiveBusy(true);
+    setArchiveError("");
+    try {
+      await setClassroomArchived(classroom.id, archive);
+      setClassroom(await getClassroomById(classroom.id));
+      setShowModuleForm(false);
+      setShowActivityForm(false);
+    } catch (err) {
+      const text = (err as { message?: unknown } | null)?.message;
+      setArchiveError(typeof text === "string" && text ? text : "The learning room could not be changed.");
+    } finally {
+      setArchiveBusy(false);
+    }
+  }
+
+  async function handleSaveLegacySubject(subject: ReadingLanguage) {
+    if (!classroom || classroom.subject) return;
+    const name = subject === "fil" ? "Filipino" : "English";
+    if (!(await confirmReadFlow(`Save ${name} as this room's subject? Both assignment forms will then show only ${name} readings, and the subject cannot be changed later.`))) return;
+    setLegacySubjectSaving(true);
+    setLegacySubjectError("");
+    try {
+      const saved = await setLegacyRoomSubject(classroom.id, subject);
+      handleRoomLanguageChange(saved);
+      setClassroom({ ...classroom, subject: saved });
+    } catch (err) {
+      const text = (err as { message?: unknown } | null)?.message;
+      setLegacySubjectError(typeof text === "string" && text ? text : "The classroom subject could not be saved.");
+    } finally {
+      setLegacySubjectSaving(false);
+    }
+  }
+
   // A selection in the other language is cleared; saved assignments are untouched.
   function handleRoomLanguageChange(language: ReadingLanguage | "") {
     if (classroom?.subject) return;
@@ -1178,15 +1311,11 @@ export default function ClassroomDetailsPage() {
 
       {/* Overview */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl bg-[#f7cf4a] p-5 shadow-sm">
-          <p className="text-sm font-bold text-[#173f3b]/70">
-            Enrolled Students
-          </p>
-
-          <p className="mt-1 text-3xl font-black text-[#173f3b]">
-            {students.length}
-          </p>
-        </div>
+        <EnrolledStudentsButton
+          count={students.length}
+          onOpen={() => setStudentsPanelOpen(true)}
+          className="rounded-2xl bg-[#f7cf4a] p-5 text-[#173f3b] shadow-sm"
+        />
 
         <div className="rounded-2xl bg-[#ef7468] p-5 shadow-sm">
           <p className="text-sm font-bold text-white/80">
@@ -1199,13 +1328,35 @@ export default function ClassroomDetailsPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        {/* Students */}
-        <EnrolledStudentsSection
-          students={students}
-          onRemoveStudent={handleRemoveStudent}
-        />
+      <EnrolledStudentsPanel
+        open={studentsPanelOpen}
+        roomName={classroom.room_name}
+        students={students}
+        onClose={closeStudentsPanel}
+        onRemoveStudent={handleRemoveStudent}
+      />
 
+      {supportsRoomArchive(classroom) && (
+        <RoomArchivePanel
+          archived={isRoomArchived(classroom)}
+          busy={archiveBusy}
+          error={archiveError}
+          onToggle={() => void handleToggleArchive()}
+        />
+      )}
+
+      {legacySubject && !classroom.subject && (
+        <LegacyRoomSubjectPanel
+          options={legacySubject}
+          selected={legacySubjectChoice}
+          onSelect={setLegacySubjectChoice}
+          saving={legacySubjectSaving}
+          error={legacySubjectError}
+          onSave={(subject) => void handleSaveLegacySubject(subject)}
+        />
+      )}
+
+      <div>
         {/* Reading Modules */}
         <ModuleAssignmentSection
           assignedModules={assignedModules}
@@ -1215,11 +1366,20 @@ export default function ClassroomDetailsPage() {
           assigningModule={assigningModule}
           moduleError={moduleError}
           subjectLocked={Boolean(classroom.subject)}
+          subject={classroom.subject ?? null}
           roomLanguage={roomLanguage}
           deadlinesSupported={moduleDeadlinesSupported}
           moduleDueAt={moduleDueAt}
           removalSupported={moduleRemovalSupported}
           changingModuleId={changingModuleId}
+          targetingEnabled={moduleTargetingEnabled}
+          archived={isRoomArchived(classroom)}
+          students={students}
+          moduleTargeting={moduleTargeting}
+          moduleStudentIds={moduleStudentIds}
+          onModuleTargetingChange={(targeting) => { setModuleTargeting(targeting); setModuleError(""); }}
+          onToggleModuleStudent={(studentId) => setModuleStudentIds((ids) =>
+            ids.includes(studentId) ? ids.filter((id) => id !== studentId) : [...ids, studentId])}
           onRoomLanguageChange={handleRoomLanguageChange}
           onToggleForm={() => {
             setModuleError("");
@@ -1249,7 +1409,7 @@ export default function ClassroomDetailsPage() {
           <button
             type="button"
             onClick={handleToggleActivityForm}
-            disabled={assigningActivity}
+            disabled={assigningActivity || (isRoomArchived(classroom) && !showActivityForm)}
             className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-extrabold transition ${
               showActivityForm
                 ? "bg-[#ef7468] text-white hover:bg-[#df665c]"
@@ -1322,6 +1482,7 @@ export default function ClassroomDetailsPage() {
             <fieldset disabled={assigningActivity} aria-busy={assigningActivity} className="min-w-0">
             <RoomLanguageSelect
               id="activityLanguage"
+              subject={classroom.subject ?? null}
               disabled={Boolean(classroom.subject)}
               value={roomLanguage}
               onChange={handleRoomLanguageChange}
@@ -1439,13 +1600,16 @@ export default function ClassroomDetailsPage() {
                 id="activityDueAt"
                 type="datetime-local"
                 value={activityDueAt}
+                min={currentDueDateMinimum()}
                 onChange={(event) => setActivityDueAt(event.target.value)}
-                aria-describedby="activityDueAtHelp"
+                aria-invalid={Boolean(dueDateIssue(activityDueAt))}
+                aria-describedby="activityDueAtHelp activityDueAtIssue"
                 className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-sm text-[#173f3b] outline-none transition focus:border-[#f7cf4a] sm:max-w-xs"
               />
               <p id="activityDueAtHelp" className="mt-1 text-xs text-[#6d8582]">
-                Leave empty for no deadline. Students see the due date, and they can still finish after it.
+                Philippine time. Leave empty for no deadline. Students see the due date, and they can still finish after it.
               </p>
+              <p id="activityDueAtIssue" className="mt-1 text-xs font-bold text-[#a9443c]">{dueDateIssue(activityDueAt)}</p>
             </div>
 
             {/* Students */}

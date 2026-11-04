@@ -1,10 +1,13 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, BookOpen, Eye, LoaderCircle, Pencil, PlusCircle, RotateCcw, Search, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import M3PageHeader from "../components/M3PageHeader";
 import M3StatusBadge from "../components/M3StatusBadge";
 import { useM3Content } from "../context/M3ContentContext";
 import type { MaterialLanguageCode, ModuleStatus } from "../types/content";
+import { confirmReadFlow } from "../../../components/ReadFlowDialog";
+import { moduleDeletionMessage, modulePurgeMessage, moduleTrashMessage } from "../utils/moduleDeletionMessage";
+import { getTrashedModules, purgeTrashedModule, restoreTrashedModule, trashModule, type TrashedModule } from "../services/moduleService";
 import "./Module3Page.css";
 
 const statusLabels = { draft: "Draft", published: "Published", archived: "Archived" } as const;
@@ -21,7 +24,36 @@ export default function Module3Page() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const mutationPending = useRef(false);
+  // null = Trash not installed: Delete keeps the existing m3_delete_module behaviour.
+  const [trash, setTrash] = useState<TrashedModule[] | null>(null);
+  const [trashMessage, setTrashMessage] = useState("");
+  const loadTrash = useCallback(async () => setTrash(await getTrashedModules()), []);
+  useEffect(() => { void loadTrash(); }, [loadTrash]);
+
+  async function runTrashAction(work: () => Promise<string>) {
+    if (mutationPending.current) return;
+    mutationPending.current = true;
+    setBusy(true);
+    setActionError(null);
+    setTrashMessage("");
+    clearFeedback();
+    try {
+      setTrashMessage(await work());
+      await Promise.all([refreshModules(), loadTrash()]);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "We couldn't complete this action. Refresh the module list before trying again.");
+    } finally { mutationPending.current = false; setBusy(false); }
+  }
+
   async function manageModule(action: "delete" | "archive" | "restore", moduleId: string) {
+    if (mutationPending.current) return;
+    const target = modules.find(module => module.id === moduleId);
+    if (action === "delete" && trash && target) {
+      if (!(await confirmReadFlow(moduleTrashMessage(target)))) return;
+      await runTrashAction(async () => { await trashModule(moduleId); return `${target.title} was moved to the Trash.`; });
+      return;
+    }
+    if (action === "delete" && (!target || !(await confirmReadFlow(moduleDeletionMessage(target))))) return;
     if (mutationPending.current) return;
     mutationPending.current = true;
     setBusy(true);
@@ -54,6 +86,7 @@ export default function Module3Page() {
         <span>{feedback.message}</span><button type="button" onClick={clearFeedback} aria-label="Dismiss message">&times;</button>
       </div>}
       {actionError && feedback?.message !== actionError && <p className="m3-error-message" role="alert">{actionError}</p>}
+      {trashMessage && <p className="m3-success-message" role="status">{trashMessage}</p>}
 
       <section className="m3-admin-module-summary" aria-label="Module publication totals">
         {(Object.keys(statusLabels) as ModuleStatus[]).map(value => <article className="m3-panel" key={value}>
@@ -97,7 +130,7 @@ export default function Module3Page() {
                   <dl className="m3-admin-module-meta">
                     <div><dt>Language</dt><dd>{module.language === "en" ? "English" : "Filipino"}</dd></div>
                     <div><dt>Reading level</dt><dd>{module.readingLevel}</dd></div>
-                    <div><dt>Difficulty</dt><dd>{module.difficulty}</dd></div>
+                    <div><dt>Difficulty</dt><dd>{module.difficulty}{module.difficultyTier && module.difficulty !== module.difficultyTier && <small className="m3-tier-mismatch"> (path tier: {module.difficultyTier})</small>}</dd></div>
                     <div><dt>Learning path</dt><dd>{module.learningPath}</dd></div>
                     <div><dt>Questions</dt><dd>{module.questionCount}</dd></div>
                     <div><dt>Created</dt><dd>{creationDate(module.createdAt)}</dd></div>
@@ -114,6 +147,34 @@ export default function Module3Page() {
             </div>}
           </>}
       </section>
+
+      {trash && <section className="m3-panel m3-trash" aria-labelledby="m3TrashHeading">
+        <h2 id="m3TrashHeading">Trash</h2>
+        <p className="m3-editor-help">Deleted modules stay here, hidden from every catalog. Restore brings back a draft as a draft and a published module as archived. Modules with learner or classroom history can be restored but not deleted permanently.</p>
+        {trash.length === 0 ? <p>The Trash is empty.</p> : <div className="m3-card-list">
+          {trash.map(item => <article className="m3-record-card" key={item.id}>
+            <span className="m3-record-icon"><Trash2 size={22} aria-hidden="true" /></span>
+            <div className="m3-record-main">
+              <div className="m3-record-heading"><h3>{item.title}</h3></div>
+              <p className="m3-editor-help">Deleted {creationDate(item.trashedAt)} by {item.trashedByName} · was {item.statusBefore || "unknown"}{item.hasHistory ? " · has learner or classroom history" : ""}</p>
+            </div>
+            <div className="m3-admin-module-actions">
+              <button type="button" className="m3-button m3-button--secondary" disabled={busy} aria-label={`Restore ${item.title} from the Trash`}
+                onClick={() => void runTrashAction(async () => {
+                  const restored = await restoreTrashedModule(item.id);
+                  return restored === "archived"
+                    ? `${item.title} was restored as archived. Publish it again when it is ready for learners.`
+                    : `${item.title} was restored as a draft.`;
+                })}><RotateCcw size={17} aria-hidden="true" /> Restore</button>
+              {!item.hasHistory && <button type="button" className="m3-button m3-module-delete-button" disabled={busy} aria-label={`Delete ${item.title} permanently`}
+                onClick={() => void (async () => {
+                  if (!(await confirmReadFlow(modulePurgeMessage(item.title)))) return;
+                  await runTrashAction(async () => { await purgeTrashedModule(item.id); return `${item.title} was permanently deleted.`; });
+                })()}><Trash2 size={17} aria-hidden="true" /> Delete Permanently</button>}
+            </div>
+          </article>)}
+        </div>}
+      </section>}
     </div>
   );
 }

@@ -5,6 +5,8 @@
 .m3-admin-module-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0 0; font-size: .85rem; }
 .m3-admin-module-meta dt { color: #52615c; font-size: .75rem; }
 .m3-admin-module-meta dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.m3-admin-content .m3-feedback-banner > span { white-space: pre-line; }
+.m3-admin-module-meta .m3-tier-mismatch { color: #79541b; font-weight: 700; }
 .m3-admin-module-actions { display: flex; flex-direction: column; gap: 8px; }
 .m3-module-delete-button { background: #ad2d24; color: #fff; border: 1px solid #ad2d24; }
 .m3-module-delete-button:hover:not(:disabled) { background: #872019; color: #fff; }

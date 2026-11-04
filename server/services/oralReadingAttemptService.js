@@ -146,10 +146,27 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
       throw new OralReadingPersistenceError("Unable to verify the classroom assignment.");
     }
     // A removed module cannot be started again; saved results stay in Reading History.
-    const assignments = (rows ?? []).filter(row => !row.removed_at);
-    if (rows?.length && !assignments.length) {
+    const active = (rows ?? []).filter(row => !row.removed_at);
+    if (rows?.length && !active.length) {
       throw new OralReadingAuthorizationError(
         "Your teacher removed this module from the classroom. Your saved results are still in Reading History.",
+      );
+    }
+    // Selected-student assignments (proposed m4_module_recipients): only recipients may start them.
+    // Rows have no targeting_mode before that migration, so nothing changes until it is installed;
+    // the database also rejects a non-recipient's attempt for every writer.
+    const targeted = active.filter(row => row.targeting_mode === "selected_students");
+    let recipientOf = new Set();
+    if (targeted.length) {
+      const { data: recipients, error: recipientError } = await supabase.from("room_module_recipients")
+        .select("room_module_id").eq("student_id", requester.user.id).in("room_module_id", targeted.map(row => row.id));
+      if (recipientError) throw new OralReadingPersistenceError("Unable to verify the classroom assignment.");
+      recipientOf = new Set((recipients ?? []).map(row => row.room_module_id));
+    }
+    const assignments = active.filter(row => row.targeting_mode !== "selected_students" || recipientOf.has(row.id));
+    if (active.length && !assignments.length) {
+      throw new OralReadingAuthorizationError(
+        "Your teacher assigned this module to selected students only.",
       );
     }
     if (!assignments.length) {

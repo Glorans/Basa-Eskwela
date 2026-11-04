@@ -443,3 +443,25 @@ test("an embedded title the screen hides is not scored; snapshot and saved histo
   assert.deepEqual(saved.wordMetrics.filter(word => word.type !== "match"), []);
   assert.equal(saved.passageSnapshot, "A Helping Hand\nLia helps her lola.");
 });
+
+test("selected-student module assignments can only be started by their recipients", async () => {
+  const db = createDatabase();
+  db.tables.enrollments.push({ student_id: OTHER_STUDENT, room_id: ROOM });
+  db.tables.room_modules = [{ id: ROOM, room_id: ROOM, module_id: MODULE, targeting_mode: "selected_students" }];
+  db.tables.room_module_recipients = [{ room_module_id: ROOM, student_id: STUDENT }];
+  const module = await loadAccessiblePublishedModule(requester(STUDENT, "student"), MODULE, dependencies(db));
+  assert.equal(module.assignmentId, ROOM);
+  await assert.rejects(loadAccessiblePublishedModule(requester(OTHER_STUDENT, "student"), MODULE, dependencies(db)),
+    (error) => error instanceof OralReadingAuthorizationError && /selected students only/.test(error.message));
+  await assert.rejects(loadAccessiblePublishedModule(requester(OTHER_STUDENT, "student"), MODULE, dependencies(db), { roomId: ROOM, assignmentId: ROOM }),
+    OralReadingAuthorizationError);
+});
+
+test("before the recipients migration, whole-class rows never query recipients", async () => {
+  const db = createDatabase();
+  db.tables.room_modules = [{ id: ROOM, room_id: ROOM, module_id: MODULE }];
+  const module = await loadAccessiblePublishedModule(requester(STUDENT, "student"), MODULE, dependencies(db));
+  assert.equal(module.assignmentId, ROOM, "room_module_recipients does not exist and is not read");
+  db.tables.room_modules = [{ id: ROOM, room_id: ROOM, module_id: MODULE, targeting_mode: "whole_class" }];
+  assert.equal((await loadAccessiblePublishedModule(requester(STUDENT, "student"), MODULE, dependencies(db))).assignmentId, ROOM);
+});

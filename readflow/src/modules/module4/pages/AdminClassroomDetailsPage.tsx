@@ -4,10 +4,16 @@ import {
   getClassroomById,
   getRoomEnrollments,
   getAssignedModules,
+  supportsRoomArchive,
+  isRoomArchived,
+  setClassroomArchived,
   type Classroom,
   type EnrolledStudent,
   type AssignedReadingModule,
 } from "../services/classroomService";
+import EnrolledStudentsPanel, { EnrolledStudentsButton } from "../components/EnrolledStudentsPanel";
+import RoomArchivePanel from "../components/RoomArchivePanel";
+import { confirmReadFlow } from "../../../components/ReadFlowDialog";
 
 export default function AdminClassroomDetailsPage() {
   const navigate = useNavigate();
@@ -23,7 +29,32 @@ export default function AdminClassroomDetailsPage() {
     useState<AssignedReadingModule[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [studentsPanelOpen, setStudentsPanelOpen] = useState(false);
   const [error, setError] = useState("");
+  // Archive/Restore (proposed m4_room_archive): Admins may archive or restore any room.
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
+  // Admin removal is withheld from this interface pending product review.
+  // The installed Admin RPC authorization remains in force.
+
+  async function handleToggleArchive() {
+    if (!classroom || archiveBusy) return;
+    const archive = !isRoomArchived(classroom);
+    if (!(await confirmReadFlow(archive
+      ? `Archive "${classroom.room_name}"? Students will not be able to join or start new activities. Nothing is deleted.`
+      : `Restore "${classroom.room_name}"? Students can join and start activities again.`))) return;
+    setArchiveBusy(true);
+    setArchiveError("");
+    try {
+      await setClassroomArchived(classroom.id, archive);
+      setClassroom(await getClassroomById(classroom.id));
+    } catch (err) {
+      const text = (err as { message?: unknown } | null)?.message;
+      setArchiveError(typeof text === "string" && text ? text : "The learning room could not be changed.");
+    } finally {
+      setArchiveBusy(false);
+    }
+  }
 
   useEffect(() => {
     async function loadClassroomDetails() {
@@ -181,15 +212,11 @@ export default function AdminClassroomDetailsPage() {
 
       {/* Overview */}
       <div className="mb-7 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl bg-[#dce8e7] p-5 shadow-md">
-          <p className="text-sm font-bold text-[#6d8582]">
-            Enrolled Students
-          </p>
-
-          <p className="mt-1 text-3xl font-black text-[#173f3b]">
-            {students.length}
-          </p>
-        </div>
+        <EnrolledStudentsButton
+          count={students.length}
+          onOpen={() => setStudentsPanelOpen(true)}
+          className="rounded-2xl bg-[#dce8e7] p-5 text-[#173f3b] shadow-md"
+        />
 
         <div className="rounded-2xl bg-[#dce8e7] p-5 shadow-md">
           <p className="text-sm font-bold text-[#6d8582]">
@@ -202,72 +229,25 @@ export default function AdminClassroomDetailsPage() {
         </div>
       </div>
 
-      {/* Enrolled Students */}
-      <div className="mb-7">
-        <div className="mb-4">
-          <h2 className="text-xl font-extrabold text-white md:text-2xl">
-            Enrolled Students
-          </h2>
+      {supportsRoomArchive(classroom) && (
+        <RoomArchivePanel
+          archived={isRoomArchived(classroom)}
+          busy={archiveBusy}
+          error={archiveError}
+          onToggle={() => void handleToggleArchive()}
+        />
+      )}
 
-          <p className="mt-1 text-sm text-white/65">
-            Students currently enrolled in this learning room.
-          </p>
-        </div>
-
-        {students.length === 0 ? (
-          <div className="rounded-3xl bg-[#dce8e7] px-6 py-12 text-center shadow-md">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#f7cf4a] text-2xl">
-              👥
-            </div>
-
-            <h3 className="font-extrabold text-[#173f3b]">
-              No enrolled students
-            </h3>
-
-            <p className="mt-2 text-sm text-[#5c7471]">
-              No students have joined this learning room yet.
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-3xl bg-[#dce8e7] p-5 shadow-md md:p-6">
-            <div className="space-y-3">
-              {students.map((student) => {
-                const initial =
-                  student.display_name?.trim().charAt(0).toUpperCase() ||
-                  "?";
-
-                return (
-                  <div
-                    key={student.enrollment_id}
-                    className="flex items-center gap-4 rounded-2xl bg-white/70 px-4 py-4"
-                  >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#f7cf4a] text-base font-black text-[#173f3b]">
-                      {initial}
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="truncate font-extrabold text-[#173f3b]">
-                        {student.display_name}
-                      </p>
-
-                      <p className="mt-1 text-xs font-semibold text-[#6d8582]">
-                        Joined{" "}
-                        {new Date(
-                          student.enrolled_at
-                        ).toLocaleDateString(undefined, {
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Admins view enrollments; Remove appears only when the database allows audited Admin removal. */}
+      <EnrolledStudentsPanel
+        open={studentsPanelOpen}
+        roomName={classroom.room_name}
+        students={students}
+        onClose={() => {
+          setStudentsPanelOpen(false);
+          window.setTimeout(() => document.getElementById("enrolledStudentsButton")?.focus(), 0);
+        }}
+      />
 
       {/* Assigned Modules */}
       <div>

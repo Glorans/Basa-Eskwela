@@ -55,6 +55,26 @@ test("atomic deletion accepts permanent/soft confirmations and preserves actual 
     }
     await service.getModules();await service.getModuleById(id);
     assert.deepEqual(filters,Array(2).fill(["deleted_at",null]));
+    const purgeError = {code:"P0001",message:"Deleted modules are retained for history and cannot be changed"};
+    response={data:null,error:purgeError};
+    await assert.rejects(service.purgeTrashedModule(id),(e: Error & {causeValue?:unknown}) => {
+      assert.match(e.message,/question-bank cleanup.*remains in Trash and nothing was deleted/);
+      assert.doesNotMatch(e.message,/P0001|Database check failed/);
+      assert.equal(e.causeValue,purgeError);
+      return true;
+    });
+    assert.deepEqual(calls.at(-1),["m3_purge_module",{target_id:id}]);
+    for (const error of [
+      {code:"23503",message:"This reading module has learner or classroom history, so it stays in the Trash and cannot be deleted permanently"},
+      {code:"22023",message:"Move the reading module to the Trash before deleting it permanently"},
+    ]) {
+      response={data:null,error};
+      await assert.rejects(service.purgeTrashedModule(id),{message:error.message});
+    }
+    response={data:null,error:{code:"P0001",message:"Unexpected database failure"}};
+    await assert.rejects(service.purgeTrashedModule(id),/Unexpected database failure/);
+    response={data:"deleted",error:null};
+    assert.equal(await service.purgeTrashedModule(id),"deleted");
   } finally {hooks.deregister();delete globals.__m3ActionsClient;}
 });
 

@@ -110,7 +110,8 @@ try {
     assert.equal(await evaluate('document.querySelector("article p").textContent'),'Text one-first\nSecond line');
     assert.equal(await evaluate('document.querySelectorAll("nav.basa-passage-navigation").length'),0);
     assert.equal(await evaluate('document.querySelector("a.basa-reading-module-back").getAttribute("href")'),prefix);
-    assert.equal(await evaluate('document.querySelector(".basa-reading-module-actions a").getAttribute("href")'),prefix+'/one/read-aloud');
+    // Read-aloud opens the passage being viewed (since 7b20708, 2026-10-25).
+    assert.equal(await evaluate('document.querySelector(".basa-reading-module-actions a").getAttribute("href")'),prefix+'/one/read-aloud?passageId=one-first');
 
     await navigate(prefix+'/multi');await until(`${articleId}==='first'`);
     assert.ok(await evaluate('document.body.innerText.includes("Passage 1 of 3")'));
