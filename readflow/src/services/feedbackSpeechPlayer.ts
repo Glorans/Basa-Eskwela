@@ -5,8 +5,12 @@
  * so Replay never repeats a paid request. No imports, so it is unit-testable.
  */
 export type FeedbackSpeechLanguage = "en" | "fil";
-/** "philippine": the en-PH / fil-PH feedback voice (M5). "default": the server's configured voice. */
-export type FeedbackSpeechVoice = "default" | "philippine";
+/**
+ * "philippine": the en-PH / fil-PH feedback voice (M5). "american": the en-US
+ * example voice for M5 "Hear American English" (English only). "default": the
+ * server's configured voice.
+ */
+export type FeedbackSpeechVoice = "default" | "philippine" | "american";
 export type FeedbackSpeechStatus = "idle" | "loading" | "playing" | "error";
 
 export interface FeedbackSpeechState {

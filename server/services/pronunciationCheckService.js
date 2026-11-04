@@ -14,6 +14,7 @@
 //    result is reported as not saved.
 const { randomUUID } = require("node:crypto");
 const { OralReadingPersistenceError } = require("./oralReadingAttemptService");
+const { alignWords, getReadingWords, splitEmbeddedTitle } = require("./oralReadingScoring");
 
 const TABLE = "oral_reading_pronunciation_checks";
 const RECORDINGS_TABLE = "oral_reading_recordings";
@@ -34,7 +35,7 @@ const PRACTICE_THRESHOLD = 60;
 const MAX_PRACTICE_WORDS = 10;
 const HISTORY_BATCH = 50;
 const SUMMARY_COLUMNS = "attempt_id,user_id,status,claim_id,claimed_at,language,part_count,utterance_count,accuracy,fluency,"
-  + "words_to_practice,assessed_seconds,complete,unassessed_seconds,completed_at";
+  + "words_to_practice,assessed_seconds,complete,unassessed_seconds,completed_at,parts";
 
 const NOT_SAVED_MESSAGE = "Your pronunciation check finished, but its result could not be saved. "
   + "It is shown here until you leave this page.";
@@ -143,6 +144,57 @@ function summarizePronunciationParts(parts, partBytes = []) {
   };
 }
 
+// Bound the alignment work, like scorePassage's SCORING_LIMIT.
+const MAX_PLACEMENT_CELLS = 4_000_000;
+const isFlagged = (word) => word.errorType === "Mispronunciation"
+  || (typeof word.accuracy === "number" && word.accuracy < PRACTICE_THRESHOLD);
+
+/**
+ * Where the saved assessment's words fall in the story body the learner was
+ * shown (the reference text sent for assessment). Computed on read from the
+ * saved parts; the saved row and its scores are never changed.
+ *
+ *  - assessedStoryWords: story words the assessment scored (an exact word
+ *    match in the alignment), out of storyWords. Story words it never scored,
+ *    such as words the recognizer did not hear, make the check partial even
+ *    when no audio went unrecognized.
+ *  - practiceOccurrences: each flagged word at the story position it was
+ *    scored at, so a repeated word ("Santos" twice) is marked where it was
+ *    actually flagged. Only exact matches are placed; anything else is left
+ *    out rather than guessed.
+ * Returns null when the story or the parts cannot be read.
+ */
+function storyPlacement(parts, attempt, wordsToPractice = []) {
+  if (!Array.isArray(parts) || typeof attempt?.passageSnapshot !== "string" || !attempt.passageSnapshot.trim()) return null;
+  const story = getReadingWords(splitEmbeddedTitle(attempt.passageSnapshot, attempt.passageTitle, "en").body, "en");
+  const assessed = [];
+  for (const part of parts) {
+    for (const utterance of part?.utterances ?? []) {
+      for (const word of utterance?.words ?? []) {
+        const flagged = isFlagged(word);
+        for (const piece of getReadingWords(String(word?.word ?? ""), "en")) assessed.push({ word: piece, flagged });
+      }
+    }
+  }
+  if (!story.length || story.length * Math.max(1, assessed.length) > MAX_PLACEMENT_CELLS) return null;
+  const practiceKeys = new Set(wordsToPractice.map((word) => getReadingWords(String(word), "en").join("")));
+  const practiceOccurrences = [];
+  let assessedStoryWords = 0;
+  let storyIndex = 0;
+  let assessedIndex = 0;
+  for (const entry of alignWords(story, assessed.map((word) => word.word))) {
+    if (entry.type === "match") {
+      assessedStoryWords += 1;
+      if (assessed[assessedIndex].flagged && practiceKeys.has(entry.expectedWord)) {
+        practiceOccurrences.push({ word: entry.expectedWord, storyWordIndex: storyIndex });
+      }
+    }
+    if (entry.type !== "insertion") storyIndex += 1;
+    if (entry.type !== "omission") assessedIndex += 1;
+  }
+  return { storyWords: story.length, assessedStoryWords, practiceOccurrences };
+}
+
 function rowSummary(row) {
   return {
     parts: row.part_count,
@@ -156,9 +208,17 @@ function rowSummary(row) {
   };
 }
 
-/** What learners and Teachers receive: the summary only, never raw parts or the provider. */
-function toCheckDto(row) {
-  return { status: "completed", saved: true, checkedAt: row.completed_at, language: "en", summary: rowSummary(row) };
+/**
+ * What learners and Teachers receive: the summary only, never raw parts or the
+ * provider. With the attempt (and the row's saved parts) the summary also says
+ * how much of the story was scored and where the practice words were flagged.
+ */
+function toCheckDto(row, attempt) {
+  const placement = attempt ? storyPlacement(row.parts, attempt, rowSummary(row).wordsToPractice) : null;
+  return {
+    status: "completed", saved: true, checkedAt: row.completed_at, language: "en",
+    summary: { ...rowSummary(row), ...(placement ?? {}) },
+  };
 }
 
 function publicSummary(summary) {
@@ -228,7 +288,7 @@ async function getSavedPronunciationCheck(supabase, attempt, now = Date.now()) {
   if (attempt.language === "fil") return { status: "unsupported", check: null };
   const { installed, row } = await loadPronunciationCheckRow(supabase, attempt.id);
   if (!installed) return { status: "unavailable", check: null };
-  if (row?.status === "completed") return { status: "completed", check: toCheckDto(row) };
+  if (row?.status === "completed") return { status: "completed", check: toCheckDto(row, attempt) };
   if (row?.status === "running" && !isStale(row, now)) return { status: "running", check: null };
   return { status: "none", check: null };
 }
@@ -318,7 +378,7 @@ async function saveCompletedCheck(supabase, attemptId, claimId, parts, summary, 
 async function runPronunciationCheck({ supabase, attempt, userId, assessParts, now = Date.now, persisted }) {
   let claim = { installed: false };
   if (persisted !== false) claim = await claimPronunciationCheck(supabase, attempt, userId, now());
-  if (claim.completed) return { saved: true, reused: true, check: toCheckDto(claim.completed) };
+  if (claim.completed) return { saved: true, reused: true, check: toCheckDto(claim.completed, attempt) };
 
   // Called before each part after the first: renews the lease, or stops before
   // paying for another part when the claim was lost (it is then someone else's).
@@ -336,7 +396,8 @@ async function runPronunciationCheck({ supabase, attempt, userId, assessParts, n
   }
   const parts = assessed.parts.map(sanitizePart);
   const summary = summarizePronunciationParts(parts, assessed.partBytes);
-  const unsaved = { status: "completed", saved: false, checkedAt: null, language: "en", summary: publicSummary(summary) };
+  const unsaved = { status: "completed", saved: false, checkedAt: null, language: "en",
+    summary: { ...publicSummary(summary), ...(storyPlacement(parts, attempt, summary.wordsToPractice) ?? {}) } };
   if (!claim.claimed) {
     return { saved: false, code: "PRONUNCIATION_NOT_SAVED", message: NOT_SAVED_MESSAGE, check: unsaved, parts };
   }
@@ -350,7 +411,7 @@ async function runPronunciationCheck({ supabase, attempt, userId, assessParts, n
     await releaseClaim(supabase, attempt.id, claim.claimId, "SAVE_FAILED");
     return { saved: false, code: "PRONUNCIATION_NOT_SAVED", message: NOT_SAVED_MESSAGE, check: unsaved, parts };
   }
-  return { saved: true, reused: false, check: toCheckDto(row), parts };
+  return { saved: true, reused: false, check: toCheckDto(row, attempt), parts };
 }
 
 /**
@@ -402,6 +463,7 @@ module.exports = {
   loadSavedPronunciationScores,
   runPronunciationCheck,
   sanitizePart,
+  storyPlacement,
   summarizePronunciationParts,
   toCheckDto,
 };

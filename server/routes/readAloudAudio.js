@@ -5,6 +5,27 @@ const { getSpeechErrorResponse } = require("../services/speechErrors");
 
 const UPLOAD_TOO_LARGE_CODES = new Set(["LIMIT_FILE_SIZE", "LIMIT_FIELD_VALUE"]);
 
+// Story names that help speech-to-text recognize them (a phrase list). Kept
+// small and to names only: a phrase list biases recognition toward these
+// words, so it must never hold the whole story (that would hide real
+// misreadings). Sent in the query string (?name=Santos), which older servers
+// ignore, so a newer browser never breaks an older server.
+const MAX_PHRASE_HINTS = 10;
+const PHRASE_HINT = /^\p{Lu}[\p{L}'’-]{1,29}$/u;
+
+/** Valid, distinct story names from the query; anything else is dropped, never an error. */
+function parsePhraseHints(value) {
+  const values = Array.isArray(value) ? value : value === undefined ? [] : [value];
+  const hints = [];
+  for (const item of values) {
+    if (typeof item !== "string") continue;
+    const name = item.trim();
+    if (PHRASE_HINT.test(name) && !hints.includes(name)) hints.push(name);
+    if (hints.length === MAX_PHRASE_HINTS) break;
+  }
+  return hints;
+}
+
 // Durations and sizes only: never audio, transcripts, tokens or user IDs.
 function developmentTiming(details) {
   if (process.env.NODE_ENV === "development") console.info("[ReadAloud] timing", details);
@@ -47,11 +68,14 @@ function createReadAloudAudioHandler({
       try { languageCode = getSpeechLanguageCode(req.body?.language); }
       catch { return res.status(400).json({ success: false, message: "Language must be either 'en' or 'fil'." }); }
       // transcribeWav() verifies the WAV container and its duration itself.
+      // English only: phrase lists are used where the recognizer is tested (en-US).
+      const phrases = languageCode === "en-US" ? parsePhraseHints(req.query?.name) : [];
       const recognitionStartedAt = now();
       let transcription;
       try {
         transcription = await transcribe(req.file.path, languageCode, {
           wholeRecording: true, signal: abandoned.signal, onDiagnostics: (details) => { recognition = details; },
+          ...(phrases.length ? { phrases } : {}),
         });
       } finally {
         recognitionMs = now() - recognitionStartedAt;
@@ -80,4 +104,4 @@ function createReadAloudAudioHandler({
   };
 }
 
-module.exports = { createReadAloudAudioHandler };
+module.exports = { MAX_PHRASE_HINTS, createReadAloudAudioHandler, parsePhraseHints };

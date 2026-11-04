@@ -203,3 +203,81 @@ test("a saved result that arrives while a check runs never replaces it", async (
   await running;
   assert.equal(store.get(key).status, "done");
 });
+
+// F2 automatic check: once per account and attempt, only after the saved-result read found none.
+const none = async (): Promise<SavedPronunciationCheck> => ({ status: "none", check: null });
+function memoryMarker() {
+  const keys = new Set<string>();
+  return { keys, has: (key: string) => keys.has(key), add: (key: string) => { keys.add(key); } };
+}
+
+test("F2 auto-start runs one paid check, however often F2 is opened, rerendered or double-invoked", async () => {
+  const store = createPronunciationCheckStore();
+  const fake = runner();
+  const key = pronunciationCheckKey("ana", "reading-1");
+  // Before the saved result is read, nothing starts (the reading may already be checked).
+  await store.autoStart(key, "reading-1", fake.run);
+  assert.equal(fake.calls.length, 0);
+  await store.load(key, "reading-1", none);
+  const marker = memoryMarker();
+  // Strict Mode runs effects twice; reopening F2 calls it again.
+  void store.autoStart(key, "reading-1", fake.run, marker);
+  void store.autoStart(key, "reading-1", fake.run, marker);
+  void store.autoStart(key, "reading-1", fake.run, marker);
+  assert.deepEqual(fake.calls, ["reading-1"]);
+  assert.equal(store.wasAutoStarted(key, marker), true);
+  assert.deepEqual([...marker.keys], [key]);
+  fake.pending[0].resolve(summary);
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(store.get(key).status, "done");
+  await store.autoStart(key, "reading-1", fake.run, marker);
+  assert.equal(fake.calls.length, 1, "a finished check is never restarted");
+});
+
+test("after a failed automatic check, only the explicit Try Again starts another", async () => {
+  const store = createPronunciationCheckStore();
+  const fake = runner();
+  const key = pronunciationCheckKey("ana", "reading-2");
+  await store.load(key, "reading-2", none);
+  const first = store.autoStart(key, "reading-2", fake.run);
+  fake.pending[0].reject(new Error("Pronunciation check failed. Please try again."));
+  await first;
+  assert.equal(store.get(key).status, "error");
+  assert.equal(store.get(key).summary, undefined, "a failure never carries a result");
+  await store.load(key, "reading-2", none, { force: true });
+  await store.autoStart(key, "reading-2", fake.run);
+  assert.equal(fake.calls.length, 1, "no automatic retry");
+  const retry = store.start(key, "reading-2", fake.run);
+  assert.equal(fake.calls.length, 2, "Try Again starts one new check");
+  fake.pending[1].resolve(summary);
+  await retry;
+  assert.equal(store.get(key).status, "done");
+});
+
+test("a session marker stops a refreshed page from repeating an automatic check; saved, running and unreadable states never auto-start", async () => {
+  const marker = memoryMarker();
+  const key = pronunciationCheckKey("ana", "reading-3");
+  marker.add(key!);
+  const refreshed = createPronunciationCheckStore();
+  const fake = runner();
+  await refreshed.load(key, "reading-3", none);
+  await refreshed.autoStart(key, "reading-3", fake.run, marker);
+  assert.equal(fake.calls.length, 0);
+  assert.equal(refreshed.wasAutoStarted(key, marker), true, "F2 then shows Try Again");
+  for (const saved of [
+    async () => ({ status: "completed", check: summary }) as SavedPronunciationCheck,
+    async () => ({ status: "running", check: null }) as SavedPronunciationCheck,
+    async () => { throw new Error("offline"); },
+  ]) {
+    const store = createPronunciationCheckStore();
+    const other = pronunciationCheckKey("ana", "reading-4");
+    await store.load(other, "reading-4", saved);
+    await store.autoStart(other, "reading-4", fake.run, memoryMarker());
+  }
+  assert.equal(fake.calls.length, 0, "a saved, running or unreadable check is never auto-started");
+  // A different reading is independent.
+  const store = createPronunciationCheckStore();
+  await store.load(pronunciationCheckKey("ana", "reading-5"), "reading-5", none);
+  void store.autoStart(pronunciationCheckKey("ana", "reading-5"), "reading-5", fake.run, marker);
+  assert.deepEqual(fake.calls, ["reading-5"]);
+});

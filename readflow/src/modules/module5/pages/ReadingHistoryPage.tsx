@@ -65,7 +65,6 @@ export default function ReadingHistoryPage({ role, embedded = false, language }:
         {/* F7: the saved English pronunciation check, separate from transcript-based reading accuracy. */}
         {attempt.language !== "fil" && attempt.pronunciationCheck && <p className="my-3">
           {rowT("Saved pronunciation check: ")}{attempt.pronunciationCheck.accuracy !== null ? `${attempt.pronunciationCheck.accuracy}/100` : "—"}
-          {attempt.pronunciationCheck.fluency !== null && <> · {rowT("Fluency: ")}{attempt.pronunciationCheck.fluency}/100</>}
           {!attempt.pronunciationCheck.complete && <> · {rowT("Some speech was not checked.")}</>}
         </p>}
         <div className="flex flex-wrap gap-3">

@@ -1,6 +1,6 @@
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "./activityLanguage";
 import { comprehensionTargetForReading } from "../../modules/module5/services/comprehensionNavigation";
-import { BookOpen, Gauge, Headphones, ListChecks, MessageCircle, Mic, Sparkles, Star, Volume2 } from "lucide-react";
+import { BookOpen, Gauge, Headphones, ListChecks, MessageCircle, Mic, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import "@fontsource/fredoka/latin-600.css";
@@ -8,8 +8,7 @@ import "@fontsource/nunito/latin-600.css";
 import "@fontsource/nunito/latin-700.css";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { getFeedbackSpeech } from "../../services/feedbackSpeech";
-import FeedbackSpeechControls, { useFeedbackSpeechState } from "../../components/reading-feedback/FeedbackSpeechControls";
-import { getWordsToPractice } from "../../modules/module5/services/oralReadingProcessing";
+import { markStory, markTranscript } from "../../modules/module5/services/resultWords";
 import { getOralReadingAttempt, peekOralReadingAttempt, getOralReadingAttemptNumber, peekOralReadingAttemptNumber } from "../../modules/module5/services/oralReadingService";
 import RecordingPlayback from "../../modules/module5/components/RecordingPlayback";
 import {
@@ -22,7 +21,6 @@ import M5Modal from "../../modules/module5/components/M5Modal";
 import type {
   LearnerM5Role,
   OralReadingAttempt,
-  OralReadingWordMetric,
 } from "../../modules/module5/types/oralReading";
 import ActivityHeader from "./ActivityHeader";
 import "./ActivityPage.css";
@@ -46,45 +44,17 @@ function panelFromParams(params: URLSearchParams): ResultPanel | null {
   return RESULT_PANELS.find((panel) => panel === view) ?? null;
 }
 
-// Student-facing wording only: always encouraging, never a level or a grade.
-function encouragement(accuracy: number) {
-  if (accuracy >= 90) return "Wow, we heard almost every word of the story!";
-  if (accuracy >= 75) return "Nice job! A few words need practice.";
-  return "Good try! Let's practice some words.";
-}
-
-function starCount(accuracy: number) {
-  return accuracy >= 90 ? 3 : accuracy >= 75 ? 2 : 1;
+// F6 Reading Accuracy: transcript-based, so it speaks about words heard, never pronunciation.
+// "Every scored word" only when every scored story word matched and nothing else was heard.
+function readingAccuracyMessage(accuracy: number, everyWordMatched: boolean) {
+  if (everyWordMatched) return "We heard every scored word of the story! Great reading!";
+  if (accuracy >= 90) return "We heard almost every word of the story. Great reading!";
+  if (accuracy >= 75) return "Most of the words we heard matched the story. Nice job!";
+  return "Good try! Some words we heard were different from the story.";
 }
 
 // Filipino readings have no pronunciation check; this is their F2 feedback.
 const FILIPINO_FEEDBACK = "Pronunciation feedback is available for English readings only. Listen to your recording, then read the story again slowly and clearly.";
-
-const cleanWord = (word: string) =>
-  word.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}'-]/gu, "");
-
-/**
- * Marks transcript words that differ from the story. Word metrics list heard
- * words in order, so they line up with the transcript when the counts agree;
- * otherwise fall back to words that were only ever heard differently.
- */
-function markTranscript(transcript: string, metrics: readonly OralReadingWordMetric[]) {
-  const parts = transcript.split(/(\s+)/);
-  const heard = metrics.filter((metric) => metric.actual !== null);
-  const positional = heard.length === parts.filter((part) => part.trim()).length;
-  const matched = new Set(heard.filter((metric) => metric.type === "match").map((metric) => cleanWord(metric.actual ?? "")));
-  const different = new Set(heard.filter((metric) => metric.type !== "match").map((metric) => cleanWord(metric.actual ?? "")));
-  let index = 0;
-  return parts.map((text) => {
-    if (!text.trim()) return { text, differs: false };
-    const metric = heard[index++];
-    const word = cleanWord(text);
-    const differs = positional
-      ? metric.type !== "match"
-      : different.has(word) && !matched.has(word);
-    return { text, differs };
-  });
-}
 
 export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const { attemptId } = useParams<{ attemptId: string }>();
@@ -94,9 +64,12 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [panel, setPanel] = useState<ResultPanel | null>(() => panelFromParams(searchParams));
   const [feedbackOpened, setFeedbackOpened] = useState(panelFromParams(searchParams) === "feedback");
+  // F4 loads the learner's recording only once it has been opened.
+  const [wordsOpened, setWordsOpened] = useState(panelFromParams(searchParams) === "words");
   // The open panel is kept in the address, so a refresh or a Reading History link reopens it.
   const openPanel = (next: ResultPanel) => {
     if (next === "feedback") setFeedbackOpened(true);
+    if (next === "words") setWordsOpened(true);
     setPanel(next);
     setSearchParams({ view: next }, { replace: true });
   };
@@ -133,10 +106,9 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const { language, t } = ui;
   const activityState = activityLanguageState(language);
   const [error, setError] = useState<string>();
-  const [speakingWord, setSpeakingWord] = useState<string>();
-  const [speechError, setSpeechError] = useState<string>();
+  // F5: the orange heard word the learner selected, to show the story word in its place.
+  const [selectedWord, setSelectedWord] = useState<number>();
   const speech = getFeedbackSpeech();
-  const speechState = useFeedbackSpeechState();
   // English only, started by the learner; one shared check per account and attempt feeds the
   // F2, F3 and F4 panels and survives closing, switching or remounting them.
   const pronunciation = usePronunciationCheck(attempt?.language === "en" ? attempt.id : undefined, attempt?.userId);
@@ -174,6 +146,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
     setError(undefined);
     setPanel(panelFromParams(searchParams));
     if (panelFromParams(searchParams) === "feedback") setFeedbackOpened(true);
+    if (panelFromParams(searchParams) === "words") setWordsOpened(true);
 
     if (!attemptId) {
       setError("Oral-reading result not found.");
@@ -207,24 +180,8 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
     };
   }, [attemptId, profile?.id, revision]);
 
-  // Leaving the result stops any word or feedback audio.
+  // Leaving the result stops any example-word audio (F4).
   useEffect(() => () => speech.stop(), [speech]);
-
-  // The shared player plays one clip at a time and reuses audio it already fetched.
-  const playWord = async (word: string) => {
-    if (!attempt || speakingWord) return;
-
-    setSpeakingWord(word);
-    setSpeechError(undefined);
-
-    const finished = await speech.play(word, attempt.language, undefined, "philippine");
-    if (!finished && speech.getState().status === "error") {
-      setSpeechError(
-        "Pronunciation audio is unavailable right now. Please try again.",
-      );
-    }
-    setSpeakingWord(undefined);
-  };
 
   if (!attempt) {
     return (
@@ -266,24 +223,26 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
     );
   }
 
-  const wordsToPractice = getWordsToPractice(attempt.wordMetrics);
-  const notDetectedWords = new Set(
-    attempt.wordMetrics
-      .filter((word) => word.type === "omission")
-      .map((word) => word.expected),
-  );
-
   const comprehensionTarget = comprehensionTargetForReading(role, attempt);
   // Learners are told when a reading has no comprehension activity, rather than
   // the button silently disappearing. Read-aloud-only activities and admin
   // self-practice never have questions, so they show nothing extra.
   const comprehensionUnavailable = !comprehensionTarget && role !== "admin" && attempt.readAloudOnly !== true;
   const accuracy = Math.round(attempt.pronunciationAccuracy);
-  const stars = starCount(accuracy);
   const correctWordCount = attempt.wordMetrics.filter((word) => word.type === "match").length;
-  const transcriptParts = markTranscript(attempt.transcript ?? "", attempt.wordMetrics);
+  // Every scored story word matched and nothing was different or extra (F6 wording only).
+  const everyWordMatched = attempt.wordMetrics.length > 0 && attempt.wordMetrics.every((word) => word.type === "match")
+    && correctWordCount === attempt.expectedWordCount;
+  const flaggedWords = pronunciation.status === "done" ? pronunciation.summary?.wordsToPractice.length ?? 0 : 0;
+  const storyTitle = attempt.passageTitle || attempt.moduleTitle;
+  // F5: marks appear only where the saved word metrics line up exactly with the text.
+  const heard = markTranscript(attempt.transcript ?? "", attempt.wordMetrics, attempt.language);
+  const markedStory = markStory(attempt.passageSnapshot ?? "", storyTitle, attempt.language, attempt.wordMetrics);
+  const anyDifferent = heard.pieces.some((piece) => piece.differs);
+  const anySkipped = Boolean(markedStory?.some((paragraph) => paragraph.some((piece) => piece.skipped)));
+  const selectedPiece = selectedWord === undefined ? undefined : heard.pieces[selectedWord];
+  const pronunciationStory = { passage: attempt.passageSnapshot ?? "", title: storyTitle };
   const pronunciationScore = pronunciation.status === "done" ? pronunciation.summary?.accuracy ?? null : null;
-  const readerName = profile?.nickname?.trim() || profile?.full_name?.trim().split(/\s+/)[0] || t("reader");
   const readAgainTarget = attempt.materialId && attempt.roomId && attempt.activityAssignmentId
     ? `/dashboard/reading-materials/${encodeURIComponent(attempt.materialId)}/read-aloud?${new URLSearchParams({
       roomId: attempt.roomId, activityAssignmentId: attempt.activityAssignmentId, recordAgain: "1",
@@ -310,20 +269,11 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           {/* The reading summary stays on the page; each function opens in its own floating panel. */}
           <header className="result-feedback-hero" aria-labelledby="reading-feedback-title">
             <Sparkles className="result-feedback-hero-icon" size={40} aria-hidden="true" />
-            <h2 id="reading-feedback-title">{t("Great reading, ")}{readerName}!</h2>
+            {/* A neutral completion message: the panels below hold the results, so the summary never contradicts them. */}
+            <h2 id="reading-feedback-title">{t("Reading Complete!")}</h2>
             <p className="result-feedback-story">{attempt.passageTitle || attempt.moduleTitle}{resultNumber !== undefined && <> — {t("Result")} {resultNumber}</>}</p>
             {numberError && <p role="status">{t("Unable to load the result number.")} <button type="button" onClick={() => setNumberRevision(value => value + 1)}>{t("Retry")}</button></p>}
-            <p className="result-feedback-stars" aria-label={t("{stars} out of 3 stars", { stars })}>
-              {[1, 2, 3].map((value) => (
-                <Star
-                  key={value}
-                  size={34}
-                  aria-hidden="true"
-                  className={value <= stars ? "result-feedback-star result-feedback-star--on" : "result-feedback-star"}
-                />
-              ))}
-            </p>
-            <p className="result-feedback-message">{t(encouragement(accuracy))}</p>
+            <p className="result-feedback-message">{t("You finished your reading activity! Explore your results below to see how you did.")}</p>
           </header>
 
           {attempt.readAloudOnly === true && <p className="result-feedback-message result-feedback-status" role="status">{attempt.readAloudCompleted
@@ -339,12 +289,12 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             <button type="button" className="result-panel-card result-panel-card--accuracy" aria-haspopup="dialog" onClick={() => openPanel("accuracy")}>
               <Gauge size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{t("Pronunciation Accuracy")}</span>
-              <span className="result-panel-card-text">{t("See your pronunciation and fluency scores.")}</span>
+              <span className="result-panel-card-text">{t("See your pronunciation accuracy score.")}</span>
               {pronunciationScore !== null && <strong className="result-panel-card-value">{pronunciationScore}/100</strong>}
             </button>
             <button type="button" className="result-panel-card result-panel-card--words" aria-haspopup="dialog" onClick={() => openPanel("words")}>
               <ListChecks size={28} aria-hidden="true" />
-              <span className="result-panel-card-title">{t("Words to Practice")}</span>
+              <span className="result-panel-card-title">{t("Mispronounced Words")}</span>
               <span className="result-panel-card-text">{t("Listen to words and practice saying them.")}</span>
             </button>
             <button type="button" className="result-panel-card result-panel-card--transcript" aria-haspopup="dialog" onClick={() => openPanel("transcript")}>
@@ -355,12 +305,12 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             <button type="button" className="result-panel-card result-panel-card--result" aria-haspopup="dialog" onClick={() => openPanel("result")}>
               <Star size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{t("Oral Reading Result")}</span>
-              <span className="result-panel-card-text">{t("See your reading accuracy, speed, and words read correctly.")}</span>
+              <span className="result-panel-card-text">{t("See your reading accuracy, reading speed, and words matched.")}</span>
               <strong className="result-panel-card-value">{accuracy}%</strong>
             </button>
           </nav>
 
-          {/* F2 Receive Pronunciation Feedback: words only, no scores, word list or transcript. */}
+          {/* F2 Receive Pronunciation Feedback: a short overall message and the learner's recording; no scores or word list. */}
           <M5Modal
             id="m5-panel-feedback"
             title={t("Pronunciation Feedback")}
@@ -369,20 +319,17 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             onClose={closePanel}
           >
             {language === "en" ? (
-              <PronunciationFeedbackPanel check={pronunciation} />
+              <PronunciationFeedbackPanel check={pronunciation} autoStart={panel === "feedback"} />
             ) : (
               <section className="result-feedback-card" aria-labelledby="pronunciation-unsupported-title">
                 <h3 id="pronunciation-unsupported-title"><Mic size={22} aria-hidden="true" />{t("Pronunciation Check")}</h3>
-                <p className="result-feedback-message">
-                  {t(FILIPINO_FEEDBACK)}
-                  <FeedbackSpeechControls text={t(FILIPINO_FEEDBACK)} language={language} voice="philippine" listenLabel="Listen to feedback" />
-                </p>
+                <p className="result-feedback-message">{t(FILIPINO_FEEDBACK)}</p>
               </section>
             )}
             {feedbackOpened && <RecordingPlayback key={attempt.id} attemptId={attempt.id} language={language} />}
           </M5Modal>
 
-          {/* F3 View Pronunciation Accuracy: pronunciation-check scores only, never Reading Accuracy. */}
+          {/* F3 View Pronunciation Accuracy: Clear Words and Smooth Reading from the saved check; never Reading Accuracy. */}
           <M5Modal
             id="m5-panel-accuracy"
             title={t("Pronunciation Accuracy")}
@@ -391,7 +338,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             onClose={closePanel}
           >
             {language === "en" ? (
-              <PronunciationAccuracyPanel check={pronunciation} />
+              <PronunciationAccuracyPanel check={pronunciation} story={pronunciationStory} />
             ) : (
               <section className="result-feedback-card" aria-labelledby="pronunciation-accuracy-unsupported-title">
                 <h3 id="pronunciation-accuracy-unsupported-title"><Gauge size={22} aria-hidden="true" />{t("Pronunciation Check")}</h3>
@@ -400,62 +347,29 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             )}
           </M5Modal>
 
-          {/* F4 View Mispronounced Words: the check's words; transcript differences are labelled apart. */}
+          {/* F4 View Mispronounced Words: only words the saved pronunciation check flagged. Transcript differences are in F5. */}
           <M5Modal
             id="m5-panel-words"
-            title={t("Words to Practice")}
+            title={t("Mispronounced Words")}
             closeLabel={t("Close")}
             open={panel === "words"}
             onClose={closePanel}
           >
             {language === "en" ? (
-              <PronunciationWordsPanel check={pronunciation} />
+              <>
+                <PronunciationWordsPanel check={pronunciation} story={pronunciationStory} />
+                {/* The full saved recording, to compare with the American English examples. */}
+                {wordsOpened && flaggedWords > 0 && <RecordingPlayback key={`words-${attempt.id}`} attemptId={attempt.id} language={language} />}
+              </>
             ) : (
               <section className="result-feedback-card" aria-labelledby="pronunciation-words-unsupported-title">
                 <h3 id="pronunciation-words-unsupported-title"><Mic size={22} aria-hidden="true" />{t("Pronunciation Check")}</h3>
                 <p className="result-feedback-note">{t("The pronunciation check is available for English readings only, so it has not marked any words in this reading.")}</p>
               </section>
             )}
-
-            <section className="result-feedback-card result-feedback-card--cream" aria-labelledby="words-heard-differently-title">
-              <h3 id="words-heard-differently-title"><Headphones size={22} aria-hidden="true" />{t("Words We Heard Differently")}</h3>
-              <p className="result-feedback-note">{t("These words come from comparing what we heard with the story. They are not a pronunciation check.")}</p>
-              {wordsToPractice.length > 0 ? (
-                <>
-                  <p className="result-feedback-message">{t("Listen to the word, say it slowly, and try reading it again.")}</p>
-                  <ul className="result-feedback-words">
-                    {wordsToPractice.map((word) => (
-                      <li key={word} className="result-feedback-word">
-                        <span>{word}</span>
-                        <small>{notDetectedWords.has(word) ? t("not detected") : t("read differently")}</small>
-                        <button
-                          type="button"
-                          className="result-feedback-listen"
-                          disabled={Boolean(speakingWord) || speechState.muted}
-                          aria-label={speakingWord === word ? t("Playing {word}", { word }) : t("Listen to {word}", { word })}
-                          onClick={() => void playWord(word)}
-                        >
-                          <Volume2 size={20} aria-hidden="true" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="result-feedback-note">
-                    {t("\"Not detected\" means we did not hear the word in your reading. You may have skipped it, or the recording may have missed it. \"Read differently\" means we heard another word. Speech recognition can make mistakes, so this is not always a reading or pronunciation mistake.")}
-                  </p>
-                </>
-              ) : (
-                <p className="result-feedback-message">{t("No words to practice. Amazing!")}</p>
-              )}
-              {speechError && (
-                <p className="result-feedback-note" role="alert">
-                  {ui.message(speechError, "Pronunciation audio is unavailable right now. Please try again.")}
-                </p>
-              )}
-            </section>
           </M5Modal>
 
-          {/* F5 View Read-Aloud Transcript: the story, what we heard and its differences; no scores. */}
+          {/* F5 View Read-Aloud Transcript: the story and what we heard. Differences are not called pronunciation errors. */}
           <M5Modal
             id="m5-panel-transcript"
             title={t("Read-Aloud Transcript")}
@@ -465,30 +379,77 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           >
             {attempt.passageSnapshot?.trim() && (
               <section className="result-feedback-card" aria-labelledby="passage-title">
-                <h3 id="passage-title"><BookOpen size={22} aria-hidden="true" />{t("The story")}</h3>
-                <p className="result-feedback-transcript">{attempt.passageSnapshot}</p>
+                <h3 id="passage-title"><BookOpen size={22} aria-hidden="true" />{t("The Story")}</h3>
+                {markedStory ? (
+                  <div className="result-feedback-transcript result-story-text">
+                    {markedStory.map((paragraph, index) => (
+                      <p key={index}>
+                        {paragraph.map((piece, pieceIndex) => piece.skipped
+                          ? <span key={pieceIndex} className="result-skipped-word">{piece.text}<span className="result-visually-hidden">{t(" (not heard)")}</span></span>
+                          : piece.text)}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="result-feedback-transcript">{attempt.passageSnapshot}</p>
+                )}
+                {anySkipped && (
+                  <p className="result-legend">
+                    <span className="result-legend-swatch result-legend-swatch--skipped" aria-hidden="true" />
+                    {t("Words with a dashed line were not heard.")}
+                  </p>
+                )}
               </section>
             )}
 
             <section className="result-feedback-card result-feedback-card--cream" aria-labelledby="transcript-title">
               <h3 id="transcript-title">
-                <Headphones size={22} aria-hidden="true" />{t("What we heard")}</h3>
+                <Headphones size={22} aria-hidden="true" />{t("What We Heard")}</h3>
+              {heard.reliable && anyDifferent && (
+                <p className="result-info-box">{t("Tap an orange word to compare it with the story.")}</p>
+              )}
               {attempt.transcript?.trim() ? (
                 <p className="result-feedback-transcript">
-                  {transcriptParts.map((part, index) => part.differs
-                    ? <mark key={index} className="result-feedback-different">{part.text}</mark>
-                    : part.text)}
+                  {heard.pieces.map((piece, index) => !piece.differs
+                    ? piece.text
+                    : heard.reliable
+                      ? (
+                        <button
+                          key={index}
+                          type="button"
+                          className="result-feedback-different result-heard-word"
+                          aria-pressed={selectedWord === index}
+                          aria-controls="heard-word-explanation"
+                          onClick={() => setSelectedWord(selectedWord === index ? undefined : index)}
+                        >
+                          {piece.text}<span className="result-visually-hidden">{t(" (different from the story)")}</span>
+                        </button>
+                      )
+                      : <mark key={index} className="result-feedback-different">{piece.text}<span className="result-visually-hidden">{t(" (different from the story)")}</span></mark>)}
                 </p>
               ) : (
                 <p className="result-feedback-note">{t("No transcript was saved for this reading.")}</p>
               )}
-              <p className="result-feedback-note">{transcriptParts.some((part) => part.differs)
-                ? t("Highlighted words did not match the story. Speech recognition can make mistakes.")
-                : t("Speech recognition can make mistakes.")}</p>
+              {heard.reliable && anyDifferent && (
+                <p id="heard-word-explanation" className="result-heard-explanation" role="status" aria-live="polite">
+                  {selectedPiece?.differs
+                    ? selectedPiece.expected?.length
+                      ? t("The story says: “{word}”.", { word: selectedPiece.expected.join(" ") })
+                      : t("This word is not in the story.")
+                    : null}
+                </p>
+              )}
+              {anyDifferent && (
+                <p className="result-legend">
+                  <span className="result-legend-swatch result-legend-swatch--different" aria-hidden="true" />
+                  {t("Orange words are different from the story.")}
+                </p>
+              )}
+              <p className="result-feedback-note">{t("Sometimes the computer can make mistakes when listening.")}</p>
             </section>
           </M5Modal>
 
-          {/* F6 View Oral Reading Result: transcript-based reading accuracy, speed and words read correctly. */}
+          {/* F6 View Oral Reading Result: transcript-based reading accuracy, words matched and reading speed. */}
           <M5Modal
             id="m5-panel-result"
             title={t("Oral Reading Result")}
@@ -498,6 +459,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           >
             <section className="result-feedback-card result-feedback-score" aria-labelledby="accuracy-title">
               <h3 id="accuracy-title">{t("Reading Accuracy")}</h3>
+              <p className="result-feedback-note">{t("How closely the words we heard matched the story.")}</p>
               <p className="result-feedback-score-value">{accuracy}%</p>
               <progress
                 className="result-feedback-progress"
@@ -507,21 +469,27 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
               >
                 {accuracy}%
               </progress>
-              <p className="result-feedback-note">{t("This score is transcript-based: it compares the words we heard with the story. Speech recognition can make mistakes.")}</p>
+              <p className="result-feedback-message">{t(readingAccuracyMessage(accuracy, everyWordMatched))}</p>
             </section>
 
             <section className="result-feedback-card" aria-labelledby="oral-result-title">
               <h3 id="oral-result-title">{t("Your Reading Result")}</h3>
-              <dl className="result-feedback-summary">
+              <dl className="result-feedback-summary result-feedback-summary--two">
                 <div>
-                  <dt>{t("Reading speed")}</dt>
-                  <dd>{Math.round(attempt.readingSpeedWpm)} {t("words per minute")}</dd>
+                  <dt>{t("Words Matched")}</dt>
+                  <dd className="result-feedback-summary-value">{t("{matched} of {total}", { matched: correctWordCount, total: attempt.expectedWordCount })}</dd>
+                  <dd>{t("Story words that matched the words we heard.")}</dd>
                 </div>
                 <div>
-                  <dt>{t("Words read correctly")}</dt>
-                  <dd>{correctWordCount}{t(" of ")}{attempt.expectedWordCount}</dd>
+                  <dt>{t("Reading Speed")}</dt>
+                  <dd className="result-feedback-summary-value">{t("{wpm} words per minute", { wpm: Math.round(attempt.readingSpeedWpm) })}</dd>
+                  <dd>{t("How many words we heard in each minute of your recording.")}</dd>
                 </div>
               </dl>
+              {!everyWordMatched && <p className="result-feedback-note">{t("Open Read-Aloud Transcript to see which words were different.")}</p>}
+              <p className="result-feedback-note">{everyWordMatched
+                ? t("Sometimes the computer can make mistakes when listening.")
+                : t("Sometimes the computer can make mistakes when listening, especially with names. If it heard a word wrongly, your real result may be a little higher.")}</p>
             </section>
           </M5Modal>
 

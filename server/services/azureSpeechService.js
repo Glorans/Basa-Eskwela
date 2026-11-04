@@ -1,6 +1,6 @@
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs/promises");
-const { PHILIPPINE_FEEDBACK_VOICES, getAzureSpeechConfig } = require("./azureSpeechConfig");
+const { AMERICAN_EXAMPLE_VOICES, PHILIPPINE_FEEDBACK_VOICES, getAzureSpeechConfig } = require("./azureSpeechConfig");
 const { SpeechTranscriptionError } = require("./speechErrors");
 const { MAX_WHOLE_RECORDING_SECONDS, SPEECH_SAMPLE_RATE, readSpeechWav, wavPcmArrayBuffer } = require("./wavAudio");
 
@@ -172,9 +172,30 @@ function wholeRecordingDeadlineMs(config, durationSeconds) {
  * is returned only after that session ends; final phrases are joined in the
  * order Azure recognized them.
  */
+// Phrase-list weight, range 0-2 (SDK PhraseListGrammar.setWeight). 1.0 is
+// Microsoft's default: names are made recognizable without boosting them
+// above normal recognition.
+const PHRASE_LIST_WEIGHT = 1.0;
+
+/**
+ * M5 English only: a small list of story names (for example "Santos") added
+ * as a phrase list, so an uncommon name is less likely to be heard as a common
+ * word ("Sampson's"). It biases recognition only; it is not the reference text,
+ * and nothing is accepted automatically.
+ */
+function phraseListConfigurer(sdk, locale, phrases) {
+  if (locale !== "en-US" || !Array.isArray(phrases) || !phrases.length) return undefined;
+  return (recognizer) => {
+    const list = sdk.PhraseListGrammar.fromRecognizer(recognizer);
+    list.addPhrases(phrases);
+    list.setWeight(PHRASE_LIST_WEIGHT);
+    return undefined;
+  };
+}
+
 async function transcribeWav(filePath, languageCode, {
   sdkFactory = defaultSdkFactory, env = process.env, readFile = fs.readFile, log = console.error, wholeRecording = false,
-  signal, onDiagnostics,
+  signal, onDiagnostics, phrases,
 } = {}) {
   const config = getAzureSpeechConfig(env);
   const buffer = await readFile(filePath);
@@ -191,6 +212,7 @@ async function transcribeWav(filePath, languageCode, {
     await recognizePcm({
       sdk, config, locale: languageCode, pcm: wavPcmArrayBuffer(buffer, wav),
       ...(wholeRecording ? { timeoutMs: wholeRecordingDeadlineMs(config, wav.durationSeconds) } : {}),
+      configure: phraseListConfigurer(sdk, languageCode, phrases),
       signal,
       onNoMatch: (result) => {
         const kind = noMatchKind(sdk, result);
@@ -319,6 +341,15 @@ function escapeXml(text) {
   })[character]);
 }
 
+const PROFILE_VOICES = Object.freeze({ philippine: PHILIPPINE_FEEDBACK_VOICES, american: AMERICAN_EXAMPLE_VOICES });
+
+/** SSML for M5 feedback: the profile's voice for the language, at a calm rate. */
+function profileSsml(text, language, profile) {
+  const voice = PROFILE_VOICES[profile][language];
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${voice.locale}">`
+    + `<voice name="${voice.name}"><prosody rate="${PHILIPPINE_FEEDBACK_RATE}">${escapeXml(text)}</prosody></voice></speak>`;
+}
+
 /** SSML for M5 feedback: the Philippine voice for the language, at a calm rate. */
 function philippineFeedbackSsml(text, language) {
   const voice = PHILIPPINE_FEEDBACK_VOICES[language];
@@ -330,7 +361,8 @@ function philippineFeedbackSsml(text, language) {
  * Neural text-to-speech; returns MP3 bytes (served as audio/mpeg). Without a
  * voice profile the configured default voice reads the plain text, as before.
  * voiceProfile "philippine" (M5 feedback only) uses en-PH-RosaNeural or
- * fil-PH-BlessicaNeural through SSML.
+ * fil-PH-BlessicaNeural through SSML; "american" (M5 "Hear American English",
+ * English only) uses en-US-JennyNeural.
  */
 async function synthesizeSpeech(text, languageCode, {
   sdkFactory = defaultSdkFactory, env = process.env, log = console.error, voiceProfile,
@@ -338,14 +370,14 @@ async function synthesizeSpeech(text, languageCode, {
   const config = getAzureSpeechConfig(env);
   const language = languageCode === "fil-PH" ? "fil" : languageCode === "en-US" ? "en" : null;
   if (!language) throw new SpeechTranscriptionError("STT_INVALID_AUDIO");
-  if (voiceProfile !== undefined && voiceProfile !== "philippine") throw new SpeechTranscriptionError("STT_INVALID_AUDIO");
-  const philippine = voiceProfile === "philippine";
+  if (voiceProfile !== undefined && !PROFILE_VOICES[voiceProfile]?.[language]) throw new SpeechTranscriptionError("STT_INVALID_AUDIO");
+  const profile = voiceProfile;
   let synthesizer;
   let timer;
   try {
     const sdk = sdkFactory();
     const speechConfig = createSpeechConfig(sdk, config);
-    speechConfig.speechSynthesisVoiceName = philippine ? PHILIPPINE_FEEDBACK_VOICES[language].name : config.voices[language];
+    speechConfig.speechSynthesisVoiceName = profile ? PROFILE_VOICES[profile][language].name : config.voices[language];
     speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3;
     // A null audio config returns the bytes instead of playing them on the server.
     synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
@@ -358,8 +390,8 @@ async function synthesizeSpeech(text, languageCode, {
         if (error) reject(error); else resolve(value);
       };
       timer = setTimeout(() => finish(new SpeechTranscriptionError("STT_DEADLINE")), config.timeoutMs);
-      const speak = philippine
-        ? (ok, fail) => synthesizer.speakSsmlAsync(philippineFeedbackSsml(text, language), ok, fail)
+      const speak = profile
+        ? (ok, fail) => synthesizer.speakSsmlAsync(profileSsml(text, language, profile), ok, fail)
         : (ok, fail) => synthesizer.speakTextAsync(text, ok, fail);
       speak((result) => {
         if (result.reason !== sdk.ResultReason.SynthesizingAudioCompleted) {
@@ -461,6 +493,7 @@ function createRecognitionStream(request, { sdkFactory = defaultSdkFactory, env 
 }
 
 module.exports = {
+  PHRASE_LIST_WEIGHT,
   wholeRecordingDeadlineMs,
   assessPronunciationWav,
   createRecognitionStream,

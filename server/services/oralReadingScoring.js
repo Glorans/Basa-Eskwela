@@ -217,4 +217,4 @@ function scorePassage(passage, transcript, language, title = "") {
   }
   return { expectedWords, spokenWords, wordMetrics };
 }
-module.exports = { normalizeReadingText, getReadingWords, scorePassage, splitEmbeddedTitle };
+module.exports = { alignWords, normalizeReadingText, getReadingWords, scorePassage, splitEmbeddedTitle };

@@ -84,13 +84,19 @@ function PronunciationReview({ attemptId }: { attemptId: string }) {
     <>
       <div className="m5-review-metrics">
         <div><span>Pronunciation Accuracy (Pronunciation check)</span><strong>{summary.accuracy !== null ? `${summary.accuracy}/100` : "Not available"}</strong></div>
-        <div><span>Fluency</span><strong>{summary.fluency !== null ? `${summary.fluency}/100` : "Not available"}</strong></div>
         <div><span>Checked Speech</span><strong>{summary.assessedSeconds ?? 0} seconds</strong></div>
       </div>
       {summary.complete === false && (
         <p className="m5-review-muted">
           Some speech{typeof summary.unassessedSeconds === "number" ? ` (about ${summary.unassessedSeconds} seconds)` : ""} could not be checked,
           so these results cover only the {summary.utterances} spoken {summary.utterances === 1 ? "phrase" : "phrases"} that were checked.
+        </p>
+      )}
+      {typeof summary.storyWords === "number" && typeof summary.assessedStoryWords === "number"
+        && summary.assessedStoryWords < summary.storyWords && (
+        <p className="m5-review-muted">
+          The check scored {summary.assessedStoryWords} of {summary.storyWords} story words. Words it did not score (for
+          example, words that were skipped or not recognized) are not part of these results.
         </p>
       )}
       <p><strong>Feedback the student received:</strong> {pronunciationFeedbackText(summary)}</p>
@@ -100,6 +106,8 @@ function PronunciationReview({ attemptId }: { attemptId: string }) {
         : <p className="m5-review-muted">The pronunciation check did not flag any words.</p>}
       <p className="m5-review-muted">
         Saved {checkedAt ? formatCompletedAt(checkedAt) : ""}. Pronunciation checks can make mistakes; this is separate from the transcript-based Reading Accuracy.
+        Scores compare the student's speech with a US English model, so names and Philippine English pronunciations can score
+        low even when read correctly. Listen to the recording before treating a flagged word as a reading mistake.
       </p>
     </>
   );

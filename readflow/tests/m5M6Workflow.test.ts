@@ -10,6 +10,7 @@ import { comprehensionTargetForReading } from "../src/modules/module5/services/c
 import * as voiceFollow from "../src/pages/reading-activity/voiceFollow.ts";
 import { storyParagraphs } from "../src/pages/reading-activity/storyDisplay.ts";
 import * as activityLanguage from "../src/pages/reading-activity/activityLanguage.ts";
+import * as resultWords from "../src/modules/module5/services/resultWords.ts";
 
 const require = createRequire(import.meta.url);
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -58,6 +59,7 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
     require: (id: string) => {
       if (id === "react") return react;
       if (id.endsWith("/activityLanguage")) return activityLanguage;
+      if (id.endsWith("/resultWords")) return resultWords;
       if (id.endsWith("/savedAttemptOrder")) return savedAttemptOrder;
       if (id === "react-router-dom") return { Link: "a", useParams: () => params, useLocation: () => ({ state: mocks.locationState }),
         useSearchParams: () => [new URLSearchParams({ roomId: "room", activityAssignmentId: "assignment", oralReadingAttemptId: "oral", ...mocks.searchParams }), () => {}],
@@ -549,9 +551,14 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
   assert.equal(find(tree, node => node.type === "pronunciation-feedback"), undefined);
   assert.match(text, /Pagsusuri ng Bigkas/);
   assert.match(text, /Ang pagsusuri ng bigkas ay para lamang sa mga babasahing Ingles/);
-  assert.match(text, /Pakinggan ang salita, bigkasin ito nang dahan-dahan, at subukang basahin ulit\./);
-  assert.ok(find(tree, node => node.type === "small" && node.props.children === "Iba ang salitang naitala"));
+  // F4 lists no transcript differences; they are shown, in Filipino, in F5 only.
+  assert.doesNotMatch(text, /Mga Salitang Iba ang Narinig Namin|Iba ang salitang naitala|hindi narinig"/);
   assert.match(text, /Ang Kuwento/);
+  assert.match(text, /Ang Narinig Namin/);
+  const different = find(tree, node => node.type === "button" && node.props.className?.includes("result-heard-word"));
+  assert.equal(different.props.children[0], "aso");
+  different.props.onClick();
+  assert.match(JSON.stringify(f.render()), /Ang nasa kuwento: “pusa”\./);
   assert.doesNotMatch(text, /Azure|Pronunciation accuracy|Katumpakan ng pagbigkas/);
   // No pronunciation check exists for Filipino: no panels, no score, and the check is never offered.
   for (const type of ["pronunciation-feedback-panel", "pronunciation-accuracy-panel", "pronunciation-words-panel"]) {
@@ -560,11 +567,11 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
   assert.deepEqual([...new Set(pronunciationChecks)], [undefined]);
   assert.match(text, /walang marka sa pagbigkas ang pagbasang ito/);
   assert.match(text, /kaya wala itong minarkahang salita sa pagbasang ito/);
-  // F2's spoken feedback uses the Filipino Philippine voice.
-  const listen = find(find(tree, node => node.props?.id === "m5-panel-feedback"), node => node.type === "feedback-speech");
-  assert.deepEqual({ language: listen.props.language, voice: listen.props.voice, label: listen.props.listenLabel },
-    { language: "fil", voice: "philippine", label: "Listen to feedback" });
-  assert.match(listen.props.text, /Ang puna sa pagbigkas ay para lamang sa mga babasahing Ingles/);
+  // F2 has no feedback text-to-speech button; the message and the learner's recording remain.
+  const feedbackPanel = find(tree, node => node.props?.id === "m5-panel-feedback");
+  assert.equal(find(feedbackPanel, node => node.type === "feedback-speech"), undefined);
+  assert.match(JSON.stringify(feedbackPanel), /Ang puna sa pagbigkas ay para lamang sa mga babasahing Ingles/);
+  assert.ok(find(feedbackPanel, node => node.type === "recording-playback"));
 });
 
 test("reading feedback comes before questions, in order, with gentle highlights and a link to the exact M6 activity", async () => {
@@ -585,18 +592,17 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   const tree = f.render();
   const text = JSON.stringify(tree);
   // The summary, then one card per function (F2-F6), then each panel's content, then the shared actions.
-  const order = ["Great reading, ", "Nice job! A few words need practice.",
-    "Pronunciation Feedback", "Pronunciation Accuracy", "Words to Practice", "Read-Aloud Transcript", "Oral Reading Result",
-    "pronunciation-feedback-panel", "pronunciation-accuracy-panel", "pronunciation-words-panel", "Words We Heard Differently",
-    "Listen to the word, say it slowly, and try reading it again.", "What we heard", "Reading Accuracy", "Your Reading Result",
+  const order = ["Reading Complete!", "You finished your reading activity! Explore your results below to see how you did.",
+    "Pronunciation Feedback", "Pronunciation Accuracy", "Mispronounced Words", "Read-Aloud Transcript", "Oral Reading Result",
+    "pronunciation-feedback-panel", "pronunciation-accuracy-panel", "pronunciation-words-panel", "The Story", "What We Heard",
+    "Reading Accuracy", "How closely the words we heard matched the story.", "Your Reading Result", "Words Matched", "Reading Speed",
     "Continue to Questions", "Read again", "Back to my activities"];
   order.reduce((last, label) => { const at = text.indexOf(label, last + 1); assert.ok(at > last, `${label} is out of order`); return at; }, -1);
-  assert.match(text, /"Ana"/);
+  // The summary title is the fixed "Reading Complete!"; it no longer includes the learner's name.
+  assert.doesNotMatch(text, /"Ana"/);
   assert.doesNotMatch(text, /See what to practice|Back to my result|Azure/);
-  // Undetected words and recognized differences are labelled apart; neither is called a skip or a mispronunciation.
-  assert.ok(find(tree, node => node.type === "small" && node.props.children === "not detected"));
-  assert.ok(!find(tree, node => node.type === "small" && node.props.children === "skipped"));
-  assert.ok(find(tree, node => node.type === "small" && node.props.children === "read differently"));
+  // Transcript differences are not listed in F4 and are never called mispronunciations.
+  assert.doesNotMatch(text, /Words We Heard Differently|not detected|read differently|skipped/);
   const panel = (id: string, current = f.render()) => find(current, node => node.props?.id === id);
   const card = (title: string) => find(f.render(), node => node.type === "button"
     && JSON.stringify(node.props.children).includes(title) && node.props["aria-haspopup"] === "dialog");
@@ -604,7 +610,7 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   const openPanels = () => ids.filter(id => panel(id).props.open);
   // Every panel starts closed; each card opens only its own panel.
   assert.deepEqual(openPanels(), []);
-  for (const [title, id] of [["Pronunciation Feedback", "feedback"], ["Pronunciation Accuracy", "accuracy"], ["Words to Practice", "words"],
+  for (const [title, id] of [["Pronunciation Feedback", "feedback"], ["Pronunciation Accuracy", "accuracy"], ["Mispronounced Words", "words"],
     ["Read-Aloud Transcript", "transcript"], ["Oral Reading Result", "result"]]) {
     card(title).props.onClick();
     assert.deepEqual(openPanels(), [`m5-panel-${id}`], title);
@@ -617,17 +623,33 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   const content = (id: string) => JSON.stringify(panel(`m5-panel-${id}`));
   assert.ok(find(panel("m5-panel-feedback"), node => node.type === "pronunciation-feedback-panel"));
   assert.ok(find(panel("m5-panel-feedback"), node => node.type === "recording-playback"));
-  assert.doesNotMatch(content("feedback"), /Reading Accuracy|words per minute|What we heard|result-feedback-words|"80"|80%/);
+  assert.doesNotMatch(content("feedback"), /Reading Accuracy|words per minute|What We Heard|result-feedback-words|"80"|80%/);
+  assert.equal(find(panel("m5-panel-feedback"), node => node.type === "feedback-speech"), undefined, "F2 has no feedback text-to-speech");
   assert.ok(find(panel("m5-panel-accuracy"), node => node.type === "pronunciation-accuracy-panel"));
-  assert.doesNotMatch(content("accuracy"), /Reading Accuracy|words per minute|What we heard|result-feedback-words|recording-playback|80%/);
+  assert.doesNotMatch(content("accuracy"), /Reading Accuracy|words per minute|What We Heard|result-feedback-words|recording-playback|80%/);
   assert.ok(find(panel("m5-panel-words"), node => node.type === "pronunciation-words-panel"));
-  assert.match(content("words"), /They are not a pronunciation check\./);
-  assert.doesNotMatch(content("words"), /Reading Accuracy|words per minute|What we heard|recording-playback|80%/);
-  assert.match(content("transcript"), /The story/);
-  assert.match(content("transcript"), /What we heard/);
-  assert.doesNotMatch(content("transcript"), /Reading Accuracy|words per minute|Pronunciation|progress|80%/);
+  // F3 and F4 place practice words in the story the learner read (with the title the screen hides).
+  for (const id of ["accuracy", "words"]) {
+    assert.deepEqual({ ...find(panel(`m5-panel-${id}`), node => node.type === `pronunciation-${id}-panel`).props.story },
+      { passage: "The dog sat on the mat.", title: "Story" });
+  }
+  assert.doesNotMatch(content("words"), /Reading Accuracy|words per minute|What We Heard|recording-playback|80%|result-feedback-words|Listen to/);
+  assert.match(content("transcript"), /The Story/);
+  assert.match(content("transcript"), /What We Heard/);
+  assert.match(content("transcript"), /Orange words are different from the story\./);
+  assert.match(content("transcript"), /Sometimes the computer can make mistakes when listening\./);
+  assert.doesNotMatch(content("transcript"), /Reading Accuracy|words per minute|Pronunciation|pronunciation|progress|80%/);
+  // The fixture's metrics leave out the story's second "the", so the story cannot be lined up
+  // word for word: no story word is marked as not heard by guesswork.
+  assert.doesNotMatch(content("transcript"), /result-skipped-word|not heard/);
   assert.match(content("result"), /Reading Accuracy/);
-  assert.doesNotMatch(content("result"), /What we heard|The story|Pronunciation|result-feedback-words|recording-playback/);
+  assert.match(content("result"), /"3 of 4"/);
+  assert.match(content("result"), /"61 words per minute"/);
+  assert.match(content("result"), /Open Read-Aloud Transcript to see which words were different\./);
+  assert.match(content("result"), /Sometimes the computer can make mistakes when listening, especially with names\. If it heard a word wrongly, your real result may be a little higher\./);
+  assert.doesNotMatch(content("result"), /What We Heard|The Story|Pronunciation|result-feedback-words|recording-playback/);
+  // F6 never says words were "missed" and gives no speed judgement without a benchmark.
+  assert.doesNotMatch(content("result"), /missed|slow|fast|good speed|poor/i);
   // F7 stays on the Reading History page; the result page does not embed it.
   assert.equal(find(f.render(), node => node.type === "reading-history"), undefined);
   assert.doesNotMatch(text, /Saved Oral Reading Assessments/);
@@ -637,11 +659,24 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   assert.equal(check.status, "idle");
   assert.equal(find(panel("m5-panel-accuracy", once), node => node.type === "pronunciation-accuracy-panel").props.check, check);
   assert.equal(find(panel("m5-panel-words", once), node => node.type === "pronunciation-words-panel").props.check, check);
-  assert.match(text, /\[3," of ",4\]/);
   assert.doesNotMatch(text, /failed|poor|frustration/i);
-  assert.ok(find(tree, node => node.type === "mark" && node.props.children === "cat"));
+  // "cat" lines up with the story's "dog": selecting it says what the story says.
+  const heardWord = () => find(panel("m5-panel-transcript"), node => node.type === "button" && node.props.className?.includes("result-heard-word"));
+  assert.equal(heardWord().props.children[0], "cat");
+  assert.equal(heardWord().props["aria-pressed"], false);
+  // The tap instruction is a visible info box, shown because orange words exist and can be tapped.
+  assert.ok(find(panel("m5-panel-transcript"), node => node.props?.className === "result-info-box"
+    && node.props.children === "Tap an orange word to compare it with the story."));
+  assert.doesNotMatch(content("transcript"), /The story says/);
+  heardWord().props.onClick();
+  assert.equal(heardWord().props["aria-pressed"], true);
+  assert.match(content("transcript"), /The story says: “dog”\./);
+  heardWord().props.onClick();
+  assert.doesNotMatch(content("transcript"), /The story says/);
+  // F6: some words differed, so the transcript tip and the "may be a little higher" note are shown.
+  assert.match(content("result"), /Open Read-Aloud Transcript to see which words were different\./);
+  assert.doesNotMatch(content("result"), /every scored word/);
   assert.ok(find(tree, node => node.type === "progress" && node.props.value === 80));
-  assert.ok(find(tree, node => node.type === "button" && node.props["aria-label"] === "Listen to dog"));
   const questions = find(tree, node => node.type === "a" && node.props.children === "Continue to Questions");
   assert.equal(questions.props.to, "/dashboard/reading-materials/material/comprehension?roomId=room&activityAssignmentId=assignment&oralReadingAttemptId=oral");
   // Independent learners only get the button when a module passage target exists.
@@ -666,7 +701,7 @@ test("cached results render immediately without a GET or hidden recording playba
     useAuthenticatedProfile: { default: () => ({ profile: { id: "reader", nickname: "Ana" } }) },
   });
   const tree = f.render();
-  assert.match(JSON.stringify(tree), /Great reading/);
+  assert.match(JSON.stringify(tree), /Reading Complete!/);
   assert.doesNotMatch(JSON.stringify(tree), /Loading your oral-reading result/);
   assert.equal(find(tree, node => node.type === "recording-playback"), undefined);
   assert.equal(calls, 0);
@@ -682,14 +717,14 @@ test("uncached results preserve errors and retry without displaying success prem
     comprehensionNavigation: { comprehensionTargetForReading },
     useAuthenticatedProfile: { default: () => ({ profile: { id: "reader", nickname: "Ana" } }) },
   });
-  assert.doesNotMatch(JSON.stringify(f.render()), /Great reading/);
+  assert.doesNotMatch(JSON.stringify(f.render()), /Reading Complete!/);
   await tick();
   const failed = f.render();
   assert.match(JSON.stringify(failed), /Offline/);
-  assert.doesNotMatch(JSON.stringify(failed), /Great reading/);
+  assert.doesNotMatch(JSON.stringify(failed), /Reading Complete!/);
   button(failed, "Retry").props.onClick();
   f.render(); await tick();
-  assert.match(JSON.stringify(f.render()), /Great reading/);
+  assert.match(JSON.stringify(f.render()), /Reading Complete!/);
   assert.equal(calls, 2);
 });
 
@@ -902,9 +937,10 @@ test("read-aloud shows no mascot before, during or after recording; the saved re
   assert.ok(status);
 });
 
-test("the M5 result shows the existing encouragement as text, without a mascot, and word practice uses the shared player", async () => {
+test("the M5 result shows the existing encouragement as text, without a mascot, and leaving it stops example audio", async () => {
   const played: unknown[][] = [];
-  const speech = { play: async (...args: any[]) => { played.push(args); return true; }, stop() {},
+  let stopped = 0;
+  const speech = { play: async (...args: any[]) => { played.push(args); return true; }, stop() { stopped++; },
     getState: () => ({ status: "idle", key: null, muted: false }) };
   const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "oral" }, {
     oralReadingService: { getOralReadingAttempt: async () => ({ id: "oral", materialId: null, roomId: null, activityAssignmentId: null,
@@ -918,9 +954,17 @@ test("the M5 result shows the existing encouragement as text, without a mascot, 
   const tree = f.render();
   assert.equal(find(tree, node => node.type === "reading-mascot"), undefined);
   const message = find(tree, node => node.type === "p" && node.props.className === "result-feedback-message");
-  assert.equal(message.props.children, activityLanguage.getActivityText("fil").t("Wow, we heard almost every word of the story!"));
-  await find(tree, node => node.type === "button" && node.props["aria-label"] === "Pakinggan ang pusa").props.onClick();
-  assert.deepEqual(played, [["pusa", "fil", undefined, "philippine"]]);
+  // The summary is a neutral completion message, never a judgement that could contradict the result panels.
+  const fil = activityLanguage.getActivityText("fil");
+  assert.equal(message.props.children, fil.t("You finished your reading activity! Explore your results below to see how you did."));
+  assert.ok(find(tree, node => node.type === "h2" && node.props.children === fil.t("Reading Complete!")));
+  assert.doesNotMatch(JSON.stringify(find(tree, node => node.type === "header" && node.props.className === "result-feedback-hero")),
+    /Wow|Nice job|Good try|practice/);
+  // Transcript differences no longer have word buttons in F4, and rendering never plays audio.
+  assert.equal(find(tree, node => node.type === "button" && node.props["aria-label"] === "Pakinggan ang pusa"), undefined);
+  assert.deepEqual(played, []);
+  f.unmount();
+  assert.equal(stopped, 1);
 });
 
 test("an incorrect answer is final: Incorrect feedback, a separate guiding prompt, no second attempt", async () => {
@@ -1055,9 +1099,34 @@ test("M6 has no voice feature, its mascot is inline, and M5 keeps its audio", ()
   assert.doesNotMatch(inline, /createPortal|style\.|position/);
   const css = read("components/reading-feedback/ReadingFeedback.css");
   assert.match(css, /\.reading-mascot-dock--inline \{\s*position: static;/);
-  // M5 keeps spoken feedback, word practice and the learner's recording.
+  // M5 keeps the learner's recording and the F4 example words (Philippine voice); F2 has no feedback text-to-speech.
   const result = read("pages/reading-activity/ReadingResultPage.tsx");
-  assert.match(result, /<FeedbackSpeechControls /);
+  assert.doesNotMatch(result, /<FeedbackSpeechControls /);
   assert.match(result, /<RecordingPlayback /);
-  assert.match(read("modules/module5/components/PronunciationFeedback.tsx"), /voice="philippine"/);
+  assert.match(read("modules/module5/components/PronunciationFeedback.tsx"), /speech\.play\(word, "en", undefined, "american"\)/);
+});
+
+test("F5/F6 when every scored word matched: no tap instruction or legend, and wording that matches the result", async () => {
+  const attempt = { id: "oral", userId: "reader", moduleId: "module", language: "en", moduleTitle: "Seeds",
+    pronunciationAccuracy: 100, readingSpeedWpm: 101.2, expectedWordCount: 3, transcript: "Seeds need water", passageSnapshot: "Seeds need water.",
+    wordMetrics: [{ type: "match", expected: "seeds", actual: "seeds" }, { type: "match", expected: "need", actual: "need" },
+      { type: "match", expected: "water", actual: "water" }] };
+  const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "oral" }, {
+    oralReadingService: { getOralReadingAttempt: async () => attempt },
+    oralReadingProcessing: { getWordsToPractice: () => [] }, diagnosticTts: {},
+    comprehensionNavigation: { comprehensionTargetForReading },
+    useAuthenticatedProfile: { default: () => ({ profile: { id: "reader", nickname: "Ana" } }) },
+  });
+  f.render(); await tick();
+  const tree = f.render();
+  const content = (id: string) => JSON.stringify(find(tree, node => node.props?.id === `m5-panel-${id}`));
+  assert.doesNotMatch(content("transcript"), /result-info-box|Tap an orange word|Orange words are different|result-heard-word/);
+  assert.match(content("result"), /We heard every scored word of the story! Great reading!/);
+  assert.match(content("result"), /"3 of 3"/);
+  assert.match(content("result"), /"101 words per minute"/);
+  assert.doesNotMatch(content("result"), /Open Read-Aloud Transcript|a little higher|almost every word/);
+  assert.match(content("result"), /"Sometimes the computer can make mistakes when listening\."/);
+  // Only F2 may start a check, and only while it is the open panel (none is open here).
+  const f2 = find(find(tree, node => node.props?.id === "m5-panel-feedback"), node => node.type === "pronunciation-feedback-panel");
+  assert.equal(f2.props.autoStart, false);
 });

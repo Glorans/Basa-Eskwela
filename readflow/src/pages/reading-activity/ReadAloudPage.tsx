@@ -12,6 +12,7 @@ import {
   startReadAloudTiming,
   transcribeOralReadingRecording,
 } from "../../modules/module5/services/oralReadingTranscription";
+import { storyNames } from "../../modules/module5/services/resultWords";
 import {
   RECORDING_UPLOAD_ERROR,
   createOralReadingAttempt,
@@ -306,6 +307,8 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
           // that times out is aborted. The recording stays in memory for a retry.
           transcribeRecording: (recording, language) => transcribeOralReadingRecording(recording, language, {
             recordingDurationSeconds,
+            // English: a few story names (never the whole story) help the recognizer hear them.
+            storyNames: storyNames(module.passage, module.passageTitle || module.title, language),
             signal: abort.signal,
             onStep: (step) => { if (currentGeneration === generation.current) setTranscriptionStep(step); },
           }),

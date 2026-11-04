@@ -14,6 +14,12 @@ const PHILIPPINE_FEEDBACK_VOICES = Object.freeze({
   en: Object.freeze({ name: "en-PH-RosaNeural", locale: "en-PH" }),
   fil: Object.freeze({ name: "fil-PH-BlessicaNeural", locale: "fil-PH" }),
 });
+// M5 "Hear American English" (voiceProfile "american"): always this en-US
+// voice, whatever the configured default is, because the pronunciation check
+// compares speech with en-US. English only.
+const AMERICAN_EXAMPLE_VOICES = Object.freeze({
+  en: Object.freeze({ name: "en-US-JennyNeural", locale: "en-US" }),
+});
 const DEFAULT_TIMEOUT_MS = 60000;
 
 /**
@@ -47,4 +53,4 @@ function isAzureSpeechConfigured(env = process.env) {
   try { getAzureSpeechConfig(env); return true; } catch { return false; }
 }
 
-module.exports = { AZURE_VOICES, PHILIPPINE_FEEDBACK_VOICES, getAzureSpeechConfig, isAzureSpeechConfigured };
+module.exports = { AMERICAN_EXAMPLE_VOICES, AZURE_VOICES, PHILIPPINE_FEEDBACK_VOICES, getAzureSpeechConfig, isAzureSpeechConfigured };

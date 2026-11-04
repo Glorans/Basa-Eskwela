@@ -712,3 +712,235 @@
   margin: 0 0 8px;
   font-size: 1.15rem;
 }
+
+/* M5 F3-F6 content (2026-11-05). Theme tokens only; orange = the coral used for highlights. */
+.result-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.result-pronunciation-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.result-pronunciation-value {
+  margin: 0;
+  color: var(--basa-navy);
+  font-family: "Fredoka", sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.result-pronunciation-value strong {
+  font-size: clamp(2.25rem, 9vw, 3rem);
+  line-height: 1;
+}
+
+.result-story-excerpt {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 14px;
+  border-radius: var(--basa-btn-radius);
+  background: var(--basa-cream);
+}
+
+.result-story-excerpt p {
+  margin: 0;
+}
+
+.result-practice-mark {
+  padding: 0 3px;
+  border-bottom: 3px solid var(--basa-sidebar-item);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--basa-sidebar-item) 28%, transparent);
+  color: inherit;
+  font-weight: 800;
+}
+
+.result-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.result-legend-swatch {
+  flex: none;
+  width: 1.5em;
+  height: 0.9em;
+  border-radius: 4px;
+}
+
+.result-legend-swatch--practice,
+.result-legend-swatch--different {
+  border-bottom: 3px solid var(--basa-sidebar-item);
+  background: color-mix(in srgb, var(--basa-sidebar-item) 28%, transparent);
+}
+
+.result-legend-swatch--skipped {
+  border-bottom: 3px dashed var(--basa-navy);
+  border-radius: 0;
+}
+
+.result-story-text p {
+  margin: 0 0 10px;
+}
+
+.result-story-text p:last-child {
+  margin-bottom: 0;
+}
+
+.result-skipped-word {
+  border-bottom: 3px dashed var(--basa-navy);
+}
+
+.result-heard-word {
+  margin: 0;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.result-heard-word[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--basa-sidebar-item) 55%, transparent);
+}
+
+.result-heard-word:focus-visible {
+  outline: 3px solid var(--basa-navy);
+  outline-offset: 2px;
+}
+
+.result-heard-explanation {
+  margin: 0;
+  font-weight: 800;
+}
+
+.result-practice {
+  display: grid;
+  gap: 12px;
+}
+
+.result-practice > p {
+  margin: 0;
+}
+
+.result-practice-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result-practice-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  border: 2px solid var(--basa-navy);
+  border-radius: var(--basa-radius-md);
+  background: var(--basa-card);
+}
+
+.result-practice-word {
+  font-size: 1.3rem;
+  overflow-wrap: anywhere;
+}
+
+.result-practice-excerpt {
+  display: flex;
+  gap: 6px;
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.result-practice-excerpt svg {
+  flex: none;
+  margin-top: 4px;
+}
+
+.result-practice-example {
+  grid-column: 2;
+  grid-row: 1;
+  width: auto;
+  white-space: normal;
+}
+
+.result-practice-item small {
+  grid-column: 1 / -1;
+}
+
+.result-feedback-summary--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.result-feedback-summary dd + dd {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+@media (max-width: 620px) {
+  .result-practice-item {
+    grid-template-columns: 1fr;
+  }
+
+  .result-practice-example {
+    grid-column: 1;
+    grid-row: auto;
+    width: 100%;
+  }
+
+  .result-feedback-summary--two {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* F5: shown only when orange words can be tapped. Soft yellow, navy text (theme tokens). */
+.result-info-box {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 4px solid var(--basa-navy);
+  border-radius: var(--basa-btn-radius);
+  background: color-mix(in srgb, var(--basa-yellow) 35%, var(--basa-card));
+  color: var(--basa-navy);
+  font-weight: 700;
+}
+
+/* F3: "How was my pronunciation scored?" (closed by default). */
+.result-score-help {
+  padding: 10px 14px;
+  border-radius: var(--basa-btn-radius);
+  background: var(--basa-cream);
+}
+
+.result-score-help summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.result-score-help summary:focus-visible {
+  outline: 3px solid var(--basa-navy);
+  outline-offset: 2px;
+}
+
+.result-score-help p {
+  margin: 8px 0 0;
+}

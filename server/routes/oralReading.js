@@ -305,12 +305,12 @@ function createOralReadingRouter(dependencies = {}) {
       attempt = await getAttempt(requester, req.params.attemptId, dependencies);
       if (attempt.language === "en") {
         supabase = getAdmin();
-        const existing = await loadPronunciationCheckRow(supabase, attempt.id, `${PRONUNCIATION_SUMMARY_COLUMNS},parts`);
+        const existing = await loadPronunciationCheckRow(supabase, attempt.id, PRONUNCIATION_SUMMARY_COLUMNS);
         installed = existing.installed;
         // Reopening, refreshing or signing in again reuses the saved result: no new paid assessment.
         if (existing.row?.status === "completed") {
           res.set("Cache-Control", "no-store");
-          return res.json({ success: true, saved: true, reused: true, check: toCheckDto(existing.row),
+          return res.json({ success: true, saved: true, reused: true, check: toCheckDto(existing.row, attempt),
             pronunciation: legacyPronunciation(existing.row.parts) });
         }
         if (existing.row?.status === "running" && !isStale(existing.row, now())) {

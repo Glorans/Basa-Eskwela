@@ -359,3 +359,19 @@ test("the in-memory limiter prunes expired users once it is full", () => {
   assert.equal(limiter.take("c").allowed, true);
   assert.equal(limiter.take("a").allowed, true);
 });
+
+test("M5 'Hear American English' is English only and never falls back to another voice", async () => {
+  const speech = await startSpeechServer();
+  try {
+    assert.equal((await postTts(speech.base, "student", { text: "Santos", language: "en", voiceProfile: "american" })).status, 200);
+    assert.deepEqual(speech.calls.synthesize.at(-1), { text: "Santos", languageCode: "en-US", voiceProfile: "american" });
+    const before = speech.calls.synthesize.length;
+    assert.equal((await postTts(speech.base, "student", { text: "aso", language: "fil", voiceProfile: "american" })).status, 400);
+    assert.equal(speech.calls.synthesize.length, before, "refused before synthesis");
+  } finally { await speech.close(); }
+  const failing = await startSpeechServer({ philippineVoiceFailure: "STT_PROVIDER_ERROR" });
+  try {
+    assert.equal((await postTts(failing.base, "student", { text: "Santos", language: "en", voiceProfile: "american" })).status, 500);
+    assert.equal(failing.calls.synthesize.length, 1, "no fallback to a voice that may not be American English");
+  } finally { await failing.close(); }
+});

@@ -370,3 +370,14 @@ test("live recognition stream reports Azure cancellation as an error, but not en
   assert.deepEqual(events, ["error"], "a failed session never looks like a clean end");
   stream.destroy();
 });
+
+test("M5 'Hear American English' always uses en-US-JennyNeural, even when the default English voice is en-PH; English only", async () => {
+  const { sdkFactory, calls } = fakeSdk({
+    synthesize: (_synth, _ssml, ok) => ok({ reason: 8, audioData: Uint8Array.from([0xff, 0xf3, 1]).buffer }),
+  });
+  const audio = await synthesizeSpeech("Santos", "en-US", { sdkFactory, env: { ...ENV, AZURE_SPEECH_VOICE_EN: "en-PH-RosaNeural" }, voiceProfile: "american" });
+  assert.equal(audio.length, 3);
+  assert.equal(calls.synthesizers[0].config.speechSynthesisVoiceName, "en-US-JennyNeural");
+  assert.match(calls.synthesizers[0].ssml, /xml:lang="en-US"><voice name="en-US-JennyNeural"><prosody rate="-10%">Santos<\/prosody>/);
+  await assert.rejects(synthesizeSpeech("aso", "fil-PH", { sdkFactory, env: ENV, voiceProfile: "american" }), (error) => error.code === "STT_INVALID_AUDIO");
+});

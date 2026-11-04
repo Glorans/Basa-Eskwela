@@ -99,6 +99,9 @@ test("1. a check is saved from the server's own assessment, with coverage and wo
   assert.deepEqual(result.body.check.summary, {
     parts: 1, utterances: 1, accuracy: 88, fluency: 80, wordsToPractice: ["orchard"],
     assessedSeconds: 36, complete: true, unassessedSeconds: 0,
+    // Derived on read from the saved parts: 2 of the story's 8 words were scored,
+    // and "orchard" was flagged at story word 7.
+    storyWords: 8, assessedStoryWords: 2, practiceOccurrences: [{ word: "orchard", storyWordIndex: 7 }],
   });
   const row = app.table.rows.get(EN);
   assert.equal(row.status, "completed");
@@ -262,6 +265,7 @@ test("multi-file recordings are assessed in order in one request and saved as on
   assert.deepEqual(result.body.check.summary, {
     parts: 2, utterances: 2, accuracy: 80, fluency: 80, wordsToPractice: ["orchard"],
     assessedSeconds: 38, complete: false, unassessedSeconds: 2,
+    storyWords: 8, assessedStoryWords: 2, practiceOccurrences: [{ word: "orchard", storyWordIndex: 7 }],
   });
   assert.equal(result.body.pronunciation, undefined, "the legacy single-part shape is only for one part");
   assert.deepEqual([app.table.rows.get(EN).unassessed_segments, app.table.rows.get(EN).part_count], [1, 2]);

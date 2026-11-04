@@ -76,9 +76,17 @@ function doneState(result: PronunciationCheckResult): PronunciationCheckState {
   };
 }
 
+/** Remembers which checks were started automatically, so each is started at most once. */
+export interface AutoStartMarker {
+  has(key: string): boolean;
+  add(key: string): void;
+}
+
 export function createPronunciationCheckStore() {
   const entries = new Map<string, Entry>();
   const listeners = new Set<() => void>();
+  // In memory for this tab; callers may also pass a marker that survives a refresh.
+  const autoStarted = new Set<string>();
 
   function set(key: string, state: PronunciationCheckState) {
     const entry = entries.get(key) ?? ({} as Entry);
@@ -87,7 +95,7 @@ export function createPronunciationCheckStore() {
     listeners.forEach((listener) => listener());
   }
 
-  return {
+  const store = {
     get(key: string | null): PronunciationCheckState {
       if (!key) return IDLE_CHECK;
       return entries.get(key)?.state || LOADING_CHECK;
@@ -159,6 +167,30 @@ export function createPronunciationCheckStore() {
       return running;
     },
 
+    /**
+     * F2 only: starts the check automatically when the learner opens Pronunciation
+     * Feedback and the saved-result read found none (status "idle", no load
+     * error). At most once per account and attempt: the key is marked before the
+     * request starts, so rerenders, Strict Mode's double effects, reopening the
+     * panel or (with a session marker) a refresh never start a second paid check.
+     * After a failure the learner retries with the explicit Try Again button.
+     * The server's claim row still blocks concurrent checks across tabs.
+     */
+    autoStart(key: string | null, attemptId: string, run: PronunciationCheckRunner, marker?: AutoStartMarker): Promise<void> {
+      if (!key) return Promise.resolve();
+      const entry = entries.get(key);
+      if (!entry || entry.running || entry.state.status !== "idle" || entry.state.loadError) return Promise.resolve();
+      if (autoStarted.has(key) || marker?.has(key)) return Promise.resolve();
+      autoStarted.add(key);
+      marker?.add(key);
+      return store.start(key, attemptId, run);
+    },
+
+    /** True once this account and attempt was started automatically (in this tab or per the marker). */
+    wasAutoStarted(key: string | null, marker?: AutoStartMarker) {
+      return Boolean(key && (autoStarted.has(key) || marker?.has(key)));
+    },
+
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
@@ -167,9 +199,11 @@ export function createPronunciationCheckStore() {
     /** Forgets every result (e.g. tests); a running request finishes into a fresh entry. */
     clear() {
       entries.clear();
+      autoStarted.clear();
       listeners.forEach((listener) => listener());
     },
   };
+  return store;
 }
 
 export type PronunciationCheckStore = ReturnType<typeof createPronunciationCheckStore>;

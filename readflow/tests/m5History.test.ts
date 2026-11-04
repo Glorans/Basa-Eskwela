@@ -95,7 +95,8 @@ test('F7: an English reading with a saved pronunciation check shows its scores a
   const text=JSON.stringify(tree);
   assert.match(text, /Pronunciation checks for English readings are saved/);
   assert.match(text, /"Saved pronunciation check: ","82\/100"/);
-  assert.match(text, /"Fluency: ",74,"\/100"/);
+  // F7 shows the saved pronunciation accuracy only; the stored fluency (74) is kept but not displayed.
+  assert.doesNotMatch(text, /Fluency|"74"|,74,/);
   assert.match(text, /Some speech was not checked\./);
   assert.match(text, /"Reading accuracy: ","91.5"/, 'reading accuracy stays separate');
   const links=[] as any[];

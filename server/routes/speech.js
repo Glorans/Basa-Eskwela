@@ -104,8 +104,9 @@ function createSpeechRouter({
   router.post("/api/tts", requireSpeechAccess("tts"), async (req, res) => {
     const { text, language, voiceProfile } = req.body || {};
 
-    // M5 feedback asks for "philippine"; omitted keeps the configured default voice.
-    if (voiceProfile !== undefined && voiceProfile !== "philippine") {
+    // M5 feedback asks for "philippine", M5 "Hear American English" for "american"
+    // (English only); omitted keeps the configured default voice.
+    if (voiceProfile !== undefined && voiceProfile !== "philippine" && !(voiceProfile === "american" && language === "en")) {
       return res.status(400).json({
         success: false,
         message: "Voice profile is not supported.",
@@ -146,7 +147,9 @@ function createSpeechRouter({
           // A Philippine voice the Speech resource cannot use falls back once to the
           // default voice. Missing configuration, permission, quota and timeouts do not.
           const code = voiceError && typeof voiceError === "object" ? voiceError.code : undefined;
-          if (voiceError instanceof SpeechConfigurationError || !["STT_INVALID_AUDIO", "STT_PROVIDER_ERROR"].includes(code)) {
+          // "American English" is never replaced by another voice: the default may not be en-US.
+          if (voiceProfile === "american" || voiceError instanceof SpeechConfigurationError
+            || !["STT_INVALID_AUDIO", "STT_PROVIDER_ERROR"].includes(code)) {
             throw voiceError;
           }
           log("Philippine feedback voice unavailable; using the default voice", { code });

@@ -45,6 +45,32 @@ export interface PronunciationSummary {
   complete?: boolean;
   /** Seconds of speech that could not be assessed (null if unmeasured); 0 when complete. */
   unassessedSeconds?: number | null;
+  /**
+   * Added by newer servers, worked out from the saved detailed results (the
+   * saved result itself is unchanged): the story's word count, how many of
+   * those words the check actually scored, and the story position where each
+   * practice word was flagged (story words counted from 0, title excluded).
+   */
+  storyWords?: number;
+  assessedStoryWords?: number;
+  practiceOccurrences?: PracticeOccurrence[];
+}
+
+export interface PracticeOccurrence {
+  /** The story word, normalized like the scorer ("santos"). */
+  word: string;
+  storyWordIndex: number;
+}
+
+/**
+ * True when the check did not cover the whole reading: some speech could not
+ * be assessed, or some story words were never scored. Scores are unchanged;
+ * the panels only say the result covers part of the reading.
+ */
+export function isPartialCheck(summary: PronunciationSummary) {
+  if (summary.complete === false) return true;
+  return typeof summary.storyWords === "number" && typeof summary.assessedStoryWords === "number"
+    && summary.assessedStoryWords < summary.storyWords;
 }
 
 /** One pronunciation check as the server returns it. */
@@ -85,6 +111,74 @@ export function pronunciationMessage(accuracy: number) {
   if (accuracy >= 85) return "Your words sounded very clear!";
   if (accuracy >= 70) return "Most of your words sounded clear.";
   return "Some words need more practice.";
+}
+
+/** The server saves at most this many practice words (MAX_PRACTICE_WORDS in pronunciationCheckService.js). */
+export const MAX_SAVED_PRACTICE_WORDS = 10;
+
+/** Compares a saved practice word with story words: case, accents, apostrophes and punctuation ignored. */
+export function practiceWordKey(word: string) {
+  return word.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+/** The distinct practice words of a saved check, as F2, F3 and F4 count them. */
+export function distinctPracticeWords(words: readonly string[]) {
+  const seen = new Set<string>();
+  return words.filter((word) => {
+    const key = practiceWordKey(word);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * F2's first sentence and F3's Clear Words message: the same words in both
+ * panels, so they never disagree. It never says words need practice when the
+ * check flagged none.
+ */
+export function clarityMessage(summary: PronunciationSummary) {
+  if (summary.accuracy === null) return "A pronunciation score is not available for this reading.";
+  const flagged = distinctPracticeWords(summary.wordsToPractice).length;
+  if (summary.accuracy >= 85) return "Your words sounded very clear!";
+  if (summary.accuracy >= 70) return "Most of your words sounded clear.";
+  return flagged > 0 ? "Some words were flagged for more practice." : "Keep practicing saying each word clearly.";
+}
+
+/** "1 word" / "3 words". */
+const wordCount = (count: number) => (count === 1 ? "1 word" : `${count} words`);
+
+/**
+ * F2 Your Pronunciation: one or two short sentences built only from the saved
+ * check: its score, the number of practice words F4 lists, and its coverage.
+ */
+export function pronunciationOverview(summary: PronunciationSummary) {
+  if (summary.utterances === 0) return noSpeechMessage(summary);
+  if (summary.accuracy === null) {
+    return "We could not measure your pronunciation this time. Try reading again clearly, in a quiet place.";
+  }
+  const flagged = distinctPracticeWords(summary.wordsToPractice).length;
+  const partial = isPartialCheck(summary);
+  const next = flagged > 0
+    ? `Open Mispronounced Words to practice ${wordCount(flagged)}${partial ? " from the part we could check" : ""}.`
+    : partial
+      ? "No words were flagged for practice in the part we could check."
+      : "No words were flagged for practice.";
+  return `${clarityMessage(summary)} ${next}`;
+}
+
+/** F4's summary line, from the same count as F2. */
+export function practiceWordsSummary(summary: PronunciationSummary) {
+  const flagged = distinctPracticeWords(summary.wordsToPractice).length;
+  if (flagged === 0) {
+    return isPartialCheck(summary)
+      ? "No words were flagged for pronunciation practice in the part checked."
+      : "No words were flagged for pronunciation practice. Great job!";
+  }
+  if (summary.wordsToPractice.length >= MAX_SAVED_PRACTICE_WORDS) {
+    return `Here are the first ${wordCount(flagged)} flagged for pronunciation practice.`;
+  }
+  return `The computer flagged ${wordCount(flagged)} for more pronunciation practice.`;
 }
 
 export function noSpeechMessage(summary: PronunciationSummary) {

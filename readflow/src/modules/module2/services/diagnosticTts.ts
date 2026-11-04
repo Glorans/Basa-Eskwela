@@ -4,7 +4,7 @@ import type { DiagnosticLanguage } from "../types/diagnostic";
 
 export interface DiagnosticSpeechOptions {
   /** M5 feedback only: en-PH / fil-PH voice. Omitted keeps the server's default voice. */
-  voiceProfile?: "philippine";
+  voiceProfile?: "philippine" | "american";
 }
 
 export async function synthesizeDiagnosticSpeech(
