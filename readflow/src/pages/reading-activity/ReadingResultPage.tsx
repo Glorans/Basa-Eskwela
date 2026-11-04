@@ -8,7 +8,6 @@ import "@fontsource/nunito/latin-600.css";
 import "@fontsource/nunito/latin-700.css";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { getFeedbackSpeech } from "../../services/feedbackSpeech";
-import ReadingMascot from "../../components/reading-feedback/ReadingMascot";
 import { useFeedbackSpeechState } from "../../components/reading-feedback/FeedbackSpeechControls";
 import { getWordsToPractice } from "../../modules/module5/services/oralReadingProcessing";
 import { getOralReadingAttempt, peekOralReadingAttempt, getOralReadingAttemptNumber, peekOralReadingAttemptNumber } from "../../modules/module5/services/oralReadingService";
@@ -311,7 +310,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                 />
               ))}
             </p>
-            <ReadingMascot mood="celebrate" message={t(encouragement(accuracy))} language={language} eventId={attempt.id} />
+            <p className="result-feedback-message">{t(encouragement(accuracy))}</p>
           </header>
 
           {attempt.readAloudOnly === true && <p className="result-feedback-message result-feedback-status" role="status">{attempt.readAloudCompleted

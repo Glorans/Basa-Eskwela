@@ -855,24 +855,22 @@ test("the question flow moves forward only, with Help Me, answer checking and an
   assert.deepEqual(f.navigations, ["/dashboard/reading-materials/material/read-aloud?roomId=room&activityAssignmentId=assignment&viewReading=1"]);
 });
 
-test("the mascot encourages before reading, leaves before the microphone opens, and celebrates the saved reading", async () => {
+test("read-aloud shows no mascot before, during or after recording; the saved reading is a plain status line", async () => {
   const f = await recordingFixture();
   const mascot = () => find(f.render(), node => node.type === "reading-mascot");
-  assert.equal(mascot().props.mood, "encourage");
-  assert.equal(mascot().props.message, "You can do it! Read the story out loud at your own pace.");
-  assert.equal(mascot().props.language, "en");
+  assert.equal(mascot(), undefined);
   button(f.render(), "Start Recording").props.onClick();
   await tick();
-  // No mascot audio can play into the recording.
   assert.equal(mascot(), undefined);
   const saved = await recordingFixture({ saved: true, viewReading: true });
-  const done = find(saved.render(), node => node.type === "reading-mascot");
-  assert.equal(done.props.mood, "celebrate");
-  assert.equal(done.props.live, true);
-  assert.equal(done.props.message, "Your reading is saved.");
+  const tree = saved.render();
+  assert.equal(find(tree, node => node.type === "reading-mascot"), undefined);
+  const status = find(tree, node => node.type === "p" && node.props.role === "status"
+    && JSON.stringify(node.props.children).includes("Your reading is saved."));
+  assert.ok(status);
 });
 
-test("the M5 result mascot shows the existing encouragement and word practice uses the shared player", async () => {
+test("the M5 result shows the existing encouragement as text, without a mascot, and word practice uses the shared player", async () => {
   const played: string[][] = [];
   const speech = { play: async (text: string, language: string) => { played.push([text, language]); return true; }, stop() {},
     getState: () => ({ status: "idle", key: null, muted: false }) };
@@ -886,11 +884,9 @@ test("the M5 result mascot shows the existing encouragement and word practice us
   }, "general_user");
   f.render(); await tick();
   const tree = f.render();
-  const mascot = find(tree, node => node.type === "reading-mascot");
-  assert.equal(mascot.props.mood, "celebrate");
-  assert.equal(mascot.props.language, "fil");
-  assert.equal(mascot.props.message, activityLanguage.getActivityText("fil").t("Wow, we heard almost every word of the story!"));
-  assert.notEqual(mascot.props.live, true);
+  assert.equal(find(tree, node => node.type === "reading-mascot"), undefined);
+  const message = find(tree, node => node.type === "p" && node.props.className === "result-feedback-message");
+  assert.equal(message.props.children, activityLanguage.getActivityText("fil").t("Wow, we heard almost every word of the story!"));
   await find(tree, node => node.type === "button" && node.props["aria-label"] === "Pakinggan ang pusa").props.onClick();
   assert.deepEqual(played, [["pusa", "fil"]]);
 });

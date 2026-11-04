@@ -32,6 +32,10 @@ export default function useAuthenticatedProfile() { return { profile: { role: "s
 export async function logout() { return true; }
 export async function getClassroomById() { return { id: "room", room_name: "Readers", room_code: "ABC" }; }
 export async function getAssignedModules() { return []; }
+export function formatDueDateTime(dueAt: string, locale?: string) {
+  return new Date(dueAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" });
+}
+export function isRoomArchived(room: any) { return Boolean(room?.archived_at); }
 export async function getStudentReadingActivities() {
   return sources.map(source => ({ assignment_id: source.id, material_id: source.id, title: source.title,
     language: source.language, assigned_at: "2026-10-15", due_at: null, status: "assigned", has_questions: source.mode === "questions" }));

@@ -151,17 +151,3 @@
 .reading-mascot-dock--compact .reading-mascot-bubble::before { top: auto; bottom: 14px; transform: rotate(45deg); }
 .reading-mascot-dock--compact .reading-mascot-bubble > p { font-size: 0.95rem; line-height: 1.4; max-height: 30dvh; }
 .reading-mascot-dock--compact .reading-mascot-close { top: 50%; right: 4px; transform: translateY(-50%); border-width: 0; background: transparent; }
-
-/* M5 dock (read-aloud and results) on laptops, zoomed windows and phones: the same compact
-   presentation as the M6 phone popup, still docked below the reading board. The full pose
-   reserved about 212px, which cut the board in half and pushed Start Recording out of view.
-   Large desktops keep the full pose; the M6 overlay is unaffected. */
-@media (max-width: 600px), (max-height: 900px) {
-  .reading-mascot-dock:not(.reading-mascot-dock--overlay) { padding: 10px 4px 0; }
-  .reading-mascot-dock:not(.reading-mascot-dock--overlay) .reading-mascot { gap: 6px; align-items: flex-end; }
-  .reading-mascot-dock:not(.reading-mascot-dock--overlay) .reading-mascot-image { flex: 0 0 52px; width: 52px; height: 64px; }
-  .reading-mascot-dock:not(.reading-mascot-dock--overlay) .reading-mascot-bubble { padding: 10px 48px 10px 12px; border-radius: 16px; }
-  .reading-mascot-dock:not(.reading-mascot-dock--overlay) .reading-mascot-bubble::before { top: auto; bottom: 14px; transform: rotate(45deg); }
-  .reading-mascot-dock:not(.reading-mascot-dock--overlay) .reading-mascot-bubble > p { font-size: 0.95rem; line-height: 1.4; max-height: min(6em, 22dvh); }
-  .reading-mascot-dock:not(.reading-mascot-dock--overlay) .reading-mascot-close { top: 50%; right: 4px; transform: translateY(-50%); border-width: 0; background: transparent; }
-}
