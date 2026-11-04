@@ -97,6 +97,7 @@ test('M6 explanation distinguishes revealed correct answers from generic feedbac
     const expected = language === 'en' ? 'Why this answer fits: ' : correctOptionIndex === 0 ? 'Bakit ito ang tamang sagot: ' : 'Paliwanag sa sagot: ';
     assert.ok(text(tree).includes(expected + question.answerExplanation));
     assert.ok(text(tree).includes(question.supportingEvidence));
-    assert.ok(find(tree, n => typeof n.props?.text === 'string').props.text.includes(expected + question.answerExplanation));
+    // M6 is text only: no listen control carries the explanation.
+    assert.equal(find(tree, n => typeof n.props?.text === 'string'), undefined);
   }
 });

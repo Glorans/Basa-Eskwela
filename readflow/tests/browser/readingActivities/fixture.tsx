@@ -26,9 +26,11 @@ let activeSource = sources[0];
 function maybeFail(kind: string) {
   if (failures[kind] > 0) { failures[kind]--; throw Error("Network response lost"); }
 }
-Object.assign(window, { activityFixture: { events, failures, oral, comprehension, sources } });
+// pronunciation.enabled: a saved recording and a fake (never paid) pronunciation check that counts its calls.
+const pronunciation = { enabled: false, calls: [] as string[], delayMs: 600, fail: false };
+Object.assign(window, { activityFixture: { events, failures, oral, comprehension, sources, pronunciation } });
 
-export default function useAuthenticatedProfile() { return { profile: { role: "student", nickname: "Ana" }, loading: false }; }
+export default function useAuthenticatedProfile() { return { profile: { id: "learner-1", role: "student", nickname: "Ana" }, loading: false }; }
 export async function logout() { return true; }
 export async function getClassroomById() { return { id: "room", room_name: "Readers", room_code: "ABC" }; }
 export async function getAssignedModules() { return []; }
@@ -59,7 +61,7 @@ export async function getOralReadingModule(_: any, context: any) {
 export async function createOralReadingAttempt(input: any) {
   events.push(["save", structuredClone(input)]); await delay(); maybeFail("save");
   const source = sources.find(s => s.id === input.materialId)!;
-  const attempt = { ...input, id: source.id, moduleTitle: source.title, language: normalizeActivityLanguage(source.language),
+  const attempt = { ...input, id: source.id, userId: "learner-1", moduleTitle: source.title, language: normalizeActivityLanguage(source.language),
     readAloudOnly: source.mode === "oral", readAloudCompleted: true, pronunciationAccuracy: 85,
     readingSpeedWpm: 61, expectedWordCount: 12, transcript: source.passage,
     wordMetrics: [{ expected: "Maya", actual: "Maya", type: "match" }, { expected: "hardin", actual: null, type: "omission" }],
@@ -78,7 +80,10 @@ export function rememberOralReadingAttempt() {}
 export function peekOralReadingAttemptNumber() { return undefined; }
 export async function getOralReadingAttemptNumber() { return undefined; }
 export async function uploadOralReadingRecording(attemptId: string) { events.push(["upload", attemptId]); }
-export async function getOralReadingRecording() { return { available: false, segments: [] }; }
+export async function getOralReadingRecording() {
+  return pronunciation.enabled ? { available: true, segments: ["data:audio/webm;base64,AA=="] } : { available: false, segments: [] };
+}
+export async function convertToSpeechWavRecording() { return new Blob(["fixture wav"], { type: "audio/wav" }); }
 // M5 now sends one continuous recording to the server; same events and failures as the old upload.
 export function startReadAloudTiming() { return () => {}; }
 export async function transcribeOralReadingRecording(_: Blob, language: string, options: any = {}) {
@@ -86,7 +91,15 @@ export async function transcribeOralReadingRecording(_: Blob, language: string, 
   events.push(["transcribe", language]); await delay(); maybeFail("transcribe");
   return { text: activeSource.passage };
 }
-export async function assessOralReadingPronunciation() { throw Error("Pronunciation check unavailable in this fixture"); }
+export async function assessOralReadingPronunciation(attemptId: string, _wav: Blob, options: any = {}) {
+  if (!pronunciation.enabled) throw Error("Pronunciation check unavailable in this fixture");
+  pronunciation.calls.push(attemptId); options.onAssessing?.();
+  await new Promise(resolve => setTimeout(resolve, pronunciation.delayMs));
+  if (pronunciation.fail) throw Error("Speech processing is temporarily unavailable. Please try again later.");
+  return { provider: "azure", locale: "en-US", scale: "0-100", complete: true, durationSeconds: 12, utterances: [
+    { text: "Si Maya ay may hardin", accuracy: 78, fluency: 70, words: [
+      { word: "hardin", accuracy: 40, errorType: "Mispronunciation" }, { word: "Maya", accuracy: 95, errorType: "None" }] }] };
+}
 export async function getSessionAuthHeaders() { return { Authorization: "Bearer fixture" }; }
 export async function synthesizeDiagnosticSpeech(_: string, language: string, options: { voiceProfile?: string } = {}) {
   events.push(["tts", language, options.voiceProfile ?? "default"]); throw Error("Audio unavailable");

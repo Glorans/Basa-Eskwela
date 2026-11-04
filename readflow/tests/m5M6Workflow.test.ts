@@ -950,9 +950,14 @@ test("an incorrect answer is final: Incorrect feedback, a separate guiding promp
 
   const tree = f.render();
   const text = JSON.stringify(tree);
-  // The mascot never invites another try.
+  // F2: the mascot's bubble shows this question's own clue; the verdict stays in the feedback block.
+  assert.equal(mascot().props.placement, "inline");
   assert.equal(mascot().props.mood, "tryAgain");
-  assert.equal(mascot().props.message, "That answer is not correct. Read the feedback below, then continue.");
+  assert.equal(mascot().props.message, "Think about it: Look at who the story names first.");
+  assert.equal(mascot().props.reopenLabel, "Show the clue again", "a closed clue can be reopened");
+  assert.equal(mascot().props.live, true);
+  assert.doesNotMatch(mascot().props.message, /incorrect|Ana is named first|Correct answer|try again/i);
+  assert.equal(find(tree, node => node.props?.className === "m6-mascot-area").props.children.type, "reading-mascot");
   assert.doesNotMatch(text, /Submit answer|Check second answer|Help me|try once more|Try again/);
   // The answer is locked: the options are disabled and show the saved answer.
   assert.equal(find(tree, node => node.type === "fieldset").props.disabled, true);
@@ -963,20 +968,24 @@ test("an incorrect answer is final: Incorrect feedback, a separate guiding promp
   assert.match(JSON.stringify(feedbackTree), /"Incorrect"/);
   assert.match(JSON.stringify(feedbackTree), /Your answer:/);
   const answerFeedback = find(feedbackTree, node => node.type?.name === "AnswerFeedback");
-  const explanation = find(answerFeedback.type(answerFeedback.props), node => node.type === "feedback-speech");
-  assert.equal(explanation.props.listenLabel, "Listen to the explanation");
-  assert.equal(explanation.props.text, "Correct answer: A Why this answer fits: Ana is named first. Evidence from the passage: Ana went to the market.");
-  const prompt = find(tree, node => node.type?.name === "ScaffoldingPrompt");
-  const promptTree = prompt.type(prompt.props);
-  assert.match(JSON.stringify(promptTree), /Think about it/);
-  assert.match(JSON.stringify(promptTree), /Look at who the story names first\./);
-  assert.doesNotMatch(JSON.stringify(promptTree), /Ana is named first|Correct answer/, "the prompt does not repeat the explanation");
-  assert.equal(find(promptTree, node => node.type === "feedback-speech").props.listenLabel, "Listen to the clue");
+  const explanation = answerFeedback.type(answerFeedback.props);
+  // Text only: no voice controls anywhere in M6.
+  const explanationText = JSON.stringify(explanation);
+  for (const shown of ["Correct answer: ", "Ana is named first.", "Evidence from the passage: ", "Ana went to the market."]) {
+    assert.ok(explanationText.includes(shown), shown);
+  }
+  assert.equal(find(explanation, node => node.type === "feedback-speech"), undefined);
+  // The clue appears only in the mascot bubble: no separate box, not repeated on the page.
+  assert.equal(find(tree, node => node.type?.name === "ScaffoldingPrompt"), undefined);
+  assert.equal(find(tree, node => [node.props?.children].flat().some((child: unknown) =>
+    typeof child === "string" && child.includes("Look at who the story names first"))), undefined, "no rendered copy outside the mascot");
+  assert.equal(find(tree, node => node.type === "feedback-speech"), undefined);
+  assert.equal(find(tree, node => node.type === "feedback-speech"), undefined, "no M6 listen buttons");
   // One way forward: Next Question.
   button(f.render(), "Next Question").props.onClick();
   assert.match(JSON.stringify(f.render()), /Where\?/);
   // The mascot never receives scores or answer keys.
-  for (const node of [mascot(), explanation]) assert.doesNotMatch(JSON.stringify(Object.keys(node.props)), /score|correctOptionIndex|summary/i);
+  assert.doesNotMatch(JSON.stringify(Object.keys(mascot().props)), /score|correctOptionIndex|summary/i);
 });
 
 test("a correct answer shows Correct feedback and no guiding prompt", async () => {
@@ -991,8 +1000,10 @@ test("a correct answer shows Correct feedback and no guiding prompt", async () =
   const tree = f.render();
   const feedback = find(tree, node => node.type?.name === "SubmittedAnswerFeedback");
   assert.match(JSON.stringify(feedback.type(feedback.props)), /"Tama!"/);
-  const prompt = find(tree, node => node.type?.name === "ScaffoldingPrompt");
-  assert.equal(prompt.type(prompt.props), null);
+  // A correct answer keeps the congratulatory flow: no clue, no reopen button.
+  const mascot = find(tree, node => node.type === "reading-mascot");
+  assert.equal(mascot.props.reopenLabel, undefined);
+  assert.doesNotMatch(mascot.props.message, /Pag-isipan Ito/);
   // A finished module activity offers only Finish Assessment, in Filipino.
   assert.ok(button(tree, "Tapusin ang Gawain"));
   assert.doesNotMatch(JSON.stringify(tree), /Ipasa ang sagot|Help me|Tulungan ako/);
@@ -1028,4 +1039,25 @@ test("final results show one score per final answer with no second-attempt or fi
     }
     assert.ok(text.includes(ui.t("Your answer:")));
   }
+});
+
+test("M6 has no voice feature, its mascot is inline, and M5 keeps its audio", () => {
+  const read = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
+  const m6 = ["modules/module6/pages/ComprehensionPage.tsx", "modules/module6/services/comprehensionService.ts",
+    "modules/module6/components/StoryDrawer.tsx"].map(read).join("\n");
+  assert.doesNotMatch(m6, /FeedbackSpeech|feedbackSpeech|getFeedbackSpeech|synthesize|\/api\/tts|new Audio|<audio|speechSynthesis/);
+  const page = read("modules/module6/pages/ComprehensionPage.tsx");
+  assert.match(page, /<ReadingMascot placement="inline"/);
+  assert.doesNotMatch(page, /overlay-left|protectSelector|avoidSelector/);
+  // The inline mascot is plain page flow: no portal, no fixed or absolute placement of the dock.
+  const mascot = read("components/reading-feedback/ReadingMascot.tsx");
+  const inline = mascot.slice(mascot.indexOf('if (placement === "inline")'), mascot.indexOf("const popup = visible"));
+  assert.doesNotMatch(inline, /createPortal|style\.|position/);
+  const css = read("components/reading-feedback/ReadingFeedback.css");
+  assert.match(css, /\.reading-mascot-dock--inline \{\s*position: static;/);
+  // M5 keeps spoken feedback, word practice and the learner's recording.
+  const result = read("pages/reading-activity/ReadingResultPage.tsx");
+  assert.match(result, /<FeedbackSpeechControls /);
+  assert.match(result, /<RecordingPlayback /);
+  assert.match(read("modules/module5/components/PronunciationFeedback.tsx"), /voice="philippine"/);
 });

@@ -81,8 +81,14 @@ test("the pronunciation panels never auto-run the check and never name the provi
   assert.match(feedback, /onClick=\{check\.check\}/);
   assert.doesNotMatch(feedback.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""), /Azure|Microsoft/);
   assert.doesNotMatch(result.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""), /Azure|Microsoft/);
-  // Results are temporary, and every result panel says so.
-  assert.equal(feedback.match(/\{NOT_SAVED_NOTE\}/g)?.length, 4);
+  // Results are temporary: one notice on the result page, not one per panel.
+  assert.doesNotMatch(feedback, /not saved yet/);
+  assert.equal(result.match(/They are not saved yet\./g)?.length, 1);
+  // The check is shared through the attempt-scoped store, never component state.
+  assert.match(feedback, /useSyncExternalStore\(pronunciationChecks\.subscribe/);
+  assert.match(feedback, /pronunciationChecks\.start\(key, attemptId, runPronunciationCheck\)/);
+  assert.doesNotMatch(feedback, /abort\(\)/, "closing or remounting a panel never cancels the check");
+  assert.match(result, /usePronunciationCheck\(attempt\?\.language === "en" \? attempt\.id : undefined, attempt\?\.userId\)/);
   // Spoken feedback and example words use the Philippine voice.
   assert.match(feedback, /voice="philippine"/);
   assert.match(feedback, /speech\.play\(word, "en", undefined, "philippine"\)/);

@@ -15,11 +15,20 @@ interface ReadingMascotProps {
   language: ActivityLanguage;
   eventId?: string;
   live?: boolean;
-  placement?: "dock" | "overlay-left";
+  /**
+   * "inline": rendered in an area the page reserves for it; never positioned over content.
+   * It appears (mascot and bubble together) only while there is a message.
+   */
+  placement?: "dock" | "overlay-left" | "inline";
   /** Phone overlay only: controls the popup must never cover. */
   protectSelector?: string;
   /** Phone overlay only: content the popup should cover as little as possible. */
   avoidSelector?: string;
+  /**
+   * Inline only: when set, closing the bubble keeps the mascot where it is with a button
+   * (this label) that shows the same message again. Without it, closing hides the mascot.
+   */
+  reopenLabel?: string;
 }
 
 const cheering = new Set<MascotMood>(["celebrate", "correct"]);
@@ -77,7 +86,7 @@ function usePhoneLayout() {
 
 /** Text-only presentation. Dismissal never changes the activity's data. */
 export default function ReadingMascot({
-  mood, message, language, eventId, live = false, placement = "dock", protectSelector, avoidSelector,
+  mood, message, language, eventId, live = false, placement = "dock", protectSelector, avoidSelector, reopenLabel,
 }: ReadingMascotProps) {
   const anchor = useRef<HTMLSpanElement>(null);
   const overlay = useRef<HTMLElement>(null);
@@ -177,6 +186,38 @@ export default function ReadingMascot({
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [key, visible]);
+
+  if (placement === "inline") {
+    // A pop-up callout in the area the page reserves: nothing at all until there is a message.
+    const reopenable = Boolean(message && reopenLabel) && dismissed.current.has(key);
+    if (!visible && !reopenable) return null;
+    return (
+      <aside className="reading-mascot-dock reading-mascot-dock--inline" lang={language}>
+        <div className={`reading-mascot reading-mascot--${mood}`}>
+          <img key={key} className="reading-mascot-image" alt="" aria-hidden="true"
+            src={cheering.has(mood) ? cheeringMascot : standingMascot} width={180} height={200} />
+          {visible ? (
+            <div className="reading-mascot-bubble">
+              <button type="button" className="reading-mascot-close" aria-label={t("Close")}
+                onClick={() => {
+                  dismissed.current.add(key);
+                  redraw(value => value + 1);
+                }}>
+                <X size={20} aria-hidden="true" />
+              </button>
+              <p key={key} {...(live ? { role: "status" } : {})}>{message}</p>
+            </div>
+          ) : (
+            <button type="button" className="reading-mascot-reopen"
+              onClick={() => {
+                dismissed.current.delete(key);
+                redraw(value => value + 1);
+              }}>{reopenLabel}</button>
+          )}
+        </div>
+      </aside>
+    );
+  }
 
   const popup = visible ? (
     <aside ref={overlay} className={`reading-mascot-dock${placement === "overlay-left" ? " reading-mascot-dock--overlay" : ""}${compact ? " reading-mascot-dock--compact" : ""}`} lang={language}>

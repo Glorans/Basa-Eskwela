@@ -151,3 +151,38 @@
 .reading-mascot-dock--compact .reading-mascot-bubble::before { top: auto; bottom: 14px; transform: rotate(45deg); }
 .reading-mascot-dock--compact .reading-mascot-bubble > p { font-size: 0.95rem; line-height: 1.4; max-height: 30dvh; }
 .reading-mascot-dock--compact .reading-mascot-close { top: 50%; right: 4px; transform: translateY(-50%); border-width: 0; background: transparent; }
+
+/* Inline placement (M6): a normal block in a page-reserved area, never over content.
+   Default is a compact row (narrow screens); pages may switch it to a column. */
+.reading-mascot-dock--inline {
+  position: static;
+  z-index: auto;
+  padding: 0;
+  pointer-events: auto;
+}
+.reading-mascot-dock--inline .reading-mascot {
+  width: 100%;
+  margin: 0;
+  gap: 10px;
+  justify-content: flex-start;
+  align-items: center;
+}
+.reading-mascot-dock--inline .reading-mascot-image { flex: 0 0 64px; width: 64px; height: 72px; }
+.reading-mascot-dock--inline .reading-mascot-bubble { padding: 12px 48px 12px 14px; border-radius: 18px; box-shadow: none; }
+.reading-mascot-dock--inline .reading-mascot-bubble > p { font-size: 1rem; line-height: 1.4; max-height: none; overflow: visible; }
+.reading-mascot-dock--inline .reading-mascot-close { top: 50%; right: 6px; width: 40px; height: 40px; transform: translateY(-50%); }
+
+/* Inline mascot after its bubble is closed: the mascot stays put with a button that reopens it. */
+.reading-mascot-dock--inline .reading-mascot-reopen {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 2px solid #f5d77a;
+  border-radius: 999px;
+  background: #fffdf5;
+  color: var(--basa-navy, #0b3a3d);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.reading-mascot-dock--inline .reading-mascot-reopen:hover { background: #fff0bf; }
+.reading-mascot-dock--inline .reading-mascot-reopen:focus-visible { outline: 3px solid var(--basa-navy, #0b3a3d); outline-offset: 3px; }

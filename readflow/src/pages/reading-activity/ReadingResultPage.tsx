@@ -137,8 +137,9 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const [speechError, setSpeechError] = useState<string>();
   const speech = getFeedbackSpeech();
   const speechState = useFeedbackSpeechState();
-  // English only, started by the learner; one check feeds the F2, F3 and F4 panels.
-  const pronunciation = usePronunciationCheck(attempt?.language === "en" ? attempt.id : undefined);
+  // English only, started by the learner; one shared check per account and attempt feeds the
+  // F2, F3 and F4 panels and survives closing, switching or remounting them.
+  const pronunciation = usePronunciationCheck(attempt?.language === "en" ? attempt.id : undefined, attempt?.userId);
 
   const moduleRoot =
     role === "admin"
@@ -358,6 +359,13 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
               <strong className="result-panel-card-value">{accuracy}%</strong>
             </button>
           </nav>
+
+          {/* The one notice that pronunciation check results are temporary (shown once, not in each panel). */}
+          {language === "en" && (
+            <p className="result-feedback-note result-pronunciation-notice" role="note">
+              {t("Pronunciation check results are kept only until you refresh or close this page. They are not saved yet.")}
+            </p>
+          )}
 
           {/* F2 Receive Pronunciation Feedback: words only, no scores, word list or transcript. */}
           <M5Modal

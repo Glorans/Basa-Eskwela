@@ -19,7 +19,6 @@ import {
 import "./ComprehensionPage.css";
 import StoryDrawer from "../components/StoryDrawer";
 import ReadingMascot from "../../../components/reading-feedback/ReadingMascot";
-import FeedbackSpeechControls from "../../../components/reading-feedback/FeedbackSpeechControls";
 
 type Props = {
   role: "student" | "general_user";
@@ -46,25 +45,6 @@ const practiceTips = {
   critical:
     "Think about the characters' choices or the writer's message. Use details from the passage to support your judgment.",
 } as const;
-
-/** F2 Receive Scaffolding Prompt: a guiding clue after an incorrect final answer. Never reopens the question. */
-function ScaffoldingPrompt({
-  question, ui,
-}: {
-  question: ComprehensionQuestion;
-  ui: ReturnType<typeof getActivityText>;
-}) {
-  const { t } = ui;
-  if (!question.resolved || question.firstAnswerCorrect !== false || !question.scaffoldingPrompt) return null;
-  const lead = t("Here is a clue to help you understand this question:");
-  return (
-    <aside className="m6-scaffolding-prompt" aria-labelledby={`m6-prompt-${question.id}`}>
-      <h3 id={`m6-prompt-${question.id}`}>{t("Think about it")}</h3>
-      <p>{lead} {question.scaffoldingPrompt}</p>
-      <FeedbackSpeechControls text={`${lead} ${question.scaffoldingPrompt}`} language={ui.language} listenLabel="Listen to the clue" />
-    </aside>
-  );
-}
 
 /** F3 Receive Contextualized Feedback: correct or incorrect, then why, from the saved passage. */
 function SubmittedAnswerFeedback({
@@ -104,18 +84,8 @@ function AnswerFeedback({
   // Without a revealed answer, use a neutral Filipino label; retain approved English copy.
   const explanationLabel = ui.language === "fil" && !correctAnswer
     ? t("Answer explanation: ") : t("Why this answer fits: ");
-  // Spoken exactly as shown below.
-  const spoken = [
-    correctAnswer && t("Correct answer: ") + correctAnswer,
-    question.answerExplanation
-      ? explanationLabel + question.answerExplanation
-      : t("Think back to the story you just read and remember the clues that support the correct answer."),
-    question.supportingEvidence && t("Evidence from the passage: ") + question.supportingEvidence,
-  ].filter(Boolean).join(" ");
-
   return (
     <aside className="m6-answer-feedback">
-      <FeedbackSpeechControls text={spoken} language={ui.language} listenLabel="Listen to the explanation" />
       {correctAnswer && (
         <p>
           <strong>{t("Correct answer: ")}</strong>
@@ -311,8 +281,8 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         // Every submitted answer is final: there is no second attempt.
         setMessage(
           result.outcome.correct
-            ? "Correct! Continue when you are ready."
-            : "That answer is not correct. Read the feedback below, then continue.",
+            ? "Great job! Keep going when you are ready."
+            : "Keep going! Every question helps you learn.",
         );
       }
     } catch (err: unknown) {
@@ -371,6 +341,10 @@ export default function ComprehensionPage({ role, results = false }: Props) {
     })}` : home;
   const reviewingQuestions = Boolean(readingMaterialId && attempt?.status !== "completed");
   const question = attempt?.questions[index];
+  // F2 Receive Scaffolding Prompt: after an incorrect final answer the mascot shows this question's
+  // own clue (also after a refresh). Without a valid clue it keeps the general encouragement.
+  const clue = question?.resolved && question.firstAnswerCorrect === false && question.scaffoldingPrompt?.trim()
+    ? question.scaffoldingPrompt.trim() : null;
   const hasPending = pending.current !== null;
 
   const areasToPractice = attempt
@@ -386,15 +360,6 @@ export default function ComprehensionPage({ role, results = false }: Props) {
 
   return (
     <main lang={language} className={`m6-page${readingMaterialId ? " m6-page--assigned" : ""}${attempt?.status !== "completed" ? " m6-page--questions" : ""}`} aria-busy={busy}>
-      <ReadingMascot placement="overlay-left" key={sourceKey} language={language} live={Boolean(message)}
-        protectSelector=".m6-actions button, .m6-question-card > aside"
-        avoidSelector=".m6-option, .m6-question-card h2, .m6-answer-details > summary, .m6-back-button, .m6-story-trigger"
-        eventId={attempt?.status === "completed" ? `${attempt.id}:completed`
-          : `${attempt?.id}:${question?.id}:${question?.resolved}:${message ? "answer" : "question"}`}
-        mood={attempt?.status === "completed" ? "celebrate" : message
-          ? message === "Correct! Continue when you are ready." ? "correct" : "tryAgain" : "hint"}
-        message={attempt?.status === "completed" ? t("Great work finishing the questions! Here are your results.")
-          : busy ? "" : message ? ui.message(message, "Unable to save. Please retry.") : ""} />
       <div className="m6-activity-toolbar">
       <button
         className="m6-back-button"
@@ -466,7 +431,22 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         </section>
       )}
 
-      {attempt?.status === "completed" ? (
+      {attempt && (attempt.status === "completed" || question) && (
+        <div className="m6-stage">
+          {/* The mascot has its own area beside (wide screens) or above (narrow screens) the
+              activity, so it never covers questions, feedback, prompts or buttons. */}
+          <div className="m6-mascot-area">
+            <ReadingMascot placement="inline" key={sourceKey} language={language} live={Boolean(message || clue)}
+              eventId={attempt.status === "completed" ? `${attempt.id}:completed`
+                : `${attempt.id}:${question?.id}:${question?.resolved}:${clue ? "clue" : message ? "answer" : "question"}`}
+              mood={attempt.status === "completed" ? "celebrate" : clue ? "tryAgain" : message
+                ? message === "Great job! Keep going when you are ready." ? "correct" : "tryAgain" : "hint"}
+              reopenLabel={clue ? t("Show the clue again") : undefined}
+              message={attempt.status === "completed" ? t("Great work finishing the questions! Here are your results.")
+                : busy ? "" : clue ? `${t("Think about it")}: ${clue}`
+                : message ? ui.message(message, "Unable to save. Please retry.") : ""} />
+          </div>
+      {attempt.status === "completed" ? (
         <section className="m6-card">
           <h2>{t("Your comprehension results")}</h2>
 
@@ -552,7 +532,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
           </div>
           </details>
         </section>
-      ) : attempt && question ? (
+      ) : question ? (
         <section className="m6-card m6-question-card" aria-label={t("Current question")}>
           <p className="m6-question-progress">{t("Question ")}{index + 1}{t(" of ")}{attempt.questions.length}
             {" · "}
@@ -593,7 +573,6 @@ export default function ComprehensionPage({ role, results = false }: Props) {
             <aside>
               <strong>{t("Hint: ")}</strong>
               {question.hint}
-              <FeedbackSpeechControls text={t("Hint: ") + question.hint} language={language} listenLabel="Listen to the hint" />
             </aside>
           )}
 
@@ -604,7 +583,6 @@ export default function ComprehensionPage({ role, results = false }: Props) {
           )}
 
           <SubmittedAnswerFeedback ui={ui} question={question} key={`feedback-${question.id}`} />
-          <ScaffoldingPrompt ui={ui} question={question} key={`prompt-${question.id}`} />
 
           <div className="m6-actions">
             {!question.resolved && (
@@ -641,6 +619,8 @@ export default function ComprehensionPage({ role, results = false }: Props) {
           </div>
         </section>
       ) : null}
+        </div>
+      )}
     </main>
   );
 }

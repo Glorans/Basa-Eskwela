@@ -60,23 +60,30 @@ async function until(expression) {
 async function click(text) {
   await evaluate(`(()=>{ const el=[...document.querySelectorAll('.basa-content button,.basa-content a')].find(e=>e.textContent.trim()===${JSON.stringify(text)}); if(!el||el.disabled) throw Error('Unavailable control: '+${JSON.stringify(text)}); el.click(); })()`);
 }
-// M6 feedback is shown automatically by the floating, text-only mascot (the old inline
-// .m6-feedback paragraph was replaced). Every action button must stay visible and tappable.
-const mascotText = `document.querySelector('.reading-mascot-dock--overlay .reading-mascot-bubble p')?.textContent`;
+// M6: the mascot is a pop-up callout shown only with a message: in the green margin to the right of
+// the centered question column when it fits, otherwise above the card. It must never overlap the question, answers, feedback, prompts or buttons, and M6
+// has no audio controls.
+const mascotText = `document.querySelector('.m6-mascot-area .reading-mascot-bubble p')?.textContent`;
 async function mascotFeedback(check, expected) {
   await until(`(${mascotText} ?? '').${check}(${JSON.stringify(expected)})`);
   await pause(80);
-  const state = await evaluate(`(()=>{const pop=document.querySelector('.reading-mascot-dock--overlay');
-    const parts=[...pop.querySelectorAll('.reading-mascot-image,.reading-mascot-bubble')].map(e=>e.getBoundingClientRect());
-    const blocked=[...document.querySelectorAll('.m6-actions button')].filter(b=>{const r=b.getBoundingClientRect();
-      return parts.some(p=>p.left<r.right&&p.right>r.left&&p.top<r.bottom&&p.bottom>r.top);}).map(b=>b.textContent.trim());
-    return {blocked,audio:pop.querySelectorAll('.feedback-speech,audio').length,close:!!pop.querySelector('.reading-mascot-close')};})()`);
-  if (state.blocked.length) await screenshot(`mascot-blocked-${await evaluate('innerWidth')}`);
-  assert.deepEqual(state, { blocked: [], audio: 0, close: true });
+  const state = await evaluate(`(()=>{const area=document.querySelector('.m6-mascot-area').getBoundingClientRect();
+    const content=[...document.querySelectorAll('.m6-question-card, .m6-question-card *, .m6-page > .m6-stage > .m6-card')]
+      .map(e=>e.getBoundingClientRect()).filter(r=>r.width>0&&r.height>0);
+    const overlaps=content.filter(r=>area.left<r.right-1&&area.right>r.left+1&&area.top<r.bottom-1&&area.bottom>r.top+1).length;
+    const dock=document.querySelector('.m6-mascot-area .reading-mascot-dock');
+    // In page flow (static), or sticky at the lower left on desktop; never fixed or absolute over content.
+    return {overlaps,position:['static','sticky'].includes(getComputedStyle(dock).position),inBody:dock.parentElement===document.body,
+      audio:document.querySelectorAll('.m6-page .feedback-speech,.m6-page audio').length,
+      close:!!document.querySelector('.m6-mascot-area .reading-mascot-close'),
+      image:!!document.querySelector('.m6-mascot-area .reading-mascot-image')};})()`);
+  if (state.overlaps) await screenshot(`mascot-overlap-${await evaluate('innerWidth')}`);
+  assert.deepEqual(state, { overlaps: 0, position: true, inBody: false, audio: 0, close: true, image: true });
 }
 async function dismissMascot() {
-  await evaluate(`document.querySelector('.reading-mascot-close').click()`);
-  await until(`!document.querySelector('.reading-mascot-dock--overlay')`);
+  await evaluate(`document.querySelector('.m6-mascot-area .reading-mascot-close').click()`);
+  // The callout disappears completely: no mascot standing idle beside the card.
+  await until(`!document.querySelector('.m6-mascot-area .reading-mascot-dock')`);
 }
 async function room() {
   await evaluate(`fixtureNavigate('/dashboard/learning-rooms/room')`);
@@ -140,19 +147,23 @@ try {
           await evaluate(`document.querySelectorAll('input[type=radio]')[${question === 0 ? 1 : 0}].click()`);
           await click(filipino ? 'Ipasa ang sagot' : 'Submit answer');
           if (question === 0) {
-            await mascotFeedback('startsWith', filipino ? 'Hindi tama ang sagot' : 'That answer is not correct');
-            await dismissMascot();
+            // F2: the question's clue in the mascot bubble; closing keeps the mascot with a reopen button.
+            await mascotFeedback('startsWith', (filipino ? 'Pag-isipan Ito: ' : 'Think about it: ') + 'Teacher hint: remember the garden.');
+            await evaluate(`document.querySelector('.m6-mascot-area .reading-mascot-close').click()`);
+            await until(`!document.querySelector('.m6-mascot-area .reading-mascot-bubble') && !!document.querySelector('.m6-mascot-area .reading-mascot-reopen')`);
+            await click(filipino ? 'Ipakita muli ang pahiwatig' : 'Show the clue again');
+            await mascotFeedback('includes', 'Teacher hint: remember the garden.');
             await layout(filipino);
-            // F3 feedback and the separate F2 guiding prompt; no way to answer again.
+            // F3 feedback unchanged; the clue is not repeated in the card; no way to answer again.
             assert.match(await evaluate(`document.querySelector('.m6-submitted-feedback--incorrect h3').textContent`), filipino ? /Hindi tama/ : /Incorrect/);
             assert.match(await evaluate(`document.querySelector('.m6-submitted-feedback').textContent`), /Teacher explanation/);
-            assert.match(await evaluate(`document.querySelector('.m6-scaffolding-prompt').textContent`), /Teacher hint: remember the garden\./);
+            assert.equal(await evaluate(`!document.querySelector('.m6-scaffolding-prompt') && !document.querySelector('.m6-question-card').textContent.includes('Teacher hint')`), true);
             assert.equal(await evaluate(`document.querySelector('.m6-question-card fieldset').disabled`), true);
             assert.equal(await evaluate(`[...document.querySelectorAll('.m6-actions button')].map(b=>b.textContent.trim()).join('|')`), filipino ? 'Susunod na Tanong' : 'Next Question');
             if (filipino && mode === 'questions') await screenshot(`${width}-incorrect`);
           } else if (question < 5) {
-            await mascotFeedback('startsWith', filipino ? 'Tama!' : 'Correct!');
-            assert.equal(await evaluate(`!document.querySelector('.m6-scaffolding-prompt')`), true);
+            await mascotFeedback('startsWith', filipino ? 'Ang galing! Magpatuloy' : 'Great job!');
+            assert.equal(await evaluate(`!document.querySelector('.m6-mascot-area .reading-mascot-reopen') && !document.body.textContent.includes('Teacher hint')`), true);
           }
           if (question < 5) {
             await layout(filipino);
@@ -164,6 +175,8 @@ try {
           } else await until(`!!document.querySelector('.m6-score')`);
         }
         await until(`!!document.querySelector('.m6-score')`);
+        // M6 never requested speech: no listen controls, no TTS calls.
+        assert.equal(await evaluate(`activityFixture.events.filter(e=>e[0]==='tts').length`), 0);
         // Results focus on comprehension; the reading result stays in M5 (no link back from M6 results).
         await mascotFeedback('startsWith', filipino ? 'Ang galing! Natapos mo' : 'Great work finishing');
         await layout(filipino);
@@ -200,7 +213,7 @@ try {
   await click('Ipasa ang sagot');
   await until(`!!document.querySelector('.m6-error')`); await layout(true);
   await click('Subukang i-save muli');
-  await mascotFeedback('startsWith', 'Tama!');
+  await mascotFeedback('startsWith', 'Ang galing! Magpatuloy');
   assert.equal(await evaluate(`(()=>{const actions=activityFixture.events.filter(e=>e[0]==='action');return actions[0][2].requestId===actions[1][2].requestId})()`), true);
   assert.equal(await evaluate(`(()=>{const starts=activityFixture.events.filter(e=>e[0]==='start');return starts[0][1].submissionId===starts[1][1].submissionId})()`), true);
   await click('Bumalik sa gawain sa pagbasa');
