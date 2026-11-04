@@ -7,6 +7,13 @@ const AZURE_VOICES = Object.freeze({
   en: Object.freeze(["en-US-JennyNeural", "en-US-GuyNeural", "en-PH-RosaNeural", "en-PH-JamesNeural"]),
   fil: Object.freeze(["fil-PH-BlessicaNeural", "fil-PH-AngeloNeural"]),
 });
+// M5 spoken feedback and word practice ask for these per request (voiceProfile
+// "philippine"). Both are in the allowlist above; every other caller keeps the
+// configured default voice.
+const PHILIPPINE_FEEDBACK_VOICES = Object.freeze({
+  en: Object.freeze({ name: "en-PH-RosaNeural", locale: "en-PH" }),
+  fil: Object.freeze({ name: "fil-PH-BlessicaNeural", locale: "fil-PH" }),
+});
 const DEFAULT_TIMEOUT_MS = 60000;
 
 /**
@@ -40,4 +47,4 @@ function isAzureSpeechConfigured(env = process.env) {
   try { getAzureSpeechConfig(env); return true; } catch { return false; }
 }
 
-module.exports = { AZURE_VOICES, getAzureSpeechConfig, isAzureSpeechConfigured };
+module.exports = { AZURE_VOICES, PHILIPPINE_FEEDBACK_VOICES, getAzureSpeechConfig, isAzureSpeechConfigured };

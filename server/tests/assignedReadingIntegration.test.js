@@ -210,11 +210,12 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     const q = saved.questions[0];
     db.tables.m6_comprehension_responses.push({ attempt_id: saved.id, question_id: q.id,
       hint_used: true, resolved: false, first_option_index: 1, first_answer_correct: false });
-    let reopened = await getComprehensionAttempt(owner, saved.id);
-    assert.equal(reopened.questions[0].hint, "Read the details again.");
-    assert.equal(reopened.questions[0].correctOptionIndex, null);
-    db.tables.m6_comprehension_responses[0].resolved = true;
-    reopened = await getComprehensionAttempt(owner, saved.id);
+    // Single attempt: a saved answer is final, even if the old two-try rule left it open.
+    const reopened = await getComprehensionAttempt(owner, saved.id);
+    assert.equal(reopened.questions[0].resolved, true);
+    assert.equal(reopened.questions[0].hint, "Read the details again.", "a historical hint stays visible");
+    assert.equal(reopened.questions[0].scaffoldingPrompt, "Read the details again.", "F2 prompt after an incorrect answer");
+    for (const question of reopened.questions.slice(1)) assert.equal(question.scaffoldingPrompt, null);
     assert.equal(reopened.questions[0].correctOptionIndex, 0);
     assert.equal(reopened.questions[0].answerExplanation, "Fixture explanation");
     assert.equal(reopened.questions[0].supportingEvidence, "Reviewed reading text.");
@@ -235,16 +236,17 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     assert.equal(results[0].id, results[1].id);
     assert.equal(db.tables.m6_comprehension_attempts.filter(a => a.oral_reading_attempt_id === reading.id).length, 1);
   });
-  await t.test("hint, answer and completion keep the existing protected RPC contract", async () => {
+  await t.test("answer and completion keep the protected RPC contract; the hint action is gone", async () => {
     const reading = await oral();
     const saved = await startComprehensionAttempt(owner, start(reading));
     const calls = [];
     db.rpc = async (name, args) => { calls.push({ name, args }); return { data: { resolved: false } }; };
-    for (const action of [{ action: "hint", questionId: saved.questions[0].id },
+    await assert.rejects(applyComprehensionAction(owner, saved.id, { action: "hint", questionId: saved.questions[0].id }), { statusCode: 400 });
+    for (const action of [
       { action: "answer", questionId: saved.questions[0].id, optionIndex: 0, requestId: randomUUID(), score: 100 }, { action: "complete" }]) {
       await applyComprehensionAction(owner, saved.id, action);
     }
-    assert.deepEqual(calls.map(c => c.args.action_name), ["hint", "answer", "complete"]);
+    assert.deepEqual(calls.map(c => c.args.action_name), ["answer", "complete"]);
     assert.ok(calls.every(c => c.name === "m6_apply_action" && c.args.target_user === STUDENT && !("score" in c.args)));
   });
   await t.test("an assigned question set supplies exactly its reviewed questions, Literal → Inferential → Critical", async () => {

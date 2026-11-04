@@ -83,6 +83,29 @@ test("playback is user-started, one clip at a time, and replay reuses the fetche
   assert.deepEqual(requests, [["Magaling!", "fil"], ["Try again.", "en"]]);
 });
 
+test("the Philippine voice is requested only when asked for and cached apart from the default voice", async () => {
+  FakeAudio.all = [];
+  const requests: unknown[][] = [];
+  const player = createFeedbackSpeechPlayer({
+    synthesize: async (...args) => { requests.push(args); return new Blob(["mp3"]); },
+    createAudio: (url) => new FakeAudio(url), createObjectURL: () => `blob:${requests.length}`, revokeObjectURL() {},
+  });
+  const play = async (...args: Parameters<typeof player.play>) => {
+    const done = player.play(...args);
+    await tick(); await tick();
+    FakeAudio.all.at(-1)!.end();
+    return done;
+  };
+  assert.equal(await play("Great job!", "en"), true);
+  assert.equal(await play("Great job!", "en", undefined, "philippine"), true);
+  assert.equal(await play("Great job!", "en", undefined, "philippine"), true);
+  assert.equal(await play("Mahusay!", "fil", undefined, "philippine"), true);
+  // One request per text, language and voice; replaying the Philippine clip reuses its audio.
+  assert.deepEqual(requests, [["Great job!", "en", "default"], ["Great job!", "en", "philippine"], ["Mahusay!", "fil", "philippine"]]);
+  assert.equal(playerModule.feedbackSpeechKey("dog", "en"), "en:dog", "default keys are unchanged (M6)");
+  assert.equal(playerModule.feedbackSpeechKey("dog", "en", "philippine"), "philippine:en:dog");
+});
+
 test("stop during loading prevents playback; stopIf only stops its own clip", async () => {
   const { player } = setup();
   const pending = player.play("Hint: look at the first sentence.", "en");

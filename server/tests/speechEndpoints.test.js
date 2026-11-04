@@ -60,8 +60,11 @@ async function startSpeechServer(options = {}) {
       calls.transcribe.push({ file, languageCode });
       return { text: "isang araw", confidence: 0.9 };
     },
-    synthesize: async (text, languageCode) => {
-      calls.synthesize.push({ text, languageCode });
+    synthesize: async (text, languageCode, synthesisOptions) => {
+      calls.synthesize.push(synthesisOptions ? { text, languageCode, ...synthesisOptions } : { text, languageCode });
+      if (synthesisOptions?.voiceProfile && options.philippineVoiceFailure) {
+        throw Object.assign(new Error("voice rejected"), { code: options.philippineVoiceFailure });
+      }
       if (options.ttsFailure) throw Object.assign(new Error(`provider rejected ${text} Bearer secret-token`), { code: 7 });
       return Buffer.from("mp3-bytes");
     },
@@ -226,6 +229,44 @@ test("authorized TTS keeps the English and Filipino language mapping and audio r
     assert.equal((await postTts(speech.base, "student", { text: "x".repeat(MAX_TTS_TEXT_LENGTH + 1), language: "en" })).status, 400);
     assert.equal((await postTts(speech.base, "student", { text: "dog", language: "es" })).status, 400);
   } finally { await speech.close(); }
+});
+
+test("M5 feedback may ask for the Philippine voice; other values are rejected before synthesis", async () => {
+  const speech = await startSpeechServer();
+  try {
+    const response = await postTts(speech.base, "general", { text: "Mahusay!", language: "fil", voiceProfile: "philippine" });
+    assert.equal(response.status, 200);
+    assert.deepEqual(speech.calls.synthesize.at(-1), { text: "Mahusay!", languageCode: "fil-PH", voiceProfile: "philippine" });
+    const before = speech.calls.synthesize.length;
+    for (const voiceProfile of ["en-US-GuyNeural", "", 1, null]) {
+      assert.equal((await postTts(speech.base, "student", { text: "dog", language: "en", voiceProfile })).status, 400, String(voiceProfile));
+    }
+    assert.equal(speech.calls.synthesize.length, before);
+  } finally { await speech.close(); }
+});
+
+test("an unusable Philippine voice falls back once to the default voice; quota and permission errors do not", async () => {
+  for (const code of ["STT_INVALID_AUDIO", "STT_PROVIDER_ERROR"]) {
+    const speech = await startSpeechServer({ philippineVoiceFailure: code });
+    try {
+      const response = await postTts(speech.base, "student", { text: "Great job", language: "en", voiceProfile: "philippine" });
+      assert.equal(response.status, 200, code);
+      assert.deepEqual(speech.calls.synthesize, [
+        { text: "Great job", languageCode: "en-US", voiceProfile: "philippine" },
+        { text: "Great job", languageCode: "en-US" },
+      ]);
+      assert.match(JSON.stringify(speech.logs), /Philippine feedback voice unavailable/);
+      assert.doesNotMatch(JSON.stringify(speech.logs), /Great job/);
+    } finally { await speech.close(); }
+  }
+  for (const code of ["STT_QUOTA", "STT_PERMISSION", "STT_DEADLINE"]) {
+    const speech = await startSpeechServer({ philippineVoiceFailure: code });
+    try {
+      const response = await postTts(speech.base, "student", { text: "Great job", language: "en", voiceProfile: "philippine" });
+      assert.equal(response.status, 500, code);
+      assert.equal(speech.calls.synthesize.length, 1, `${code}: no second request`);
+    } finally { await speech.close(); }
+  }
 });
 
 test("an oversized recording part returns 413 and leaves no temporary file", async () => {

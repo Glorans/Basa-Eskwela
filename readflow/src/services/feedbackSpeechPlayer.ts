@@ -5,6 +5,8 @@
  * so Replay never repeats a paid request. No imports, so it is unit-testable.
  */
 export type FeedbackSpeechLanguage = "en" | "fil";
+/** "philippine": the en-PH / fil-PH feedback voice (M5). "default": the server's configured voice. */
+export type FeedbackSpeechVoice = "default" | "philippine";
 export type FeedbackSpeechStatus = "idle" | "loading" | "playing" | "error";
 
 export interface FeedbackSpeechState {
@@ -22,7 +24,7 @@ export interface AudioLike {
 }
 
 export interface FeedbackSpeechDependencies {
-  synthesize(text: string, language: FeedbackSpeechLanguage): Promise<Blob>;
+  synthesize(text: string, language: FeedbackSpeechLanguage, voice: FeedbackSpeechVoice): Promise<Blob>;
   createAudio(url: string): AudioLike;
   createObjectURL(blob: Blob): string;
   revokeObjectURL(url: string): void;
@@ -36,8 +38,8 @@ export const MAX_SPEECH_CHUNK = 1000;
 export const MAX_SPEECH_CHUNKS = 4;
 export const MUTED_STORAGE_KEY = "basa.feedbackSpeech.muted";
 
-export function feedbackSpeechKey(text: string, language: FeedbackSpeechLanguage) {
-  return `${language}:${text}`;
+export function feedbackSpeechKey(text: string, language: FeedbackSpeechLanguage, voice: FeedbackSpeechVoice = "default") {
+  return voice === "default" ? `${language}:${text}` : `${voice}:${language}:${text}`;
 }
 
 /** Splits text at sentence, then word, boundaries into chunks the backend accepts. */
@@ -79,15 +81,15 @@ export function createFeedbackSpeechPlayer(deps: FeedbackSpeechDependencies) {
     listeners.forEach((listener) => listener());
   }
 
-  async function clipUrl(chunk: string, language: FeedbackSpeechLanguage) {
-    const cacheKey = feedbackSpeechKey(chunk, language);
+  async function clipUrl(chunk: string, language: FeedbackSpeechLanguage, voice: FeedbackSpeechVoice) {
+    const cacheKey = feedbackSpeechKey(chunk, language, voice);
     const cached = cache.get(cacheKey);
     if (cached) {
       cache.delete(cacheKey);
       cache.set(cacheKey, cached);
       return cached;
     }
-    const url = deps.createObjectURL(await deps.synthesize(chunk, language));
+    const url = deps.createObjectURL(await deps.synthesize(chunk, language, voice));
     cache.set(cacheKey, url);
     while (cache.size > cacheLimit) {
       const [oldest, oldUrl] = cache.entries().next().value as [string, string];
@@ -126,8 +128,9 @@ export function createFeedbackSpeechPlayer(deps: FeedbackSpeechDependencies) {
     if (state.status !== "idle" || state.key !== null) set({ status: "idle", key: null });
   }
 
-  /** Plays text in the given language. Resolves true only if it played to the end. */
-  async function play(text: string, language: FeedbackSpeechLanguage, key = feedbackSpeechKey(text, language)) {
+  /** Plays text in the given language and voice. Resolves true only if it played to the end. */
+  async function play(text: string, language: FeedbackSpeechLanguage, key?: string, voice: FeedbackSpeechVoice = "default") {
+    key ??= feedbackSpeechKey(text, language, voice);
     stop();
     const chunks = speechChunks(text).slice(0, MAX_SPEECH_CHUNKS);
     if (state.muted || !chunks.length) return false;
@@ -135,7 +138,7 @@ export function createFeedbackSpeechPlayer(deps: FeedbackSpeechDependencies) {
     set({ status: "loading", key });
     try {
       for (const chunk of chunks) {
-        const url = await clipUrl(chunk, language);
+        const url = await clipUrl(chunk, language, voice);
         if (current !== generation) return false;
         set({ status: "playing", key });
         await playClip(url);

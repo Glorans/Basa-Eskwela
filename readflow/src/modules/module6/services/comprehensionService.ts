@@ -20,9 +20,14 @@ export interface ComprehensionQuestion {
   firstOptionIndex: number | null;
   firstAnswerCorrect: boolean | null;
   answerHistory: AnswerHistory[];
+  /** True only for activities saved before the single-attempt rule. */
   hintUsed: boolean;
+  /** A hint the learner asked for before the single-attempt rule; null otherwise. */
   hint: string | null;
+  /** True once the question has its final (first) answer. */
   resolved: boolean;
+  /** F2 scaffolding prompt: a guiding hint shown after an incorrect final answer. */
+  scaffoldingPrompt?: string | null;
   correctOptionIndex: number | null;
   answerExplanation: string | null;
   supportingEvidence: string | null;
@@ -83,10 +88,6 @@ export type ComprehensionAction =
       requestId: string;
     }
   | {
-      action: "hint";
-      questionId: string;
-    }
-  | {
       action: "complete";
     };
 
@@ -99,7 +100,8 @@ export interface ActionResponse extends AttemptResponse {
   outcome: {
     correct?: boolean;
     resolved?: boolean;
-    hint?: string;
+    /** Single attempt: every saved answer is final. */
+    final?: boolean;
     completed?: boolean;
   };
 }

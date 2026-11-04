@@ -135,24 +135,26 @@ try {
           const expectedType = ['Literal', filipino ? 'Inferensyal' : 'Inferential', filipino ? 'Kritikal' : 'Critical'][Math.floor(question / 2)];
           assert.equal(await evaluate(`document.querySelector('.m6-question-progress').textContent.trim()`), `${filipino ? 'Tanong' : 'Question'} ${question + 1} ${filipino ? 'sa' : 'of'} 6 · ${expectedType}`);
           assert.equal(await evaluate(`document.querySelector('.m6-question-card h2').textContent`), `Teacher reviewed question ${question + 1}: Where did Maya plant the flowers?`);
+          // Single attempt: no Help me; one Submit answer; the submitted answer is final.
+          assert.equal(await evaluate(`[...document.querySelectorAll('button')].some(b=>/Help me|Tulungan ako|second answer|ikalawang sagot/.test(b.textContent))`), false);
+          await evaluate(`document.querySelectorAll('input[type=radio]')[${question === 0 ? 1 : 0}].click()`);
+          await click(filipino ? 'Ipasa ang sagot' : 'Submit answer');
           if (question === 0) {
-            await click(filipino ? 'Tulungan ako' : 'Help me');
-            await until(`document.querySelector('.m6-question-card aside')?.textContent.includes('Teacher hint:')`);
-            await mascotFeedback('startsWith', filipino ? 'Narito ang isang pahiwatig' : 'Here is a hint');
-            await evaluate(`document.querySelectorAll('input[type=radio]')[1].click()`);
-            await click(filipino ? 'Suriin ang sagot' : 'Check answer');
-            await mascotFeedback('includes', filipino ? 'Hindi pa tama' : 'Not quite');
-            // Dismissed feedback stays closed and remains available in Review answer feedback.
+            await mascotFeedback('startsWith', filipino ? 'Hindi tama ang sagot' : 'That answer is not correct');
             await dismissMascot();
-            await evaluate(`document.querySelectorAll('input[type=radio]')[2].click()`);
-            await pause(80);
-            assert.equal(await evaluate(`!document.querySelector('.reading-mascot-dock--overlay')`), true);
-            assert.equal(await evaluate(`!!document.querySelector('.m6-answer-details summary')`), true);
-          }
-          await evaluate(`document.querySelector('input[type=radio]').click()`);
-          await click(question === 0 ? (filipino ? 'Suriin ang ikalawang sagot' : 'Check second answer') : question === 5 ? (filipino ? 'Ipasa' : 'Submit') : (filipino ? 'Suriin ang sagot' : 'Check answer'));
-          if (question < 5) {
+            await layout(filipino);
+            // F3 feedback and the separate F2 guiding prompt; no way to answer again.
+            assert.match(await evaluate(`document.querySelector('.m6-submitted-feedback--incorrect h3').textContent`), filipino ? /Hindi tama/ : /Incorrect/);
+            assert.match(await evaluate(`document.querySelector('.m6-submitted-feedback').textContent`), /Teacher explanation/);
+            assert.match(await evaluate(`document.querySelector('.m6-scaffolding-prompt').textContent`), /Teacher hint: remember the garden\./);
+            assert.equal(await evaluate(`document.querySelector('.m6-question-card fieldset').disabled`), true);
+            assert.equal(await evaluate(`[...document.querySelectorAll('.m6-actions button')].map(b=>b.textContent.trim()).join('|')`), filipino ? 'Susunod na Tanong' : 'Next Question');
+            if (filipino && mode === 'questions') await screenshot(`${width}-incorrect`);
+          } else if (question < 5) {
             await mascotFeedback('startsWith', filipino ? 'Tama!' : 'Correct!');
+            assert.equal(await evaluate(`!document.querySelector('.m6-scaffolding-prompt')`), true);
+          }
+          if (question < 5) {
             await layout(filipino);
             // The flow moves forward only; Previous Question was removed on purpose.
             assert.equal(await evaluate(`[...document.querySelectorAll('button')].some(b=>/Previous Question|Nakaraang Tanong/.test(b.textContent))`), false);
@@ -166,7 +168,9 @@ try {
         await mascotFeedback('startsWith', filipino ? 'Ang galing! Natapos mo' : 'Great work finishing');
         await layout(filipino);
         assert.equal(await evaluate(`document.querySelector('.m6-score strong').textContent.trim()`), '83%');
-        assert.equal(await evaluate(`activityFixture.comprehension.get(${JSON.stringify(id)}).summary.hintsUsed`), 1);
+        assert.equal(await evaluate(`activityFixture.comprehension.get(${JSON.stringify(id)}).summary.hintsUsed`), 0);
+        assert.equal(await evaluate(`activityFixture.comprehension.get(${JSON.stringify(id)}).questions.every(q=>q.answerHistory.length===1)`), true);
+        assert.doesNotMatch(await evaluate(`document.querySelector('.m6-page').innerText`), /First-answer|Second answer|second attempt|Ikalawang sagot|unang sagot/i);
         assert.equal(await evaluate(`activityFixture.comprehension.get(${JSON.stringify(id)}).questions.every((q,i)=>q.id==='reviewed-'+i&&q.correctOptionIndex===0&&q.options[0]==='In the garden')`), true);
         if (filipino && mode === 'questions') await screenshot(`${width}-results`);
         await evaluate(`fixtureNavigate('/dashboard/read-aloud/results/${id}', {state:{readingActivityLanguage:${JSON.stringify(filipino ? 'fil' : 'en')}}})`);
@@ -193,7 +197,7 @@ try {
   await click('Subukang muli ang pag-unawa');
   await until(`document.querySelectorAll('.m6-option').length===4`);
   await evaluate(`activityFixture.failures.action=1;document.querySelector('input[type=radio]').click()`);
-  await click('Suriin ang sagot');
+  await click('Ipasa ang sagot');
   await until(`!!document.querySelector('.m6-error')`); await layout(true);
   await click('Subukang i-save muli');
   await mascotFeedback('startsWith', 'Tama!');
@@ -219,7 +223,7 @@ try {
     await layout(filipino);
   }
   assert.deepEqual(errors, []);
-  console.log('PASS aliases, missing/unsupported fallback, source switching, unchanged teacher text/IDs/options, hint and second-answer scores');
+  console.log('PASS aliases, missing/unsupported fallback, source switching, unchanged teacher text/IDs/options, single-attempt scores');
   console.log('Screenshots: ' + output);
 } catch (error) {
   console.error(error);

@@ -81,6 +81,38 @@ export function summarizePronunciation(parts: readonly PronunciationPartResult[]
   };
 }
 
+/** Plain-language meaning of a 0-100 pronunciation score for young readers. */
+export function pronunciationMessage(accuracy: number) {
+  if (accuracy >= 85) return "Your words sounded very clear!";
+  if (accuracy >= 70) return "Most of your words sounded clear.";
+  return "Some words need more practice.";
+}
+
+export function noSpeechMessage(summary: PronunciationSummary) {
+  return summary.complete === false
+    ? "We heard speech but couldn't check its pronunciation. Try reading again clearly, in a quiet place."
+    : "We couldn't hear enough speech to check pronunciation. Try reading again a little louder.";
+}
+
+/**
+ * F2 feedback in words only: no scores, no word list, no transcript. Built only
+ * from the pronunciation check, never from transcript differences.
+ */
+export function pronunciationFeedbackText(summary: PronunciationSummary) {
+  if (summary.utterances === 0) return noSpeechMessage(summary);
+  if (summary.accuracy === null) {
+    return "We could not measure your pronunciation this time. Try reading again clearly, in a quiet place.";
+  }
+  return [
+    pronunciationMessage(summary.accuracy),
+    summary.wordsToPractice.length > 0
+      ? "Open Words to Practice to hear the words that need clearer pronunciation, then say each one slowly."
+      : "The words we checked sounded clear. Great job!",
+    ...(summary.complete === false ? ["Some of your speech could not be checked, perhaps because it was unclear or noisy."] : []),
+    "Keep reading slowly and say each sound clearly.",
+  ].join(" ");
+}
+
 export type PronunciationCheckStep = "loading" | "preparing" | "uploading" | "assessing";
 
 export interface AssessRecordingDependencies {

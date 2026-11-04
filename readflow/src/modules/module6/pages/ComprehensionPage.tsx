@@ -47,6 +47,45 @@ const practiceTips = {
     "Think about the characters' choices or the writer's message. Use details from the passage to support your judgment.",
 } as const;
 
+/** F2 Receive Scaffolding Prompt: a guiding clue after an incorrect final answer. Never reopens the question. */
+function ScaffoldingPrompt({
+  question, ui,
+}: {
+  question: ComprehensionQuestion;
+  ui: ReturnType<typeof getActivityText>;
+}) {
+  const { t } = ui;
+  if (!question.resolved || question.firstAnswerCorrect !== false || !question.scaffoldingPrompt) return null;
+  const lead = t("Here is a clue to help you understand this question:");
+  return (
+    <aside className="m6-scaffolding-prompt" aria-labelledby={`m6-prompt-${question.id}`}>
+      <h3 id={`m6-prompt-${question.id}`}>{t("Think about it")}</h3>
+      <p>{lead} {question.scaffoldingPrompt}</p>
+      <FeedbackSpeechControls text={`${lead} ${question.scaffoldingPrompt}`} language={ui.language} listenLabel="Listen to the clue" />
+    </aside>
+  );
+}
+
+/** F3 Receive Contextualized Feedback: correct or incorrect, then why, from the saved passage. */
+function SubmittedAnswerFeedback({
+  question, ui,
+}: {
+  question: ComprehensionQuestion;
+  ui: ReturnType<typeof getActivityText>;
+}) {
+  const { t } = ui;
+  if (!question.resolved || question.firstOptionIndex === null) return null;
+  const correct = question.firstAnswerCorrect === true;
+  return (
+    <section className={`m6-submitted-feedback m6-submitted-feedback--${correct ? "correct" : "incorrect"}`}
+      aria-labelledby={`m6-verdict-${question.id}`} role="status">
+      <h3 id={`m6-verdict-${question.id}`}>{correct ? t("Correct!") : t("Incorrect")}</h3>
+      <p>{t("Your answer:")} <strong>{question.options[question.firstOptionIndex]}</strong></p>
+      <AnswerFeedback ui={ui} question={question} />
+    </section>
+  );
+}
+
 function AnswerFeedback({
   question, ui,
 }: {
@@ -269,12 +308,11 @@ export default function ComprehensionPage({ role, results = false }: Props) {
       if (action.action === "answer") {
         setSelected(null);
 
+        // Every submitted answer is final: there is no second attempt.
         setMessage(
           result.outcome.correct
             ? "Correct! Continue when you are ready."
-            : result.outcome.resolved
-              ? "Your second answer was incorrect. Review the correct answer and its clues below."
-              : "Not quite. Try to remember the story you just read, or use a hint, then try once more.",
+            : "That answer is not correct. Read the feedback below, then continue.",
         );
       }
     } catch (err: unknown) {
@@ -352,12 +390,11 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         protectSelector=".m6-actions button, .m6-question-card > aside"
         avoidSelector=".m6-option, .m6-question-card h2, .m6-answer-details > summary, .m6-back-button, .m6-story-trigger"
         eventId={attempt?.status === "completed" ? `${attempt.id}:completed`
-          : `${attempt?.id}:${question?.id}:${question?.answerHistory.length}:${question?.hintUsed}:${message ? "answer" : "hint"}`}
+          : `${attempt?.id}:${question?.id}:${question?.resolved}:${message ? "answer" : "question"}`}
         mood={attempt?.status === "completed" ? "celebrate" : message
           ? message === "Correct! Continue when you are ready." ? "correct" : "tryAgain" : "hint"}
         message={attempt?.status === "completed" ? t("Great work finishing the questions! Here are your results.")
-          : busy ? "" : message ? ui.message(message, "Unable to save. Please retry.")
-          : question?.hintUsed && !question.resolved ? t("Here is a hint. Read it, then try again.") : ""} />
+          : busy ? "" : message ? ui.message(message, "Unable to save. Please retry.") : ""} />
       <div className="m6-activity-toolbar">
       <button
         className="m6-back-button"
@@ -410,7 +447,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         <section className="m6-card">
           <h2>{t("Ready to answer?")}</h2>
 
-          <p>{t("Answer questions about the passage you have read. You may use a hint and try again once. Your first answer is recorded separately.")}</p>
+          <p>{t("Answer questions about the passage you have read. You can answer each question once, and your submitted answer is final.")}</p>
 
           {!hasSource ? (
             <p>{t("Complete and save a Read-Aloud activity, then select Continue to Comprehension on its result page.")}</p>
@@ -435,7 +472,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
 
 
           <div className="m6-score">
-            <span>{t("First-answer score")}</span>
+            <span>{t("Comprehension score")}</span>
             <strong>
               {attempt.summary.firstAttemptPercentage}%
             </strong>
@@ -445,11 +482,14 @@ export default function ComprehensionPage({ role, results = false }: Props) {
             </span>
           </div>
 
-          <p>{t("Questions where you used a hint:")}{" "}
-            <strong>{attempt.summary.hintsUsed}</strong>
-          </p>
+          <p>{t("Each question has one final answer. Each correct answer earns one point.")}</p>
 
-          <p>{t("This score uses your first answer to each question, including answers given after using a hint. Second answers do not change this score.")}</p>
+          {/* Only activities saved before the single-attempt rule can have hints. */}
+          {attempt.summary.hintsUsed > 0 && (
+            <p>{t("Questions where you used a hint:")}{" "}
+              <strong>{attempt.summary.hintsUsed}</strong>
+            </p>
+          )}
 
           <ul className="m6-results-list">
             {questionTypes.map((type) => {
@@ -458,7 +498,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
               return (
                 <li key={type}>
                   <strong>{t(typeLabels[type])}:</strong>{" "}
-                  {group.total > 0 ? t("{correct}/{total} correct on the first answer ({percentage}%)", { correct: group.firstCorrect, total: group.total, percentage: group.firstAttemptPercentage }) : t("No questions in this category.")}
+                  {group.total > 0 ? t("{correct}/{total} correct ({percentage}%)", { correct: group.firstCorrect, total: group.total, percentage: group.firstAttemptPercentage }) : t("No questions in this category.")}
                 </li>
               );
             })}
@@ -478,7 +518,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
               </ul>
             </>
           ) : (
-            <p>{t("You answered every question correctly on your first answer. Great work! Review the explanations to see how the passage supports each answer.")}</p>
+            <p>{t("You answered every question correctly. Great work! Review the explanations to see how the passage supports each answer.")}</p>
           )}
 
           <h2 className="m6-review-heading">{t("Your answer review")}</h2>
@@ -491,34 +531,13 @@ export default function ComprehensionPage({ role, results = false }: Props) {
                   {itemIndex + 1}. {item.questionText}
                 </h3>
 
-                <p>{t("First answer:")}{" "}
+                {/* The saved final answer only: earlier two-try activities never show a second answer here. */}
+                <p>{t("Your answer:")}{" "}
                   {item.firstOptionIndex === null
                     ? t("No answer recorded")
                     : item.options[item.firstOptionIndex]}
+                  {item.firstAnswerCorrect !== null && <>{" — "}<strong>{item.firstAnswerCorrect ? t("Correct") : t("Incorrect")}</strong></>}
                 </p>
-
-                <p>
-                  {item.firstAnswerCorrect === null
-                    ? t("No first-answer result recorded.")
-                    : item.firstAnswerCorrect
-                      ? t("Correct on your first answer.")
-                      : t("Incorrect on your first answer.")}
-                </p>
-
-                {item.answerHistory.length > 1 && (
-                  <p>{t("Second answer:")}{" "}
-                    {
-                      item.options[
-                        item.answerHistory[1].optionIndex
-                      ]
-                    }{" "}
-                    (
-                    {item.answerHistory[1].correct
-                      ? t("Correct")
-                      : t("Incorrect")}
-                    )
-                  </p>
-                )}
 
                 {item.hint && (
                   <aside>
@@ -556,7 +575,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
                   type="radio"
                   name={question.id}
                   value={optionIndex}
-                  checked={(question.resolved ? question.answerHistory.at(-1)?.optionIndex ?? question.firstOptionIndex : selected) === optionIndex}
+                  checked={(question.resolved ? question.firstOptionIndex : selected) === optionIndex}
                   onChange={() => { drafts.current[index] = optionIndex; setSelected(optionIndex); }}
                 />
 
@@ -580,57 +599,28 @@ export default function ComprehensionPage({ role, results = false }: Props) {
 
 
 
-          {question.firstOptionIndex !== null && (
-            <details className="m6-answer-details" key={question.id}>
-              <summary>{t("Review answer feedback")}</summary>
-            <p>{t("Your first answer:")}{" "}
-              <strong>
-                {question.options[question.firstOptionIndex]}
-              </strong>
-              {" — "}
-              {question.firstAnswerCorrect
-                ? t("Correct")
-                : t("Incorrect")}
-            </p>
-            <AnswerFeedback ui={ui} question={question} />
-            </details>
+          {!question.resolved && (
+            <p className="m6-final-note">{t("You can answer each question once. Your submitted answer is final.")}</p>
           )}
+
+          <SubmittedAnswerFeedback ui={ui} question={question} key={`feedback-${question.id}`} />
+          <ScaffoldingPrompt ui={ui} question={question} key={`prompt-${question.id}`} />
 
           <div className="m6-actions">
             {!question.resolved && (
-              <>
-                <button
-                  className="m6-button"
-                  type="button"
-                  disabled={
-                    busy || selected === null || hasPending
-                  }
-                  onClick={answer}
-                >
-                  {question.answerHistory.length > 0
-                    ? t("Check second answer")
-                    : index === attempt.questions.length - 1 ? t("Submit") : t("Check answer")}
-                </button>
-
-                <button
-                  className="m6-button m6-button--hint"
-                  type="button"
-                  disabled={
-                    busy || question.hintUsed || hasPending
-                  }
-                  onClick={() =>
-                    void perform({
-                      action: "hint",
-                      questionId: question.id,
-                    })
-                  }
-                >{t("Help me")}</button>
-              </>
+              <button
+                className="m6-button"
+                type="button"
+                disabled={
+                  busy || selected === null || hasPending
+                }
+                onClick={answer}
+              >{t("Submit answer")}</button>
             )}
 
-            {index < attempt.questions.length - 1 && (
+            {question.resolved && index < attempt.questions.length - 1 && (
               <button className="m6-button" type="button"
-                disabled={busy || hasPending || !question.resolved}
+                disabled={busy || hasPending}
                 onClick={() => {
                   setIndex(index + 1);
                   setSelected(drafts.current[index + 1] ?? null);

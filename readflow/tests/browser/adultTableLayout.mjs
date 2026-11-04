@@ -112,13 +112,13 @@ try {
   const { frameTree } = await send('Page.getFrameTree');
   await send('Page.setDocumentContent', { frameId: frameTree.frame.id, html: `<!doctype html><html><head><style>${css}</style></head><body>
     <div class="m3-shell m3-shell--general"><div class="m3-workspace"><main class="m3-content"><div class="m7-page"><div class="m7-scroll"><table><tr><th>Readings</th></tr></table></div></div></main></div></div>
-    <div class="result-panel-cards"><button class="result-panel-card result-panel-card--result">a</button><button class="result-panel-card result-panel-card--feedback"><svg></svg><span class="result-panel-card-title">Feedback</span><span class="result-panel-card-text">t</span></button><button class="result-panel-card result-panel-card--saved">c</button></div></body></html>` });
+    <div class="result-panel-cards"><button class="result-panel-card result-panel-card--result">a</button><button class="result-panel-card result-panel-card--feedback"><svg></svg><span class="result-panel-card-title">Feedback</span><span class="result-panel-card-text">t</span></button><button class="result-panel-card result-panel-card--transcript">c</button></div></body></html>` });
   const learner = (await send('Runtime.evaluate', { returnByValue: true, expression: `(() => {
     const th = document.querySelector('th'), page = document.querySelector('.m7-page'), box = document.querySelector('.m7-scroll');
     const card = (name) => getComputedStyle(document.querySelector('.result-panel-card--' + name));
     const feedback = document.querySelector('.result-panel-card--feedback');
     return { wrap: getComputedStyle(th).overflowWrap, position: getComputedStyle(box).position, pagePadding: getComputedStyle(page).paddingLeft,
-      pageMax: getComputedStyle(page).maxWidth, cards: ['result', 'feedback', 'saved'].map(name => card(name).backgroundColor),
+      pageMax: getComputedStyle(page).maxWidth, cards: ['result', 'feedback', 'transcript'].map(name => card(name).backgroundColor),
       feedbackText: [card('feedback').color, getComputedStyle(feedback.querySelector('.result-panel-card-text')).color],
       radius: card('feedback').borderRadius === card('result').borderRadius, height: card('feedback').minHeight };
   })()` })).result.value;
@@ -126,11 +126,11 @@ try {
   assert.equal(learner.position, 'static');
   assert.equal(learner.pageMax, '1200px', 'Independent Learner M7 page keeps its measure');
   assert.notEqual(learner.pagePadding, '0px');
-  // Yellow and green cards unchanged; Feedback & Practice is pastel blue with dark teal text.
+  // Result yellow, Transcript green, Pronunciation Feedback pastel blue with dark teal text.
   assert.deepEqual(learner.cards, ['rgb(255, 226, 154)', 'rgb(181, 217, 239)', 'rgb(185, 223, 158)']);
   assert.deepEqual(learner.feedbackText, ['rgb(11, 58, 61)', 'rgb(11, 58, 61)']);
   assert.equal(learner.radius, true);
-  assert.equal(learner.height, '170px');
+  assert.equal(learner.height, '150px');
   console.log(`PASS: ${checks} Teacher/Admin page/viewport fixtures (one vertical scrollbar, tables scroll only inside their container, no split words, last columns reachable); Independent Learner and M5 card colors unchanged.`);
   await send('Browser.close');
   ws.close();

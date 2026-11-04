@@ -68,7 +68,15 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
       if (id.includes("ActivityHeader")) return { default: "header" };
       if (id.includes("OralReadingSummary")) return { default: "oral-summary" };
       if (id.includes("RecordingPlayback")) return { default: "recording-playback" };
-      if (id.includes("PronunciationFeedback")) return { default: "pronunciation-feedback" };
+      if (id.includes("PronunciationFeedback")) return {
+        PronunciationFeedbackPanel: "pronunciation-feedback-panel", PronunciationAccuracyPanel: "pronunciation-accuracy-panel",
+        PronunciationWordsPanel: "pronunciation-words-panel",
+        // The check only runs when a learner presses its button; record the attempt it was offered for.
+        usePronunciationCheck: (attemptId: string | undefined) => {
+          (mocks.pronunciationChecks ??= []).push(attemptId);
+          return mocks.pronunciation ?? { status: "idle", step: "loading", check() { throw Error("must not auto-run"); } };
+        },
+      };
       if (id.includes("M5Modal")) return { default: "m5-modal" };
       if (id.includes("StoryDrawer")) return { default: "story-drawer" };
       if (id.includes("/reading-feedback/")) return { default: id.endsWith("ReadingMascot") ? "reading-mascot" : "feedback-speech",
@@ -525,8 +533,9 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
     language: "fil", moduleTitle: "Kuwento", readAloudOnly: false, pronunciationAccuracy: 70, readingSpeedWpm: 50,
     expectedWordCount: 2, transcript: "ang aso", passageSnapshot: "ang pusa",
     wordMetrics: [{ type: "match", expected: "ang", actual: "ang" }, { type: "substitution", expected: "pusa", actual: "aso" }] };
+  const pronunciationChecks: (string | undefined)[] = [];
   const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "oral" }, {
-    searchParams: { view: "feedback" },
+    searchParams: { view: "feedback" }, pronunciationChecks,
     oralReadingService: { getOralReadingAttempt: async () => attempt },
     oralReadingProcessing: { getWordsToPractice: () => ["pusa"] }, diagnosticTts: {},
     comprehensionNavigation: { comprehensionTargetForReading },
@@ -544,12 +553,24 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
   assert.ok(find(tree, node => node.type === "small" && node.props.children === "Iba ang salitang naitala"));
   assert.match(text, /Ang Kuwento/);
   assert.doesNotMatch(text, /Azure|Pronunciation accuracy|Katumpakan ng pagbigkas/);
+  // No pronunciation check exists for Filipino: no panels, no score, and the check is never offered.
+  for (const type of ["pronunciation-feedback-panel", "pronunciation-accuracy-panel", "pronunciation-words-panel"]) {
+    assert.equal(find(tree, node => node.type === type), undefined, type);
+  }
+  assert.deepEqual([...new Set(pronunciationChecks)], [undefined]);
+  assert.match(text, /walang marka sa pagbigkas ang pagbasang ito/);
+  assert.match(text, /kaya wala itong minarkahang salita sa pagbasang ito/);
+  // F2's spoken feedback uses the Filipino Philippine voice.
+  const listen = find(find(tree, node => node.props?.id === "m5-panel-feedback"), node => node.type === "feedback-speech");
+  assert.deepEqual({ language: listen.props.language, voice: listen.props.voice, label: listen.props.listenLabel },
+    { language: "fil", voice: "philippine", label: "Listen to feedback" });
+  assert.match(listen.props.text, /Ang puna sa pagbigkas ay para lamang sa mga babasahing Ingles/);
 });
 
 test("reading feedback comes before questions, in order, with gentle highlights and a link to the exact M6 activity", async () => {
   const attempt = { id: "oral", materialId: "material", roomId: "room", activityAssignmentId: "assignment",
     moduleId: null, language: "en", moduleTitle: "Story", readAloudOnly: false, pronunciationAccuracy: 80,
-    readingSpeedWpm: 61.4, expectedWordCount: 4, transcript: "The cat sat mat",
+    readingSpeedWpm: 61.4, expectedWordCount: 4, transcript: "The cat sat mat", passageSnapshot: "The dog sat on the mat.",
     wordMetrics: [{ type: "match", expected: "The", actual: "the" }, { type: "substitution", expected: "dog", actual: "cat" },
       { type: "match", expected: "sat", actual: "sat" }, { type: "omission", expected: "on", actual: null },
       { type: "match", expected: "mat", actual: "mat" }] };
@@ -563,15 +584,15 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   f.render(); await tick();
   const tree = f.render();
   const text = JSON.stringify(tree);
-  // The summary, then the three cards, then the floating panels' content, then the shared actions.
-  const order = ["Great reading, ", "Nice job! A few words need practice.", "Result & Transcript", "Feedback & Practice",
-    "Saved Oral Reading Assessments", "Oral Reading Results and Transcript", "Reading Accuracy", "Your Reading Result",
-    "What we heard", "Reading and Pronunciation Feedback", "Words to Practice",
-    "Listen to the word, say it slowly, and try reading it again.",
+  // The summary, then one card per function (F2-F6), then each panel's content, then the shared actions.
+  const order = ["Great reading, ", "Nice job! A few words need practice.",
+    "Pronunciation Feedback", "Pronunciation Accuracy", "Words to Practice", "Read-Aloud Transcript", "Oral Reading Result",
+    "pronunciation-feedback-panel", "pronunciation-accuracy-panel", "pronunciation-words-panel", "Words We Heard Differently",
+    "Listen to the word, say it slowly, and try reading it again.", "What we heard", "Reading Accuracy", "Your Reading Result",
     "Continue to Questions", "Read again", "Back to my activities"];
-  order.reduce((last, label) => { const at = text.indexOf(label); assert.ok(at > last, `${label} is out of order`); return at; }, -1);
+  order.reduce((last, label) => { const at = text.indexOf(label, last + 1); assert.ok(at > last, `${label} is out of order`); return at; }, -1);
   assert.match(text, /"Ana"/);
-  assert.doesNotMatch(text, /See what to practice|Back to my result/);
+  assert.doesNotMatch(text, /See what to practice|Back to my result|Azure/);
   // Undetected words and recognized differences are labelled apart; neither is called a skip or a mispronunciation.
   assert.ok(find(tree, node => node.type === "small" && node.props.children === "not detected"));
   assert.ok(!find(tree, node => node.type === "small" && node.props.children === "skipped"));
@@ -579,37 +600,43 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   const panel = (id: string, current = f.render()) => find(current, node => node.props?.id === id);
   const card = (title: string) => find(f.render(), node => node.type === "button"
     && JSON.stringify(node.props.children).includes(title) && node.props["aria-haspopup"] === "dialog");
-  const openPanels = () => ["m5-panel-result", "m5-panel-feedback", "m5-panel-saved"].filter(id => panel(id).props.open);
+  const ids = ["feedback", "accuracy", "words", "transcript", "result"].map(id => `m5-panel-${id}`);
+  const openPanels = () => ids.filter(id => panel(id).props.open);
   // Every panel starts closed; each card opens only its own panel.
   assert.deepEqual(openPanels(), []);
-  card("Result & Transcript").props.onClick();
-  assert.deepEqual(openPanels(), ["m5-panel-result"]);
-  assert.equal(panel("m5-panel-result").props.closeLabel, "Close");
-  panel("m5-panel-result").props.onClose();
-  assert.deepEqual(openPanels(), []);
-  card("Feedback & Practice").props.onClick();
-  assert.deepEqual(openPanels(), ["m5-panel-feedback"]);
-  assert.equal(panel("m5-panel-feedback").props.closeLabel, "Close");
-  panel("m5-panel-feedback").props.onClose();
-  assert.deepEqual(openPanels(), []);
-  // Saved assessments reuse Reading History, loaded only when that panel opens.
-  assert.equal(find(f.render(), node => node.type === "reading-history"), undefined);
-  card("Saved Oral Reading Assessments").props.onClick();
-  assert.deepEqual(openPanels(), ["m5-panel-saved"]);
-  const history = find(panel("m5-panel-saved"), node => node.type === "reading-history");
-  assert.deepEqual({ role: history.props.role, embedded: history.props.embedded }, { role: "student", embedded: true });
-  assert.equal(panel("m5-panel-saved").props.closeLabel, "Close");
-  panel("m5-panel-saved").props.onClose();
-  assert.deepEqual(openPanels(), []);
-  const retainedHistory = find(panel("m5-panel-saved"), node => node.type === "reading-history");
-  assert.ok(retainedHistory, "closing keeps fetched records and pending requests mounted");
-  assert.equal(retainedHistory.key, history.key);
-  card("Saved Oral Reading Assessments").props.onClick();
-  assert.deepEqual(openPanels(), ["m5-panel-saved"]);
-  assert.equal(find(panel("m5-panel-saved"), node => node.type === "reading-history").key, history.key);
-  // English feedback offers the pronunciation check and the saved recording in the feedback panel.
-  assert.ok(find(panel("m5-panel-feedback"), node => node.type === "pronunciation-feedback"));
+  for (const [title, id] of [["Pronunciation Feedback", "feedback"], ["Pronunciation Accuracy", "accuracy"], ["Words to Practice", "words"],
+    ["Read-Aloud Transcript", "transcript"], ["Oral Reading Result", "result"]]) {
+    card(title).props.onClick();
+    assert.deepEqual(openPanels(), [`m5-panel-${id}`], title);
+    assert.equal(panel(`m5-panel-${id}`).props.title, title);
+    assert.equal(panel(`m5-panel-${id}`).props.closeLabel, "Close");
+    panel(`m5-panel-${id}`).props.onClose();
+    assert.deepEqual(openPanels(), []);
+  }
+  // Each panel holds only its own function's information.
+  const content = (id: string) => JSON.stringify(panel(`m5-panel-${id}`));
+  assert.ok(find(panel("m5-panel-feedback"), node => node.type === "pronunciation-feedback-panel"));
   assert.ok(find(panel("m5-panel-feedback"), node => node.type === "recording-playback"));
+  assert.doesNotMatch(content("feedback"), /Reading Accuracy|words per minute|What we heard|result-feedback-words|"80"|80%/);
+  assert.ok(find(panel("m5-panel-accuracy"), node => node.type === "pronunciation-accuracy-panel"));
+  assert.doesNotMatch(content("accuracy"), /Reading Accuracy|words per minute|What we heard|result-feedback-words|recording-playback|80%/);
+  assert.ok(find(panel("m5-panel-words"), node => node.type === "pronunciation-words-panel"));
+  assert.match(content("words"), /They are not a pronunciation check\./);
+  assert.doesNotMatch(content("words"), /Reading Accuracy|words per minute|What we heard|recording-playback|80%/);
+  assert.match(content("transcript"), /The story/);
+  assert.match(content("transcript"), /What we heard/);
+  assert.doesNotMatch(content("transcript"), /Reading Accuracy|words per minute|Pronunciation|progress|80%/);
+  assert.match(content("result"), /Reading Accuracy/);
+  assert.doesNotMatch(content("result"), /What we heard|The story|Pronunciation|result-feedback-words|recording-playback/);
+  // F7 stays on the Reading History page; the result page does not embed it.
+  assert.equal(find(f.render(), node => node.type === "reading-history"), undefined);
+  assert.doesNotMatch(text, /Saved Oral Reading Assessments/);
+  // The shared pronunciation check is offered for this English attempt but never started by rendering.
+  const once = f.render();
+  const check = find(panel("m5-panel-feedback", once), node => node.type === "pronunciation-feedback-panel").props.check;
+  assert.equal(check.status, "idle");
+  assert.equal(find(panel("m5-panel-accuracy", once), node => node.type === "pronunciation-accuracy-panel").props.check, check);
+  assert.equal(find(panel("m5-panel-words", once), node => node.type === "pronunciation-words-panel").props.check, check);
   assert.match(text, /\[3," of ",4\]/);
   assert.doesNotMatch(text, /failed|poor|frustration/i);
   assert.ok(find(tree, node => node.type === "mark" && node.props.children === "cat"));
@@ -689,8 +716,9 @@ test("reopened result derives its number from saved data and keeps every panel o
     passageTitle: "A Helping Hand", pronunciationAccuracy: 90, readingSpeedWpm: 60,
     expectedWordCount: 1, transcript: "seed", wordMetrics: [] };
   const numbered: string[] = [];
+  const pronunciationChecks: (string | undefined)[] = [];
   const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "second" }, {
-    searchParams: { view: "feedback" },
+    searchParams: { view: "feedback" }, pronunciationChecks,
     oralReadingService: { getOralReadingAttempt: async () => saved,
       getOralReadingAttemptNumber: async (attempt: any) => { numbered.push(attempt.id); return 2; } },
     oralReadingProcessing: { getWordsToPractice: () => [] }, diagnosticTts: {},
@@ -705,7 +733,9 @@ test("reopened result derives its number from saved data and keeps every panel o
   assert.match(JSON.stringify(label), /Result/);
   assert.equal(label.props.children[1].props.children.at(-1), 2);
   assert.equal(find(tree, node => node.type === "recording-playback").props.attemptId, "second");
-  assert.equal(find(tree, node => node.type === "pronunciation-feedback").props.attemptId, "second");
+  // The pronunciation check offered in the F2-F4 panels belongs to this English attempt.
+  assert.equal(pronunciationChecks.at(-1), "second");
+  assert.equal(find(tree, node => node.props?.id === "m5-panel-feedback").props.open, true);
   assert.match(JSON.stringify(find(tree, node => node.props?.className === "result-feedback-transcript")), /seed/);
 });
 
@@ -828,7 +858,7 @@ test("Reading History reopens each module reading's own comprehension activity o
   assert.deepEqual(await links("admin"), [], "admin practice has no comprehension");
 });
 
-test("the question flow moves forward only, with Help Me, answer checking and an arrow back link", async () => {
+test("the question flow moves forward only, with one final Submit answer and an arrow back link", async () => {
   const summary = { totalQuestions: 2, firstCorrect: 1, hintsUsed: 0, firstAttemptPercentage: 50, allResolved: false,
     byType: { literal: { total: 1, firstCorrect: 1 }, inferential: { total: 1, firstCorrect: 0 }, critical: { total: 0 } } };
   const attempt = { id: "m6", materialId: "material", oralReadingAttemptId: "oral", roomId: "room", activityAssignmentId: "assignment",
@@ -847,8 +877,10 @@ test("the question flow moves forward only, with Help Me, answer checking and an
   // Reopens at the first unfinished question, and there is no way back to change answers.
   assert.match(text, /Why\?/);
   assert.doesNotMatch(text, /Previous Question/);
-  assert.ok(find(tree, node => node.type === "button" && JSON.stringify(node.props.children).includes("Help me")));
-  assert.ok(find(tree, node => node.type === "button" && JSON.stringify(node.props.children).includes("Submit")));
+  // Single attempt: one Submit answer action, no Help me, no second answer, no Next until submitted.
+  assert.match(text, /You can answer each question once\. Your submitted answer is final\./);
+  assert.ok(find(tree, node => node.type === "button" && node.props.children === "Submit answer"));
+  assert.doesNotMatch(text, /Help me|Check second answer|Try again|try once more|Next Question/);
   const back = find(tree, node => node.type === "button" && node.props.className === "m6-back-button");
   assert.match(JSON.stringify(back.props.children), /Back to reading activity/);
   back.props.onClick();
@@ -871,8 +903,8 @@ test("read-aloud shows no mascot before, during or after recording; the saved re
 });
 
 test("the M5 result shows the existing encouragement as text, without a mascot, and word practice uses the shared player", async () => {
-  const played: string[][] = [];
-  const speech = { play: async (text: string, language: string) => { played.push([text, language]); return true; }, stop() {},
+  const played: unknown[][] = [];
+  const speech = { play: async (...args: any[]) => { played.push(args); return true; }, stop() {},
     getState: () => ({ status: "idle", key: null, muted: false }) };
   const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "oral" }, {
     oralReadingService: { getOralReadingAttempt: async () => ({ id: "oral", materialId: null, roomId: null, activityAssignmentId: null,
@@ -888,56 +920,112 @@ test("the M5 result shows the existing encouragement as text, without a mascot, 
   const message = find(tree, node => node.type === "p" && node.props.className === "result-feedback-message");
   assert.equal(message.props.children, activityLanguage.getActivityText("fil").t("Wow, we heard almost every word of the story!"));
   await find(tree, node => node.type === "button" && node.props["aria-label"] === "Pakinggan ang pusa").props.onClick();
-  assert.deepEqual(played, [["pusa", "fil"]]);
+  assert.deepEqual(played, [["pusa", "fil", undefined, "philippine"]]);
 });
 
-test("the M6 mascot reacts to the page's hint and answer feedback without deciding correctness", async () => {
+test("an incorrect answer is final: Incorrect feedback, a separate guiding prompt, no second attempt", async () => {
   const base = { id: "q", type: "literal", resolved: false, options: ["A", "B", "C", "D"], answerHistory: [] as any[],
     firstOptionIndex: null as number | null, hintUsed: false, hint: null as string | null, questionText: "Who?" };
-  let attempt: any = { id: "m6", materialId: null, status: "in_progress", language: "en", questions: [base],
-    summary: { allResolved: false, byType: { literal: { total: 1 }, inferential: { total: 0 }, critical: { total: 0 } } } };
-  const replies = [
-    { questions: [{ ...base, hintUsed: true, hint: "Look at the start." }], outcome: {} },
-    { questions: [{ ...base, hintUsed: true, hint: "Look at the start.", answerHistory: [{ optionIndex: 1, correct: false }],
-      firstOptionIndex: 1, firstAnswerCorrect: false }], outcome: { correct: false, resolved: false } },
-    { questions: [{ ...base, hintUsed: true, hint: "Look at the start.", resolved: true, correctOptionIndex: 0,
-      answerExplanation: "Ana is named first.", answerHistory: [{ optionIndex: 1, correct: false }, { optionIndex: 0, correct: true }],
-      firstOptionIndex: 1, firstAnswerCorrect: false }], outcome: { correct: true, resolved: true } },
-  ];
+  const next = { ...base, id: "q2", questionText: "Where?" };
+  let attempt: any = { id: "m6", materialId: null, status: "in_progress", language: "en", questions: [base, next],
+    summary: { allResolved: false, byType: { literal: { total: 2 }, inferential: { total: 0 }, critical: { total: 0 } } } };
+  const sent: any[] = [];
+  const answered = { ...base, resolved: true, correctOptionIndex: 0, answerExplanation: "Ana is named first.",
+    supportingEvidence: "Ana went to the market.", scaffoldingPrompt: "Look at who the story names first.",
+    answerHistory: [{ optionIndex: 1, correct: false }], firstOptionIndex: 1, firstAnswerCorrect: false };
   const f = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: {
     getComprehension: async () => attempt,
-    sendComprehensionAction: async () => {
-      const reply = replies.shift()!;
-      attempt = { ...attempt, questions: reply.questions };
-      return { attempt, outcome: reply.outcome };
+    sendComprehensionAction: async (_id: string, action: any) => {
+      sent.push(action);
+      attempt = { ...attempt, questions: [answered, next] };
+      return { attempt, outcome: { correct: false, resolved: true, final: true } };
     },
   } });
   const mascot = () => find(f.render(), node => node.type === "reading-mascot");
-  const choose = async (option: number, label: string) => {
-    find(f.render(), node => node.type === "input" && node.props.value === option).props.onChange();
-    button(f.render(), label).props.onClick(); await tick();
-  };
   f.render(); await tick();
   assert.equal(mascot().props.message, "");
-  button(f.render(), "Help me").props.onClick(); await tick();
-  assert.equal(mascot().props.mood, "hint");
-  const hintEvent = mascot().props.eventId;
-  const hintAudio = find(f.render(), node => node.type === "feedback-speech" && node.props.listenLabel === "Listen to the hint");
-  assert.deepEqual([hintAudio.props.text, hintAudio.props.language], ["Hint: Look at the start.", "en"]);
-  await choose(1, "Submit");
+  find(f.render(), node => node.type === "input" && node.props.value === 1).props.onChange();
+  button(f.render(), "Submit answer").props.onClick(); await tick();
+  assert.deepEqual(sent.map(action => [action.action, action.optionIndex]), [["answer", 1]]);
+
+  const tree = f.render();
+  const text = JSON.stringify(tree);
+  // The mascot never invites another try.
   assert.equal(mascot().props.mood, "tryAgain");
-  assert.notEqual(mascot().props.eventId, hintEvent);
-  const answerEvent = mascot().props.eventId;
-  assert.equal(mascot().props.live, true);
-  assert.equal(mascot().props.message, "Not quite. Try to remember the story you just read, or use a hint, then try once more.");
-  await choose(0, "Check second answer");
-  assert.equal(mascot().props.mood, "correct");
-  assert.notEqual(mascot().props.eventId, answerEvent);
-  assert.equal(mascot().props.message, "Correct! Continue when you are ready.");
-  const answerFeedback = find(f.render(), node => node.type?.name === "AnswerFeedback");
+  assert.equal(mascot().props.message, "That answer is not correct. Read the feedback below, then continue.");
+  assert.doesNotMatch(text, /Submit answer|Check second answer|Help me|try once more|Try again/);
+  // The answer is locked: the options are disabled and show the saved answer.
+  assert.equal(find(tree, node => node.type === "fieldset").props.disabled, true);
+  assert.equal(find(tree, node => node.type === "input" && node.props.value === 1).props.checked, true);
+  // F3 contextualized feedback and F2 scaffolding prompt are separate, identifiable blocks.
+  const feedback = find(tree, node => node.type?.name === "SubmittedAnswerFeedback");
+  const feedbackTree = feedback.type(feedback.props);
+  assert.match(JSON.stringify(feedbackTree), /"Incorrect"/);
+  assert.match(JSON.stringify(feedbackTree), /Your answer:/);
+  const answerFeedback = find(feedbackTree, node => node.type?.name === "AnswerFeedback");
   const explanation = find(answerFeedback.type(answerFeedback.props), node => node.type === "feedback-speech");
   assert.equal(explanation.props.listenLabel, "Listen to the explanation");
-  assert.equal(explanation.props.text, "Correct answer: A Why this answer fits: Ana is named first.");
+  assert.equal(explanation.props.text, "Correct answer: A Why this answer fits: Ana is named first. Evidence from the passage: Ana went to the market.");
+  const prompt = find(tree, node => node.type?.name === "ScaffoldingPrompt");
+  const promptTree = prompt.type(prompt.props);
+  assert.match(JSON.stringify(promptTree), /Think about it/);
+  assert.match(JSON.stringify(promptTree), /Look at who the story names first\./);
+  assert.doesNotMatch(JSON.stringify(promptTree), /Ana is named first|Correct answer/, "the prompt does not repeat the explanation");
+  assert.equal(find(promptTree, node => node.type === "feedback-speech").props.listenLabel, "Listen to the clue");
+  // One way forward: Next Question.
+  button(f.render(), "Next Question").props.onClick();
+  assert.match(JSON.stringify(f.render()), /Where\?/);
   // The mascot never receives scores or answer keys.
   for (const node of [mascot(), explanation]) assert.doesNotMatch(JSON.stringify(Object.keys(node.props)), /score|correctOptionIndex|summary/i);
+});
+
+test("a correct answer shows Correct feedback and no guiding prompt", async () => {
+  const question = { id: "q", type: "literal", resolved: true, options: ["A", "B", "C", "D"], answerHistory: [{ optionIndex: 0, correct: true }],
+    firstOptionIndex: 0, firstAnswerCorrect: true, correctOptionIndex: 0, answerExplanation: "Ana is named first.",
+    scaffoldingPrompt: null, hintUsed: false, hint: null, questionText: "Who?" };
+  const attempt = { id: "m6", materialId: null, status: "in_progress", language: "fil", questions: [question],
+    summary: { allResolved: true, byType: { literal: { total: 1 }, inferential: { total: 0 }, critical: { total: 0 } } } };
+  const f = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: {
+    getComprehension: async () => attempt, sendComprehensionAction: async () => ({ attempt, outcome: { completed: true } }) } }, "general_user");
+  f.render(); await tick();
+  const tree = f.render();
+  const feedback = find(tree, node => node.type?.name === "SubmittedAnswerFeedback");
+  assert.match(JSON.stringify(feedback.type(feedback.props)), /"Tama!"/);
+  const prompt = find(tree, node => node.type?.name === "ScaffoldingPrompt");
+  assert.equal(prompt.type(prompt.props), null);
+  // A finished module activity offers only Finish Assessment, in Filipino.
+  assert.ok(button(tree, "Tapusin ang Gawain"));
+  assert.doesNotMatch(JSON.stringify(tree), /Ipasa ang sagot|Help me|Tulungan ako/);
+});
+
+test("final results show one score per final answer with no second-attempt or first-answer labels", async () => {
+  const questions = [
+    { id: "q1", type: "literal", resolved: true, options: ["A", "B", "C", "D"], firstOptionIndex: 0, firstAnswerCorrect: true,
+      correctOptionIndex: 0, answerExplanation: "Because.", answerHistory: [{ optionIndex: 0, correct: true }], hintUsed: false, hint: null, questionText: "Who?" },
+    // An activity saved under the old two-try rule: its second answer is never shown or scored.
+    { id: "q2", type: "inferential", resolved: true, options: ["A", "B", "C", "D"], firstOptionIndex: 2, firstAnswerCorrect: false,
+      correctOptionIndex: 1, answerExplanation: "Because.", answerHistory: [{ optionIndex: 2, correct: false }, { optionIndex: 1, correct: true }],
+      hintUsed: false, hint: null, questionText: "Why?" },
+  ];
+  const summary = { totalQuestions: 2, firstCorrect: 1, firstAttemptPercentage: 50, hintsUsed: 0, allResolved: true,
+    byType: { literal: { total: 1, firstCorrect: 1, firstAttemptPercentage: 100 }, inferential: { total: 1, firstCorrect: 0, firstAttemptPercentage: 0 },
+      critical: { total: 0, firstCorrect: 0, firstAttemptPercentage: 0 } } };
+  for (const language of ["en", "fil"] as const) {
+    const attempt = { id: "m6", materialId: null, status: "completed", language, questions, summary };
+    const f = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: {
+      getComprehension: async () => attempt, sendComprehensionAction: async () => ({ attempt, outcome: {} }) } }, "general_user");
+    f.render(); await tick();
+    const text = JSON.stringify(f.render());
+    const ui = activityLanguage.getActivityText(language);
+    assert.match(text, new RegExp(ui.t("Comprehension score")));
+    assert.match(text, /50/);
+    assert.match(text, new RegExp(ui.t("Each question has one final answer. Each correct answer earns one point.").replace(/[.]/g, "\\.")));
+    assert.match(text, new RegExp(ui.t("{correct}/{total} correct ({percentage}%)", { correct: 1, total: 1, percentage: 100 }).replace(/[()%]/g, "\\$&")));
+    for (const label of ["First-answer score", "Second answer:", "First answer:", "Correct on your first answer.", "Incorrect on your first answer.",
+      "This score uses your first answer to each question, including answers given after using a hint. Second answers do not change this score.",
+      "Questions where you used a hint:", "Correct on your first answer."]) {
+      assert.ok(!text.includes(ui.t(label as any)), `${language}: ${label}`);
+    }
+    assert.ok(text.includes(ui.t("Your answer:")));
+  }
 });

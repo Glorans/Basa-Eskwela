@@ -4,7 +4,7 @@ const {
   getSpeechLanguageCode,
   UnsupportedDiagnosticLanguageError,
 } = require("../services/diagnosticLanguage");
-const { getAzureSpeechConfig, isAzureSpeechConfigured } = require("../services/azureSpeechConfig");
+const { AZURE_VOICES, getAzureSpeechConfig, isAzureSpeechConfigured } = require("../services/azureSpeechConfig");
 const {
   SpeechConfigurationError,
   SpeechTranscriptionError,
@@ -13,6 +13,7 @@ const {
 const {
   assessPronunciationWav,
   createRecognitionStream,
+  philippineFeedbackSsml,
   synthesizeSpeech,
   transcribeWav,
 } = require("../services/azureSpeechService");
@@ -84,6 +85,7 @@ function fakeSdk(script = {}) {
     SpeechSynthesizer: class {
       constructor(config, audio) { this.config = config; this.audio = audio; calls.synthesizers.push(this); }
       speakTextAsync(text, ok, fail) { setImmediate(() => script.synthesize(this, text, ok, fail)); }
+      speakSsmlAsync(ssml, ok, fail) { this.ssml = ssml; setImmediate(() => script.synthesize(this, ssml, ok, fail)); }
       close(ok) { calls.closed++; ok(); }
     },
     CancellationDetails: { fromResult: (result) => ({ errorCode: result.errorCode }) },
@@ -280,6 +282,33 @@ for (const [locale, voice] of [["en-US", "en-US-JennyNeural"], ["fil-PH", "fil-P
     assert.equal(calls.closed, 1);
   });
 }
+
+for (const [locale, voice, xmlLang] of [["en-US", "en-PH-RosaNeural", "en-PH"], ["fil-PH", "fil-PH-BlessicaNeural", "fil-PH"]]) {
+  test(`M5 Philippine feedback TTS for ${locale} uses ${voice} at a calm rate through escaped SSML`, async () => {
+    const { sdkFactory, calls } = fakeSdk({
+      synthesize: (_synth, _ssml, ok) => ok({ reason: 8, audioData: Uint8Array.from([0xff, 0xf3, 1]).buffer }),
+    });
+    // AZURE_SPEECH_VOICE_EN stays the default for every other caller.
+    const audio = await synthesizeSpeech("Tom & <Ana>", locale, { sdkFactory, env: { ...ENV, AZURE_SPEECH_VOICE_EN: "en-US-GuyNeural" }, voiceProfile: "philippine" });
+    assert.equal(audio.length, 3);
+    const synth = calls.synthesizers[0];
+    assert.equal(synth.config.speechSynthesisVoiceName, voice);
+    assert.equal(synth.ssml, philippineFeedbackSsml("Tom & <Ana>", locale === "en-US" ? "en" : "fil"));
+    assert.match(synth.ssml, new RegExp(`xml:lang="${xmlLang}"><voice name="${voice}"><prosody rate="-10%">Tom &amp; &lt;Ana&gt;</prosody>`));
+    assert.equal(calls.closed, 1);
+  });
+}
+
+test("the Philippine feedback voices are allowlisted and the default voice is unchanged without a profile", async () => {
+  assert.ok(AZURE_VOICES.en.includes("en-PH-RosaNeural"));
+  assert.ok(AZURE_VOICES.fil.includes("fil-PH-BlessicaNeural"));
+  assert.equal(getAzureSpeechConfig(ENV).voices.en, "en-US-JennyNeural");
+  const { sdkFactory, calls } = fakeSdk({ synthesize: (_s, _t, ok) => ok({ reason: 8, audioData: Uint8Array.from([1]).buffer }) });
+  await synthesizeSpeech("word", "en-US", { sdkFactory, env: ENV });
+  assert.equal(calls.synthesizers[0].ssml, undefined, "plain text, as before");
+  await assert.rejects(synthesizeSpeech("word", "en-US", { sdkFactory, env: ENV, voiceProfile: "en-US-GuyNeural" }),
+    (error) => error.code === "STT_INVALID_AUDIO");
+});
 
 test("TTS cancellations and empty audio become safe errors", async () => {
   for (const [script, code] of [

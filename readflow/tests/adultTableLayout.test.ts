@@ -28,10 +28,13 @@ test("the Teacher Reading Results table uses sentence-case headings and full-wid
     "Recognized-word Differences", "Comprehension", "Date Completed"]) assert.match(page, new RegExp(`<th>${heading.replace(/[/]/g, "\\/")}</th>`));
 });
 
-test("the M5 Feedback & Practice card is pastel blue; the other two cards are unchanged", () => {
+test("each M5 function card has its own pastel colour; feedback stays blue and the result yellow", () => {
   const result = css("pages/reading-activity/ReadingResultPage.css");
   assert.match(result, /\.result-panel-card--result \{\s*background: #ffe29a;/);
   assert.match(result, /\.result-panel-card--feedback \{\s*background: #b5d9ef;/);
-  assert.match(result, /\.result-panel-card--saved \{\s*background: #b9df9e;/);
+  assert.match(result, /\.result-panel-card--transcript \{\s*background: #b9df9e;/);
+  assert.match(result, /\.result-panel-card--accuracy \{\s*background: #d8cff4;/);
+  assert.match(result, /\.result-panel-card--words \{\s*background: #ffd2bd;/);
+  assert.doesNotMatch(result, /result-panel-card--saved/);
   assert.match(result, /\.result-panel-card--feedback \.result-panel-card-text \{\s*color: var\(--basa-navy\);/);
 });

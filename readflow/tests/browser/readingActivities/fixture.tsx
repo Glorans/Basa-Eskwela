@@ -88,7 +88,9 @@ export async function transcribeOralReadingRecording(_: Blob, language: string, 
 }
 export async function assessOralReadingPronunciation() { throw Error("Pronunciation check unavailable in this fixture"); }
 export async function getSessionAuthHeaders() { return { Authorization: "Bearer fixture" }; }
-export async function synthesizeDiagnosticSpeech(_: string, language: string) { events.push(["tts", language]); throw Error("Audio unavailable"); }
+export async function synthesizeDiagnosticSpeech(_: string, language: string, options: { voiceProfile?: string } = {}) {
+  events.push(["tts", language, options.voiceProfile ?? "default"]); throw Error("Audio unavailable");
+}
 export function useVoiceFollowStoryScroll() { return { onStreamReady() {}, onStreamStopped() {} }; }
 export function useAudioRecorder() {
   const [recording, setRecording] = useState(false);
@@ -116,7 +118,7 @@ export async function startComprehension(input: any) {
       // Deliberately English in Filipino activities: teacher content must stay verbatim.
       questionText: `Teacher reviewed question ${i + 1}: Where did Maya plant the flowers?`, options: ["In the garden", "At school", "By the river", "On the road"],
       firstOptionIndex: null, firstAnswerCorrect: null, answerHistory: [], hintUsed: false, hint: null, resolved: false,
-      correctOptionIndex: null, answerExplanation: null, supportingEvidence: null,
+      correctOptionIndex: null, answerExplanation: null, supportingEvidence: null, scaffoldingPrompt: null,
     }));
     comprehension.set(source.id, { ...input, id: source.id, language: normalizeActivityLanguage(source.language), passageTitle: source.title,
       passageText: source.passage, status: "in_progress", questions, summary: summary(questions) });
@@ -130,16 +132,19 @@ export async function sendComprehensionAction(id: string, action: any) {
   let outcome = {};
   if (action.action === "complete") attempt.status = "completed";
   else {
+    // Single attempt, as the backend enforces it: the first answer is final.
+    if (action.action !== "answer") throw Error("Invalid activity action.");
     const q = attempt.questions.find((q: any) => q.id === action.questionId);
-    if (action.action === "hint") { q.hintUsed = true; q.hint = "Teacher hint: remember the garden."; }
-    else {
+    const retry = q.answerHistory.find((entry: any) => entry.requestId === action.requestId);
+    if (q.firstOptionIndex !== null && !retry) throw Error("This question already has a final answer.");
+    if (!retry) {
       const correct = action.optionIndex === 0;
       q.answerHistory.push({ optionIndex: action.optionIndex, correct, requestId: action.requestId });
-      if (q.firstOptionIndex === null) { q.firstOptionIndex = action.optionIndex; q.firstAnswerCorrect = correct; }
-      q.resolved = correct || q.answerHistory.length === 2;
-      if (q.resolved) { q.correctOptionIndex = 0; q.answerExplanation = "Teacher explanation: Maya planted flowers there."; q.supportingEvidence = "Si Maya ay may hardin."; }
-      outcome = { correct, resolved: q.resolved };
+      q.firstOptionIndex = action.optionIndex; q.firstAnswerCorrect = correct; q.resolved = true;
+      q.correctOptionIndex = 0; q.answerExplanation = "Teacher explanation: Maya planted flowers there."; q.supportingEvidence = "Si Maya ay may hardin.";
+      q.scaffoldingPrompt = correct ? null : "Teacher hint: remember the garden.";
     }
+    outcome = { correct: q.firstAnswerCorrect, resolved: true, final: true };
   }
   attempt.summary = summary(attempt.questions);
   return { attempt: structuredClone(attempt), outcome };

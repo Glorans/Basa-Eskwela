@@ -125,6 +125,17 @@ test("pronunciation audio requests send the session bearer token and keep the bl
   }
 });
 
+test("M5 feedback asks for the Philippine voice; other callers send no voice profile", async () => {
+  postReply = async () => ({ data: new Blob(["mp3"], { type: "audio/mpeg" }) });
+  posts = [];
+  await synthesizeDiagnosticSpeech("Mahusay!", "fil", { voiceProfile: "philippine" });
+  await synthesizeDiagnosticSpeech("dog", "en", {});
+  assert.deepEqual(posts.map(post => post.body), [
+    { text: "Mahusay!", language: "fil", voiceProfile: "philippine" },
+    { text: "dog", language: "en" },
+  ]);
+});
+
 test("pronunciation audio is not requested without a session", async () => {
   sessionHeaders = async () => { throw new Error("Your session has expired. Please sign in again."); };
   await assert.rejects(synthesizeDiagnosticSpeech("dog", "en"), { message: "Your session has expired. Please sign in again." });

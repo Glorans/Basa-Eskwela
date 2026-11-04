@@ -2,7 +2,7 @@ import { LoaderCircle, Square, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getActivityText, type ActivityLanguage, type ActivityText } from "../../pages/reading-activity/activityLanguage";
 import { getFeedbackSpeech } from "../../services/feedbackSpeech";
-import { feedbackSpeechKey } from "../../services/feedbackSpeechPlayer";
+import { feedbackSpeechKey, type FeedbackSpeechVoice } from "../../services/feedbackSpeechPlayer";
 import "./ReadingFeedback.css";
 
 interface FeedbackSpeechControlsProps {
@@ -14,6 +14,8 @@ interface FeedbackSpeechControlsProps {
   /** Blocks playback, e.g. while the microphone is recording. */
   disabled?: boolean;
   showMute?: boolean;
+  /** "philippine" for M5 feedback; other pages keep the default voice. */
+  voice?: FeedbackSpeechVoice;
 }
 
 /** Re-renders when the shared player changes. */
@@ -26,13 +28,13 @@ export function useFeedbackSpeechState() {
 
 /** Listen / Stop / sound on-off for one piece of feedback. Never plays on its own. */
 export default function FeedbackSpeechControls({
-  text, language, listenLabel = "Listen", disabled = false, showMute = false,
+  text, language, listenLabel = "Listen", disabled = false, showMute = false, voice = "default",
 }: FeedbackSpeechControlsProps) {
   const { t } = getActivityText(language);
   const player = getFeedbackSpeech();
   const state = useFeedbackSpeechState();
   const [played, setPlayed] = useState(false);
-  const key = feedbackSpeechKey(text, language);
+  const key = feedbackSpeechKey(text, language, voice);
   const mine = state.key === key;
   const active = mine && (state.status === "loading" || state.status === "playing");
 
@@ -55,7 +57,7 @@ export default function FeedbackSpeechControls({
       ) : (
         <button type="button" className="feedback-speech-button" disabled={disabled}
           aria-label={played ? t("Listen again") : t(listenLabel)}
-          onClick={() => { setPlayed(true); void player.play(text, language, key); }}>
+          onClick={() => { setPlayed(true); void player.play(text, language, key, voice); }}>
           <Volume2 size={18} aria-hidden="true" />
         </button>
       ))}

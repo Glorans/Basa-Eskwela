@@ -135,8 +135,12 @@ test("Teacher detail is read-only and displays transcript, saved accuracy, and p
   // The saved score is transcript-based reading accuracy, never labelled as pronunciation.
   assert.match(detail, /Reading Accuracy \(Transcript-based\)/);
   assert.doesNotMatch(detail, /Pronunciation Accuracy/);
-  assert.match(detail, /Oral Reading Result and Transcript/);
-  assert.match(detail, /Reading and Pronunciation Feedback/);
+  // One card per function: result, transcript, words, and the (unsaved) pronunciation check.
+  for (const title of ["Oral Reading Result", "Read-Aloud Transcript", "Words to Practice", "Pronunciation Feedback and Accuracy"]) {
+    assert.match(detail, new RegExp(`className="m5-review-panel-title" id="[\\w-]+">${title}</h2>`), title);
+  }
+  assert.match(detail, /are not saved yet, so their feedback, scores and words cannot be reviewed here/);
+  assert.doesNotMatch(detail, /Azure/);
   assert.match(detail, /<RecordingPlayback attemptId=\{attempt\.id\} teacher language=\{attempt\.language \?\? "en"\} \/>/);
   assert.match(detail, /Pronunciation scoring is not available for Filipino readings/);
   assert.match(detail, /Words to Practice/);

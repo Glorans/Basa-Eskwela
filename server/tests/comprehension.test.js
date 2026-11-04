@@ -57,7 +57,7 @@ test("comprehension ownership, feedback disclosure, and action RPC boundaries", 
       first_option_index: 0, first_answer_correct: true, resolved: true, hint_used: false }],
   });
   const calls = [];
-  db.rpc = async (name, args) => { calls.push({ name, args }); return { data: { correct: true } }; };
+  db.rpc = async (name, args) => { calls.push({ name, args }); return { data: { correct: true, resolved: true } }; };
   // Load the actual services against an in-memory database; never connect to Supabase.
   t.mock.method(require("../services/supabaseAdmin"), "getSupabaseAdmin", () => db);
   const { getComprehensionAttempt, startComprehensionAttempt } = require("../services/comprehensionAttemptService");
@@ -82,12 +82,17 @@ test("comprehension ownership, feedback disclosure, and action RPC boundaries", 
   for (const body of [null, { action: "delete" }, { action: "answer", questionId: QUESTION, requestId: REQUEST, optionIndex: 4 }]) {
     await assert.rejects(applyComprehensionAction(owner, ATTEMPT, body), { statusCode: 400 });
   }
+  // The answered question already has its final answer: no second answer reaches the database.
+  await assert.rejects(applyComprehensionAction(owner, ATTEMPT, {
+    action: "answer", questionId: QUESTION, requestId: REQUEST, optionIndex: 1,
+  }), { statusCode: 409 });
+  assert.equal(calls.length, 0);
   await applyComprehensionAction(owner, ATTEMPT, {
-    action: "answer", questionId: QUESTION, requestId: REQUEST, optionIndex: 0,
+    action: "answer", questionId: questions[1].id, requestId: REQUEST, optionIndex: 0,
     userId: "forged", firstAnswerCorrect: false,
   });
   assert.deepEqual(calls, [{ name: "m6_apply_action", args: {
-    target_attempt: ATTEMPT, target_user: "owner", target_question: QUESTION,
+    target_attempt: ATTEMPT, target_user: "owner", target_question: questions[1].id,
     action_name: "answer", selected_option: 0, request_id: REQUEST,
   } }]);
   // Legacy saved questions remain usable without newly generated feedback.

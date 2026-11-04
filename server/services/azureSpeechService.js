@@ -1,6 +1,6 @@
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs/promises");
-const { getAzureSpeechConfig } = require("./azureSpeechConfig");
+const { PHILIPPINE_FEEDBACK_VOICES, getAzureSpeechConfig } = require("./azureSpeechConfig");
 const { SpeechTranscriptionError } = require("./speechErrors");
 const { MAX_WHOLE_RECORDING_SECONDS, SPEECH_SAMPLE_RATE, readSpeechWav, wavPcmArrayBuffer } = require("./wavAudio");
 
@@ -310,19 +310,42 @@ async function assessPronunciationWav(buffer, language, referenceText, {
     durationSeconds: wav.durationSeconds, assessmentMs: Date.now() - startedAt };
 }
 
-/** Neural text-to-speech; returns MP3 bytes (served as audio/mpeg). */
+// Slightly slower than the voice's default: calm and clear for Grade 5 learners.
+const PHILIPPINE_FEEDBACK_RATE = "-10%";
+
+function escapeXml(text) {
+  return text.replace(/[<>&"']/g, (character) => ({
+    "<": "&lt;", ">": "&gt;", "&": "&amp;", "\"": "&quot;", "'": "&apos;",
+  })[character]);
+}
+
+/** SSML for M5 feedback: the Philippine voice for the language, at a calm rate. */
+function philippineFeedbackSsml(text, language) {
+  const voice = PHILIPPINE_FEEDBACK_VOICES[language];
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${voice.locale}">`
+    + `<voice name="${voice.name}"><prosody rate="${PHILIPPINE_FEEDBACK_RATE}">${escapeXml(text)}</prosody></voice></speak>`;
+}
+
+/**
+ * Neural text-to-speech; returns MP3 bytes (served as audio/mpeg). Without a
+ * voice profile the configured default voice reads the plain text, as before.
+ * voiceProfile "philippine" (M5 feedback only) uses en-PH-RosaNeural or
+ * fil-PH-BlessicaNeural through SSML.
+ */
 async function synthesizeSpeech(text, languageCode, {
-  sdkFactory = defaultSdkFactory, env = process.env, log = console.error,
+  sdkFactory = defaultSdkFactory, env = process.env, log = console.error, voiceProfile,
 } = {}) {
   const config = getAzureSpeechConfig(env);
   const language = languageCode === "fil-PH" ? "fil" : languageCode === "en-US" ? "en" : null;
   if (!language) throw new SpeechTranscriptionError("STT_INVALID_AUDIO");
+  if (voiceProfile !== undefined && voiceProfile !== "philippine") throw new SpeechTranscriptionError("STT_INVALID_AUDIO");
+  const philippine = voiceProfile === "philippine";
   let synthesizer;
   let timer;
   try {
     const sdk = sdkFactory();
     const speechConfig = createSpeechConfig(sdk, config);
-    speechConfig.speechSynthesisVoiceName = config.voices[language];
+    speechConfig.speechSynthesisVoiceName = philippine ? PHILIPPINE_FEEDBACK_VOICES[language].name : config.voices[language];
     speechConfig.speechSynthesisOutputFormat = sdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3;
     // A null audio config returns the bytes instead of playing them on the server.
     synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
@@ -335,7 +358,10 @@ async function synthesizeSpeech(text, languageCode, {
         if (error) reject(error); else resolve(value);
       };
       timer = setTimeout(() => finish(new SpeechTranscriptionError("STT_DEADLINE")), config.timeoutMs);
-      synthesizer.speakTextAsync(text, (result) => {
+      const speak = philippine
+        ? (ok, fail) => synthesizer.speakSsmlAsync(philippineFeedbackSsml(text, language), ok, fail)
+        : (ok, fail) => synthesizer.speakTextAsync(text, ok, fail);
+      speak((result) => {
         if (result.reason !== sdk.ResultReason.SynthesizingAudioCompleted) {
           const details = sdk.CancellationDetails?.fromResult?.(result);
           finish(new SpeechTranscriptionError(cancellationCode(sdk, details?.errorCode)));
@@ -438,6 +464,7 @@ module.exports = {
   wholeRecordingDeadlineMs,
   assessPronunciationWav,
   createRecognitionStream,
+  philippineFeedbackSsml,
   synthesizeSpeech,
   transcribeWav,
 };

@@ -72,12 +72,14 @@ for (const role of ['student','general_user','admin']) {
     assert.match(text, /Seeds/);
     assert.match(text, /Filipino/);
     assert.match(text, role === "admin" ? /"Reading accuracy: ","91.5"/ : /"Katumpakan ng pagbasa: ","91.5"/);
-    assert.doesNotMatch(text, /Pronunciation/);
+    // The saved score is reading accuracy; the only pronunciation text says its check results are not saved.
+    assert.doesNotMatch(text, /Pronunciation accuracy|Pronunciation Accuracy|Katumpakan ng Pagbigkas/i);
+    assert.match(text, /Pronunciation check results for English readings are not saved/);
     const result=`${role==='admin'?'/admin':role==='student'?'/dashboard':'/m3/general'}/read-aloud/results/saved`;
     const links=[] as any[];
     (function walk(node:any){ if(!node||typeof node!=='object')return; if(node.type==='a')links.push(node); [node.props?.children].flat(Infinity).forEach(walk); })(tree);
-    // F4 reopens a saved attempt at its result (F2) or straight at its feedback and recording (F3).
-    assert.deepEqual(links.map(link=>link.props.to), [result, `${result}?view=feedback`]);
+    // F7 reopens a saved attempt straight at its result (F6), transcript (F5), or feedback and recording (F2).
+    assert.deepEqual(links.map(link=>link.props.to), [`${result}?view=result`, `${result}?view=transcript`, `${result}?view=feedback`]);
   });
 }
 test('history handles empty records and retry after failure', async () => {
@@ -149,7 +151,7 @@ test('mixed history uses each saved language, never titles or the parent activit
     assert.ok(JSON.stringify(row).includes(getActivityText(expected).t('Reading accuracy: ')));
     assert.ok(JSON.stringify(row).includes('Saved title unchanged'));
     const links = find(row, n => n.type === 'div').props.children.flat(Infinity).filter(Boolean);
-    assert.equal(links.length, 3);
+    assert.equal(links.length, 4); // result, transcript, feedback and recording, comprehension
     assert.ok(links.every((link: any) => link.props.state.readingActivityLanguage === expected));
   }
 });

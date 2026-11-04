@@ -44,6 +44,10 @@ function optionalText(value) {
     : null;
 }
 
+function normalizedText(value) {
+  return typeof value === "string" ? value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim() : "";
+}
+
 function normalizeEvidence(value) {
   return value.normalize("NFKC").replace(/\s+/gu, " ").trim();
 }
@@ -288,8 +292,14 @@ async function getComprehensionAttempt(requester, attemptId) {
     throw databaseError(error, "Unable to load your answers.");
   }
 
+  // Single attempt: a saved answer is final, so an answered question counts as
+  // finished even if it was saved before the answer rule closed it in the database.
+  const finalResponses = (responses ?? []).map((response) => ({
+    ...response,
+    resolved: response.resolved === true || Number.isInteger(response.first_option_index),
+  }));
   const responseMap = new Map(
-    (responses ?? []).map((response) => [
+    finalResponses.map((response) => [
       response.question_id,
       response,
     ]),
@@ -311,10 +321,11 @@ async function getComprehensionAttempt(requester, attemptId) {
     completedAt: attempt.completed_at,
 
     // Never return the raw snapshot.
-    // Reveal answer feedback only after the question is resolved.
+    // Reveal answer feedback only after the question has its final answer.
     questions: attempt.question_snapshot.map((question) => {
       const response = responseMap.get(question.id);
       const resolved = response?.resolved === true;
+      const answerExplanation = resolved ? optionalText(question.answerExplanation) : null;
 
       return {
         id: question.id,
@@ -333,8 +344,15 @@ async function getComprehensionAttempt(requester, attemptId) {
         correctOptionIndex: resolved
           ? question.correctOptionIndex
           : null,
-        answerExplanation: resolved
-          ? optionalText(question.answerExplanation)
+        answerExplanation,
+        // F2 scaffolding prompt: the question's saved guiding hint, shown only
+        // after an incorrect final answer. It helps understanding, does not
+        // reopen the question and never changes the score. It is left out when
+        // it would only repeat the explanation (F3 contextualized feedback).
+        scaffoldingPrompt: resolved && response?.first_answer_correct === false
+          && optionalText(question.scaffoldingHint)
+          && normalizedText(question.scaffoldingHint) !== normalizedText(answerExplanation)
+          ? optionalText(question.scaffoldingHint)
           : null,
         // Display only: a stored fragment is shown as the complete sentence(s)
         // from this attempt's saved passage when the match is reliable; the
@@ -347,7 +365,7 @@ async function getComprehensionAttempt(requester, attemptId) {
 
     summary: summarizeComprehension(
       attempt.question_snapshot,
-      responses ?? [],
+      finalResponses,
     ),
   };
 }

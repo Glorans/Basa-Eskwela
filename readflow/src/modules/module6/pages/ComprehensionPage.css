@@ -314,3 +314,21 @@
   .m6-page--questions .m6-actions { flex-direction: row; align-items: stretch; }
   .m6-page--questions .m6-button { flex: 1 1 140px; width: auto; min-height: 44px; }
 }
+
+/* Single attempt: F3 contextualized feedback after the final answer, F2 scaffolding prompt after an incorrect one. */
+.m6-page .m6-final-note { margin: 0; font-size: 0.95rem; line-height: 1.4; color: #173f3b; }
+.m6-page .m6-submitted-feedback {
+  margin: 4px 0 0;
+  padding: 10px 14px;
+  border: 2px solid #2f7d4f;
+  border-radius: 14px;
+  background: #e7f6ea;
+  line-height: 1.45;
+}
+.m6-page .m6-submitted-feedback--incorrect { border-color: #b4532a; background: #fff1ea; }
+.m6-page .m6-submitted-feedback h3 { margin: 0 0 4px; font-size: 1.1rem; }
+.m6-page .m6-submitted-feedback p { margin: 0 0 4px; }
+.m6-page .m6-submitted-feedback aside { margin: 6px 0 0; padding: 0; background: transparent; }
+.m6-page .m6-scaffolding-prompt { margin: 0; border: 2px dashed #c79a12; }
+.m6-page .m6-scaffolding-prompt h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.m6-page .m6-scaffolding-prompt p { margin: 0; }

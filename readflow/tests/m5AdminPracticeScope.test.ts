@@ -53,6 +53,7 @@ test("admin practice uses the learner pages with admin-only return paths", async
   assert.match(history, /role === "admin" \? "\/admin"/);
   assert.match(readAloud, /role === "admin"\s*\? `\/admin\/read-aloud\/results\/\$\{attemptId\}`/);
   assert.match(result, /const backTarget = role === "admin"\s*\? "\/admin\/oral-reading"/);
-  assert.match(result, /<ReadingHistoryPage role=\{role\} language=\{language\} embedded key=/);
+  // F7 is the Reading History page itself; the result page no longer embeds a copy.
+  assert.doesNotMatch(result, /ReadingHistoryPage/);
   assert.doesNotMatch(result, /className="result-history-link"/);
 });
