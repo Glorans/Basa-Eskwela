@@ -1,6 +1,6 @@
 import { formatAnalyticsDateTime as date } from './services/dateDisplay';
 import { isActiveWarning, matchesSupportFilter, recoveryNote, NOT_COUNTED_NOTE, RISK_RULES, RISK_RULES_INTRO } from './services/studentSupportClassification';
-import { formatScore, formatQuizScore, formatComprehension, formatCount, passageProgressText } from './services/scoreDisplay';
+import { formatScore, formatQuizScore, formatComprehension, passageProgressText } from './services/scoreDisplay';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { comprehensionResultTarget, readingResultTarget } from '../module5/services/comprehensionNavigation';
@@ -26,7 +26,9 @@ export function NotCountedQuizzes({quizzes,own}:{quizzes?:Quiz[];own?:LearnerRol
 export function MetricsCards({data}:{data:Metrics}) {return <div className="m7-metrics">{[
   ['Saved readings',data.readingAttempts],['Completed quizzes',data.completedQuizzes],['Comprehension',formatComprehension(data)],['Reading accuracy',percent(data.pronunciationAccuracy)],['Reading speed',wpm(data.readingSpeedWpm)],
 ].map(([label,value]) => <div className="m7-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>;}
-function QuizTable({quizzes,own}:{quizzes:Quiz[];own?:LearnerRole}) {return !quizzes.length ? <p>No completed quizzes yet.</p> : <div className="m7-scroll"><table><thead><tr><th>Activity</th><th>Completed (PHT)</th><th>First-answer score</th><th>Hints</th></tr></thead><tbody>{[...quizzes].reverse().map(q => <tr key={q.id}><td>{own ? <Link to={comprehensionResultTarget(own, q.id)}>{q.title || 'Comprehension activity'}</Link> : q.title || 'Comprehension activity'}</td><td>{date(q.completedAt)}</td><td>{formatQuizScore(q)}</td><td>{formatCount(q.hintsUsed)}</td></tr>)}</tbody></table></div>;}
+// No Hints column: M6 no longer records hints (one final answer per question), so the
+// count is 0 for every current activity. Saved hint_used values are left unchanged.
+function QuizTable({quizzes,own}:{quizzes:Quiz[];own?:LearnerRole}) {return !quizzes.length ? <p>No completed quizzes yet.</p> : <div className="m7-scroll"><table><thead><tr><th>Activity</th><th>Completed (PHT)</th><th>First-answer score</th></tr></thead><tbody>{[...quizzes].reverse().map(q => <tr key={q.id}><td>{own ? <Link to={comprehensionResultTarget(own, q.id)}>{q.title || 'Comprehension activity'}</Link> : q.title || 'Comprehension activity'}</td><td>{date(q.completedAt)}</td><td>{formatQuizScore(q)}</td></tr>)}</tbody></table></div>;}
 /**
  * View Personal Learning Progress (Appendix N M7 function 1) for Students and Independent
  * Learners. The API returns only the signed-in learner's records. Independent Learners have

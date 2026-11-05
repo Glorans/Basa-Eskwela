@@ -58,6 +58,23 @@ test("Independent Learners have no classroom section; module activities link to 
   assert.match(page, /passageProgressText\(a\)/);
 });
 
+test("quiz tables show no Hints column: M6 no longer records hints", () => {
+  const page = source("M7Pages.tsx");
+  const table = page.slice(page.indexOf("function QuizTable"), page.indexOf("\n", page.indexOf("function QuizTable")));
+  assert.match(table, /<th>Activity<\/th><th>Completed \(PHT\)<\/th><th>First-answer score<\/th><\/tr>/);
+  assert.doesNotMatch(table, /Hints|hintsUsed/);
+  // The same table serves Supporting quiz history, the not-counted results and learner progress.
+  assert.match(page, /<h3>Supporting quiz history<\/h3><QuizTable/);
+  assert.match(page, /Other saved results \(not counted\)<\/h3><p>\{NOT_COUNTED_NOTE\}<\/p><QuizTable/);
+  assert.match(table, /className="m7-scroll"/, "the responsive table wrapper is kept");
+  // Teacher Analytics > Assessments > Quiz Score Tracking: same rule; its scores remain.
+  const analytics = source("TeacherAnalyticsPage.tsx");
+  assert.doesNotMatch(analytics, /Hints Used|hintsUsed|hints and/i);
+  assert.match(analytics, /"Correct",\s*"Score",\s*\]/);
+  assert.match(analytics, /formatPercentage\(\s*score\.scorePercentage\s*\)/);
+  assert.match(analytics, /counts the one final answer\s+given to each question/);
+});
+
 test("module progress reads as passages completed; other activities add nothing", () => {
   assert.equal(passageProgressText({ kind: "module", passagesCompleted: 4, passagesTotal: 6 }), "4 of 6 passages completed");
   assert.equal(passageProgressText({ kind: "module", passagesCompleted: 0, passagesTotal: 0 }), "No passages available");

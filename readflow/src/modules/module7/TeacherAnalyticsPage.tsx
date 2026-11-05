@@ -1682,7 +1682,6 @@ export default function TeacherAnalyticsPage() {
                                     "Completed",
                                     "Correct",
                                     "Score",
-                                    "Hints Used",
                                   ].map((heading) => (
                                     <th
                                       key={heading}
@@ -1779,17 +1778,6 @@ export default function TeacherAnalyticsPage() {
                                           score.scorePercentage
                                         )}
                                       </td>
-
-                                      <td
-                                        style={{
-                                          padding:
-                                            "14px",
-                                        }}
-                                      >
-                                        {
-                                          score.hintsUsed
-                                        }
-                                      </td>
                                     </tr>
                                   )
                                 )}
@@ -1808,10 +1796,8 @@ export default function TeacherAnalyticsPage() {
                           Quiz scores are calculated
                           from completed comprehension
                           assessments only. Each score
-                          reflects correct answers on
-                          the first attempt; hints and
-                          subsequent corrections do
-                          not increase that score.
+                          counts the one final answer
+                          given to each question.
                         </p>
                       </article>
                     )
