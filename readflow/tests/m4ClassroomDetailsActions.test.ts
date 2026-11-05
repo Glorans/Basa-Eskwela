@@ -154,7 +154,15 @@ async function mount(options: Options = {}) {
     // The shared roster panel renders for real (it has no hooks of its own).
     if (id.endsWith("/components/EnrolledStudentsPanel")) return loadComponentModule(panelUrl, stub);
     if (id.endsWith("/components/LegacyRoomSubjectPanel")) return loadComponentModule(legacyPanelUrl, stub);
-    if (id.endsWith("/components/RoomArchivePanel")) return loadComponentModule(new URL("../src/modules/module4/components/RoomArchivePanel.tsx", import.meta.url), stub);
+    // Exercise the page's real handlers here; portal, focus and pointer behavior
+    // are exercised with real React/DOM in browser/m4Prototype3.mjs.
+    if (id.endsWith("/components/RoomActionsMenu")) return { default: (props: any) => {
+      const h = require("react").createElement;
+      return h("div", {},
+        h("button", { onClick: props.onEdit }, "Edit Learning Room"),
+        props.archiveSupported && h("button", { onClick: props.onToggleArchive, disabled: props.archiveBusy },
+          props.archived ? "Restore Learning Room" : "Archive Learning Room"));
+    } };
     return require(id);
   };
   const page = loadComponentModule(pageUrl, stub, {
@@ -214,7 +222,7 @@ const overview = (students: number, modules: number) =>
 test("editing the room saves the trimmed fields, closes the form and shows the saved room", async () => {
   const page = await mount();
   assert.equal(page.heading(), "Readers");
-  page.click("✎ Edit Learning Room");
+  page.click("Edit Learning Room");
   assert.equal(page.byId("roomName").props.value, "Readers");
   page.change("roomName", "  Story Club ");
   page.change("section", "Grade 5");
@@ -234,7 +242,7 @@ for (const [label, error, message] of [
 ] as const) {
   test(`a failed room update shows ${label} and keeps the form and the saved room`, async () => {
     const page = await mount({ updateError: error });
-    page.click("✎ Edit Learning Room");
+    page.click("Edit Learning Room");
     page.change("roomName", "Story Club");
     await page.submit("roomName");
     assert.deepEqual(page.dialogs, [message]);
@@ -247,7 +255,7 @@ for (const [label, error, message] of [
 
 test("a blank room name is refused before saving", async () => {
   const page = await mount();
-  page.click("✎ Edit Learning Room");
+  page.click("Edit Learning Room");
   page.change("roomName", "   ");
   await page.submit("roomName");
   assert.deepEqual(page.dialogs, ["Room name is required."]);
@@ -257,11 +265,11 @@ test("a blank room name is refused before saving", async () => {
 
 test("cancelling an edit discards typed changes", async () => {
   const page = await mount();
-  page.click("✎ Edit Learning Room");
+  page.click("Edit Learning Room");
   page.change("roomName", "Story Club");
   page.click("Cancel");
   assert.equal(page.heading(), "Readers");
-  page.click("✎ Edit Learning Room");
+  page.click("Edit Learning Room");
   assert.equal(page.byId("roomName").props.value, "Readers");
   assert.deepEqual(page.calls, []);
 });

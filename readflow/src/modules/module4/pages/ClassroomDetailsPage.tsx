@@ -42,7 +42,7 @@ import { getMaterialQuestionSets, getMaterialServiceError } from "../../module3/
 import type { MaterialQuestionSetSummary } from "../../module3/types/content";
 import EnrolledStudentsPanel, { EnrolledStudentsButton } from "../components/EnrolledStudentsPanel";
 import LegacyRoomSubjectPanel from "../components/LegacyRoomSubjectPanel";
-import RoomArchivePanel from "../components/RoomArchivePanel";
+import RoomActionsMenu from "../components/RoomActionsMenu";
 
 const LANGUAGE_NAMES: Record<ReadingLanguage, string> = { en: "English", fil: "Filipino" };
 
@@ -120,6 +120,9 @@ type ClassroomInfoSectionProps = {
   onSectionChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onStartEdit: () => void;
+  archiveBusy: boolean;
+  archiveError: string;
+  onToggleArchive: () => void;
   onCancelEdit: () => void;
   onSave: (event: React.FormEvent<HTMLFormElement>) => void;
 };
@@ -135,12 +138,15 @@ function ClassroomInfoSection({
   onSectionChange,
   onDescriptionChange,
   onStartEdit,
+  archiveBusy,
+  archiveError,
+  onToggleArchive,
   onCancelEdit,
   onSave,
 }: ClassroomInfoSectionProps) {
   return !editing ? (
     <div className="mb-6 rounded-3xl bg-[#dce8e7] p-6 shadow-lg md:p-7">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex items-start justify-between gap-5">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f7cf4a] text-2xl">
@@ -150,6 +156,11 @@ function ClassroomInfoSection({
             {classroom.section && (
               <span className="rounded-full bg-[#ef7468] px-3 py-1 text-xs font-bold text-white">
                 {classroom.section}
+              </span>
+            )}
+            {isRoomArchived(classroom) && (
+              <span className="rounded-full bg-[#5c7471]/15 px-3 py-1 text-xs font-bold text-[#173f3b]">
+                This learning room is archived
               </span>
             )}
           </div>
@@ -165,14 +176,15 @@ function ClassroomInfoSection({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={onStartEdit}
-          className="shrink-0 rounded-xl bg-[#f7cf4a] px-5 py-3 font-extrabold text-[#173f3b] shadow-sm transition hover:bg-[#f2c83a]"
-        >
-          ✎ Edit Learning Room
-        </button>
+        <RoomActionsMenu
+          onEdit={onStartEdit}
+          archiveSupported={supportsRoomArchive(classroom)}
+          archived={isRoomArchived(classroom)}
+          archiveBusy={archiveBusy}
+          onToggleArchive={onToggleArchive}
+        />
       </div>
+      {archiveError && <p role="alert" className="mt-3 text-sm font-bold text-[#b42318]">{archiveError}</p>}
 
       {/* Room Code */}
       <div className="mt-6 max-w-sm rounded-2xl bg-white/75 px-5 py-4">
@@ -1305,6 +1317,9 @@ export default function ClassroomDetailsPage() {
         onSectionChange={setSection}
         onDescriptionChange={setDescription}
         onStartEdit={handleStartEdit}
+        archiveBusy={archiveBusy}
+        archiveError={archiveError}
+        onToggleArchive={() => void handleToggleArchive()}
         onCancelEdit={handleCancelEdit}
         onSave={handleSaveClassroom}
       />
@@ -1335,15 +1350,6 @@ export default function ClassroomDetailsPage() {
         onClose={closeStudentsPanel}
         onRemoveStudent={handleRemoveStudent}
       />
-
-      {supportsRoomArchive(classroom) && (
-        <RoomArchivePanel
-          archived={isRoomArchived(classroom)}
-          busy={archiveBusy}
-          error={archiveError}
-          onToggle={() => void handleToggleArchive()}
-        />
-      )}
 
       {legacySubject && !classroom.subject && (
         <LegacyRoomSubjectPanel

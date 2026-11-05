@@ -102,10 +102,101 @@ try {
   const input=async(selector,value)=>{await evaluate(`{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));}`);};
   const select=async(selector,value)=>{await evaluate(`{const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));}`);};
   const navigate=async route=>{await send('Page.navigate',{url:'http://127.0.0.1:5182'+route});await until('document.querySelector("#enrolledStudentsButton")');};
+  const triggerSelector = 'button[aria-label="Learning Room actions"]';
+  const openActions=async()=>{
+    await evaluate(`document.querySelector('${triggerSelector}').click()`);
+    await until('document.querySelector("[role=menu]")');
+  };
+  const key=async(key,code=key,modifiers=0)=>{
+    const windowsVirtualKeyCode={Enter:13,' ':32,Tab:9,Escape:27,ArrowDown:40,ArrowUp:38,Home:36,End:35}[key];
+    await send('Input.dispatchKeyEvent',{type:'keyDown',key,code,modifiers,windowsVirtualKeyCode,...(key==='Enter'?{text:'\r'}:key===' '?{text:' '}:{})});
+    await send('Input.dispatchKeyEvent',{type:'keyUp',key,code,modifiers,windowsVirtualKeyCode});
+  };
+  const point=selector=>evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+  const mouse=async(selector,type='mouseMoved')=>send('Input.dispatchMouseEvent',{type,...await point(selector),...(type==='mouseMoved'?{}:{button:'left',clickCount:1})});
   await send('Runtime.enable');
   await send('Network.enable');
   // Block external page resources even if an accidental real client import is introduced.
   await send('Network.setBlockedURLs',{urls:['https://*','http://localhost:*']});
+
+  // Real pointer, focus, touch, layout and existing-action checks for the header menu.
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await navigate('/teacher/archive-room');
+  assert.ok(await evaluate('!document.querySelector("#roomArchiveHeading")'),'old archive panel removed');
+  assert.ok(await evaluate(`(()=>{const t=document.querySelector('${triggerSelector}').getBoundingClientRect();const h=document.querySelector('h1').getBoundingClientRect();return t.x>h.right && t.y<=h.bottom})()`),'actions stay at top right');
+  assert.ok(await evaluate(`(()=>{const overview=document.querySelector('#enrolledStudentsButton').parentElement;const modules=overview.nextElementSibling;return modules.textContent.includes('Assigned Reading Modules') && modules.getBoundingClientRect().top-overview.getBoundingClientRect().bottom===24})()`),'modules follow overview with normal spacing');
+  await mouse(triggerSelector);
+  await until('document.querySelector("[role=menu]")');
+  assert.deepEqual(await evaluate('[...document.querySelectorAll("[role=menuitem]")].map(e=>e.textContent.trim())'),['Edit Learning Room','Archive Learning Room']);
+  assert.ok(await evaluate(`(()=>{const t=document.querySelector('${triggerSelector}').getBoundingClientRect();const m=document.querySelector('[role=menu]').getBoundingClientRect();return Math.abs(m.right-t.right)<1 && m.top>=t.bottom})()`),'menu below and aligned right');
+  // Cross the transparent gap into the portaled menu, then remain there.
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',...await evaluate(`(()=>{const r=document.querySelector('${triggerSelector}').getBoundingClientRect();return {x:r.x+20,y:r.bottom+4}})()`)});
+  await mouse('[role=menuitem]');
+  await new Promise(r=>setTimeout(r,300));
+  assert.ok(await evaluate('!!document.querySelector("[role=menu]")'),'hover crossing remains open');
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:5,y:5});
+  await until('!document.querySelector("[role=menu]")');
+  // Hover followed by a real click pins the menu; a second click closes it.
+  await mouse(triggerSelector);await mouse(triggerSelector,'mousePressed');await mouse(triggerSelector,'mouseReleased');
+  assert.ok(await evaluate('!!document.querySelector("[role=menu]")'));
+  await mouse(triggerSelector,'mousePressed');await mouse(triggerSelector,'mouseReleased');
+  await until('!document.querySelector("[role=menu]")');
+  await openActions();await key('Escape');
+  await until('!document.querySelector("[role=menu]")');
+  assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Learning Room actions');
+  await openActions();
+  await mouse('h1','mousePressed');await mouse('h1','mouseReleased');
+  await until('!document.querySelector("[role=menu]")');
+  await evaluate(`document.querySelector('${triggerSelector}').focus()`);
+  await key('ArrowDown');
+  assert.equal(await evaluate('document.activeElement.textContent.trim()'),'Edit Learning Room');
+  await key('End');
+  assert.equal(await evaluate('document.activeElement.textContent.trim()'),'Archive Learning Room');
+  await key('ArrowDown');
+  assert.equal(await evaluate('document.activeElement.textContent.trim()'),'Edit Learning Room');
+  await key('ArrowUp');await key('Home');
+  assert.equal(await evaluate('document.activeElement.textContent.trim()'),'Edit Learning Room');
+  await key('Tab');await until('!document.querySelector("[role=menu]")');
+  assert.equal(await evaluate('document.activeElement.id'),'enrolledStudentsButton');
+  await evaluate(`document.querySelector('${triggerSelector}').focus()`);
+  await key(' ', 'Space');await key('Tab','Tab',8);
+  assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Learning Room actions');
+  await key('ArrowUp');
+  assert.equal(await evaluate('document.activeElement.textContent.trim()'),'Archive Learning Room');
+  await key('Escape');await key('Enter');
+  await until('document.activeElement.getAttribute("role")==="menuitem"');
+  await key('Enter');
+  await until('document.querySelector("#roomName")');
+  assert.equal(await evaluate('document.querySelector("#roomName").value'),'Room archive-room');
+  assert.ok(await evaluate('!document.querySelector("[role=menu]")'));
+  await click('Cancel');
+  // A clipping ancestor cannot clip a menu portaled into document.body.
+  await evaluate(`document.querySelector('${triggerSelector}').parentElement.style.overflow='hidden'`);
+  await openActions();
+  assert.ok(await evaluate(`(()=>{const m=document.querySelector('[role=menu]');const r=m.getBoundingClientRect();return m.parentElement.parentElement===document.body && m.contains(document.elementFromPoint(r.x+20,r.bottom-20))})()`));
+  await key('Escape');
+  const menuShots=await mkdtemp(join(tmpdir(),'basa-m4-room-actions-'));
+  for(const width of [1280,768,375,320]) {
+    await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<1000});
+    await send('Emulation.setTouchEmulationEnabled',{enabled:width<1000});
+    await navigate('/teacher/archive-room');
+    if(width<1000){
+      await send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...await point(triggerSelector),radiusX:2,radiusY:2}]});
+      await send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      await until('document.querySelector("[role=menu]")');
+    }else await openActions();
+    assert.ok(await evaluate(`(()=>{const t=document.querySelector('${triggerSelector}').getBoundingClientRect();const r=document.querySelector('[role=menu]').getBoundingClientRect();return t.width>=44 && t.height>=44 && r.left>=0 && r.right<=innerWidth && document.documentElement.scrollWidth<=innerWidth})()`),'menu and touch target fit at '+width);
+    const shot=await send('Page.captureScreenshot',{format:'png'});
+    await writeFile(join(menuShots,`actions-${width}.png`),Buffer.from(shot.data,'base64'));
+    if(width<1000){
+      await send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...await point('[role=menuitem]'),radiusX:2,radiusY:2}]});
+      await send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      await until('document.querySelector("#roomName")');await click('Cancel');
+    }else await key('Escape');
+  }
+  await send('Emulation.setTouchEmulationEnabled',{enabled:false});
+  await send('Emulation.clearDeviceMetricsOverride');
+  console.log('PASS room actions: hover/click, gap crossing, outside/Escape, keyboard/focus, edit form, clipping, panel removal/spacing, 1280/768/375/320px and touch. Screenshots: '+menuShots);
   for(const [room,label] of [['english','English'],['filipino','Filipino']]) {
     await navigate('/teacher/'+room); await click('Assign Module');
     await until('document.querySelector("#moduleLanguage")');
@@ -126,13 +217,14 @@ try {
 
   // Archive / Restore (only where rooms.archived_at exists).
   await navigate('/teacher/english');
+  await openActions();
   assert.ok(await evaluate('!document.body.innerText.includes("Archive Learning Room")'),'no archive control without the migration');
   await navigate('/teacher/archive-room');
-  await click('Archive Learning Room');await until('document.querySelector("dialog[open]")');
+  await openActions();await click('Archive Learning Room');await until('document.querySelector("dialog[open]")');
   assert.ok(await evaluate('document.querySelector("dialog[open]").textContent.includes("Nothing is deleted")'));
   await click('Cancel','dialog button');await until('!document.querySelector("dialog")');
   assert.deepEqual(await evaluate('window.calls.filter(c=>c[0]==="archive")'),[],'Cancel keeps the room active');
-  await click('Archive Learning Room');await until('document.querySelector("dialog[open]")');await click('Confirm','dialog button');
+  await openActions();await click('Archive Learning Room');await until('document.querySelector("dialog[open]")');await click('Confirm','dialog button');
   await until('document.body.innerText.includes("This learning room is archived")');
   assert.equal(await evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="Assign Module").disabled'),true);
   assert.equal(await evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="Assign Activity").disabled'),true);
@@ -141,8 +233,8 @@ try {
     assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'archived banner fits at '+width);
   }
   await send('Emulation.clearDeviceMetricsOverride');
-  await click('Restore Learning Room');await until('document.querySelector("dialog[open]")');await click('Confirm','dialog button');
-  await until('document.body.innerText.includes("Archive Learning Room") && !document.body.innerText.includes("This learning room is archived")');
+  await openActions();await click('Restore Learning Room');await until('document.querySelector("dialog[open]")');await click('Confirm','dialog button');
+  await until('!document.querySelector("dialog") && !document.body.innerText.includes("This learning room is archived")');
   assert.equal(await evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="Assign Module").disabled'),false);
   assert.deepEqual(await evaluate('window.calls.filter(c=>c[0]==="archive").map(c=>c[2])'),[true,false]);
 
