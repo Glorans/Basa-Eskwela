@@ -286,6 +286,12 @@ export function getSavedPronunciationCheck(attemptId: string) {
     "Saved pronunciation results could not be loaded.");
 }
 
+/** A student's saved check, for Admin review. Free: never runs a new check. */
+export function getAdminPronunciationCheck(attemptId: string) {
+  return getSavedCheck(`/api/oral-reading/admin/attempts/${encodeURIComponent(attemptId)}/pronunciation`,
+    "The saved pronunciation check could not be loaded.");
+}
+
 /** A student's saved check, for a Teacher allowed to review the attempt. */
 export function getTeacherPronunciationCheck(attemptId: string) {
   return getSavedCheck(`/api/oral-reading/teacher/attempts/${encodeURIComponent(attemptId)}/pronunciation`,

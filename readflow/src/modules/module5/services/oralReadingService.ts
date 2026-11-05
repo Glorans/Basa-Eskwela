@@ -281,16 +281,65 @@ export async function uploadOralReadingRecording(attemptId: string, segments: re
 
 export async function getOralReadingRecording(
   attemptId: string,
-  teacher = false,
+  /** Whose route: own (false), Teacher review (true) or Admin student review ("admin"). */
+  reviewer: boolean | "admin" = false,
 ): Promise<{ available: boolean; segments: string[] }> {
+  const scope = reviewer === "admin" ? "admin/" : reviewer ? "teacher/" : "";
   try {
     const response = await api.get(
-      `/api/oral-reading/${teacher ? "teacher/" : ""}attempts/${encodeURIComponent(attemptId)}/recording`,
+      `/api/oral-reading/${scope}attempts/${encodeURIComponent(attemptId)}/recording`,
       { headers: await getAuthHeaders(), timeout: REQUEST_TIMEOUT_MS },
     );
     return response.data.recording;
   } catch (error) {
     throw toServiceError(error, "Unable to load recording. Please retry.");
+  }
+}
+
+// --- Admin "Student Reading Assessments": read-only; these never use the learner cache. ---
+
+export interface AdminStudentSummary {
+  id: string;
+  name: string;
+  readingCount: number;
+  latestCompletedAt: string;
+}
+
+/** Null language: the reading was saved before its language was recorded. */
+export type AdminStudentAttempt = Omit<OralReadingAttempt, "language"> & {
+  language: "en" | "fil" | null;
+  learnerName: string;
+};
+
+export async function getAdminStudents() {
+  try {
+    const response = await api.get<{ students: AdminStudentSummary[] }>("/api/oral-reading/admin/students",
+      { headers: await getAuthHeaders(), timeout: REQUEST_TIMEOUT_MS });
+    return response.data.students;
+  } catch (error) {
+    throw toServiceError(error, "Unable to load student reading assessments.");
+  }
+}
+
+export async function getAdminStudentReadings(studentId: string) {
+  try {
+    const response = await api.get<{ student: { id: string; name: string }; attempts: OwnOralReadingSummary[] }>(
+      `/api/oral-reading/admin/students/${encodeURIComponent(studentId)}/attempts`,
+      { headers: await getAuthHeaders(), timeout: REQUEST_TIMEOUT_MS });
+    return response.data;
+  } catch (error) {
+    throw toServiceError(error, "Unable to load this student's readings.");
+  }
+}
+
+export async function getAdminStudentAttempt(attemptId: string) {
+  try {
+    const response = await api.get<{ attempt: AdminStudentAttempt }>(
+      `/api/oral-reading/admin/attempts/${encodeURIComponent(attemptId)}`,
+      { headers: await getAuthHeaders(), timeout: REQUEST_TIMEOUT_MS });
+    return response.data.attempt;
+  } catch (error) {
+    throw toServiceError(error, "Unable to load this saved assessment.");
   }
 }
 

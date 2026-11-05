@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
 import { comprehensionTargetForReading } from "../src/modules/module5/services/comprehensionNavigation.ts";
+import * as savedAttemptOrder from "../src/modules/module5/services/savedAttemptOrder.ts";
 
 const require = createRequire(import.meta.url);
 const source = readFileSync(new URL('../src/modules/module5/pages/ReadingHistoryPage.tsx', import.meta.url), 'utf8');
@@ -14,7 +15,8 @@ function fixture(role: string, language?: "en" | "fil") {
   let cursor = 0;
   let effects: (() => void)[] = [];
   let requestCount = 0;
-  let replay: (() => void) | undefined;
+  // StrictMode-style replay of every effect (setup, cleanup, setup); effects may return no cleanup.
+  const replays: (() => void)[] = [];
   let resolve!: (rows: unknown[]) => void;
   let reject!: (error: Error) => void;
   const react = {
@@ -30,8 +32,8 @@ function fixture(role: string, language?: "en" | "fil") {
       if (!slots[i] || deps.some((v,j) => v !== slots[i][j])) {
         slots[i] = deps;
         effects.push(() => {
-          let cleanup = callback() as unknown as (() => void);
-          replay = () => { cleanup(); cleanup = callback() as unknown as (() => void); };
+          let cleanup = callback() as unknown as (() => void) | undefined;
+          replays.push(() => { cleanup?.(); cleanup = callback() as unknown as (() => void) | undefined; });
         });
       }
     },
@@ -43,7 +45,9 @@ function fixture(role: string, language?: "en" | "fil") {
     require: (id: string) => id === 'react' ? react : id === 'react-router-dom' ? { Link: 'a' }
       : id.includes('oralReadingService') ? { getOwnOralReadingAttempts: () => { requestCount++; return new Promise((yes,no) => { resolve = yes; reject = no; }); } }
       : id.includes('activityLanguage') ? { activityLanguageState, getActivityText }
-      : id.includes('comprehensionNavigation') ? { comprehensionTargetForReading } : require(id),
+      : id.includes('comprehensionNavigation') ? { comprehensionTargetForReading }
+      : id.includes('savedAttemptOrder') ? savedAttemptOrder
+      : id.includes('SavedAssessmentModal') ? { default: 'saved-assessment-modal' } : require(id),
   });
   function render(embedded = false) {
     cursor=0;
@@ -51,7 +55,7 @@ function fixture(role: string, language?: "en" | "fil") {
     const pending=effects; effects=[]; pending.forEach(fn=>fn());
     return tree;
   }
-  return { render, replay: () => replay!(), requests: () => requestCount, resolve: (rows: unknown[]) => resolve(rows), reject: () => reject(new Error('History is offline')) };
+  return { render, replay: () => replays.forEach(run => run()), requests: () => requestCount, resolve: (rows: unknown[]) => resolve(rows), reject: () => reject(new Error('History is offline')) };
 }
 function find(tree: any, predicate: (node: any) => boolean): any {
   if (!tree || typeof tree !== 'object') return;
@@ -75,14 +79,18 @@ for (const role of ['student','general_user','admin']) {
     // The saved score is reading accuracy; a Filipino reading never shows a pronunciation score.
     assert.doesNotMatch(text, /Pronunciation accuracy|Pronunciation Accuracy|Katumpakan ng Pagbigkas|pagsusuri ng bigkas: /i);
     assert.doesNotMatch(text, /are not saved/);
-    const result=`${role==='admin'?'/admin':role==='student'?'/dashboard':'/m3/general'}/read-aloud/results/saved`;
+    // F7: one clickable card per reading opens its saved assessment in a modal; there are no navigation links.
     const links=[] as any[];
     (function walk(node:any){ if(!node||typeof node!=='object')return; if(node.type==='a')links.push(node); [node.props?.children].flat(Infinity).forEach(walk); })(tree);
-    // F7 reopens a saved attempt straight at its result (F6), transcript (F5), or feedback and recording (F2).
-    assert.deepEqual(links.map(link=>link.props.to), [`${result}?view=result`, `${result}?view=transcript`, `${result}?view=feedback`]);
+    assert.deepEqual(links, []);
+    const card=find(tree,node=>node.type==='button'&&node.props['aria-haspopup']==='dialog');
+    assert.match(JSON.stringify(card), role === "admin" ? /"Reading 1"/ : /"Pagbasa 1"/);
+    card.props.onClick();
+    const modal=find(f.render(),node=>node.type==='saved-assessment-modal');
+    assert.deepEqual([modal.props.summary.id, modal.props.readingNumber, modal.props.role], ['saved', 1, role]);
   });
 }
-test('F7: an English reading with a saved pronunciation check shows its scores and reopens them', async () => {
+test('F7: an English reading with a saved pronunciation check shows its scores, and every card opens its own assessment', async () => {
   const f=fixture('student');
   f.render();
   f.resolve([{ id:'saved', moduleTitle:'Seeds', passageTitle:'Growing', language:'en', completedAt:'2026-10-08T10:00:00Z',
@@ -99,12 +107,12 @@ test('F7: an English reading with a saved pronunciation check shows its scores a
   assert.doesNotMatch(text, /Fluency|"74"|,74,/);
   assert.match(text, /Some speech was not checked\./);
   assert.match(text, /"Reading accuracy: ","91.5"/, 'reading accuracy stays separate');
-  const links=[] as any[];
-  (function walk(node:any){ if(!node||typeof node!=='object')return; if(node.type==='a')links.push(node); [node.props?.children].flat(Infinity).forEach(walk); })(tree);
-  const targets=links.map(link=>link.props.to);
-  assert.ok(targets.includes('/dashboard/read-aloud/results/saved?view=accuracy'));
-  assert.ok(!targets.includes('/dashboard/read-aloud/results/unchecked?view=accuracy'), 'no saved check, no scores link');
-  assert.equal(text.match(/Saved pronunciation check: /g)?.length, 1);
+  assert.equal(text.match(/Saved pronunciation check: /g)?.length, 1, 'only the reading with a saved check shows one');
+  const cards=[] as any[];
+  (function walk(node:any){ if(!node||typeof node!=='object')return; if(node.type==='button'&&node.props['aria-haspopup']==='dialog')cards.push(node); [node.props?.children].flat(Infinity).forEach(walk); })(tree);
+  assert.equal(cards.length, 2);
+  cards[1].props.onClick();
+  assert.equal(find(f.render(),node=>node.type==='saved-assessment-modal').props.summary.id, 'unchecked');
 });
 
 test('history handles empty records and retry after failure', async () => {
@@ -175,8 +183,10 @@ test('mixed history uses each saved language, never titles or the parent activit
     assert.equal(row.props.lang, expected);
     assert.ok(JSON.stringify(row).includes(getActivityText(expected).t('Reading accuracy: ')));
     assert.ok(JSON.stringify(row).includes('Saved title unchanged'));
-    const links = find(row, n => n.type === 'div').props.children.flat(Infinity).filter(Boolean);
-    assert.equal(links.length, 4); // result, transcript, feedback and recording, comprehension
-    assert.ok(links.every((link: any) => link.props.state.readingActivityLanguage === expected));
+    // Each card is one button in its own reading's language, numbered for that story (newest first: 3, 2, 1).
+    const card = find(row, n => n.type === 'button');
+    assert.equal(card.props['aria-haspopup'], 'dialog');
+    assert.ok(JSON.stringify(card).includes(getActivityText(expected).t('Reading {number}', { number: 3 - index })));
+    assert.equal(find(row, n => n.type === 'a'), undefined, 'no navigation links on the cards');
   }
 });

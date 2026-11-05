@@ -12,6 +12,7 @@ const {
 } = require("./routes/adminDiagnosticResults");
 const { adminUsersRouter } = require("./routes/adminUsers");
 const { oralReadingRouter } = require("./routes/oralReading");
+const { adminStudentReadingRouter } = require("./routes/adminStudentReading");
 const { weeklyReportsRouter } = require("./routes/weeklyReports");
 const {
   adminModuleExtractionRouter,
@@ -49,6 +50,8 @@ app.use("/api/admin/modules", require("./routes/adminModulePassages").createAdmi
 app.use("/api/admin/diagnostic-results", adminDiagnosticResultsRouter);
 app.use("/api/admin/users", adminUsersRouter);
 app.use("/api/admin/teacher-invitations", require("./routes/teacherInvitations").createTeacherInvitationsRouter());
+// Admin review of students' saved assessments; other /admin paths continue to oralReadingRouter.
+app.use("/api/oral-reading/admin", adminStudentReadingRouter);
 app.use("/api/oral-reading", oralReadingRouter);
 app.use("/api/weekly-reports", weeklyReportsRouter);
 app.use("/api/analytics", require("./routes/m7Analytics"));

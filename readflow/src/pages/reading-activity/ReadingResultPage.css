@@ -944,3 +944,32 @@
 .result-score-help p {
   margin: 8px 0 0;
 }
+
+/* F7 Saved Oral Reading Assessment modal (Reading History). */
+.result-saved-assessment {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.result-saved-assessment .result-feedback-button {
+  width: auto;
+  justify-self: start;
+}
+
+.result-saved-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 0;
+}
+
+.result-saved-details dt {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.result-saved-details dd {
+  margin: 2px 0 0;
+  font-weight: 800;
+}

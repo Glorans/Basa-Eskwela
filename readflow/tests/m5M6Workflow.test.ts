@@ -861,7 +861,7 @@ test("a learner reading without questions says so instead of hiding the next ste
   assert.doesNotMatch(await show("admin", { ...base, moduleId: "module", passageId: "passage" }), note);
 });
 
-test("Reading History reopens each module reading's own comprehension activity or results", async () => {
+test("Reading History cards hold no comprehension links; M6 is reached through the reading result", async () => {
   const rows = [
     { id: "oral-1", moduleId: "module", passageId: "passage", roomId: null, assignmentId: null, materialId: null,
       moduleTitle: "Stories", passageTitle: "A Helping Hand", language: "en", completedAt: "2026-10-25T08:00:00Z",
@@ -877,6 +877,7 @@ test("Reading History reopens each module reading's own comprehension activity o
     const page = mount("modules/module5/pages/ReadingHistoryPage.tsx", {}, {
       oralReadingService: { getOwnOralReadingAttempts: async () => rows },
       comprehensionNavigation: { comprehensionTargetForReading },
+      savedAttemptOrder: savedAttemptOrder, SavedAssessmentModal: { default: "saved-assessment-modal" },
     }, role);
     page.render(); await tick();
     const found: string[] = [];
@@ -887,10 +888,8 @@ test("Reading History reopens each module reading's own comprehension activity o
     })(page.render());
     return found;
   };
-  assert.deepEqual(await links("general_user"),
-    ["/m3/general/modules/module/comprehension?passageId=passage&oralReadingAttemptId=oral-1"]);
-  assert.deepEqual(await links("student"), ["/dashboard/materials/module/comprehension?passageId=passage&oralReadingAttemptId=oral-1"]);
-  assert.deepEqual(await links("admin"), [], "admin practice has no comprehension");
+  // F7 has no M6 link at all; "reading feedback comes before questions" above tests Continue to Questions per role.
+  for (const role of ["general_user", "student", "admin"]) assert.deepEqual(await links(role), [], role);
 });
 
 test("the question flow moves forward only, with one final Submit answer and an arrow back link", async () => {

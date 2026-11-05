@@ -7,10 +7,13 @@ import { resolveRecordingDuration } from "../services/recordingDuration";
 interface RecordingPlaybackProps {
   attemptId: string;
   teacher?: boolean;
+  /** Admin student review: the Admin route, worded like Teacher review. */
+  admin?: boolean;
   language?: "en" | "fil";
 }
 
-export default function RecordingPlayback({ attemptId, teacher = false, language = "en" }: RecordingPlaybackProps) {
+export default function RecordingPlayback({ attemptId, teacher = false, admin = false, language = "en" }: RecordingPlaybackProps) {
+  const reviewer = admin ? "admin" : teacher;
   const [segments, setSegments] = useState<string[]>();
   const [error, setError] = useState<"load" | "playback">();
   const [retry, setRetry] = useState(0);
@@ -25,7 +28,7 @@ export default function RecordingPlayback({ attemptId, teacher = false, language
     let active = true;
     setSegments(undefined);
     setError(undefined);
-    void getOralReadingRecording(attemptId, teacher)
+    void getOralReadingRecording(attemptId, reviewer)
       .then((recording) => {
         if (active) setSegments(recording.available ? recording.segments : []);
       })
@@ -35,7 +38,7 @@ export default function RecordingPlayback({ attemptId, teacher = false, language
     return () => {
       active = false;
     };
-  }, [attemptId, teacher, retry]);
+  }, [attemptId, reviewer, retry]);
 
   audioRefs.current.length = segments?.length ?? 0;
 
@@ -45,8 +48,8 @@ export default function RecordingPlayback({ attemptId, teacher = false, language
       aria-label={t("Read-aloud recording")}
       style={{ padding: "20px", borderRadius: "16px", background: "#fff9e9", margin: "16px 0" }}
     >
-      <h3>{t(teacher ? "Student’s recording" : "Listen to your recording")}</h3>
-      <p>{t(teacher ? "Listen while comparing the saved passage and transcript below." : "Listen to your reading and practice words you want to improve.")}</p>
+      <h3>{t(reviewer ? "Student’s recording" : "Listen to your recording")}</h3>
+      <p>{t(reviewer ? "Listen while comparing the saved passage and transcript below." : "Listen to your reading and practice words you want to improve.")}</p>
       {!segments && !error && <p role="status">{t("Loading recording…")}</p>}
       {segments?.length === 0 && <p>{t("Recording unavailable for this activity. Older results may not have saved audio.")}</p>}
       {segments && segments.length > 1 && <p>{t("Playback continues automatically to the next part.")}</p>}

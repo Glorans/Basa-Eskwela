@@ -152,15 +152,18 @@ const wordCount = (count: number) => (count === 1 ? "1 word" : `${count} words`)
  * F2 Your Pronunciation: one or two short sentences built only from the saved
  * check: its score, the number of practice words F4 lists, and its coverage.
  */
-export function pronunciationOverview(summary: PronunciationSummary) {
+export function pronunciationOverview(summary: PronunciationSummary, { wordsBelow = false }: { wordsBelow?: boolean } = {}) {
   if (summary.utterances === 0) return noSpeechMessage(summary);
   if (summary.accuracy === null) {
     return "We could not measure your pronunciation this time. Try reading again clearly, in a quiet place.";
   }
   const flagged = distinctPracticeWords(summary.wordsToPractice).length;
   const partial = isPartialCheck(summary);
+  // F7 shows the practice words further down the same modal instead of in a separate F4 panel.
   const next = flagged > 0
-    ? `Open Mispronounced Words to practice ${wordCount(flagged)}${partial ? " from the part we could check" : ""}.`
+    ? wordsBelow
+      ? `Practice the ${wordCount(flagged)} below${partial ? " from the part we could check" : ""}.`
+      : `Open Mispronounced Words to practice ${wordCount(flagged)}${partial ? " from the part we could check" : ""}.`
     : partial
       ? "No words were flagged for practice in the part we could check."
       : "No words were flagged for practice.";

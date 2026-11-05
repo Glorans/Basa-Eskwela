@@ -54,6 +54,7 @@ import AdminClassroomDetailsPage from "./modules/module4/pages/AdminClassroomDet
 import ReadAloudPage from "./pages/reading-activity/ReadAloudPage";
 import ReadingResultPage from "./pages/reading-activity/ReadingResultPage";
 import AdminOralReadingPage from "./modules/module5/pages/AdminOralReadingPage";
+import AdminStudentReadingAssessmentsPage from "./modules/module5/pages/AdminStudentReadingAssessmentsPage";
 import ReadingHistoryPage from "./modules/module5/pages/ReadingHistoryPage";
 import TeacherOralReadingResultsPage from "./modules/module5/pages/TeacherOralReadingResultsPage";
 import TeacherOralReadingAttemptPage from "./modules/module5/pages/TeacherOralReadingAttemptPage";
@@ -334,6 +335,11 @@ function App() {
             <Route
               path="reading-history"
               element={<ReadingHistoryPage role="admin" />}
+            />
+            {/* M5 F5/F7 - read-only review of students' saved assessments, kept apart from the Admin's own practice. */}
+            <Route
+              path="student-reading-assessments"
+              element={<AdminStudentReadingAssessmentsPage />}
             />
 
             <Route

@@ -41,6 +41,7 @@ function getNavItems(role: M3Role) {
       { label: "Teacher Invitations", to: "/admin/teacher-invitations", icon: UserRound, end: true },
       { label: "Oral Reading", to: "/admin/oral-reading", icon: Mic2, end: false },
       { label: "Reading History", to: "/admin/reading-history", icon: Mic2, end: true },
+      { label: "Student Reading Assessments", to: "/admin/student-reading-assessments", icon: ClipboardList, end: true },
       {
         label: "Diagnostic Results",
         to: "/admin/diagnostic-results",

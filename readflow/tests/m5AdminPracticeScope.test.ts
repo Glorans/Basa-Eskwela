@@ -50,7 +50,9 @@ test("admin practice uses the learner pages with admin-only return paths", async
     read("../src/pages/reading-activity/ReadAloudPage.tsx"),
     read("../src/pages/reading-activity/ReadingResultPage.tsx"),
   ]);
-  assert.match(history, /role === "admin" \? "\/admin"/);
+  // F7 opens saved assessments in a modal: no result-page routes, and the role is passed through.
+  assert.doesNotMatch(history, /read-aloud\/results/);
+  assert.match(history, /role=\{role\}/);
   assert.match(readAloud, /role === "admin"\s*\? `\/admin\/read-aloud\/results\/\$\{attemptId\}`/);
   assert.match(result, /const backTarget = role === "admin"\s*\? "\/admin\/oral-reading"/);
   // F7 is the Reading History page itself; the result page no longer embeds a copy.

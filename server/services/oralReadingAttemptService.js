@@ -709,6 +709,7 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
 }
 
 module.exports = {
+  toAttemptDto,
   loadTeacherStudentProfiles,
   listOwnOralReadingAttempts,
   OralReadingAuthorizationError,
