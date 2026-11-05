@@ -471,9 +471,8 @@ export default function TeacherAnalyticsPage() {
     <div className="m7-dashboard">
       <header className="m7-dashboard-header m7-header-card">
         <div>
-          <p className="m7-dashboard-eyebrow">Module 7</p>
           <h1>Analytics Dashboard</h1>
-          <p>Monitor student reading performance, pronunciation accuracy, comprehension results, and classroom completion rates.</p>
+          <p>Monitor student reading performance, reading accuracy, comprehension results, and classroom completion rates.</p>
         </div>
           <button
             className="m3-button m3-button--secondary"
@@ -873,7 +872,7 @@ export default function TeacherAnalyticsPage() {
                               room.averagePronunciationAccuracy
                             ),
                             description:
-                              "Average available pronunciation accuracy",
+                              "Average transcript-based reading accuracy",
                             icon: Target,
                           },
                           {
@@ -1102,7 +1101,7 @@ export default function TeacherAnalyticsPage() {
                               student.averagePronunciationAccuracy
                             ),
                             description:
-                              "Average recorded pronunciation accuracy",
+                              "Average transcript-based reading accuracy",
                             icon: Target,
                           },
                           {

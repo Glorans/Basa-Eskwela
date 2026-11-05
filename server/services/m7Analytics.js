@@ -1,9 +1,14 @@
 const { getSupabaseAdmin } = require('./supabaseAdmin');
 const { summarizeComprehension } = require('./comprehensionScoring');
-const { deriveAssignedProgress } = require('./assignedReadingProgress');
-const { classifyRisk, compareCompletedQuizzes } = require('./m7Risk');
+const { activeMaterialAssignments, activeRoomModules, deriveActivityProgress, expandModuleAssignments, withAssessmentRequirement } = require('./assignedReadingProgress');
+const { classifyRisk, compareCompletedQuizzes, NO_ASSESSMENT_DATA } = require('./m7Risk');
+const { splitCanonicalCompleted } = require('./comprehensionActivity');
+const { isRiskWorkerEnabled } = require('./m7RiskWorker');
+const { recipientRows } = require('./weeklyReportRows');
 function fail(message, statusCode = 500) { return Object.assign(new Error(message), { statusCode }); }
 async function rows(table, columns = '*', filters = {}, db = getSupabaseAdmin()) {
+  // This table has a composite key and no id column to page by.
+  if (table === 'room_module_recipients') return recipientRows(db, filters.room_module_id ?? null);
   const all = [];
   const entries = Object.entries(filters);
   const arrayFilters = entries.filter(([, value]) => Array.isArray(value));
@@ -42,9 +47,8 @@ async function rows(table, columns = '*', filters = {}, db = getSupabaseAdmin())
 }
 
 const mean = values => { const valid = values.filter(v => typeof v === 'number' && Number.isFinite(v)); return valid.length ? Math.round(valid.reduce((a,b) => a+b, 0) / valid.length * 100) / 100 : null; };
-async function quizzes(filters = {}, options = {}) {
-  const load = options.rows || rows;
-  const attempts = (await load('m6_comprehension_attempts', '*', { ...filters, status: 'completed' })).filter(options.include || (() => true));
+/** Validated first-answer results for the given completed attempts. */
+async function scoreAttempts(attempts, load) {
   const results = [];
   for (let i = 0; i < attempts.length; i += 100) {
     const batch = attempts.slice(i, i + 100);
@@ -73,6 +77,21 @@ async function quizzes(filters = {}, options = {}) {
     return compareCompletedQuizzes(a, b);
   });
 }
+/**
+ * Results that count: one assessment per learner and learning activity, chosen by M6's rule
+ * before any scope or date filter, so a later extra attempt can never take its place.
+ */
+async function quizzes(filters = {}, options = {}) {
+  const load = options.rows || rows;
+  const { canonical } = splitCanonicalCompleted(await load('m6_comprehension_attempts', '*', { ...filters, status: 'completed' }));
+  return scoreAttempts(canonical.filter(options.include || (() => true)), load);
+}
+/** Extra completed attempts saved before the one-assessment rule: viewable as saved, never counted. */
+async function historicalQuizzes(filters = {}, options = {}) {
+  const load = options.rows || rows;
+  const { extra } = splitCanonicalCompleted(await load('m6_comprehension_attempts', '*', { ...filters, status: 'completed' }));
+  return (await scoreAttempts(extra.filter(options.include || (() => true)), load)).map(q => ({ ...q, notCounted: true }));
+}
 async function teacherScope(teacherId) {
   const rooms = await rows('rooms', 'id,room_name', { teacher_id: teacherId });
   if (!rooms.length) return { rooms, students: [] };
@@ -88,16 +107,41 @@ async function requireStudent(teacherId, studentId) {
   return scope;
 }
 async function personal(userId) {
-  const [readings, quizResults, assignments, attempts] = await Promise.all([
-    rows('oral_reading_attempts', 'id,user_id,room_id,material_id,activity_assignment_id,completed_at,pronunciation_accuracy,reading_speed_wpm,detected_error_count', { user_id: userId }),
-    quizzes({ user_id: userId }), rows('reading_activity_assignments', '*', { student_id: userId }),
-    rows('m6_comprehension_attempts', 'id,room_id,material_id,activity_assignment_id,oral_reading_attempt_id,status', { user_id: userId }),
+  const [readings, quizResults, extraResults, assignments, attempts, enrollments] = await Promise.all([
+    rows('oral_reading_attempts', 'id,user_id,module_id,passage_id,assignment_id,room_id,material_id,activity_assignment_id,completed_at,pronunciation_accuracy,reading_speed_wpm,detected_error_count', { user_id: userId }),
+    quizzes({ user_id: userId }), historicalQuizzes({ user_id: userId }), rows('reading_activity_assignments', '*', { student_id: userId }),
+    rows('m6_comprehension_attempts', 'id,module_id,passage_id,assignment_id,room_id,material_id,activity_assignment_id,oral_reading_attempt_id,status,created_at,completed_at', { user_id: userId }),
+    rows('enrollments', 'id,room_id', { student_id: userId }),
   ]);
-  const materialIds = [...new Set(assignments.map(a => a.material_id))];
+  const activities = await activityProgress(userId, assignments, enrollments, readings, attempts);
+  return { summary: metrics(readings, quizResults), readings, quizzes: quizResults, historicalQuizzes: extraResults, activities };
+}
+/** Current progress on a learner's active assigned activities and modules, from saved work only. */
+async function activityProgress(userId, assignments, enrollments, readings, attempts) {
+  const activeAssignments = activeMaterialAssignments(assignments);
+  const materialIds = [...new Set(activeAssignments.map(a => a.material_id))];
   const materials = [];
   for (let i=0;i<materialIds.length;i+=100) materials.push(...await rows('uploaded_materials', 'id,title', { id: materialIds.slice(i,i+100) }));
-  const activities = assignments.map(a => ({ ...deriveAssignedProgress(a, readings, attempts), id: a.id, title: materials.find(m => m.id === a.material_id)?.title || 'Assigned reading activity' }));
-  return { summary: metrics(readings, quizResults), readings, quizzes: quizResults, activities };
+  const materialActivities = activeAssignments.map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: materials.find(m => m.id === a.material_id)?.title || 'Assigned reading activity' }));
+  const { assignments: moduleAssignments, titles } = await learnerModuleAssignments(userId, enrollments);
+  const moduleActivities = moduleAssignments.map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: titles.get(a.module_id) || 'Assigned reading module' }));
+  return [...materialActivities, ...moduleActivities];
+}
+/** The learner's active classroom module assignments, with their passages and titles. */
+async function learnerModuleAssignments(userId, enrollments) {
+  const roomIds = enrollments.map(e => e.room_id);
+  const assigned = roomIds.length ? await rows('room_modules', '*', { room_id: roomIds }) : [];
+  if (!assigned.length) return { assignments: [], titles: new Map() };
+  const modules = await rows('modules', 'id,title,status,deleted_at', { id: [...new Set(assigned.map(m => m.module_id))] });
+  const roomModules = activeRoomModules(assigned, modules);
+  if (!roomModules.length) return { assignments: [], titles: new Map() };
+  const moduleIds = [...new Set(roomModules.map(m => m.module_id))];
+  const [recipients, passages, questions] = await Promise.all([
+    rows('room_module_recipients', 'room_module_id,student_id', { room_module_id: roomModules.map(m => m.id) }),
+    rows('module_passages', 'id,module_id', { module_id: moduleIds }),
+    rows('comprehension_questions', 'id,passage_id', { review_status: 'reviewed', module_id: moduleIds }),
+  ]);
+  return { assignments: expandModuleAssignments(roomModules, recipients, withAssessmentRequirement(passages, questions), () => [userId]), titles: new Map(modules.map(m => [m.id, m.title])) };
 }
 function metrics(readings, quizResults) {
   return { readingAttempts: readings.length, completedQuizzes: quizResults.length,
@@ -114,36 +158,54 @@ async function system() {
 }
 async function teacher(teacherId) {
   const scope = await teacherScope(teacherId);
-  if (!scope.students.length) return { students: [], notifications: [] };
+  const notificationsActive = isRiskWorkerEnabled();
+  if (!scope.students.length) return { students: [], notifications: [], notificationsActive };
   const [history, interventions] = await Promise.all([
     rows('m7_risk_events', '*', { teacher_id: teacherId }), rows('m7_interventions', '*', { teacher_id: teacherId }),
   ]);
   const students = [];
   for (const student of scope.students) {
     const roomIds = scope.enrollments.filter(e => e.student_id === student.id).map(e => e.room_id);
-    const [allQuizzes, allReadings] = await Promise.all([
-      quizzes({ user_id: student.id }, { include: a => !a.room_id || roomIds.includes(a.room_id) }),
-      rows('oral_reading_attempts', 'id,room_id,pronunciation_accuracy,reading_speed_wpm', { user_id: student.id }),
+    const inScope = { include: a => !a.room_id || roomIds.includes(a.room_id) };
+    const [allQuizzes, extraResults, allReadings, activityRows, attemptRows] = await Promise.all([
+      quizzes({ user_id: student.id }, inScope), historicalQuizzes({ user_id: student.id }, inScope),
+      rows('oral_reading_attempts', 'id,room_id,module_id,passage_id,assignment_id,material_id,activity_assignment_id,completed_at,pronunciation_accuracy,reading_speed_wpm', { user_id: student.id }),
+      roomIds.length ? rows('reading_activity_assignments', '*', { student_id: student.id, room_id: roomIds }) : [],
+      rows('m6_comprehension_attempts', 'id,module_id,passage_id,assignment_id,room_id,material_id,activity_assignment_id,oral_reading_attempt_id,status,created_at,completed_at', { user_id: student.id }),
     ]);
     // Match M5 visibility: enrolled learners' independent work and own-classroom work.
     const quizResults = allQuizzes.filter(q => !q.roomId || roomIds.includes(q.roomId));
     const readings = allReadings.filter(r => !r.room_id || roomIds.includes(r.room_id));
     const unavailable = quizResults.some(q => q.dataQuality);
-    const risk = !quizResults.length ? { classification: 'No assessment data' }
+    const risk = !quizResults.length ? { classification: NO_ASSESSMENT_DATA }
       : unavailable ? { classification: 'Evaluation unavailable' } : classifyRisk(quizResults);
+    const activities = await activityProgress(student.id, activityRows, scope.enrollments.filter(e => e.student_id === student.id), readings, attemptRows);
     const competency = {};
     for (const type of ['literal','inferential','critical']) {
       const groups = quizResults.filter(q => !q.dataQuality).map(q => q.byType[type]);
       const total = groups.reduce((sum,g) => sum + g.total, 0);
       competency[type] = { total, score: !unavailable && total ? Math.round(groups.reduce((sum,g) => sum + g.firstCorrect,0) / total * 100) : null };
     }
-    students.push({ ...student, ...metrics(readings,quizResults), classification: risk.classification,
-      quizzes: quizResults, competency, history: history.filter(e => e.student_id === student.id), interventions: interventions.filter(i => i.student_id === student.id) });
+    students.push({ ...student, ...metrics(readings,quizResults), classification: risk.classification, recoveryCount: risk.recoveryCount ?? 0,
+      quizzes: quizResults, historicalQuizzes: extraResults, activities, competency, history: history.filter(e => e.student_id === student.id), interventions: interventions.filter(i => i.student_id === student.id) });
   }
-  return { students, notifications: history.filter(e => !e.superseded_at && !e.read_at && students.some(s => s.id === e.student_id)).sort((a,b) => b.occurred_at.localeCompare(a.occurred_at)) };
+  return { students, notifications: history.filter(e => !e.superseded_at && !e.read_at && students.some(s => s.id === e.student_id)).sort((a,b) => b.occurred_at.localeCompare(a.occurred_at)), notificationsActive };
 }
-async function saveIntervention(teacherId, studentId, id, body) {
-  await requireStudent(teacherId, studentId);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Admin scope: any Student-role learner (single-school administration). Independent Learners are excluded. */
+async function requireAdminStudent(studentId, load = rows) {
+  if (typeof studentId !== 'string' || !UUID.test(studentId)) throw fail('Student not found.', 404);
+  const found = await load('profiles', 'id,role', { id: studentId, role: 'student' });
+  if (!found.length) throw fail('Student not found.', 404);
+}
+/**
+ * The author (a Teacher, or an Admin through the Admin routes) is always the signed-in
+ * user and is stored in teacher_id. Updates match the author, so nobody edits another
+ * author's record. `authorize` checks the author's student scope before any write.
+ */
+async function saveIntervention(teacherId, studentId, id, body, { authorize } = {}) {
+  await (authorize ? authorize() : requireStudent(teacherId, studentId));
+  if (id !== null && id !== undefined && (typeof id !== 'string' || !UUID.test(id))) throw fail('Intervention not found.', 404);
   const { notes, intervention_date, status, follow_up_date, follow_up_notes } = body || {};
   const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
   if (typeof notes !== 'string' || !notes.trim() || notes.length > 10000 || !validDate(intervention_date)
@@ -158,4 +220,4 @@ async function saveIntervention(teacherId, studentId, id, body) {
   if (!data) throw fail('Intervention not found.',404);
   return data;
 }
-module.exports = { rows, quizzes, teacherScope, requireStudent, personal, system, teacher, saveIntervention, fail };
+module.exports = { rows, quizzes, historicalQuizzes, teacherScope, requireStudent, requireAdminStudent, personal, system, teacher, saveIntervention, fail };

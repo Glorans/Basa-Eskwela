@@ -9,6 +9,12 @@ export function formatScore(value: unknown, digits?: number): string {
   return isValidScore(value) ? `${digits === undefined ? value : value.toFixed(digits)}%` : EVALUATION_UNAVAILABLE;
 }
 
+/** A module's progress from its saved work; nothing for other activities. */
+export function passageProgressText(activity: { kind?: string; passagesCompleted?: number; passagesTotal?: number }): string {
+  if (activity.kind !== 'module') return '';
+  return activity.passagesTotal ? `${activity.passagesCompleted ?? 0} of ${activity.passagesTotal} passages completed` : 'No passages available';
+}
+
 export function validAnswerCounts(correct: unknown, total: unknown): boolean {
   return typeof correct === 'number' && Number.isInteger(correct) && correct >= 0
     && typeof total === 'number' && Number.isInteger(total) && total > 0 && correct <= total;

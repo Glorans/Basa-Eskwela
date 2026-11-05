@@ -51,6 +51,24 @@ export interface WeeklyReport {
     assessments: WeeklyReportComprehension[];
   };
   currentCompletionSnapshot: TeacherCompletionAnalytics;
+  // Admin reports only (scope "admin"): school-wide sections for Student accounts.
+  scope?: "admin";
+  learnerScope?: string;
+  classroomComparisons?: {
+    roomId: string; roomName: string; teacherName: string; enrolledStudents: number; participatingStudents: number;
+    readingAttempts: number; averageReadingAccuracy: number | null; averageReadingSpeedWpm: number | null;
+    completedAssessments: number; averageScore: number | null;
+  }[];
+  studentSummaries?: {
+    studentId: string; studentName: string; readingAttempts: number; averageReadingAccuracy: number | null;
+    averageReadingSpeedWpm: number | null; completedAssessments: number; averageScore: number | null;
+  }[];
+  competency?: Record<string, { total: number; correct: number | null; score: number | null }>;
+  // Current status when the report was generated. Absent from reports saved before it was added.
+  riskClassifications?: {
+    counts: Record<string, number>;
+    students: { studentId: string; studentName: string; classification: string }[];
+  };
 }
 
 // Philippine Standard Time is UTC+8.

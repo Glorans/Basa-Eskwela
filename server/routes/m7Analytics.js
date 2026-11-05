@@ -12,10 +12,13 @@ const wrap = handler => async (req,res) => {
     res.status(status).json({ success: false, message: status >= 500 ? 'Unable to load or save analytics. Check that the M7 migrations are installed and retry.' : error.message });
   }
 };
+// Students and Independent Learners: only the signed-in learner's own records.
 router.get('/personal',wrap(async req => {
   const requester = await authorizeOralReadingRequest(req);
-  if (requester.profile.role !== 'student') throw analytics.fail('Student access is required.',403);
-  return analytics.personal(requester.user.id);
+  if (!['student','general_user'].includes(requester.profile.role)) throw analytics.fail('Learner access is required.',403);
+  const data = await analytics.personal(requester.user.id);
+  // Independent Learners have no classroom assignments to report.
+  return requester.profile.role === 'general_user' ? { ...data, activities: [] } : data;
 }));
 router.get('/system',wrap(async req => {
   const requester = await authorizeAdminRequest(req);
@@ -43,5 +46,27 @@ router.patch('/notifications/:id/read',wrap(async req => {
   const result = await db.from('m7_risk_events').update({read_at: new Date().toISOString()}).eq('id',req.params.id).eq('teacher_id',requester.user.id);
   if (result.error) throw analytics.fail('Unable to mark notification read.');
   return { id: req.params.id };
+}));
+// ---- Admin student performance, competency and interventions (Admin only; Student-role learners) ----
+const adminAnalytics = () => require('../services/adminSystemAnalytics');
+const adminData = () => adminAnalytics().loadAdminData({ rows: analytics.rows, quizzes: analytics.quizzes });
+router.get('/admin/students',wrap(async req => {
+  await authorizeAdminRequest(req);
+  return adminAnalytics().buildAdminStudents(await adminData());
+}));
+router.get('/admin/students/:studentId',wrap(async req => {
+  const requester = await authorizeAdminRequest(req);
+  await analytics.requireAdminStudent(req.params.studentId);
+  const own = await analytics.rows('m7_interventions','*',{ teacher_id: requester.user.id, student_id: req.params.studentId });
+  const detail = adminAnalytics().buildAdminStudentDetail(await adminData(), req.params.studentId, requester.user.id, own);
+  return { ...detail, historicalQuizzes: await analytics.historicalQuizzes({ user_id: req.params.studentId }) };
+}));
+router.post('/admin/students/:studentId/interventions',wrap(async req => {
+  const requester = await authorizeAdminRequest(req);
+  return analytics.saveIntervention(requester.user.id,req.params.studentId,null,req.body,{ authorize: () => analytics.requireAdminStudent(req.params.studentId) });
+}));
+router.patch('/admin/students/:studentId/interventions/:id',wrap(async req => {
+  const requester = await authorizeAdminRequest(req);
+  return analytics.saveIntervention(requester.user.id,req.params.studentId,req.params.id,req.body,{ authorize: () => analytics.requireAdminStudent(req.params.studentId) });
 }));
 module.exports = router;

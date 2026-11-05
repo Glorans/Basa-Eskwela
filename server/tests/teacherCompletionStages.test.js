@@ -8,7 +8,7 @@ function fixture() {
     enrollments: [{id:'e1',room_id:'a',student_id:'s'},{id:'e2',room_id:'b',student_id:'s'},{id:'e3',room_id:'a',student_id:'s'}],
     profiles: [{id:'s',role:'student'}],
     reading_activity_assignments: [{id:'assignment',student_id:'s',room_id:'a',material_id:'material',status:'completed',read_aloud_only:false}],
-    oral_reading_attempts: [], m6_comprehension_attempts: [],
+    oral_reading_attempts: [], m6_comprehension_attempts: [], room_modules: [], room_module_recipients: [], module_passages: [],
   };
   const db = {from(table) {
     const filters=[]; let start=0,end=Infinity;
@@ -67,6 +67,13 @@ test('missing, foreign or unlinked comprehension evidence cannot complete an ass
   }
   const f=fixture();f.tables.m6_comprehension_attempts.push({...f.comprehension,status:'completed'});
   assert.deepEqual(stages(await f.get()),[1,0,0]);
+});
+
+test('a removed activity is not counted, and its saved row is left unchanged',async()=>{
+  const f=fixture();const assignment=f.tables.reading_activity_assignments[0];assignment.removed_at='2026-10-05T00:00:00Z';
+  f.tables.oral_reading_attempts.push(f.oral);
+  const result=await f.get();assert.deepEqual(stages(result),[0,0,0]);assert.equal(result.completionRate,null);consistent(result);
+  assert.equal(f.tables.reading_activity_assignments.length,1);
 });
 
 test('mixed student/classroom totals count each assignment once and retain enrollment scope',async()=>{

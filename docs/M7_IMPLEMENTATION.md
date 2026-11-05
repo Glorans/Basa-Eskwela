@@ -57,12 +57,37 @@ Existing untracked M7 analytics, completion services, weekly-report files, packa
 
 New tables deny client writes; only the backend service role persists changes. Teacher SELECT policies also require approved teacher status and current student enrollment. Students and admins do not have direct access to intervention/alert tables. Admin aggregate access is through its authorized API only. No service credentials enter frontend code.
 
+## Completion: what each assignment requires
+
+M7 reads saved evidence and does not write M4 records.
+
+| Assignment | Completed when | Source |
+|---|---|---|
+| Reading activity, "No questions (read-aloud only)" | A saved reading, and M4 status `completed` (set automatically when the reading saves or the activity is reopened) | `read_aloud_only` |
+| Reading activity with a question set | Its completed M6 assessment. M4 status is not used; it stays `assigned` | `question_set_id` |
+| Reading module (approved rule) | Every passage has its evidence, shown as "4 of 6 passages completed". A passage with reviewed questions needs its first completed M6 assessment for this assignment; a saved reading alone is not enough. A passage with no reviewed questions cannot start M6, so it needs a saved reading for this assignment. A module with no passages is never completed | `room_modules`, `module_passages`, `comprehension_questions` |
+
+There is no manual completion control. "Mark as Completed" appears only in `readflow/tests/m5M6Integration.test.ts`, which asserts it is absent from the activity page. There is no silent-reading record: opening a passage saves nothing. Activities a Teacher removed, removed module assignments, and modules deleted or no longer published (M4 hides them from students) are not counted; their results stay in history.
+
+A module reads Not Started until it has a reading or assessment for that assignment, In Progress until every passage is done, and then Completed. The Student, Teacher Student Support and Admin Student Performance pages list this per module.
+
+### Passage changes after assignment
+
+There is no snapshot of a module's passages at assignment time; M7 reads the current ones. On ReadFlow-Staging (checked 2026-11-06) the database keeps them stable, so past results do not shift:
+
+- `m3_lock_collection` refuses passage saves unless the module is a never-published draft with no `room_modules` row, including removed ones.
+- The same check runs on any insert, update or delete of a module's questions, so review status cannot change either.
+- Clients have no write access to `module_passages`.
+- `m3_revise_module` creates a new module; existing assignments keep the original.
+
+Limitation: direct SQL with the service role bypasses these checks. If an assigned module's passages were changed that way, its completion would be recalculated. To remove this limit, a future migration could copy passage IDs and their requirement to a table at assignment time. That is not implemented; it needs M4 assignment changes and its own approval.
+
 ## Scoring, visibility, and persistence
 
 - Report first-answer percentages and competencies reuse `summarizeComprehension`. The protected persistence RPC independently derives the same first-answer scoring from stored snapshots/responses; callers cannot supply alert payloads. Retries/hints do not inflate first-answer scores. Integer percentage rounding matches existing quiz scoring.
-- Every completed eligible attempt is included, ordered by completion timestamp and then UUID for deterministic ties; incomplete attempts are excluded. Malformed completed evidence produces an error and retains its queue job rather than treating it as zero or clearing risk.
+- One completed attempt per learning activity is included: the first completed, the same rule as M6 (`server/services/comprehensionActivity.js`). Later extra attempts stay saved and viewable as "not counted". Included attempts are ordered by completion timestamp and then UUID for deterministic ties; incomplete attempts are excluded. Malformed completed evidence produces an error and retains its queue job rather than treating it as zero or clearing risk.
 - Students are restricted to their authenticated user ID. Teachers must be approved and have the student currently enrolled in an owned room. Consistent with existing M5 visibility, eligible teacher records include independent attempts plus attempts in the student's currently enrolled rooms owned by that teacher. Other teachers' classroom attempts are excluded. Admin aggregates cover system records without returning answer keys.
-- Two consecutive scores below 75: Early Warning. Three below 75: At Risk. Three below 60: Needs Support, taking priority. At Risk/Needs Support remain active through one passing score or mixed results until two consecutive scores at least 75. Needs Support does not downgrade to At Risk before recovery. An Early Warning clears when its consecutive low-score condition breaks.
+- Basa Eskwela's project-defined rules (75% benchmark; not a DepEd classification), in `server/services/m7Risk.js`: On Track is a latest score of 80 or above; Early Warning is 75-79; At Risk is a score below 75; Needs Support is a score below 60 or two in a row below 75 and takes priority. At Risk and Needs Support stay until two scores in a row reach 75, and the second then gives On Track or Early Warning. No completed assessment is "No assessment data". The dashboards apply these now. The risk worker's `m7_save_evaluation` needs `supabase/proposed/m7_risk_rules_canonical_PROPOSED.sql` first; keep `M7_RISK_WORKER_ENABLED` off until it is applied.
 - Each transition persists once per teacher/student/attempt/classification. Late older completions are reconciled; obsolete transitions are retained as superseded history and excluded from unread notifications. Read acknowledgements survive reevaluation. Recovery is a persisted transition to On Track; historical episodes remain visible. "Active episode" refers to a transition not followed by a persisted On Track event.
 - Atomic persistence checks a monotonic queue generation under a row lock. Concurrent completion/enrollment changes invalidate stale evaluations. Worker failures leave jobs pending; restarting resumes them. Queue processing is not dependent on visiting a dashboard.
 - Enrollment changes, room ownership transfers, and profile role/teacher-approval changes queue reevaluation and invalidate stale work.
@@ -84,8 +109,8 @@ Use actual enrolled test accounts and complete activities through the existing U
 1. **Student progress:** sign in as a student and open `/dashboard/progress`. Compare saved readings, dates, pronunciation, speed, quiz scores, hints, and assignment completion with existing result pages. Follow both result links. Confirm a new student sees meaningful empty states. Passing a different student ID in a query must not change the authenticated student's results.
 2. **Admin:** open `/admin/analytics` with an admin account. Compare counts and averages with actual stored records. Call `GET /api/analytics/system` with student and teacher tokens; expect 403. Without a token expect 401.
 3. **Teacher visibility:** open `/m3/teacher/student-support` as an approved teacher. Verify only enrolled students appear, their independent and own-classroom attempts are included, and another teacher's classroom attempts are excluded. An unapproved teacher or other role must receive 403 from `GET /api/analytics/teacher`.
-4. **Thresholds:** with actual completed assessments, observe one below-75 score leaves On Track; the second creates Early Warning; the third creates At Risk. A sequence of three below-60 scores creates Needs Support. Exactly 60 is not below 60, and exactly 75 is passing. Include interrupted quizzes between completed quizzes; they must not affect the sequence.
-5. **Recovery:** from At Risk or Needs Support, complete one quiz at least 75: risk persists. Complete another at least 75: On Track and a recovery event appear. A low score between passing scores resets recovery. Verify warning/risk can recur afterward.
+4. **Thresholds:** with actual completed assessments, one score below 75 gives At Risk; one below 60, or a second in a row below 75, gives Needs Support; 75-79 with no unresolved risk gives Early Warning; 80 or above gives On Track.
+5. **Recovery:** from At Risk or Needs Support, one quiz of at least 75 keeps the state and shows 1 of 2. A second in a row clears it to On Track (80 or above) or Early Warning (75-79). A low score between them restarts recovery.
 6. **Delivery/dedup:** complete quizzes while no teacher dashboard is open. Wait for the worker, then open Student Support. Confirm history and notifications persisted. Refresh repeatedly, retry a completion, and restart the backend; identical transitions must not duplicate. Mark a notification read and reload; its unread status must stay cleared. Test with concurrent server processes against staging if applicable.
 7. **Competencies:** compare literal, inferential, and critical totals against the saved question types and first answers. Zero available questions show No data. Pronunciation is overall stored accuracy; no inferred phoneme-level scores exist.
 8. **Interventions:** select a student, save notes/date/status/follow-up, reload, edit, and reload again. Verify notes and updates persist. Attempt POST/PATCH for a student outside the teacher's enrollment scope (403) and another teacher's intervention ID for a shared student (404). Empty notes, invalid dates, and unsupported statuses must fail validation.

@@ -1,5 +1,6 @@
 const { reportRows } = require("./weeklyReportRows");
 const { summarizeComprehension } = require("./comprehensionScoring");
+const { activityKey, chooseActivityAttempt, hasActivity } = require("./comprehensionActivity");
 
 // Teacher-only read model. Callers must pass oral attempts that the Teacher is
 // already authorized to see; comprehension rows are matched only to those.
@@ -58,6 +59,16 @@ function matchComprehensionAttempts(oralAttempts, comprehensions) {
     if (isNewerComprehension(comprehension, matches.get(linked.id))) {
       matches.set(linked.id, comprehension);
     }
+  }
+  // One assessment per learning activity (M6): every saved reading of the activity, including a
+  // repeated one with no direct link, shows that assessment. Readings that name no activity
+  // keep the links found above.
+  const groupKey = (row) => `${row.user_id}|${JSON.stringify(activityKey(row))}`;
+  const groups = new Map();
+  for (const row of comprehensions.filter(hasActivity)) groups.set(groupKey(row), [...(groups.get(groupKey(row)) ?? []), row]);
+  for (const oral of oralAttempts.filter(hasActivity)) {
+    const group = groups.get(groupKey(oral));
+    if (group) matches.set(oral.id, chooseActivityAttempt(group));
   }
   return matches;
 }

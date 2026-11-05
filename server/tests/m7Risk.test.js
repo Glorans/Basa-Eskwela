@@ -2,29 +2,37 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { classifyRisk } = require('../services/m7Risk');
 const quizzes = scores => scores.map((score,i) => ({ id: String(i).padStart(3,'0'), score, status:'completed', completedAt: new Date(Date.UTC(2026,0,i+1)).toISOString() }));
-test('M7 boundaries and consecutive scores', () => {
-  for (const [scores,expected] of [ [[74],'On Track'], [[74,74],'Early Warning'], [[74,74,74],'At Risk'], [[59,59,59],'Needs Support'], [[60,60,60],'At Risk'], [[74,75,74],'On Track'], [[75,75,75],'On Track'] ]) assert.equal(classifyRisk(quizzes(scores)).classification,expected);
+test('M7 thresholds: benchmark 75, Needs Support below 60 or two in a row below 75', () => {
+  for (const [scores,expected] of [ [[74],'At Risk'], [[60],'At Risk'], [[59],'Needs Support'], [[75],'Early Warning'], [[79],'Early Warning'], [[80],'On Track'], [[100],'On Track'],
+    [[74,74],'Needs Support'], [[74,75,74],'At Risk'], [[80,70],'At Risk'], [[80,70,70],'Needs Support'], [[77,85],'On Track'], [[85,77],'Early Warning'] ]) assert.equal(classifyRisk(quizzes(scores)).classification,expected,String(scores));
 });
-test('M7 risk persists until two consecutive passing scores and can recur', () => {
-  for (const initial of [59,74]) {
-    assert.equal(classifyRisk(quizzes([initial,initial,initial,75])).classification,initial === 59 ? 'Needs Support':'At Risk');
-    assert.equal(classifyRisk(quizzes([initial,initial,initial,75,74,75])).classification,initial === 59 ? 'Needs Support':'At Risk');
-    assert.equal(classifyRisk(quizzes([initial,initial,initial,75,75])).classification,'On Track');
-    assert.equal(classifyRisk(quizzes([initial,initial,initial,75,75,74,74])).classification,'Early Warning');
+test('M7 risk persists until two consecutive scores reach the benchmark, then follows the latest score, and can recur', () => {
+  for (const [initial,state] of [[59,'Needs Support'],[74,'At Risk']]) {
+    assert.equal(classifyRisk(quizzes([initial,80])).classification,state,'one recovery score does not clear it');
+    assert.equal(classifyRisk(quizzes([initial,80])).recoveryCount,1);
+    assert.equal(classifyRisk(quizzes([initial,80,74,75])).classification,initial === 59 ? 'Needs Support' : 'At Risk','a low score restarts recovery');
+    assert.equal(classifyRisk(quizzes([initial,75,80])).classification,'On Track');
+    assert.equal(classifyRisk(quizzes([initial,80,75])).classification,'Early Warning');
+    assert.equal(classifyRisk(quizzes([initial,80,80])).recoveryCount,0);
+    assert.equal(classifyRisk(quizzes([initial,80,80,70])).classification,'At Risk');
+    assert.equal(classifyRisk(quizzes([initial,80,80,70,70])).classification,'Needs Support');
   }
 });
 test('M7 evaluates all completed attempts chronologically and emits deterministic transitions', () => {
-  const input = quizzes([74,74,74,75,75]);
+  const input = quizzes([85,77,74,70,80,80]);
   input.push({...input[0],id:'incomplete',status:'in_progress',score:0});
   const result = classifyRisk([...input].reverse());
   assert.deepEqual(result,classifyRisk(input));
-  assert.deepEqual(result.events.map(e => e.classification),['Early Warning','At Risk','On Track']);
-  assert.equal(new Set(result.events.map(e => `${e.attempt_id}:${e.classification}`)).size,3);
+  assert.deepEqual(result.events.map(e => e.classification),['Early Warning','At Risk','Needs Support','On Track']);
+  assert.deepEqual(result.events.map(e => e.previous_classification),['On Track','Early Warning','At Risk','Needs Support']);
+  assert.equal(new Set(result.events.map(e => `${e.attempt_id}:${e.classification}`)).size,4);
 });
-test('M7 needs support takes priority and does not downgrade on one better score', () => {
-  assert.equal(classifyRisk(quizzes([74,74,74,59,59,59])).classification,'Needs Support');
-  assert.equal(classifyRisk(quizzes([59,59,59,65,65,65])).classification,'Needs Support');
-  assert.equal(classifyRisk([]).classification,'On Track');
+test('M7 needs support takes priority and never drops to At Risk; no evidence is No assessment data', () => {
+  assert.equal(classifyRisk(quizzes([74,59])).classification,'Needs Support');
+  assert.equal(classifyRisk(quizzes([59,65])).classification,'Needs Support');
+  assert.equal(classifyRisk(quizzes([59,80,65])).classification,'Needs Support');
+  assert.deepEqual(classifyRisk([]),{classification:'No assessment data',recoveryCount:0,events:[]});
+  assert.equal(classifyRisk([{id:'x',status:'completed',completedAt:'2026-01-01T00:00:00Z',score:null}]).classification,'No assessment data','invalid evidence is not a low score');
 });
 
 const { authorizeAdminRequest } = require('../services/adminUserService');
@@ -56,11 +64,11 @@ test('M7 late older completion can supersede a formerly valid transition', () =>
   const input = quizzes([74,74,74]);
   const before = classifyRisk([input[0],input[2]]);
   const after = classifyRisk(input);
-  assert.equal(before.events[0].attempt_id,input[2].id);
-  assert.equal(before.events[0].classification,'Early Warning');
-  assert.equal(after.events[0].attempt_id,input[1].id);
-  assert.equal(after.events[1].classification,'At Risk');
-  assert.ok(!after.events.some(e => e.attempt_id === input[2].id && e.classification === 'Early Warning'));
+  assert.equal(before.events[1].attempt_id,input[2].id);
+  assert.equal(before.events[1].classification,'Needs Support');
+  assert.equal(after.events[1].attempt_id,input[1].id);
+  assert.equal(after.events[1].classification,'Needs Support');
+  assert.ok(!after.events.some(e => e.attempt_id === input[2].id));
 });
 
 test('M7 worker sends only queue identity/version and retries failed database evaluation', async () => {

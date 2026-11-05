@@ -1,4 +1,4 @@
-const { reportRows } = require("./weeklyReportRows");
+const { reportRows, recipientRows } = require("./weeklyReportRows");
 
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 
@@ -9,7 +9,11 @@ const {
 } = require("./oralReadingAttemptService");
 
 const {
-  deriveAssignedProgress,
+  activeMaterialAssignments,
+  activeRoomModules,
+  deriveActivityProgress,
+  withAssessmentRequirement,
+  expandModuleAssignments,
 } = require("./assignedReadingProgress");
 
 async function fetchAllRows(db, table, columns, filterColumn, filterValue, complete = false) {
@@ -58,8 +62,7 @@ async function getTeacherCompletionAnalytics(
   // Use the same current student/classroom scope as attempt review. Saved report
   // snapshots remain historical; live completion metrics use current enrollment.
   const authorizedStudents = await loadTeacherStudentProfiles(db, requester.user.id, true);
-  const classrooms = [];
-  const studentMap = new Map();
+  const roomProgress = [];
 
   for (const room of rooms) {
     const [
@@ -70,7 +73,7 @@ async function getTeacherCompletionAnalytics(
       fetchAllRows(
         db,
         "reading_activity_assignments",
-        "id,student_id,material_id,room_id,read_aloud_only,status",
+        "*",
         "room_id",
         room.id,
         dependencies.weeklyReportStrict === true
@@ -78,7 +81,7 @@ async function getTeacherCompletionAnalytics(
       fetchAllRows(
         db,
         "oral_reading_attempts",
-        "id,user_id,material_id,room_id,activity_assignment_id,completed_at",
+        "id,user_id,module_id,passage_id,assignment_id,material_id,room_id,activity_assignment_id,completed_at",
         "room_id",
         room.id,
         dependencies.weeklyReportStrict === true
@@ -86,16 +89,52 @@ async function getTeacherCompletionAnalytics(
       fetchAllRows(
         db,
         "m6_comprehension_attempts",
-        "id,user_id,material_id,room_id,activity_assignment_id,oral_reading_attempt_id,status,created_at",
+        "id,user_id,module_id,passage_id,assignment_id,material_id,room_id,activity_assignment_id,oral_reading_attempt_id,status,created_at,completed_at",
         "room_id",
         room.id,
         dependencies.weeklyReportStrict === true
       ),
     ]);
 
+    const moduleAssignments = await loadRoomModuleAssignments(db, room, authorizedStudents, dependencies.weeklyReportStrict === true);
+    roomProgress.push({
+      room,
+      progress: completionProgress(room, [...activeMaterialAssignments(assignments), ...moduleAssignments], readings, comprehensions, authorizedStudents),
+    });
+  }
+
+  return summarizeCompletion(roomProgress);
+}
+
+/** Active classroom module assignments in one room, one row per learner currently enrolled there. */
+async function loadRoomModuleAssignments(db, room, authorizedStudents, complete) {
+  const assigned = await fetchAllRows(db, "room_modules", "*", "room_id", room.id, complete);
+  if (!assigned.length) return [];
+  try {
+    const moduleIds = assigned.map((row) => row.module_id);
+    const roomModules = activeRoomModules(assigned, await reportRows(db, "modules", "id,status,deleted_at", {}, "id", moduleIds));
+    if (!roomModules.length) return [];
+    const [recipients, passages, questions] = await Promise.all([
+      recipientRows(db, roomModules.map((row) => row.id)),
+      reportRows(db, "module_passages", "id,module_id", {}, "module_id", roomModules.map((row) => row.module_id)),
+      reportRows(db, "comprehension_questions", "id,passage_id", { review_status: "reviewed" }, "module_id", roomModules.map((row) => row.module_id)),
+    ]);
+    const enrolled = [...(authorizedStudents.roomsByStudent?.entries() ?? [])].filter(([, rooms]) => rooms.has(room.id)).map(([id]) => id);
+    return expandModuleAssignments(roomModules, recipients, withAssessmentRequirement(passages, questions), () => enrolled);
+  } catch (error) {
+    if (complete) throw error;
+    throw new OralReadingPersistenceError("Unable to load classroom completion analytics. Please retry.");
+  }
+}
+
+/**
+ * Current status of each assignment in one classroom, for students currently enrolled
+ * there (authorizedStudents.roomsByStudent). Shared by the Teacher and Admin views.
+ */
+function completionProgress(room, assignments, readings, comprehensions, authorizedStudents) {
     const authorizedAssignments = [...new Map(assignments.filter((assignment) =>
       authorizedStudents.roomsByStudent?.get(assignment.student_id)?.has(room.id)
-    ).map(assignment => [assignment.id, assignment])).values()];
+    ).map(assignment => [`${assignment.kind ?? "material"}:${assignment.id}:${assignment.student_id}`, assignment])).values()];
     const progress = authorizedAssignments.map((assignment) => {
       const studentReadings = readings.filter(
         (reading) =>
@@ -107,7 +146,7 @@ async function getTeacherCompletionAnalytics(
           attempt.user_id === assignment.student_id
       );
 
-      const result = deriveAssignedProgress(
+      const result = deriveActivityProgress(
         assignment,
         studentReadings,
         studentComprehensions
@@ -120,6 +159,15 @@ async function getTeacherCompletionAnalytics(
       };
     });
 
+    return progress;
+}
+
+/** Classroom and student completion totals from completionProgress results. */
+function summarizeCompletion(roomProgress) {
+  const classrooms = [];
+  const studentMap = new Map();
+
+  for (const { room, progress } of roomProgress) {
     const completedAssignments = progress.filter(
       (item) => item.status === "Completed"
     ).length;
@@ -127,7 +175,7 @@ async function getTeacherCompletionAnalytics(
     // Collapse the shared detailed stages into the three dashboard buckets.
     const notStartedAssignments = progress.filter(item => item.status === "Not Started").length;
     const inProgressAssignments = progress.length - completedAssignments - notStartedAssignments;
-    const totalAssignments = authorizedAssignments.length;
+    const totalAssignments = progress.length;
 
     classrooms.push({
       roomId: room.id,
@@ -254,4 +302,6 @@ async function getTeacherCompletionAnalytics(
 
 module.exports = {
   getTeacherCompletionAnalytics,
+  completionProgress,
+  summarizeCompletion,
 };

@@ -2,6 +2,7 @@ const { getSupabaseAdmin } = require('./supabaseAdmin');
 const { loadTeacherStudentProfiles, OralReadingAuthorizationError } = require('./oralReadingAttemptService');
 const { reportRows } = require('./weeklyReportRows');
 const { summarizeComprehension } = require('./comprehensionScoring');
+const { splitCanonicalCompleted } = require('./comprehensionActivity');
 
 // A quiz read model for M7, independent of M5's one-result-per-reading review.
 async function getTeacherQuizzes(requester, dependencies = {}) {
@@ -12,11 +13,12 @@ async function getTeacherQuizzes(requester, dependencies = {}) {
   const students = await (dependencies.loadTeacherStudentProfiles ?? loadTeacherStudentProfiles)(db, requester.user.id, true);
   const load = dependencies.reportRows ?? reportRows;
   const attempts = await load(db, 'm6_comprehension_attempts',
-    'id,user_id,room_id,passage_title,status,completed_at,question_snapshot',
+    'id,user_id,module_id,passage_id,assignment_id,material_id,activity_assignment_id,room_id,passage_title,status,completed_at,question_snapshot',
     { status: 'completed' }, 'user_id', [...students.keys()]);
   const eligible = new Map();
-  for (const quiz of attempts) {
-    if (quiz.status !== 'completed' || !students.has(quiz.user_id)) continue;
+  // One assessment per learning activity, as in M6.
+  for (const quiz of splitCanonicalCompleted(attempts).canonical) {
+    if (!students.has(quiz.user_id)) continue;
     // Enrollment authorizes access; only the saved room attributes the quiz.
     // Independent/legacy unattributed quizzes remain roomId: null.
     if (quiz.room_id != null && !students.roomsByStudent?.get(quiz.user_id)?.has(quiz.room_id)) continue;

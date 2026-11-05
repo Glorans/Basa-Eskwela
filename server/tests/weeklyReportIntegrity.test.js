@@ -76,7 +76,7 @@ test('absent and in-progress assessments remain legitimate; incomplete completed
 test('weekly report POST never calls storage after retrieval failure or unavailable results',async()=>{
   for(const extra of [
     {getSupabaseAdmin:()=>database(fixture(),t=>t==='m6_comprehension_responses'?'failed':null)},
-    {loadWeeklyComprehensions:async()=>[],listTeacherOralReadingAttempts:async()=>[{comprehension:{status:'unavailable'}}],getTeacherCompletionAnalytics:async()=>({})},
+    {loadWeeklyComprehensions:async()=>[],loadWeeklyRiskSummary:async()=>({counts:{},students:[]}),listTeacherOralReadingAttempts:async()=>[{comprehension:{status:'unavailable'}}],getTeacherCompletionAnalytics:async()=>({})},
   ]) {
     let saved=false;
     const router=createWeeklyReportsRouter({...extra,authorizeTeacherOralReadingRequest:async()=>requester,saveWeeklyReport:async()=>{saved=true;}});

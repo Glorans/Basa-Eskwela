@@ -37,6 +37,8 @@ function getNavItems(role: M3Role) {
       { label: "Content Management", to: "/m3/admin", icon: Files, end: true },
       { label: "Create Module", to: "/m3/admin/modules/new", icon: PlusCircle, end: true },
       { label: "System Performance", to: "/admin/analytics", icon: ChartNoAxesCombined, end: true },
+      { label: "Student Performance", to: "/admin/student-performance", icon: Users, end: true },
+      { label: "Reports", to: "/admin/reports", icon: ClipboardList, end: true },
       { label: "User Management", to: "/admin/users", icon: Users, end: true },
       { label: "Teacher Invitations", to: "/admin/teacher-invitations", icon: UserRound, end: true },
       { label: "Oral Reading", to: "/admin/oral-reading", icon: Mic2, end: false },
@@ -79,6 +81,7 @@ function getNavItems(role: M3Role) {
     items.push({ label: "Leaderboard", to: "/m3/general/leaderboard", icon: Trophy, end: true });
     items.push({ label: "Badges", to: "/m3/general/badges", icon: Award, end: true });
     items.push({ label: "Reading History", to: "/m3/general/reading-history", icon: Mic2, end: true });
+    items.push({ label: "Progress & Result", to: "/m3/general/progress", icon: ChartNoAxesCombined, end: true });
   }
 
   items.push({ label: "Profile Settings", to: `${root}/settings`, icon: Settings, end: true });

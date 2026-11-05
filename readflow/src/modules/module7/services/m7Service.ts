@@ -2,12 +2,13 @@ import axios from 'axios';
 import api from '../../../services/api';
 import { getSessionAuthHeaders } from '../../../services/authHeaders';
 export interface Metrics { invalidCompletedQuizzes?: number; readingAttempts: number; completedQuizzes: number; pronunciationAccuracy: number | null; readingSpeedWpm: number | null; comprehensionScore: number | null }
-export interface Quiz { id: string; title: string; completedAt: string | null; score: number | null; firstCorrect?: number; totalQuestions?: number; hintsUsed?: number; dataQuality?: string }
+export interface Quiz { id: string; title: string; completedAt: string | null; score: number | null; firstCorrect?: number; totalQuestions?: number; hintsUsed?: number; dataQuality?: string; notCounted?: boolean }
 export interface RiskEvent { id: string; attempt_id: string; student_id: string; classification: string; previous_classification: string; occurred_at: string; read_at: string | null; superseded_at: string | null; evidence: {id: string; score: number | null; completedAt: string | null}[] }
 export interface Intervention { id: string; notes: string; intervention_date: string; status: string; follow_up_date: string | null; follow_up_notes: string }
-export interface Student extends Metrics { id: string; full_name: string; nickname: string; classification: string; quizzes: Quiz[]; competency: Record<string,{total:number;score:number|null}>; history: RiskEvent[]; interventions: Intervention[] }
-export interface TeacherData { students: Student[]; notifications: RiskEvent[] }
-export interface PersonalData { summary: Metrics; quizzes: Quiz[]; readings: {id:string;completed_at:string;pronunciation_accuracy:number;reading_speed_wpm:number;detected_error_count:number}[]; activities: {id:string;status:string;roomId:string;materialId:string;title:string}[] }
+export interface Student extends Metrics { id: string; full_name: string; nickname: string; classification: string; recoveryCount?: number; activities?: ActivityProgress[]; quizzes: Quiz[]; historicalQuizzes?: Quiz[]; competency: Record<string,{total:number;score:number|null}>; history: RiskEvent[]; interventions: Intervention[] }
+export interface TeacherData { students: Student[]; notifications: RiskEvent[]; notificationsActive?: boolean }
+export interface ActivityProgress { id: string; status: string; roomId: string; materialId?: string; title: string; kind?: 'module'; passagesCompleted?: number; passagesTotal?: number }
+export interface PersonalData { summary: Metrics; quizzes: Quiz[]; historicalQuizzes?: Quiz[]; readings: {id:string;completed_at:string;pronunciation_accuracy:number;reading_speed_wpm:number;detected_error_count:number}[]; activities: ActivityProgress[] }
 export interface SystemData extends Metrics { students:number;teachers:number;classrooms:number;assignedActivities:number }
 export async function m7Request<T>(path:string, method = 'GET', data?:unknown):Promise<T> {
   try {
@@ -16,6 +17,20 @@ export async function m7Request<T>(path:string, method = 'GET', data?:unknown):P
   } catch(error) {
     throw new Error(axios.isAxiosError(error) ? error.response?.data?.message || 'Unable to connect to analytics. Please retry.' : error instanceof Error ? error.message : 'Unable to load analytics.');
   }
+}
+
+export interface AdminStudentRow extends Metrics {
+  id: string; name: string; classrooms: string[]; classification: string;
+  completion: { assigned: number; completed: number; completionRate: number | null };
+}
+export interface AdminStudentDetail extends AdminStudentRow {
+  competency: Record<string, { total: number; correct: number | null; score: number | null }>;
+  contexts: { teacherId: string; teacherName: string; classrooms: string[]; classification: string; recoveryCount?: number; completedQuizzes: number; latestScores: { score: number | null; completedAt: string | null }[] }[];
+  quizzes: Quiz[];
+  historicalQuizzes?: Quiz[];
+  readings: { id: string; title: string; completedAt: string; readingAccuracy: number | null; readingSpeedWpm: number | null }[];
+  activities: { id: string; kind?: string; title: string; roomName: string; status: string; passagesCompleted?: number; passagesTotal?: number }[];
+  interventions: { own: Intervention[]; others: { total: number; planned: number; inProgress: number; completed: number } };
 }
 
 export interface AdminFilters { roomId: string | null; startDate: string | null; endDate: string | null }

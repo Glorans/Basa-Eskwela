@@ -21,7 +21,13 @@ const {
 
 const {
   generateTeacherWeeklyReport,
+  generateAdminWeeklyReport,
 } = require("../services/weeklyReportGenerator");
+
+const {
+  AdminAuthorizationError,
+  authorizeAdminRequest,
+} = require("../services/adminUserService");
 
 function sendWeeklyReportError(res, error) {
   if (error instanceof SupabaseAuthenticationError) {
@@ -31,7 +37,7 @@ function sendWeeklyReportError(res, error) {
     });
   }
 
-  if (error instanceof OralReadingAuthorizationError) {
+  if (error instanceof OralReadingAuthorizationError || error instanceof AdminAuthorizationError) {
     return res.status(403).json({
       success: false,
       message: error.message,
@@ -162,9 +168,55 @@ function createWeeklyReportsRouter(dependencies = {}) {
   return router;
 }
 
+/**
+ * Admin weekly reports. Same storage and ownership rule as Teacher reports: each report
+ * belongs to its author (stored in teacher_id) and only that author can list or open it.
+ * Admin and Teacher reports never mix, because their authors differ.
+ */
+function createAdminWeeklyReportsRouter(dependencies = {}) {
+  const router = express.Router();
+  const authorizeAdmin = dependencies.authorizeAdminRequest ?? authorizeAdminRequest;
+  const saveReport = dependencies.saveWeeklyReport ?? saveWeeklyReport;
+  const listReports = dependencies.listWeeklyReports ?? listWeeklyReports;
+  const getReport = dependencies.getSavedWeeklyReport ?? getSavedWeeklyReport;
+  const generateReport = dependencies.generateAdminWeeklyReport ?? generateAdminWeeklyReport;
+
+  router.get("/", async (req, res) => {
+    try {
+      const requester = await authorizeAdmin(req, dependencies);
+      return res.json({ success: true, ...(await listReports(requester, dependencies, req.query)) });
+    } catch (error) {
+      return sendWeeklyReportError(res, error);
+    }
+  });
+
+  router.get("/:reportId", async (req, res) => {
+    try {
+      const requester = await authorizeAdmin(req, dependencies);
+      return res.json({ success: true, report: await getReport(requester, req.params.reportId, dependencies) });
+    } catch (error) {
+      return sendWeeklyReportError(res, error);
+    }
+  });
+
+  // Statistics are always calculated by the backend; the browser sends only the period.
+  router.post("/", async (req, res) => {
+    try {
+      const requester = await authorizeAdmin(req, dependencies);
+      const report = await generateReport(requester, req.body?.period, dependencies);
+      return res.status(201).json({ success: true, report: await saveReport(requester, report, dependencies) });
+    } catch (error) {
+      return sendWeeklyReportError(res, error);
+    }
+  });
+
+  return router;
+}
+
 const weeklyReportsRouter = createWeeklyReportsRouter();
 
 module.exports = {
   createWeeklyReportsRouter,
+  createAdminWeeklyReportsRouter,
   weeklyReportsRouter,
 };

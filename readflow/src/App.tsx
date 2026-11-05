@@ -63,6 +63,8 @@ import ComprehensionPage from "./modules/module6/pages/ComprehensionPage";
 import TeacherAnalyticsPage from "./modules/module7/TeacherAnalyticsPage";
 import TeacherReportsPage from "./modules/module7/TeacherReportsPage";
 import { StudentProgressPage, AdminAnalyticsPage, TeacherSupportPage } from "./modules/module7/M7Pages";
+import AdminStudentPerformancePage from "./modules/module7/AdminStudentPerformancePage";
+import AdminReportsPage from "./modules/module7/AdminReportsPage";
 
 function App() {
   return (
@@ -321,6 +323,9 @@ function App() {
             <Route path="teacher-invitations" element={<TeacherInvitationsPage />} />
 
             <Route path="analytics" element={<AdminAnalyticsPage />} />
+            {/* M7 - Admin student performance, competency, interventions and weekly reports (Admin-only API) */}
+            <Route path="student-performance" element={<AdminStudentPerformancePage />} />
+            <Route path="reports" element={<AdminReportsPage />} />
 
             {/* M5 - admin self-practice; results stay private to the admin's own account */}
             <Route path="oral-reading" element={<AdminOralReadingPage />} />
@@ -520,6 +525,12 @@ function App() {
             <Route
               path="leaderboard"
               element={<IndependentLeaderboard />}
+            />
+
+            {/* M7 - personal learning progress (own records only) */}
+            <Route
+              path="progress"
+              element={<StudentProgressPage role="general_user" />}
             />
 
             <Route

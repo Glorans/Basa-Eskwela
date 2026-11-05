@@ -1,3 +1,4 @@
+import { RiskGuidance } from '../M7Pages';
 import { formatAnalyticsDate as displayDate } from '../services/dateDisplay';
 export { formatAnalyticsDate as displayDate } from '../services/dateDisplay';
 import { formatScore, formatComprehension } from '../services/scoreDisplay';
@@ -38,6 +39,7 @@ export function ParticipationSection({ data }: { data: Details }) {
 }
 export function RiskSection({ data }: { data: Details }) {
   return <section><h2>Current risk and learning support</h2>
+    <RiskGuidance />
     <p>Uses full quiz history regardless of reporting dates. Each student is counted once at their highest-priority classification across relevant approved teachers. Classroom selection chooses students and the classroom's teacher; that teacher's full eligible quiz history is retained.</p>
     <p>No assessment data means no completed quizzes in an eligible approved-teacher context. Students without such a context are not assumed to be On Track.</p>
     <div className="m7-metrics">{Object.entries(data.riskCounts).map(([label, count]) => <div className="m7-card" key={label}><span>{label}</span><strong>{count}</strong></div>)}</div>

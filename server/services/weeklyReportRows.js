@@ -28,4 +28,28 @@ async function reportRows(db, table, columns, filters = {}, batchColumn, ids = [
   }
   return results;
 }
-module.exports = { reportRows };
+/**
+ * room_module_recipients has a composite key and no id column, so it pages by offset in key order,
+ * continuing to an empty page. With no roomModuleIds, reads every row.
+ */
+async function recipientRows(db, roomModuleIds = null) {
+  const batches = roomModuleIds === null ? [null] : [...new Set(roomModuleIds)].reduce((all, id, index) => {
+    if (index % BATCH_SIZE === 0) all.push([]);
+    all[all.length - 1].push(id);
+    return all;
+  }, []);
+  const results = [];
+  for (const batch of batches) {
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      let query = db.from('room_module_recipients').select('room_module_id,student_id')
+        .order('room_module_id', { ascending: true }).order('student_id', { ascending: true }).range(offset, offset + PAGE_SIZE - 1);
+      if (batch) query = query.in('room_module_id', batch);
+      const { data, error } = await query;
+      if (error || !Array.isArray(data)) throw new Error('Unable to retrieve module recipients. Please retry.');
+      if (!data.length) break;
+      results.push(...data);
+    }
+  }
+  return results;
+}
+module.exports = { reportRows, recipientRows };

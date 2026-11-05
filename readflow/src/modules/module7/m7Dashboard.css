@@ -3,7 +3,6 @@
 .m7-dashboard .m7-dashboard-header { display:flex; justify-content:space-between; align-items:center; gap:24px; margin-bottom:24px; }
 .m7-dashboard .m7-dashboard-header h1 { color:white; font-size:clamp(30px,3vw,40px); font-weight:800; line-height:1.2; margin:0; }
 .m7-dashboard .m7-dashboard-header p { color:rgb(255 255 255 / 80%); margin:8px 0; }
-.m7-dashboard .m7-dashboard-eyebrow { font-weight:800; font-size:12px; text-transform:uppercase; letter-spacing:.1em; }
 .m7-dashboard > h2,.m7-dashboard > p { color:white; }
 .m7-dashboard section { background:#dce8e7; border:0; border-radius:24px; padding:clamp(16px,2vw,28px); margin:24px 0; min-width:0; }
 .m7-dashboard h2,.m7-dashboard h3 { font-weight:800; }

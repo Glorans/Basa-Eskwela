@@ -1,3 +1,4 @@
+const { activityKey, chooseActivityAttempt } = require("./comprehensionActivity");
 const { loadAssignedReadingSource } = require("./assignedReadingSource");
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
@@ -401,43 +402,9 @@ async function getComprehensionAttempt(requester, attemptId) {
   };
 }
 
-/*
- * One comprehension assessment per learning activity. M5 readings may be repeated, but every
- * reading of the same activity leads to the same M6 assessment:
- *   - a module passage in its context: (module, passage, classroom, room assignment); an
- *     Admin's or Independent Learner's own practice has no classroom or assignment;
- *   - an assigned classroom material: (material, activity assignment).
- * Different classrooms, assignments or passages are different activities.
- */
+// One comprehension assessment per learning activity: see comprehensionActivity.js.
 const ACTIVITY_COLUMNS =
   "id,status,created_at,completed_at,module_id,passage_id,room_id,assignment_id,material_id,activity_assignment_id,oral_reading_attempt_id";
-
-function activityKey(row) {
-  return row.material_id
-    ? { material_id: row.material_id, activity_assignment_id: row.activity_assignment_id ?? null }
-    : {
-      material_id: null,
-      module_id: row.module_id ?? null,
-      passage_id: row.passage_id ?? null,
-      room_id: row.room_id ?? null,
-      assignment_id: row.assignment_id ?? null,
-    };
-}
-
-/**
- * The activity's assessment. Attempts saved before this rule may include extra attempts for
- * one activity (each from a repeated reading); they are kept unchanged, and the one shown is
- * the first completed attempt, otherwise the first one started.
- */
-function chooseActivityAttempt(rows) {
-  const time = (row) => String((row.status === "completed" ? row.completed_at : row.created_at) ?? "");
-  return [...rows].sort((a, b) => {
-    const aDone = a.status === "completed";
-    const bDone = b.status === "completed";
-    if (aDone !== bDone) return aDone ? -1 : 1;
-    return time(a).localeCompare(time(b)) || String(a.id).localeCompare(String(b.id));
-  })[0] ?? null;
-}
 
 async function findActivityAttempt(db, userId, key) {
   // The key's non-empty columns filter in the database; its empty ones (no classroom or

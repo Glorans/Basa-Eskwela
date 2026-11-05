@@ -77,13 +77,13 @@ test('completion requires matching student and linked saved assessment, not stat
   const result = buildAdminAnalytics(data,parseFilters({startDate:'2026-10-02',endDate:'2026-10-02'}));
   assert.deepEqual(result.details.completion,{assigned:2,completed:1,incomplete:1,completionRate:50});
 });
-test('admin report uses unchanged two-score recovery and highest-priority context', () => {
+test('admin report uses two-score recovery and the highest-priority context', () => {
   const data = fixture();
   data.quizzes.push({id:'pass1',userId:'s',roomId:null,status:'completed',score:75,completedAt:'2026-10-04T00:00:00Z'});
   assert.equal(buildAdminAnalytics(data,all).details.riskCounts['Needs Support'],1);
-  data.quizzes.push({id:'pass2',userId:'s',roomId:null,status:'completed',score:75,completedAt:'2026-10-05T00:00:00Z'});
+  data.quizzes.push({id:'pass2',userId:'s',roomId:null,status:'completed',score:80,completedAt:'2026-10-05T00:00:00Z'});
   assert.equal(buildAdminAnalytics(data,all).details.riskCounts['On Track'],1);
-  data.quizzes.push(...[1,2,3].map(i=>({id:`low${i}`,userId:'s',roomId:B,status:'completed',score:70,completedAt:`2026-10-0${i+5}T00:00:00Z`})));
+  data.quizzes.push({id:'low1',userId:'s',roomId:B,status:'completed',score:70,completedAt:'2026-10-06T00:00:00Z'});
   assert.equal(buildAdminAnalytics(data,all).details.riskCounts['At Risk'],1);
   assert.equal(buildAdminAnalytics(data,parseFilters({roomId:A})).details.riskCounts['On Track'],1);
 });

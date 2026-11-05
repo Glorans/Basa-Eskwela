@@ -40,7 +40,15 @@ interface WeeklyReportApiResponse {
   message?: string;
 }
 
-const API_URL = `${getApiUrl().replace(/\/+$/, "")}/api/weekly-reports`;
+type ReportScope = "teacher" | "admin";
+// Teacher reports cover the Teacher's classrooms; Admin reports are school-wide (Admin-only routes).
+const reportApiUrl = (scope: ReportScope) =>
+  `${getApiUrl().replace(/\/+$/, "")}${scope === "admin" ? "/api/admin/weekly-reports" : "/api/weekly-reports"}`;
+const RISK_NOTE = "Status when this report was generated, from each student's full quiz history, using Basa Eskwela's intervention guide (75% benchmark). Not limited to the reporting period.";
+const COMPETENCY_LABELS: Record<string, string> = { literal: "Literal", inferential: "Inferential", critical: "Critical" };
+const competencyText = (result: { total: number; correct: number | null; score: number | null }) =>
+  result.total === 0 ? "No questions" : result.correct === null || result.score === null
+    ? "Evaluation unavailable" : `${result.correct}/${result.total} (${formatScore(result.score)})`;
 
 function formatPercentage(value: number | null): string {
   return value === null ? "N/A" : formatScore(value, 2);
@@ -113,7 +121,8 @@ function getCurrentPhilippineWeek(): {
 
 async function requestWeeklyReports(
   path = "",
-  options: RequestInit = {}
+  options: RequestInit = {},
+  scope: ReportScope = "teacher"
 ): Promise<WeeklyReportApiResponse> {
   const {
     data: { session },
@@ -126,7 +135,7 @@ async function requestWeeklyReports(
     );
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${reportApiUrl(scope)}${path}`, {
     ...options,
     headers: {
       ...options.headers,
@@ -314,6 +323,39 @@ function downloadWeeklyReportPdf(
       report.comprehension.averageScore
     )
   );
+
+  if (report.scope === "admin") {
+    if (report.learnerScope) addText(report.learnerScope);
+    addSection("Classroom Comparisons");
+    if (!report.classroomComparisons?.length) addText("No classrooms.");
+    report.classroomComparisons?.forEach((room) => {
+      ensureSpace(25);
+      addText(`${room.roomName} (${room.teacherName})`, { bold: true, gap: 3 });
+      addField("Participating / Enrolled", `${room.participatingStudents} / ${room.enrolledStudents}`);
+      addField("Readings / Average Reading Accuracy", `${room.readingAttempts} / ${formatPercentage(room.averageReadingAccuracy)}`);
+      addField("Assessments / Average Score", `${room.completedAssessments} / ${formatPercentage(room.averageScore)}`);
+      y += 3;
+    });
+    addSection("Student Performance Summaries");
+    if (!report.studentSummaries?.length) addText("No student results during the selected period.");
+    report.studentSummaries?.forEach((student) => {
+      ensureSpace(25);
+      addText(student.studentName, { bold: true, gap: 3 });
+      addField("Readings / Average Reading Accuracy", `${student.readingAttempts} / ${formatPercentage(student.averageReadingAccuracy)}`);
+      addField("Average Reading Speed", student.averageReadingSpeedWpm === null ? "N/A" : `${Math.round(student.averageReadingSpeedWpm)} WPM`);
+      addField("Assessments / Average Score", `${student.completedAssessments} / ${formatPercentage(student.averageScore)}`);
+      y += 3;
+    });
+    addSection("Competency Results");
+    Object.entries(report.competency ?? {}).forEach(([type, result]) => addField(COMPETENCY_LABELS[type] ?? type, competencyText(result)));
+  }
+
+  if (report.riskClassifications) {
+    addSection("Current Risk Classifications");
+    addText(RISK_NOTE);
+    Object.entries(report.riskClassifications.counts).forEach(([label, count]) => addField(label, String(count)));
+    report.riskClassifications.students.forEach((student) => addField(student.studentName, student.classification));
+  }
 
   addSection("Current Assignment Completion Snapshot");
 
@@ -533,7 +575,8 @@ function ReportMetric({
   );
 }
 
-export default function WeeklyReportSection() {
+/** Teacher reports by default; scope "admin" uses the Admin-only routes and adds school-wide sections. */
+export default function WeeklyReportSection({ scope = "teacher" }: { scope?: ReportScope } = {}) {
   const [initialPeriod] = useState(
     getCurrentPhilippineWeek
   );
@@ -576,7 +619,7 @@ export default function WeeklyReportSection() {
     setHistoryError("");
 
     try {
-      const result = await requestWeeklyReports(cursor ? `?cursor=${encodeURIComponent(cursor)}` : "");
+      const result = await requestWeeklyReports(cursor ? `?cursor=${encodeURIComponent(cursor)}` : "", {}, scope);
       if (request !== historyRequest.current) return;
 
       if (!Array.isArray(result.reports) || (result.nextCursor !== null && typeof result.nextCursor !== "string")) {
@@ -598,7 +641,7 @@ export default function WeeklyReportSection() {
     } finally {
       if (request === historyRequest.current) setHistoryLoading(false);
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     void loadReportHistory();
@@ -636,7 +679,7 @@ export default function WeeklyReportSection() {
             endDate,
           },
         }),
-      });
+      }, scope);
 
       if (request !== reportRequest.current) return;
       if (!result.report) {
@@ -672,7 +715,9 @@ export default function WeeklyReportSection() {
 
     try {
       const result = await requestWeeklyReports(
-        `/${encodeURIComponent(reportId)}`
+        `/${encodeURIComponent(reportId)}`,
+        {},
+        scope
       );
 
       if (request !== reportRequest.current) return;
@@ -736,9 +781,9 @@ export default function WeeklyReportSection() {
         </h2>
 
         <p>
-          Generate a report using recorded reading attempts,
-          completed comprehension assessments, and current
-          assignment completion data.
+          {scope === "admin"
+            ? "Generate a school-wide report for all Student accounts using recorded reading attempts, completed comprehension assessments, classroom comparisons, competency results and current assignment completion data. Independent Learner practice is not included."
+            : "Generate a report using recorded reading attempts, completed comprehension assessments, and current assignment completion data."}
         </p>
       </div>
 
@@ -1087,6 +1132,55 @@ export default function WeeklyReportSection() {
               />
             </div>
           </div>
+
+          {report.scope === "admin" && (
+            <>
+              <div style={panelStyle}>
+                <h3>Classroom Comparisons</h3>
+                {report.learnerScope && <p>{report.learnerScope}</p>}
+                {!report.classroomComparisons?.length ? <p>No classrooms.</p> : (
+                  <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>{["Classroom", "Teacher", "Participating / Enrolled", "Readings", "Reading Accuracy", "Assessments", "Average Score"].map((h) => <th key={h} style={tableCellStyle}>{h}</th>)}</tr></thead>
+                    <tbody>{report.classroomComparisons.map((room) => <tr key={room.roomId}>
+                      <td style={tableCellStyle}>{room.roomName}</td><td style={tableCellStyle}>{room.teacherName}</td>
+                      <td style={tableCellStyle}>{room.participatingStudents} / {room.enrolledStudents}</td><td style={tableCellStyle}>{room.readingAttempts}</td>
+                      <td style={tableCellStyle}>{formatPercentage(room.averageReadingAccuracy)}</td><td style={tableCellStyle}>{room.completedAssessments}</td>
+                      <td style={tableCellStyle}>{formatPercentage(room.averageScore)}</td></tr>)}</tbody>
+                  </table></div>
+                )}
+              </div>
+              <div style={panelStyle}>
+                <h3>Student Performance Summaries</h3>
+                {!report.studentSummaries?.length ? <p>No student results during the selected period.</p> : (
+                  <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>{["Student", "Readings", "Reading Accuracy", "Reading Speed", "Assessments", "Average Score"].map((h) => <th key={h} style={tableCellStyle}>{h}</th>)}</tr></thead>
+                    <tbody>{report.studentSummaries.map((student) => <tr key={student.studentId}>
+                      <td style={tableCellStyle}>{student.studentName}</td><td style={tableCellStyle}>{student.readingAttempts}</td>
+                      <td style={tableCellStyle}>{formatPercentage(student.averageReadingAccuracy)}</td>
+                      <td style={tableCellStyle}>{student.averageReadingSpeedWpm === null ? "N/A" : `${Math.round(student.averageReadingSpeedWpm)} WPM`}</td>
+                      <td style={tableCellStyle}>{student.completedAssessments}</td><td style={tableCellStyle}>{formatPercentage(student.averageScore)}</td></tr>)}</tbody>
+                  </table></div>
+                )}
+              </div>
+              <div style={panelStyle}>
+                <h3>Competency Results</h3>
+                <p>First answers from completed comprehension assessments in the period, by question type.</p>
+                <div style={metricsStyle}>{Object.entries(report.competency ?? {}).map(([type, result]) =>
+                  <ReportMetric key={type} label={COMPETENCY_LABELS[type] ?? type} value={competencyText(result)} />)}</div>
+              </div>
+            </>
+          )}
+
+          {report.riskClassifications && (
+            <div style={panelStyle}>
+              <h3>Current Risk Classifications</h3>
+              <p>{RISK_NOTE}</p>
+              <div style={metricsStyle}>{Object.entries(report.riskClassifications.counts).map(([label, count]) =>
+                <ReportMetric key={label} label={label} value={count} />)}</div>
+              {report.riskClassifications.students.length > 0 && <div className="m7-scroll"><table><thead><tr><th>Student</th><th>Classification</th></tr></thead>
+                <tbody>{report.riskClassifications.students.map((student) => <tr key={student.studentId}><td>{student.studentName}</td><td>{student.classification}</td></tr>)}</tbody></table></div>}
+            </div>
+          )}
 
           <div style={panelStyle}>
             <h3>Current Assignment Completion Snapshot</h3>
