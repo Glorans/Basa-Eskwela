@@ -112,7 +112,7 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
   const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
   const { data: moduleRow, error } = await supabase
     .from("modules")
-    .select("id, path_id, title, difficulty, status, passage, deleted_at")
+    .select("id, path_id, title, difficulty, status, passage, deleted_at, created_by")
     .eq("id", moduleId)
     .maybeSingle();
 
@@ -188,6 +188,9 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
   ) {
     // Admin self-practice, like general users, reads published modules outside any classroom.
     throw new OralReadingAuthorizationError();
+  } else if (requester.profile.role === "admin" && moduleRow.created_by !== requester.user.id) {
+    // Admin practice (M5 and M6) is a test of the Admin's own published modules only.
+    throw new OralReadingAuthorizationError("Admin practice is available only for published modules you created.");
   }
 
   if (context.passageId) requireUuid(context.passageId, "The passage ID");

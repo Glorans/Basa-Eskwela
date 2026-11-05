@@ -24,11 +24,6 @@ interface ReadingMascotProps {
   protectSelector?: string;
   /** Phone overlay only: content the popup should cover as little as possible. */
   avoidSelector?: string;
-  /**
-   * Inline only: when set, closing the bubble keeps the mascot where it is with a button
-   * (this label) that shows the same message again. Without it, closing hides the mascot.
-   */
-  reopenLabel?: string;
 }
 
 const cheering = new Set<MascotMood>(["celebrate", "correct"]);
@@ -86,7 +81,7 @@ function usePhoneLayout() {
 
 /** Text-only presentation. Dismissal never changes the activity's data. */
 export default function ReadingMascot({
-  mood, message, language, eventId, live = false, placement = "dock", protectSelector, avoidSelector, reopenLabel,
+  mood, message, language, eventId, live = false, placement = "dock", protectSelector, avoidSelector,
 }: ReadingMascotProps) {
   const anchor = useRef<HTMLSpanElement>(null);
   const overlay = useRef<HTMLElement>(null);
@@ -189,31 +184,24 @@ export default function ReadingMascot({
 
   if (placement === "inline") {
     // A pop-up callout in the area the page reserves: nothing at all until there is a message.
-    const reopenable = Boolean(message && reopenLabel) && dismissed.current.has(key);
-    if (!visible && !reopenable) return null;
+    // Closing it removes the mascot and its bubble entirely (no reopen button, no empty space);
+    // the next message (another question or the results) shows it again.
+    if (!visible) return null;
     return (
       <aside className="reading-mascot-dock reading-mascot-dock--inline" lang={language}>
         <div className={`reading-mascot reading-mascot--${mood}`}>
           <img key={key} className="reading-mascot-image" alt="" aria-hidden="true"
             src={cheering.has(mood) ? cheeringMascot : standingMascot} width={180} height={200} />
-          {visible ? (
-            <div className="reading-mascot-bubble">
-              <button type="button" className="reading-mascot-close" aria-label={t("Close")}
-                onClick={() => {
-                  dismissed.current.add(key);
-                  redraw(value => value + 1);
-                }}>
-                <X size={20} aria-hidden="true" />
-              </button>
-              <p key={key} {...(live ? { role: "status" } : {})}>{message}</p>
-            </div>
-          ) : (
-            <button type="button" className="reading-mascot-reopen"
+          <div className="reading-mascot-bubble">
+            <button type="button" className="reading-mascot-close" aria-label={t("Close")}
               onClick={() => {
-                dismissed.current.delete(key);
+                dismissed.current.add(key);
                 redraw(value => value + 1);
-              }}>{reopenLabel}</button>
-          )}
+              }}>
+              <X size={20} aria-hidden="true" />
+            </button>
+            <p key={key} {...(live ? { role: "status" } : {})}>{message}</p>
+          </div>
         </div>
       </aside>
     );

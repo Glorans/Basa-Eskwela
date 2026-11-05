@@ -154,7 +154,11 @@ test("verification checks each privilege separately and the rollback warns about
   assert.match(migration, /Lease time/);
 });
 
-test("the superseded per-part proposal is clearly marked and never referenced by the backend", () => {
-  assert.match(sqlFile("supabase/proposed/m5_pronunciation_results_PROPOSED.sql"), /SUPERSEDED — DO NOT APPLY/);
+test("the superseded per-part proposal is never referenced by the backend, and is clearly marked where it exists", () => {
   assert.doesNotMatch(sqlFile("server/services/pronunciationCheckService.js"), /oral_reading_pronunciation_parts/);
+  // The obsolete SQL is not part of the repository; a local copy, if present, must stay marked.
+  const superseded = "supabase/proposed/m5_pronunciation_results_PROPOSED.sql";
+  if (require("node:fs").existsSync(require("node:path").resolve(__dirname, "..", "..", superseded))) {
+    assert.match(sqlFile(superseded), /SUPERSEDED — DO NOT APPLY/);
+  }
 });

@@ -19,6 +19,8 @@ const GENERAL = "33333333-3333-4333-8333-333333333333";
 const TEACHER = "44444444-4444-4444-8444-444444444444";
 const MODULE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const FIL_MODULE = "abababab-abab-4bab-8bab-abababababab";
+const OTHER_ADMIN = "55555555-5555-4555-8555-555555555555";
+const OTHER_ADMIN_MODULE = "acacacac-acac-4cac-8cac-acacacacacac";
 const PATH = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const FIL_PATH = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
 const ROOM = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
@@ -69,8 +71,10 @@ function fakeDb({ missing = [] } = {}) {
         { id: TEACHER, role: "teacher", teacher_status: "pending", full_name: "Teacher" },
       ],
       modules: [
-        { id: MODULE, path_id: PATH, title: "Birds", difficulty: "Easy", status: "published", passage: "A bird rests.", deleted_at: null },
-        { id: FIL_MODULE, path_id: FIL_PATH, title: "Ibon", difficulty: "Easy", status: "published", passage: "Ang ibon ay nagpapahinga.", deleted_at: null },
+        // Admin practice covers only modules the Admin created (created_by).
+        { id: MODULE, path_id: PATH, title: "Birds", difficulty: "Easy", status: "published", passage: "A bird rests.", deleted_at: null, created_by: ADMIN },
+        { id: FIL_MODULE, path_id: FIL_PATH, title: "Ibon", difficulty: "Easy", status: "published", passage: "Ang ibon ay nagpapahinga.", deleted_at: null, created_by: ADMIN },
+        { id: OTHER_ADMIN_MODULE, path_id: PATH, title: "Owls", difficulty: "Easy", status: "published", passage: "An owl hoots.", deleted_at: null, created_by: OTHER_ADMIN },
       ],
       learning_paths: [{ id: PATH, path_name: "English", language: "English" }, { id: FIL_PATH, path_name: "Filipino", language: "fil-PH" }],
       module_passages: [],
@@ -124,6 +128,11 @@ test("admins read published modules outside classrooms, never with a room or ass
   await assert.rejects(loadAccessiblePublishedModule(admin, MODULE, deps(db, ADMIN), { roomId: ROOM }), { statusCode: 403 });
   await assert.rejects(loadAccessiblePublishedModule(admin, MODULE, deps(db, ADMIN), { assignmentId: ROOM }), { statusCode: 403 });
   await assert.rejects(loadAccessiblePublishedModule(requester(TEACHER, "teacher"), MODULE, deps(db, TEACHER)), { statusCode: 403 });
+  // Another Admin's published module is not this Admin's practice material.
+  await assert.rejects(loadAccessiblePublishedModule(admin, OTHER_ADMIN_MODULE, deps(db, ADMIN)),
+    { statusCode: 403, message: "Admin practice is available only for published modules you created." });
+  // Learners are unaffected by the Admin ownership rule.
+  assert.equal((await loadAccessiblePublishedModule(requester(GENERAL, "general_user"), OTHER_ADMIN_MODULE, deps(db, GENERAL))).id, OTHER_ADMIN_MODULE);
 });
 
 async function withRouter(dependencies, run) {
@@ -258,6 +267,7 @@ test("admin passage list is admin-only and reuses the shared Filipino language m
   const db = fakeDb();
   await assert.rejects(listAdminReadingPassages(requester(STUDENT, "student"), { getSupabaseAdmin: () => db }), { statusCode: 403 });
   const passages = await listAdminReadingPassages(requester(ADMIN, "admin"), { getSupabaseAdmin: () => db });
+  // Only this Admin's own published modules; another Admin's module is not listed.
   assert.deepEqual(passages.map(({ moduleId, language }) => [moduleId, language]).sort(), [[MODULE, "en"], [FIL_MODULE, "fil"]].sort());
   assert.equal(db.queries.some((table) => ["profiles", "enrollments", "oral_reading_attempts"].includes(table)), false, "no learner data is read");
 });

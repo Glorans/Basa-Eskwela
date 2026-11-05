@@ -1,7 +1,7 @@
 const { loadAssignedReadingSource } = require("./assignedReadingSource");
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
-  authorizeOralReadingRequest,
+  authorizeOralReadingPracticeRequest,
   loadAccessiblePublishedModule,
 } = require("./oralReadingAttemptService");
 const {
@@ -52,8 +52,35 @@ function normalizeEvidence(value) {
   return value.normalize("NFKC").replace(/\s+/gu, " ").trim();
 }
 
+/**
+ * M6 is open to Students, Independent Learners and, for self-practice only, Admins.
+ * Teachers and accounts without a role are refused. Every read and action is scoped
+ * to the requester's own attempts (loadOwnedAttempt); an Admin may start an activity
+ * only under the narrow Admin-practice rules in assertAdminPracticeModule.
+ */
 async function authorizeComprehensionRequest(req) {
-  return authorizeOralReadingRequest(req);
+  return authorizeOralReadingPracticeRequest(req);
+}
+
+const isAdminRequester = (requester) => requester?.profile?.role === "admin";
+
+/**
+ * Admin practice (Appendix N M6 for Admin): only a published, non-deleted module the
+ * Admin created, as a module activity with no classroom, assignment or uploaded material.
+ * Reviewing Students' saved assessments never grants this; it is a separate, read-only API.
+ */
+async function assertAdminPracticeModule(db, requester, moduleId) {
+  const { data: owned, error } = await db.from("modules")
+    .select("id,created_by,status,deleted_at")
+    .eq("id", moduleId)
+    .maybeSingle();
+  if (error) throw databaseError(error, "Unable to verify the reading module.");
+  if (!owned || owned.status !== "published" || owned.deleted_at) {
+    throw new ComprehensionError("This reading module is not available for comprehension practice.", 403);
+  }
+  if (owned.created_by !== requester.user.id) {
+    throw new ComprehensionError("Admin comprehension practice is available only for published modules you created.", 403);
+  }
 }
 
 async function requireAssignedQuestionSet(db, materialId, questionSetId) {
@@ -280,6 +307,9 @@ async function loadOwnedAttempt(requester, attemptId) {
 
 async function getComprehensionAttempt(requester, attemptId) {
   const attempt = await loadOwnedAttempt(requester, attemptId);
+  // The learning activity's assessment: this attempt, or (for an extra attempt saved before the
+  // one-per-activity rule) the activity's assessment, which the page opens instead.
+  const activityAttempt = await findActivityAttempt(getSupabaseAdmin(), requester.user.id, activityKey(attempt));
 
   const { data: responses, error } = await getSupabaseAdmin()
     .from("m6_comprehension_responses")
@@ -312,6 +342,7 @@ async function getComprehensionAttempt(requester, attemptId) {
     roomId: attempt.room_id ?? null,
     activityAssignmentId: attempt.activity_assignment_id ?? null,
     oralReadingAttemptId: attempt.oral_reading_attempt_id ?? null,
+    activityAttemptId: activityAttempt?.id ?? attempt.id,
     passageId: attempt.passage_id,
     passageTitle: attempt.passage_title,
     passageText: attempt.passage_text,
@@ -370,6 +401,57 @@ async function getComprehensionAttempt(requester, attemptId) {
   };
 }
 
+/*
+ * One comprehension assessment per learning activity. M5 readings may be repeated, but every
+ * reading of the same activity leads to the same M6 assessment:
+ *   - a module passage in its context: (module, passage, classroom, room assignment); an
+ *     Admin's or Independent Learner's own practice has no classroom or assignment;
+ *   - an assigned classroom material: (material, activity assignment).
+ * Different classrooms, assignments or passages are different activities.
+ */
+const ACTIVITY_COLUMNS =
+  "id,status,created_at,completed_at,module_id,passage_id,room_id,assignment_id,material_id,activity_assignment_id,oral_reading_attempt_id";
+
+function activityKey(row) {
+  return row.material_id
+    ? { material_id: row.material_id, activity_assignment_id: row.activity_assignment_id ?? null }
+    : {
+      material_id: null,
+      module_id: row.module_id ?? null,
+      passage_id: row.passage_id ?? null,
+      room_id: row.room_id ?? null,
+      assignment_id: row.assignment_id ?? null,
+    };
+}
+
+/**
+ * The activity's assessment. Attempts saved before this rule may include extra attempts for
+ * one activity (each from a repeated reading); they are kept unchanged, and the one shown is
+ * the first completed attempt, otherwise the first one started.
+ */
+function chooseActivityAttempt(rows) {
+  const time = (row) => String((row.status === "completed" ? row.completed_at : row.created_at) ?? "");
+  return [...rows].sort((a, b) => {
+    const aDone = a.status === "completed";
+    const bDone = b.status === "completed";
+    if (aDone !== bDone) return aDone ? -1 : 1;
+    return time(a).localeCompare(time(b)) || String(a.id).localeCompare(String(b.id));
+  })[0] ?? null;
+}
+
+async function findActivityAttempt(db, userId, key) {
+  // The key's non-empty columns filter in the database; its empty ones (no classroom or
+  // assignment) are matched here, so an empty column never matches a filled one.
+  let query = db.from("m6_comprehension_attempts").select(ACTIVITY_COLUMNS).eq("user_id", userId);
+  for (const [column, value] of Object.entries(key)) if (value != null) query = query.eq(column, value);
+  const { data, error } = await query;
+  if (error) throw databaseError(error, "Unable to check your comprehension activity.");
+  const rows = (Array.isArray(data) ? data : data ? [data] : []).filter((row) =>
+    row.user_id === undefined || row.user_id === userId).filter((row) =>
+    Object.entries(key).every(([column, value]) => (row[column] ?? null) === (value ?? null)));
+  return chooseActivityAttempt(rows);
+}
+
 async function startComprehensionAttempt(requester, body = {}) {
   if (
     !body ||
@@ -404,6 +486,10 @@ async function startComprehensionAttempt(requester, body = {}) {
 
   if (body.assignmentId != null) {
     requireUuid(body.assignmentId, "Assignment ID");
+  }
+
+  if (isAdminRequester(requester) && (materialId || body.roomId != null || body.assignmentId != null)) {
+    throw new ComprehensionError("Admin comprehension practice is available only for published modules you created.", 403);
   }
 
   const db = getSupabaseAdmin();
@@ -441,9 +527,16 @@ async function startComprehensionAttempt(requester, body = {}) {
     }
   }
 
+  // Opens the learning activity's assessment for a saved attempt row. An extra attempt saved
+  // before the one-per-activity rule opens the activity's assessment instead.
+  const openActivity = async (row) => {
+    const current = await findActivityAttempt(db, requester.user.id, activityKey(row));
+    return getComprehensionAttempt(requester, current?.id ?? row.id);
+  };
+
   if (existing) {
     verifySameRequest(existing);
-    return getComprehensionAttempt(requester, existing.id);
+    return openActivity(existing);
   }
 
   // Reopen this exact saved assessment even if its source was later edited.
@@ -452,8 +545,10 @@ async function startComprehensionAttempt(requester, body = {}) {
       .select("id,module_id,passage_id,room_id,assignment_id,material_id,activity_assignment_id,oral_reading_attempt_id")
       .eq("user_id", requester.user.id).eq("oral_reading_attempt_id", body.oralReadingAttemptId).maybeSingle();
     if (resumeError) throw databaseError(resumeError, "Unable to reopen comprehension.");
-    if (resumed) { verifySameRequest(resumed); return getComprehensionAttempt(requester, resumed.id); }
+    if (resumed) { verifySameRequest(resumed); return openActivity(resumed); }
   }
+
+  if (isAdminRequester(requester)) await assertAdminPracticeModule(db, requester, body.moduleId);
 
   // Check publication, enrollment, assignment, and passage access.
   const module = materialId ? await loadAssignedReadingSource(requester, materialId, body) : await loadAccessiblePublishedModule(
@@ -515,17 +610,20 @@ async function startComprehensionAttempt(requester, body = {}) {
     );
   }
 
-  // Every new attempt belongs to one saved reading, so opening a module's
-  // comprehension without the oral-reading ID (an old link or bookmark)
-  // reopens that reading's activity instead of starting a duplicate.
+  // One assessment per learning activity: a repeated reading (or an old link without the
+  // oral-reading ID) reopens the activity's existing assessment, in progress or completed,
+  // with its original answers, score and reading. Nothing new is created.
   const oralReadingAttemptId = body.oralReadingAttemptId ?? completedReadings[0].id;
-  if (!body.oralReadingAttemptId) {
-    const { data: resumed, error: resumeError } = await db.from("m6_comprehension_attempts")
-      .select("id,module_id,passage_id,room_id,assignment_id,material_id,activity_assignment_id,oral_reading_attempt_id")
-      .eq("user_id", requester.user.id).eq("oral_reading_attempt_id", oralReadingAttemptId).maybeSingle();
-    if (resumeError) throw databaseError(resumeError, "Unable to reopen comprehension.");
-    if (resumed) { verifySameRequest(resumed); return getComprehensionAttempt(requester, resumed.id); }
-  }
+  const activity = activityKey({
+    module_id: module.id ?? null,
+    passage_id: module.passageId ?? null,
+    room_id: module.roomId ?? null,
+    assignment_id: module.assignmentId ?? null,
+    material_id: materialId,
+    activity_assignment_id: module.activityAssignmentId ?? null,
+  });
+  const current = await findActivityAttempt(db, requester.user.id, activity);
+  if (current) return getComprehensionAttempt(requester, current.id);
 
   const questions = await loadReviewedQuestions(
     module.id,
@@ -556,7 +654,10 @@ async function startComprehensionAttempt(requester, body = {}) {
 
   // Handle identical start requests arriving together.
   if (saveError?.code === "23505") {
-    // Either unique key may have been taken: this reading's activity, or this submission.
+    // Another request created this learning activity's assessment first (the proposed
+    // one-per-activity guard), or took this reading's or this submission's key.
+    const first = await findActivityAttempt(db, requester.user.id, activity);
+    if (first) return getComprehensionAttempt(requester, first.id);
     const findBy = (column, value) => db
       .from("m6_comprehension_attempts")
       .select("id,module_id,passage_id,room_id,assignment_id,material_id,activity_assignment_id,oral_reading_attempt_id")
@@ -574,7 +675,7 @@ async function startComprehensionAttempt(requester, body = {}) {
     }
 
     verifySameRequest(duplicate);
-    return getComprehensionAttempt(requester, duplicate.id);
+    return openActivity(duplicate);
   }
 
   if (saveError) {
@@ -587,11 +688,47 @@ async function startComprehensionAttempt(requester, body = {}) {
   return getComprehensionAttempt(requester, saved.id);
 }
 
+/**
+ * The learner's own M6 activity for one saved reading, if any: its ID and
+ * whether it is completed. Read-only. The M5 result page uses it to show
+ * "Continue to Questions" or "View Comprehension Result"; it never opens,
+ * starts or changes an activity. Only the requester's rows are searched, and
+ * the database allows at most one activity per (user, reading).
+ */
+async function findComprehensionForReading(requester, oralReadingAttemptId) {
+  requireUuid(oralReadingAttemptId, "Oral reading result ID");
+  const db = getSupabaseAdmin();
+  // The requester's own reading, and through it its learning activity: every reading of the
+  // same activity (a first reading or a repeat) finds the activity's one assessment.
+  const { data: reading, error: readingError } = await db
+    .from("oral_reading_attempts")
+    .select("id,module_id,passage_id,room_id,assignment_id,material_id,activity_assignment_id")
+    .eq("id", oralReadingAttemptId)
+    .eq("user_id", requester.user.id)
+    .maybeSingle();
+  if (readingError) throw databaseError(readingError, "Unable to check your comprehension activity.");
+  let found = reading ? await findActivityAttempt(db, requester.user.id, activityKey(reading)) : null;
+  if (!found) {
+    const { data, error } = await db
+      .from("m6_comprehension_attempts")
+      .select(ACTIVITY_COLUMNS)
+      .eq("user_id", requester.user.id)
+      .eq("oral_reading_attempt_id", oralReadingAttemptId)
+      .maybeSingle();
+    if (error) throw databaseError(error, "Unable to check your comprehension activity.");
+    found = data ? (await findActivityAttempt(db, requester.user.id, activityKey(data))) ?? data : null;
+  }
+  return found ? { id: found.id, status: found.status === "completed" ? "completed" : "in_progress" } : null;
+}
+
 module.exports = {
   ComprehensionError,
   authorizeComprehensionRequest,
   startComprehensionAttempt,
   getComprehensionAttempt,
+  findComprehensionForReading,
+  findActivityAttempt,
+  activityKey,
   loadOwnedAttempt,
   loadReviewedQuestions,
 };

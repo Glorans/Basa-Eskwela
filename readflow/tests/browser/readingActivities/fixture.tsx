@@ -148,6 +148,11 @@ export async function startComprehension(input: any) {
   return structuredClone(comprehension.get(source.id));
 }
 export async function getComprehension(id: string) { await delay(); return structuredClone(comprehension.get(id)); }
+// Read-only M5 -> M6 status lookup (fixture IDs: an oral reading and its activity share the source ID).
+export async function getComprehensionForReading(oralReadingAttemptId: string) {
+  const saved = comprehension.get(oralReadingAttemptId);
+  return saved ? { id: saved.id, status: saved.status === "completed" ? "completed" : "in_progress" } : null;
+}
 export async function sendComprehensionAction(id: string, action: any) {
   events.push(["action", id, structuredClone(action)]); await delay(); maybeFail("action");
   const attempt = comprehension.get(id);

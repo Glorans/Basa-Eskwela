@@ -15,6 +15,7 @@ const {
   authorizeComprehensionRequest,
   startComprehensionAttempt,
   getComprehensionAttempt,
+  findComprehensionForReading,
 } = require("../services/comprehensionAttemptService");
 
 const {
@@ -92,6 +93,17 @@ router.get("/attempts/:attemptId", async (req, res) => {
       success: true,
       attempt,
     });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+// Read-only: the learner's own M6 activity for one saved reading, or null.
+router.get("/readings/:oralReadingAttemptId", async (req, res) => {
+  try {
+    const requester = await authorizeComprehensionRequest(req);
+    const attempt = await findComprehensionForReading(requester, req.params.oralReadingAttemptId);
+    return res.json({ success: true, attempt });
   } catch (error) {
     return sendError(res, error);
   }

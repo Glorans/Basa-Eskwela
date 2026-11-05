@@ -5,7 +5,7 @@ const {
   normalizeLanguage,
 } = require("./oralReadingAttemptService");
 
-/** Published passages an admin may practise with. Lists content only, never learner data. */
+/** Published passages of modules this Admin created (Admin practice). Lists content only, never learner data. */
 async function listAdminReadingPassages(requester, dependencies = {}) {
   if (requester.profile.role !== "admin") {
     throw new OralReadingAuthorizationError("Admin access is required.");
@@ -24,8 +24,9 @@ async function listAdminReadingPassages(requester, dependencies = {}) {
     }
   }
 
-  const modules = (await all("modules", "id,path_id,title,status,deleted_at,passage",
-    (query) => query.eq("status", "published"))).filter((row) => !row.deleted_at);
+  const modules = (await all("modules", "id,path_id,title,status,deleted_at,passage,created_by",
+    (query) => query.eq("status", "published").eq("created_by", requester.user.id)))
+    .filter((row) => !row.deleted_at && row.created_by === requester.user.id);
   const paths = new Map((await all("learning_paths", "id,language")).map((row) => [row.id, row.language]));
   const passages = await all("module_passages", "id,module_id,title,passage_text,display_order");
 

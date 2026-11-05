@@ -148,7 +148,8 @@ test("M4 routes retain role guards and coexist with the M5 results routes", asyn
     assert.ok(section.includes(`path="comprehension/:attemptId" element={<ComprehensionPage role="${role}" />}`));
     assert.ok(section.includes(`path="read-aloud/results/:attemptId" element={<ReadingResultPage role="${role}" />}`));
   }
-  for (const role of ["teacher", "admin"]) {
-    assert.doesNotMatch(guardedSection(role), /<ComprehensionPage/);
-  }
+  // Teachers never take M6. Admins have M6 only as self-practice, inside their own guarded section.
+  assert.doesNotMatch(guardedSection("teacher"), /<ComprehensionPage/);
+  assert.ok(guardedSection("admin").includes('path="oral-reading/modules/:moduleId/comprehension" element={<ComprehensionPage role="admin" />}'));
+  assert.ok(guardedSection("admin").includes('path="comprehension/:attemptId" element={<ComprehensionPage role="admin" />}'));
 });

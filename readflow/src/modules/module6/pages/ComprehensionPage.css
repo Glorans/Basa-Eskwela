@@ -189,8 +189,18 @@
   background: #edf7e7;
 }
 
-.m6-page .m6-loading {
-  font-weight: 800;
+/* Saving status for screen readers only: the question stays on screen with its buttons disabled. */
+.m6-page .m6-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .m6-page .m6-score {
@@ -398,3 +408,106 @@
   }
   .m6-page--questions .m6-mascot-area .reading-mascot-close { top: 4px; right: 4px; width: 36px; height: 36px; transform: none; }
 }
+
+/* Completed results: the two ways back sit at the end of the results card, and there is no top
+   link, so the heading starts the page without an empty gap above it. */
+.m6-page--results > h1:first-child { margin-top: 0; }
+.m6-page .m6-result-actions { justify-content: flex-start; margin-top: 24px; }
+.m6-page .m6-result-actions .m6-button { text-decoration: none; }
+.m6-page .m6-result-actions .m6-final-note { flex-basis: 100%; }
+
+/* Completed results: the mascot is never a strip above the card. Narrower areas have no free space
+   beside the card, and a helper floating over a full-width card would cover scores, answers or
+   buttons, so there it sits at the lower left just after the card: it never pushes the card down
+   and never covers it. Closing it removes it entirely (the area is then empty and hidden). */
+.m6-page--results .m6-stage > .m6-mascot-area {
+  order: 1;
+  justify-self: start;
+  width: min(360px, 100%);
+}
+.m6-page--results .m6-mascot-area .reading-mascot-bubble { box-shadow: 0 8px 20px rgb(23 63 59 / 18%); }
+
+/* Wide areas: when the green area beside the results card can hold the helper, it sits there,
+   left of the card, overlapping only the card's outer padding (never its text, score or
+   buttons). As in the question flow, it sits at the lower left of the visible area while the
+   learner scrolls. Assigned stories (an 800px panel) have room from a 1040px content
+   area, about a 1366px laptop beside the sidebar; module results (1000px) from 1300px. The card's own width and layout do not change. */
+:where(.basa-content, .m3-content):has(> .m6-page--results) { container: m6-results-shell / inline-size; }
+@container m6-results-shell (min-width: 1040px) {
+  .m6-page--assigned.m6-page--results .m6-stage > .m6-mascot-area {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    /* Overlaps the card's edge by 14px; the card's padding is at least 20px. */
+    right: calc(100% - 14px);
+    width: min(280px, calc((100cqw - 100%) / 2 + 6px));
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .m6-page--assigned.m6-page--results .m6-mascot-area .reading-mascot-dock { position: sticky; bottom: 12px; }
+  .m6-page--assigned.m6-page--results .m6-mascot-area .reading-mascot { flex-direction: column-reverse; align-items: center; gap: 4px; }
+  .m6-page--assigned.m6-page--results .m6-mascot-area .reading-mascot-image {
+    flex: none;
+    width: clamp(110px, 55%, 170px);
+    height: auto;
+    aspect-ratio: 180 / 200;
+  }
+  .m6-page--assigned.m6-page--results .m6-mascot-area .reading-mascot-bubble {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 40px 16px 18px;
+    border-width: 3px;
+    box-shadow: 0 8px 20px rgb(23 63 59 / 14%);
+  }
+  .m6-page--assigned.m6-page--results .m6-mascot-area .reading-mascot-bubble > p { font-size: clamp(1rem, 0.85rem + 0.3vw, 1.15rem); overflow-wrap: break-word; }
+  .m6-page--assigned.m6-page--results .m6-mascot-area .reading-mascot-bubble::before {
+    top: auto;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-45deg);
+  }
+  .m6-page--assigned.m6-page--results .m6-mascot-area .reading-mascot-close { top: 4px; right: 4px; width: 36px; height: 36px; transform: none; }
+}
+@container m6-results-shell (min-width: 1300px) {
+  .m6-page--results .m6-stage > .m6-mascot-area {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    bottom: 0;
+    /* Overlaps the card's edge by 14px; the card's padding is at least 20px. */
+    right: calc(100% - 14px);
+    width: min(280px, calc((100cqw - 100%) / 2 + 6px));
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .m6-page--results .m6-mascot-area .reading-mascot-dock { position: sticky; bottom: 12px; }
+  .m6-page--results .m6-mascot-area .reading-mascot { flex-direction: column-reverse; align-items: center; gap: 4px; }
+  .m6-page--results .m6-mascot-area .reading-mascot-image {
+    flex: none;
+    width: clamp(110px, 55%, 170px);
+    height: auto;
+    aspect-ratio: 180 / 200;
+  }
+  .m6-page--results .m6-mascot-area .reading-mascot-bubble {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 40px 16px 18px;
+    border-width: 3px;
+    box-shadow: 0 8px 20px rgb(23 63 59 / 14%);
+  }
+  .m6-page--results .m6-mascot-area .reading-mascot-bubble > p { font-size: clamp(1rem, 0.85rem + 0.3vw, 1.15rem); overflow-wrap: break-word; }
+  .m6-page--results .m6-mascot-area .reading-mascot-bubble::before {
+    top: auto;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-45deg);
+  }
+  .m6-page--results .m6-mascot-area .reading-mascot-close { top: 4px; right: 4px; width: 36px; height: 36px; transform: none; }
+}
+
+/* A closed mascot leaves nothing behind at any width: its empty area is hidden even where a wide
+   layout above gives the area its own display. */
+.m6-page .m6-stage > .m6-mascot-area:empty { display: none; }

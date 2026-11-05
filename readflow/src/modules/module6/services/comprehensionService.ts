@@ -49,6 +49,8 @@ export interface ComprehensionAttempt {
   materialId?: string | null;
   activityAssignmentId?: string | null;
   oralReadingAttemptId?: string | null;
+  /** The learning activity's one assessment; differs from id only for an extra attempt saved before that rule. */
+  activityAttemptId?: string | null;
   roomId?: string | null;
   passageTitle: string;
   passageText: string;
@@ -169,6 +171,27 @@ export async function getComprehension(
     return data.attempt;
   } catch (error) {
     throw serviceError(error, "Unable to reopen this activity.");
+  }
+}
+
+/** The learner's own M6 activity for one saved reading, or null. Read-only: never starts one. */
+export interface LinkedComprehension {
+  id: string;
+  status: "in_progress" | "completed";
+}
+
+export async function getComprehensionForReading(
+  oralReadingAttemptId: string,
+): Promise<LinkedComprehension | null> {
+  try {
+    const { data } = await api.get<{ success: boolean; attempt: LinkedComprehension | null }>(
+      `/api/comprehension/readings/${encodeURIComponent(oralReadingAttemptId)}`,
+      { headers: await authHeaders() },
+    );
+
+    return data.attempt ?? null;
+  } catch (error) {
+    throw serviceError(error, "Unable to check your comprehension activity.");
   }
 }
 

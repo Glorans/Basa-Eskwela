@@ -332,6 +332,15 @@ function App() {
               path="read-aloud/results/:attemptId"
               element={<ReadingResultPage role="admin" />}
             />
+            {/* M6 - Admin comprehension practice on the Admin's own published modules; own results only */}
+            <Route
+              path="oral-reading/modules/:moduleId/comprehension"
+              element={<ComprehensionPage role="admin" />}
+            />
+            <Route
+              path="comprehension/:attemptId"
+              element={<ComprehensionPage role="admin" />}
+            />
             <Route
               path="reading-history"
               element={<ReadingHistoryPage role="admin" />}

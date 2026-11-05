@@ -68,8 +68,8 @@ async function mascotFeedback(check, expected) {
   await until(`(${mascotText} ?? '').${check}(${JSON.stringify(expected)})`);
   await pause(80);
   const state = await evaluate(`(()=>{const area=document.querySelector('.m6-mascot-area').getBoundingClientRect();
-    const content=[...document.querySelectorAll('.m6-question-card, .m6-question-card *, .m6-page > .m6-stage > .m6-card')]
-      .map(e=>e.getBoundingClientRect()).filter(r=>r.width>0&&r.height>0);
+    const content=[...document.querySelectorAll('.m6-question-card, .m6-question-card *, .m6-page--questions > .m6-stage > .m6-card, .m6-page--results > .m6-stage > .m6-card *')]
+      .filter(e=>!e.closest('details:not([open])')||e.closest('summary')).map(e=>e.getBoundingClientRect()).filter(r=>r.width>0&&r.height>0);
     const overlaps=content.filter(r=>area.left<r.right-1&&area.right>r.left+1&&area.top<r.bottom-1&&area.bottom>r.top+1).length;
     const dock=document.querySelector('.m6-mascot-area .reading-mascot-dock');
     // In page flow (static), or sticky at the lower left on desktop; never fixed or absolute over content.
@@ -147,12 +147,11 @@ try {
           await evaluate(`document.querySelectorAll('input[type=radio]')[${question === 0 ? 1 : 0}].click()`);
           await click(filipino ? 'Ipasa ang sagot' : 'Submit answer');
           if (question === 0) {
-            // F2: the question's clue in the mascot bubble; closing keeps the mascot with a reopen button.
+            // F2: the question's clue in the mascot bubble; closing removes the mascot entirely (no reopen button).
             await mascotFeedback('startsWith', (filipino ? 'Pag-isipan Ito: ' : 'Think about it: ') + 'Teacher hint: remember the garden.');
             await evaluate(`document.querySelector('.m6-mascot-area .reading-mascot-close').click()`);
-            await until(`!document.querySelector('.m6-mascot-area .reading-mascot-bubble') && !!document.querySelector('.m6-mascot-area .reading-mascot-reopen')`);
-            await click(filipino ? 'Ipakita muli ang pahiwatig' : 'Show the clue again');
-            await mascotFeedback('includes', 'Teacher hint: remember the garden.');
+            await until(`!document.querySelector('.m6-mascot-area .reading-mascot-dock')`);
+            assert.equal(await evaluate(`!document.querySelector('.reading-mascot-reopen') && !/Show the clue again|Ipakita muli ang pahiwatig/.test(document.body.innerText)`), true);
             await layout(filipino);
             // F3 feedback unchanged; the clue is not repeated in the card; no way to answer again.
             assert.match(await evaluate(`document.querySelector('.m6-submitted-feedback--incorrect h3').textContent`), filipino ? /Hindi tama/ : /Incorrect/);

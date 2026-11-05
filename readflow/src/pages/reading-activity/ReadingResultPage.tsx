@@ -1,5 +1,6 @@
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "./activityLanguage";
-import { comprehensionTargetForReading } from "../../modules/module5/services/comprehensionNavigation";
+import { comprehensionResultTarget, comprehensionTargetForReading, learningAreaTarget } from "../../modules/module5/services/comprehensionNavigation";
+import { getComprehensionForReading, type LinkedComprehension } from "../../modules/module6/services/comprehensionService";
 import { BookOpen, Gauge, Headphones, ListChecks, MessageCircle, Mic, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -120,20 +121,8 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
       ? "/dashboard/materials"
       : "/m3/general/modules";
 
-  // Admin practice has no module-detail page; return to the passage list.
-  const backTarget = role === "admin"
-    ? "/admin/oral-reading"
-    : attempt?.materialId && attempt.roomId
-    ? `/dashboard/learning-rooms/${attempt.roomId}`
-    : role === "student" && attempt?.roomId
-      ? `/dashboard/learning-rooms/${attempt.roomId}`
-      : attempt
-        ? `${moduleRoot}/${attempt.moduleId}?${new URLSearchParams(
-            attempt.passageId
-              ? { passageId: attempt.passageId }
-              : {},
-          ).toString()}`
-        : moduleRoot;
+  // The reading's Learning Room, or its Reading Module (shared with the M6 results page).
+  const backTarget = learningAreaTarget(role, attempt).to;
 
   const backLabel = role === "admin" ? "Back to Oral Reading" : attempt?.materialId ? "Back to Learning Room" :
     role === "student" && attempt?.roomId
@@ -180,6 +169,21 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
     };
   }, [attemptId, profile?.id, revision]);
 
+  // The M6 activity already linked to this saved reading, read from the server (free; it never starts one).
+  // undefined while checking; null when there is none or the check failed.
+  const comprehensionEligible = Boolean(attempt && comprehensionTargetForReading(role, attempt));
+  const [linkedComprehension, setLinkedComprehension] = useState<{ readingId: string; attempt: LinkedComprehension | null }>();
+  useEffect(() => {
+    if (!attempt || !comprehensionEligible) return undefined;
+    let active = true;
+    const readingId = attempt.id;
+    void getComprehensionForReading(readingId)
+      .then((found) => { if (active) setLinkedComprehension({ readingId, attempt: found }); })
+      // Without the saved status, keep the existing Continue to Questions path: it reopens a saved activity and never duplicates it.
+      .catch(() => { if (active) setLinkedComprehension({ readingId, attempt: null }); });
+    return () => { active = false; };
+  }, [attempt?.id, comprehensionEligible]);
+
   // Leaving the result stops any example-word audio (F4).
   useEffect(() => () => speech.stop(), [speech]);
 
@@ -224,6 +228,9 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   }
 
   const comprehensionTarget = comprehensionTargetForReading(role, attempt);
+  const linked = linkedComprehension?.readingId === attempt.id ? linkedComprehension : undefined;
+  // Every role with an M6 path (Admin practice included) reopens its own completed activity.
+  const completedComprehension = linked?.attempt?.status === "completed" ? linked.attempt : null;
   // Learners are told when a reading has no comprehension activity, rather than
   // the button silently disappearing. Read-aloud-only activities and admin
   // self-practice never have questions, so they show nothing extra.
@@ -499,13 +506,25 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             </p>
           )}
           <div className="result-feedback-actions">
-            {comprehensionTarget && (
+            {comprehensionTarget && (!linked ? (
+              <span className="result-feedback-button result-feedback-button--primary" role="status" aria-disabled="true">
+                {t("Checking your questions…")}
+              </span>
+            ) : completedComprehension ? (
+              // A completed activity opens its saved result; nothing is started again.
+              <Link
+                className="result-feedback-button result-feedback-button--primary"
+                to={comprehensionResultTarget(role, completedComprehension.id)}
+                state={activityState}
+              >{t("View Comprehension Result")}</Link>
+            ) : (
+              // No activity yet, or one in progress: the existing start-or-resume path.
               <Link
                 className="result-feedback-button result-feedback-button--primary"
                 to={comprehensionTarget}
                 state={activityState}
               >{t("Continue to Questions")}</Link>
-            )}
+            ))}
             {readAgainTarget && (
               <Link className="result-feedback-button result-feedback-button--primary" to={readAgainTarget} state={activityState}>
                 <Mic size={20} aria-hidden="true" />{t("Read again")}</Link>

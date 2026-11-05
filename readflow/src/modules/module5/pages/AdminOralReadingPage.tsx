@@ -43,7 +43,10 @@ export default function AdminOralReadingPage() {
             Retry
           </button>
         </div>
-      ) : passages.length === 0 ? null : (
+      ) : passages.length === 0 ? (
+        // Admin practice uses only published modules this Admin created.
+        <p role="status" className="my-4">No passages to practise yet. Admin practice uses the published modules you created.</p>
+      ) : (
         <ul className="my-4 space-y-4">
           {passages.map((passage) => (
             <li

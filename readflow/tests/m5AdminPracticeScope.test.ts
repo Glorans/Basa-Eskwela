@@ -12,9 +12,12 @@ test("admin read-aloud practice stays under the admin workspace", () => {
   assert.deepEqual(Object.fromEntries(url.searchParams), { passageId: "passage" });
 });
 
-test("admins never receive an M6 comprehension link; learners keep theirs", () => {
+test("admins get an M6 practice link only for a module reading outside any classroom; learners keep theirs", () => {
   const attempt = { id: "attempt", moduleId: "module", materialId: null, passageId: "passage", roomId: null, assignmentId: null, activityAssignmentId: null, readAloudOnly: false };
-  assert.equal(comprehensionTargetForReading("admin", attempt), null);
+  assert.equal(comprehensionTargetForReading("admin", attempt), "/admin/oral-reading/modules/module/comprehension?passageId=passage&oralReadingAttemptId=attempt");
+  for (const context of [{ roomId: "room" }, { assignmentId: "assignment" }, { materialId: "material" }, { activityAssignmentId: "activity" }, { passageId: null }]) {
+    assert.equal(comprehensionTargetForReading("admin", { ...attempt, ...context }), null, JSON.stringify(context));
+  }
   assert.ok(comprehensionTargetForReading("general_user", attempt)?.startsWith("/m3/general/modules/module/comprehension"));
   assert.ok(comprehensionTargetForReading("student", attempt)?.startsWith("/dashboard/materials/module/comprehension"));
 });
@@ -54,7 +57,9 @@ test("admin practice uses the learner pages with admin-only return paths", async
   assert.doesNotMatch(history, /read-aloud\/results/);
   assert.match(history, /role=\{role\}/);
   assert.match(readAloud, /role === "admin"\s*\? `\/admin\/read-aloud\/results\/\$\{attemptId\}`/);
-  assert.match(result, /const backTarget = role === "admin"\s*\? "\/admin\/oral-reading"/);
+  assert.match(result, /const backTarget = learningAreaTarget\(role, attempt\)\.to;/);
+  const navigation = await read("../src/modules/module5/services/comprehensionNavigation.ts");
+  assert.match(navigation, /if \(role === "admin"\) return \{ to: "\/admin\/oral-reading", kind: "module" \};/);
   // F7 is the Reading History page itself; the result page no longer embeds a copy.
   assert.doesNotMatch(result, /ReadingHistoryPage/);
   assert.doesNotMatch(result, /className="result-history-link"/);

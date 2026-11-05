@@ -171,18 +171,3 @@
 .reading-mascot-dock--inline .reading-mascot-bubble { padding: 12px 48px 12px 14px; border-radius: 18px; box-shadow: none; }
 .reading-mascot-dock--inline .reading-mascot-bubble > p { font-size: 1rem; line-height: 1.4; max-height: none; overflow: visible; }
 .reading-mascot-dock--inline .reading-mascot-close { top: 50%; right: 6px; width: 40px; height: 40px; transform: translateY(-50%); }
-
-/* Inline mascot after its bubble is closed: the mascot stays put with a button that reopens it. */
-.reading-mascot-dock--inline .reading-mascot-reopen {
-  min-height: 44px;
-  padding: 8px 14px;
-  border: 2px solid #f5d77a;
-  border-radius: 999px;
-  background: #fffdf5;
-  color: var(--basa-navy, #0b3a3d);
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-}
-.reading-mascot-dock--inline .reading-mascot-reopen:hover { background: #fff0bf; }
-.reading-mascot-dock--inline .reading-mascot-reopen:focus-visible { outline: 3px solid var(--basa-navy, #0b3a3d); outline-offset: 3px; }

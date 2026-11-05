@@ -230,13 +230,26 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     assert.equal((await getOralReadingAttempt(owner, reading.id, deps)).transcript, reading.transcript);
     db.tables.uploaded_materials = materials;
   });
+  await t.test("a repeated reading of the same assigned activity reopens its one assessment; nothing new is created", async () => {
+    const saved = await startComprehensionAttempt(owner, start(await oral()));
+    const count = db.tables.m6_comprehension_attempts.length;
+    const again = await oral();
+    const reopened = await startComprehensionAttempt(owner, start(again));
+    assert.equal(reopened.id, saved.id);
+    assert.equal(reopened.oralReadingAttemptId, saved.oralReadingAttemptId, "the original reading link is kept");
+    assert.equal(db.tables.m6_comprehension_attempts.length, count);
+  });
   await t.test("concurrent starts converge on one comprehension result", async () => {
+    // A fresh learning activity: one M6 assessment per activity, so earlier subtests' attempts would be reopened.
+    db.tables.m6_comprehension_attempts.length = 0; db.tables.m6_comprehension_responses.length = 0;
     const reading = await oral();
     const results = await Promise.all([startComprehensionAttempt(owner, start(reading)), startComprehensionAttempt(owner, start(reading))]);
     assert.equal(results[0].id, results[1].id);
     assert.equal(db.tables.m6_comprehension_attempts.filter(a => a.oral_reading_attempt_id === reading.id).length, 1);
   });
   await t.test("answer and completion keep the protected RPC contract; the hint action is gone", async () => {
+    // A fresh learning activity: one M6 assessment per activity, so earlier subtests' attempts would be reopened.
+    db.tables.m6_comprehension_attempts.length = 0; db.tables.m6_comprehension_responses.length = 0;
     const reading = await oral();
     const saved = await startComprehensionAttempt(owner, start(reading));
     const calls = [];
@@ -265,6 +278,8 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     }
     const assignment = db.tables.reading_activity_assignments[0];
     assignment.question_set_id = SET;
+    // A fresh learning activity: one M6 assessment per activity, so earlier subtests' attempts would be reopened.
+    db.tables.m6_comprehension_attempts.length = 0; db.tables.m6_comprehension_responses.length = 0;
     try {
       assert.equal((await loadAssignedReadingSource(owner, MATERIAL, context, deps)).questionSetId, SET);
       const saved = await startComprehensionAttempt(owner, start(await oral()));
@@ -276,6 +291,7 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
       ]);
       assert.ok(saved.questions.every(q => q.questionText.startsWith("Set ")));
 
+      db.tables.m6_comprehension_attempts.length = 0; // each check below starts a fresh activity
       setQuestions[0].review_status = "generated";
       await assert.rejects(startComprehensionAttempt(owner, start(await oral())), { statusCode: 422, message: /not reviewed/ });
       setQuestions[0].review_status = "reviewed";
@@ -287,6 +303,7 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
       assignment.question_set_id = null;
     }
     // A NULL set keeps the previous material-wide reviewed bank.
+    db.tables.m6_comprehension_attempts.length = 0;
     const legacy = await startComprehensionAttempt(owner, start(await oral()));
     assert.ok(legacy.questions.some(q => q.questionText.startsWith("Fixture ")));
   });
@@ -294,6 +311,7 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     for (const language of ["en", "fil"]) {
       db.tables.learning_paths[0].language = language;
     for (const requester of [owner, { ...owner, profile: { role: "general_user" } }]) {
+      db.tables.m6_comprehension_attempts.length = 0; // each language/role is checked on a fresh activity
       const sourceContext = requester.profile.role === "student" ? { roomId: ROOM, assignmentId: ASSIGNMENT } : {};
       const reading = await createOralReadingAttempt(requester, { moduleId: MODULE, passageId: PASSAGE,
         ...sourceContext, transcript: "Reviewed reading text.", durationSeconds: 5, submissionId: randomUUID() }, deps);
@@ -309,6 +327,8 @@ test("assigned-story M5/M6 integration (isolated database; no live records)", as
     db.tables.learning_paths[0].language = "en";
   });
   await t.test("a removed activity cannot be started again, but saved and in-progress work still reopens", async () => {
+    // A fresh learning activity: one M6 assessment per activity, so earlier subtests' attempts would be reopened.
+    db.tables.m6_comprehension_attempts.length = 0; db.tables.m6_comprehension_responses.length = 0;
     const reading = await oral();
     const inProgress = await startComprehensionAttempt(owner, start(reading));
     const second = await oral(); // saved before removal, comprehension not started yet

@@ -10,8 +10,10 @@ import {
 } from "react-router-dom";
 import {
   getComprehension,
+  getComprehensionForReading,
   startComprehension,
   sendComprehensionAction,
+  type LinkedComprehension,
   type ComprehensionAttempt,
   type ComprehensionAction,
   type ComprehensionQuestion,
@@ -19,9 +21,11 @@ import {
 import "./ComprehensionPage.css";
 import StoryDrawer from "../components/StoryDrawer";
 import ReadingMascot from "../../../components/reading-feedback/ReadingMascot";
+import { comprehensionResultTarget, learningAreaTarget, readingResultTarget } from "../../module5/services/comprehensionNavigation";
 
 type Props = {
-  role: "student" | "general_user";
+  /** "admin": Admin self-practice on the Admin's own published modules (enforced by the server). */
+  role: "student" | "general_user" | "admin";
   results?: boolean;
 };
 
@@ -150,15 +154,21 @@ export default function ComprehensionPage({ role, results = false }: Props) {
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const hasSource = Boolean(materialId ? activityAssignmentId && roomId && oralReadingAttemptId : moduleId && passageId);
+  // The introduction's button follows the server's saved state for this reading's learning activity
+  // (one assessment per activity): none yet, unfinished, or completed. undefined while checking.
+  const [linked, setLinked] = useState<{ key: string; state: LinkedComprehension | null | "error" }>();
+  const [lookupRun, setLookupRun] = useState(0);
+  const lookupKey = `${oralReadingAttemptId}:${lookupRun}`;
+  const introduction = !attemptId && !materialId && hasSource && Boolean(oralReadingAttemptId);
 
   const resultBase =
     role === "student"
       ? "/dashboard/comprehension"
-      : "/m3/general/comprehension";
+      : role === "admin" ? "/admin/comprehension" : "/m3/general/comprehension";
 
   const home = (attempt?.materialId ?? materialId) && (attempt?.roomId ?? roomId)
     ? `/dashboard/learning-rooms/${attempt?.roomId ?? roomId}`
-    : role === "student" ? "/dashboard" : "/m3/general";
+    : role === "student" ? "/dashboard" : role === "admin" ? "/admin/oral-reading" : "/m3/general";
 
   useEffect(() => {
     let active = true;
@@ -178,6 +188,14 @@ export default function ComprehensionPage({ role, results = false }: Props) {
       void getComprehension(attemptId)
         .then((saved) => {
           if (!active) return;
+
+          // An unfinished extra attempt saved for this learning activity before the one-assessment
+          // rule cannot be answered or finished: open the activity's assessment instead. A completed
+          // one stays viewable as it was saved (read-only), so no saved result is ever hidden.
+          if (saved.activityAttemptId && saved.activityAttemptId !== saved.id && saved.status !== "completed") {
+            navigate(`${resultBase}/${saved.activityAttemptId}`, { replace: true, state: activityLanguageState(saved.language) });
+            return;
+          }
 
           setAttempt(saved);
 
@@ -209,6 +227,17 @@ export default function ComprehensionPage({ role, results = false }: Props) {
       active = false;
     };
   }, [attemptId, moduleId, materialId, passageId, roomId, assignmentId, activityAssignmentId, oralReadingAttemptId]);
+
+  useEffect(() => {
+    if (!introduction || !oralReadingAttemptId) return;
+    let active = true;
+    void getComprehensionForReading(oralReadingAttemptId)
+      .then((state) => { if (active) setLinked({ key: lookupKey, state }); })
+      .catch(() => { if (active) setLinked({ key: lookupKey, state: "error" }); });
+    return () => { active = false; };
+  }, [introduction, oralReadingAttemptId, lookupKey]);
+  const saved = linked?.key === lookupKey ? linked.state : undefined;
+  const savedAttempt: LinkedComprehension | null = saved && saved !== "error" ? saved : null;
 
   async function start() {
     if (lock.current || !hasSource) return;
@@ -346,6 +375,9 @@ export default function ComprehensionPage({ role, results = false }: Props) {
   const clue = question?.resolved && question.firstAnswerCorrect === false && question.scaffoldingPrompt?.trim()
     ? question.scaffoldingPrompt.trim() : null;
   const hasPending = pending.current !== null;
+  // Completed results: the linked saved M5 reading (never a new one) and where the reading came from.
+  const linkedReading = attempt ? readingResultTarget(role, attempt.oralReadingAttemptId) : null;
+  const learningArea = attempt ? learningAreaTarget(role, attempt) : null;
 
   const areasToPractice = attempt
     ? questionTypes.filter((type) => {
@@ -359,8 +391,9 @@ export default function ComprehensionPage({ role, results = false }: Props) {
     : [];
 
   return (
-    <main lang={language} className={`m6-page${readingMaterialId ? " m6-page--assigned" : ""}${attempt?.status !== "completed" ? " m6-page--questions" : ""}`} aria-busy={busy}>
-      <div className="m6-activity-toolbar">
+    <main lang={language} className={`m6-page${readingMaterialId ? " m6-page--assigned" : ""}${attempt?.status !== "completed" ? " m6-page--questions" : " m6-page--results"}`} aria-busy={busy}>
+      {/* Completed results end with their own two ways back, so the top link is only for the question flow. */}
+      {attempt?.status !== "completed" && <div className="m6-activity-toolbar">
       <button
         className="m6-back-button"
         type="button"
@@ -368,10 +401,10 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         onClick={() => navigate(reviewingQuestions ? readingTarget : home, { state: activityState })}
       >
         <ArrowLeft size={18} aria-hidden="true" />
-        {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t("Back to Learning Room") : t("Back to dashboard")}
+        {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : t("Back to dashboard")}
       </button>
-      {attempt && attempt.status !== "completed" && <StoryDrawer key={sourceKey} attempt={attempt} />}
-      </div>
+      {attempt && <StoryDrawer key={sourceKey} attempt={attempt} />}
+      </div>}
 
       <h1>{attempt?.materialId && attempt.status === "completed" ? t("Your Assessment Results") : t("Comprehension Activity")}</h1>
       {materialId && roomId && activityAssignmentId && error && !attempt &&
@@ -404,9 +437,9 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         </div>
       )}
 
-      {busy && (
-        <p className="m6-loading" role="status">{t("Please wait…")}</p>
-      )}
+      {/* Saving keeps the question on screen with its buttons disabled; only screen readers hear
+          that it is working. The live region always exists so the announcement is reliable. */}
+      <p className="m6-visually-hidden" role="status">{busy ? t("Please wait…") : ""}</p>
 
       {!attempt && !attemptId && (!materialId || Boolean(error) || !hasSource) && (
         <section className="m6-card">
@@ -416,6 +449,33 @@ export default function ComprehensionPage({ role, results = false }: Props) {
 
           {!hasSource ? (
             <p>{t("Complete and save a Read-Aloud activity, then select Continue to Comprehension on its result page.")}</p>
+          ) : introduction && saved === undefined ? (
+            <p className="m6-final-note" role="status">{t("Checking your questions…")}</p>
+          ) : introduction && saved === "error" ? (
+            <div className="m6-actions">
+              <p className="m6-final-note" role="alert">{t("Unable to check your comprehension activity.")}</p>
+              <button className="m6-button" type="button" onClick={() => setLookupRun((run) => run + 1)}>{t("Check again")}</button>
+            </div>
+          ) : introduction && savedAttempt?.status === "completed" ? (
+            // Completed: its saved, read-only results. Nothing suggests the assessment can be retaken.
+            <>
+              <p>{t("You already completed the comprehension assessment for this reading activity. You can view your results.")}</p>
+              <div className="m6-actions">
+                <button className="m6-button" type="button"
+                  onClick={() => navigate(comprehensionResultTarget(role, savedAttempt.id), { state: activityState })}
+                >{t("View Comprehension Results")}</button>
+              </div>
+            </>
+          ) : introduction && savedAttempt ? (
+            // Unfinished: the same attempt, with every submitted answer kept.
+            <>
+              <p>{t("You have an unfinished comprehension assessment for this reading activity. Your submitted answers are saved.")}</p>
+              <div className="m6-actions">
+                <button className="m6-button" type="button"
+                  onClick={() => navigate(`${resultBase}/${savedAttempt.id}`, { state: activityState })}
+                >{t("Continue Comprehension")}</button>
+              </div>
+            </>
           ) : (
             <div className="m6-actions">
               <button
@@ -424,7 +484,8 @@ export default function ComprehensionPage({ role, results = false }: Props) {
                 disabled={busy}
                 onClick={() => void start()}
               >
-                {materialId ? t("Retry comprehension") : t("Start or reopen comprehension")}
+                {/* An old link without its reading cannot be checked first; the server still reopens an existing assessment. */}
+                {materialId ? t("Retry comprehension") : introduction ? t("Start Comprehension") : t("Open Comprehension")}
               </button>
             </div>
           )}
@@ -433,15 +494,15 @@ export default function ComprehensionPage({ role, results = false }: Props) {
 
       {attempt && (attempt.status === "completed" || question) && (
         <div className="m6-stage">
-          {/* The mascot has its own area beside (wide screens) or above (narrow screens) the
-              activity, so it never covers questions, feedback, prompts or buttons. */}
+          {/* The mascot has its own area: during questions, beside the card (wide screens) or above
+              it (narrow screens); on results, a floating helper at the lower left (ComprehensionPage.css).
+              It never covers questions, feedback, scores or buttons, and closing it removes it entirely. */}
           <div className="m6-mascot-area">
             <ReadingMascot placement="inline" key={sourceKey} language={language} live={Boolean(message || clue)}
               eventId={attempt.status === "completed" ? `${attempt.id}:completed`
                 : `${attempt.id}:${question?.id}:${question?.resolved}:${clue ? "clue" : message ? "answer" : "question"}`}
               mood={attempt.status === "completed" ? "celebrate" : clue ? "tryAgain" : message
                 ? message === "Great job! Keep going when you are ready." ? "correct" : "tryAgain" : "hint"}
-              reopenLabel={clue ? t("Show the clue again") : undefined}
               message={attempt.status === "completed" ? t("Great work finishing the questions! Here are your results.")
                 : busy ? "" : clue ? `${t("Think about it")}: ${clue}`
                 : message ? ui.message(message, "Unable to save. Please retry.") : ""} />
@@ -531,6 +592,19 @@ export default function ComprehensionPage({ role, results = false }: Props) {
             ))}
           </div>
           </details>
+
+          <nav className="m6-actions m6-result-actions" aria-label={t("Assessment navigation")}>
+            {linkedReading ? (
+              <Link className="m6-button" to={linkedReading} state={activityState}>{t("Back to Reading Result")}</Link>
+            ) : (
+              <p className="m6-final-note" role="note">{t("The reading result for these answers is not available.")}</p>
+            )}
+            {learningArea && (
+              <Link className="m6-button" to={learningArea.to} state={activityState}>
+                {learningArea.kind === "room" ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : t("Back to Reading Module")}
+              </Link>
+            )}
+          </nav>
         </section>
       ) : question ? (
         <section className="m6-card m6-question-card" aria-label={t("Current question")}>
@@ -592,6 +666,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
                 disabled={
                   busy || selected === null || hasPending
                 }
+                aria-busy={busy || undefined}
                 onClick={answer}
               >{t("Submit answer")}</button>
             )}

@@ -143,6 +143,11 @@ async function getAdminSystemAnalytics(requester, query = {}, dependencies = {})
     rows('m6_comprehension_attempts', 'id,user_id,room_id,material_id,activity_assignment_id,oral_reading_attempt_id,status'),
     rows('m7_interventions', 'id,teacher_id,student_id,status'),
   ]);
-  return buildAdminAnalytics({ profiles, rooms, enrollments, readings, quizzes: quizResults, assignments, attempts, interventions }, filters);
+  // Learner performance only: Admin self-practice (M5 readings, M6 comprehension) and any other
+  // non-learner account's rows never enter system totals, trends, comparisons or participation.
+  const learners = new Set(profiles.filter(p => p.role === 'student' || p.role === 'general_user').map(p => p.id));
+  return buildAdminAnalytics({ profiles, rooms, enrollments, readings: readings.filter(r => learners.has(r.user_id)),
+    quizzes: quizResults.filter(q => learners.has(q.userId)), assignments,
+    attempts: attempts.filter(a => learners.has(a.user_id)), interventions }, filters);
 }
 module.exports = { getAdminSystemAnalytics, buildAdminAnalytics, parseFilters };

@@ -6,7 +6,9 @@ import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import { assignedReadingTarget } from "../src/modules/module5/services/assignedReadingNavigation.ts";
-import { comprehensionTargetForReading } from "../src/modules/module5/services/comprehensionNavigation.ts";
+import * as comprehensionNavigation from "../src/modules/module5/services/comprehensionNavigation.ts";
+
+const { comprehensionTargetForReading } = comprehensionNavigation;
 import * as voiceFollow from "../src/pages/reading-activity/voiceFollow.ts";
 import { storyParagraphs } from "../src/pages/reading-activity/storyDisplay.ts";
 import * as activityLanguage from "../src/pages/reading-activity/activityLanguage.ts";
@@ -64,12 +66,20 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
       if (id === "react-router-dom") return { Link: "a", useParams: () => params, useLocation: () => ({ state: mocks.locationState }),
         useSearchParams: () => [new URLSearchParams({ roomId: "room", activityAssignmentId: "assignment", oralReadingAttemptId: "oral", ...mocks.searchParams }), () => {}],
         useNavigate: () => (target: string) => navigations.push(target) };
+      // Pages use the real route helpers; a test may still replace comprehensionTargetForReading.
+      if (id.endsWith("/comprehensionNavigation")) return { ...comprehensionNavigation, ...mocks.comprehensionNavigation };
       for (const [suffix, value] of Object.entries(mocks)) if (id.endsWith(suffix)) return suffix === "oralReadingService"
         ? { peekOralReadingAttemptNumber: () => undefined, getOralReadingAttemptNumber: async () => undefined, peekOralReadingAttempt: () => undefined, rememberOralReadingAttempt() {}, ...value } : value;
       if (id.endsWith(".css")) return {};
       if (id.includes("ActivityHeader")) return { default: "header" };
       if (id.includes("OralReadingSummary")) return { default: "oral-summary" };
       if (id.includes("RecordingPlayback")) return { default: "recording-playback" };
+      if (id.endsWith("/comprehensionService") && !mocks.comprehensionService) return {
+        getComprehensionForReading: async (readingId: string) => {
+          (mocks.comprehensionLookups ??= []).push(readingId);
+          if (mocks.linkedComprehensionError) throw Error("Unable to check your comprehension activity.");
+          return typeof mocks.linkedComprehension === "function" ? mocks.linkedComprehension(readingId) : mocks.linkedComprehension ?? null;
+        } };
       if (id.includes("PronunciationFeedback")) return {
         PronunciationFeedbackPanel: "pronunciation-feedback-panel", PronunciationAccuracyPanel: "pronunciation-accuracy-panel",
         PronunciationWordsPanel: "pronunciation-words-panel",
@@ -432,7 +442,7 @@ test("saved oral result reopens its feedback without recording; standalone retai
 });
 
 test("M6 auto-start reuses exact context; missing questions offer reading activity and retry", async () => {
-  const inputs: any[] = [];
+  const inputs: Record<string, unknown>[] = [];
   const f = mount("modules/module6/pages/ComprehensionPage.tsx", { materialId: "material" }, {
     comprehensionService: { startComprehension: async (input: any) => { inputs.push(input); throw Error("No reviewed questions are available for this story."); } },
   });
@@ -465,9 +475,10 @@ test("resolved assigned M6 completes automatically and routes to saved results",
   assert.match(JSON.stringify(f.render()), /Your Assessment Results/);
   // The assessment results focus on comprehension; the oral-reading result stays in M5.
   assert.equal(find(f.render(), node => node.type === "oral-summary"), undefined);
-  const back = find(f.render(), node => node.type === "button" && node.props.className === "m6-back-button");
-  assert.match(JSON.stringify(back.props.children), /Back to Learning Room/);
-  assert.ok([back.props.children].flat().some((child: any) => child?.props?.["aria-hidden"] === "true" && child.props.size === 18), "arrow icon");
+  // Completed results: no top back link; the Learning Room is the bottom button.
+  assert.equal(find(f.render(), node => node.type === "button" && node.props.className === "m6-back-button"), undefined);
+  const room = find(f.render(), node => node.type === "a" && node.props.children === "Back to Learning Room");
+  assert.equal(room.props.to, "/dashboard/learning-rooms/room");
   const revisit = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: service });
   revisit.render(); await tick();
   assert.match(JSON.stringify(revisit.render()), /Your Assessment Results/);
@@ -589,6 +600,8 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   }, role);
   const f = mountResult("student", attempt);
   f.render(); await tick();
+  // A second pass lets the linked M6 status load (no activity yet: Continue to Questions).
+  f.render(); await tick();
   const tree = f.render();
   const text = JSON.stringify(tree);
   // The summary, then one card per function (F2-F6), then each panel's content, then the shared actions.
@@ -684,6 +697,7 @@ test("reading feedback comes before questions, in order, with gentle highlights 
   general.render(); await tick();
   assert.doesNotMatch(JSON.stringify(general.render()), /Continue to Questions/);
   const withPassage = mountResult("general_user", { ...attempt, materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage" });
+  withPassage.render(); await tick();
   withPassage.render(); await tick();
   assert.ok(find(withPassage.render(), node => node.type === "a" && node.props.children === "Continue to Questions"
     && node.props.to.startsWith("/m3/general/modules/module/comprehension?")));
@@ -845,6 +859,7 @@ test("a learner reading without questions says so instead of hiding the next ste
       useAuthenticatedProfile: { default: () => ({ profile: { full_name: "Ana Cruz" } }) },
     }, role);
     page.render(); await tick();
+    page.render(); await tick();
     return JSON.stringify(page.render());
   };
   const note = /Comprehension questions are not available for this story yet/;
@@ -997,7 +1012,8 @@ test("an incorrect answer is final: Incorrect feedback, a separate guiding promp
   assert.equal(mascot().props.placement, "inline");
   assert.equal(mascot().props.mood, "tryAgain");
   assert.equal(mascot().props.message, "Think about it: Look at who the story names first.");
-  assert.equal(mascot().props.reopenLabel, "Show the clue again", "a closed clue can be reopened");
+  // Closing the bubble removes the mascot entirely: no "Show the clue again" button is offered.
+  assert.equal("reopenLabel" in mascot().props, false, "no clue-reopen button");
   assert.equal(mascot().props.live, true);
   assert.doesNotMatch(mascot().props.message, /incorrect|Ana is named first|Correct answer|try again/i);
   assert.equal(find(tree, node => node.props?.className === "m6-mascot-area").props.children.type, "reading-mascot");
@@ -1031,6 +1047,68 @@ test("an incorrect answer is final: Incorrect feedback, a separate guiding promp
   assert.doesNotMatch(JSON.stringify(Object.keys(mascot().props)), /score|correctOptionIndex|summary/i);
 });
 
+test("submitting an answer keeps the question on screen: no visible Please wait, one request, feedback only after the server confirms", async () => {
+  for (const role of ["student", "general_user", "admin"]) {
+    const base = { id: "q", type: "literal", resolved: false, options: ["A", "B", "C", "D"], answerHistory: [] as any[],
+      firstOptionIndex: null as number | null, hintUsed: false, hint: null as string | null, questionText: "Who went to the market?" };
+    let attempt: any = { id: "m6", materialId: null, status: "in_progress", language: "en", questions: [base, { ...base, id: "q2" }],
+      summary: { allResolved: false, byType: { literal: { total: 2 }, inferential: { total: 0 }, critical: { total: 0 } } } };
+    const sent: any[] = [];
+    let confirm: (value: any) => void = () => {};
+    const f = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: {
+      getComprehension: async () => attempt,
+      sendComprehensionAction: (_id: string, action: any) => { sent.push(action); return new Promise(resolve => { confirm = resolve; }); },
+    } }, role);
+    f.render(); await tick();
+    find(f.render(), node => node.type === "input" && node.props.value === 0).props.onChange();
+    button(f.render(), "Submit answer").props.onClick();
+    // While the server is saving: same question, Submit disabled and busy, no visible loading text.
+    let tree = f.render();
+    assert.match(JSON.stringify(tree), /Who went to the market\?/, `${role}: the question stays visible`);
+    const submit = find(tree, item => item.type === "button" && JSON.stringify(item.props.children).includes("Submit answer"));
+    assert.equal(submit.props.disabled, true, `${role}: duplicate submissions are blocked`);
+    assert.equal(submit.props["aria-busy"], true);
+    const status = find(tree, node => node.props?.role === "status" && node.props?.className === "m6-visually-hidden");
+    assert.equal(status.props.children, "Please wait…", `${role}: screen readers still hear that it is saving`);
+    assert.equal(find(tree, node => node.props?.className === "m6-loading"), undefined, "no visible Please wait message");
+    assert.equal(find(tree, node => node.props?.role === "status" && node.props?.className !== "m6-visually-hidden"
+      && [node.props?.children].flat().includes("Please wait…")), undefined);
+    assert.equal(find(tree, node => node.type?.name === "SubmittedAnswerFeedback" && node.props.question.resolved), undefined,
+      `${role}: no feedback before the server confirms`);
+    submit.props.onClick(); // a second click while saving sends nothing
+    assert.equal(sent.length, 1);
+    // The server confirms: feedback appears in the same question interface.
+    const answered = { ...base, resolved: true, correctOptionIndex: 0, answerHistory: [{ optionIndex: 0, correct: true }],
+      firstOptionIndex: 0, firstAnswerCorrect: true, answerExplanation: "Ana is named first.", supportingEvidence: "Ana went to the market." };
+    attempt = { ...attempt, questions: [answered, attempt.questions[1]] };
+    confirm({ attempt, outcome: { correct: true, resolved: true, final: true } }); await tick();
+    tree = f.render();
+    assert.equal(find(tree, node => node.props?.className === "m6-visually-hidden").props.children, "");
+    const feedback = find(tree, node => node.type?.name === "SubmittedAnswerFeedback");
+    assert.match(JSON.stringify(feedback.type(feedback.props)), /"Correct!"|Correct/);
+  }
+});
+
+test("a failed answer save shows an error, keeps the selected answer and offers Retry without showing feedback", async () => {
+  const base = { id: "q", type: "literal", resolved: false, options: ["A", "B", "C", "D"], answerHistory: [] as any[],
+    firstOptionIndex: null as number | null, hintUsed: false, hint: null as string | null, questionText: "Who?" };
+  const attempt: any = { id: "m6", materialId: null, status: "in_progress", language: "en", questions: [base],
+    summary: { allResolved: false, byType: { literal: { total: 1 }, inferential: { total: 0 }, critical: { total: 0 } } } };
+  const f = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: {
+    getComprehension: async () => attempt,
+    sendComprehensionAction: async () => { throw new Error("Unable to save. Please retry."); },
+  } }, "admin");
+  f.render(); await tick();
+  find(f.render(), node => node.type === "input" && node.props.value === 2).props.onChange();
+  button(f.render(), "Submit answer").props.onClick(); await tick();
+  const tree = f.render();
+  assert.ok(find(tree, node => node.props?.role === "alert"), "the error is shown");
+  assert.ok(button(tree, "Retry saving"), "the same answer can be retried");
+  assert.equal(find(tree, node => node.type === "input" && node.props.value === 2).props.checked, true, "the selection is kept");
+  assert.equal(find(tree, node => node.type?.name === "SubmittedAnswerFeedback" && node.props.question.resolved), undefined);
+  assert.match(JSON.stringify(tree), /Who\?/);
+});
+
 test("a correct answer shows Correct feedback and no guiding prompt", async () => {
   const question = { id: "q", type: "literal", resolved: true, options: ["A", "B", "C", "D"], answerHistory: [{ optionIndex: 0, correct: true }],
     firstOptionIndex: 0, firstAnswerCorrect: true, correctOptionIndex: 0, answerExplanation: "Ana is named first.",
@@ -1045,7 +1123,7 @@ test("a correct answer shows Correct feedback and no guiding prompt", async () =
   assert.match(JSON.stringify(feedback.type(feedback.props)), /"Tama!"/);
   // A correct answer keeps the congratulatory flow: no clue, no reopen button.
   const mascot = find(tree, node => node.type === "reading-mascot");
-  assert.equal(mascot.props.reopenLabel, undefined);
+  assert.equal("reopenLabel" in mascot.props, false);
   assert.doesNotMatch(mascot.props.message, /Pag-isipan Ito/);
   // A finished module activity offers only Finish Assessment, in Filipino.
   assert.ok(button(tree, "Tapusin ang Gawain"));
@@ -1128,4 +1206,396 @@ test("F5/F6 when every scored word matched: no tap instruction or legend, and wo
   // Only F2 may start a check, and only while it is the open panel (none is open here).
   const f2 = find(find(tree, node => node.props?.id === "m5-panel-feedback"), node => node.type === "pronunciation-feedback-panel");
   assert.equal(f2.props.autoStart, false);
+});
+
+// --- M5 result <-> completed M6 result navigation -----------------------------------------------
+
+const READING = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SECOND_READING = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const savedReading = (overrides: Record<string, unknown> = {}) => ({ id: READING, materialId: "material", roomId: "room",
+  activityAssignmentId: "assignment", moduleId: null, passageId: null, language: "en", moduleTitle: "Story", readAloudOnly: false,
+  pronunciationAccuracy: 80, readingSpeedWpm: 60, expectedWordCount: 1, transcript: "dog", passageSnapshot: "dog",
+  wordMetrics: [{ type: "match", expected: "dog", actual: "dog" }], ...overrides });
+const NEXT_LABELS = ["Continue to Questions", "View Comprehension Result", "Magpatuloy sa mga Tanong", "Tingnan ang Resulta sa Pag-unawa"];
+async function readingResult(role: string, reading: any, extra: Record<string, unknown> = {}) {
+  const mocks: Record<string, any> = { oralReadingService: { getOralReadingAttempt: async () => reading },
+    oralReadingProcessing: { getWordsToPractice: () => [] }, diagnosticTts: {},
+    useAuthenticatedProfile: { default: () => ({ profile: { nickname: "Ana" } }) }, ...extra };
+  const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: reading.id }, mocks, role);
+  f.render(); await tick();
+  const checking = JSON.stringify(f.render());
+  await tick();
+  const tree = f.render();
+  const next = find(tree, node => node.type === "a" && NEXT_LABELS.includes(node.props.children));
+  return { f, mocks, checking, tree, next };
+}
+
+test("M5 result: no M6 activity or one in progress keeps Continue to Questions; a completed one opens its saved result", async () => {
+  const start = "/dashboard/reading-materials/material/comprehension?roomId=room&activityAssignmentId=assignment&oralReadingAttemptId=" + READING;
+  const none = await readingResult("student", savedReading());
+  assert.match(none.checking, /Checking your questions…/, "no button is offered until the saved status is known");
+  assert.doesNotMatch(none.checking, /Continue to Questions|View Comprehension Result/);
+  assert.deepEqual([none.next.props.children, none.next.props.to], ["Continue to Questions", start]);
+  assert.deepEqual(none.mocks.comprehensionLookups, [READING], "the lookup uses this exact saved reading");
+
+  const inProgress = await readingResult("student", savedReading(), { linkedComprehension: { id: "m6-open", status: "in_progress" } });
+  assert.deepEqual([inProgress.next.props.children, inProgress.next.props.to], ["Continue to Questions", start], "resume keeps the existing path");
+
+  const done = await readingResult("student", savedReading(), { linkedComprehension: { id: "m6-done", status: "completed" } });
+  assert.deepEqual([done.next.props.children, done.next.props.to], ["View Comprehension Result", "/dashboard/comprehension/m6-done/results"]);
+  assert.doesNotMatch(JSON.stringify(done.tree), /Continue to Questions/);
+
+  // Independent Learner: module reading, results on the activity page.
+  const module = { materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage" };
+  const general = await readingResult("general_user", savedReading(module), { linkedComprehension: { id: "m6-il", status: "completed" } });
+  assert.deepEqual([general.next.props.children, general.next.props.to], ["View Comprehension Result", "/m3/general/comprehension/m6-il"]);
+  const generalNew = await readingResult("general_user", savedReading(module));
+  assert.equal(generalNew.next.props.children, "Continue to Questions");
+  assert.match(generalNew.next.props.to, /^\/m3\/general\/modules\/module\/comprehension\?passageId=passage&oralReadingAttemptId=/);
+
+  // Filipino wording.
+  const fil = await readingResult("student", savedReading({ language: "fil" }), { linkedComprehension: { id: "m6-fil", status: "completed" } });
+  assert.equal(fil.next.props.children, "Tingnan ang Resulta sa Pag-unawa");
+});
+
+test("M5 result: each reading of the same passage uses its own M6 activity, and a reload asks the server again", async () => {
+  const byReading = (id: string) => (id === READING ? { id: "m6-first", status: "completed" } : null);
+  const first = await readingResult("student", savedReading(), { linkedComprehension: byReading });
+  const second = await readingResult("student", savedReading({ id: SECOND_READING }), { linkedComprehension: byReading });
+  assert.equal(first.next.props.to, "/dashboard/comprehension/m6-first/results");
+  assert.equal(second.next.props.children, "Continue to Questions");
+  assert.match(second.next.props.to, new RegExp(`oralReadingAttemptId=${SECOND_READING}$`));
+  // A new page load (refresh or signing in again) reads the saved status again; nothing is kept in the browser.
+  const reopened = await readingResult("student", savedReading(), { linkedComprehension: byReading });
+  assert.deepEqual(reopened.mocks.comprehensionLookups, [READING]);
+  assert.equal(reopened.next.props.children, "View Comprehension Result");
+});
+
+test("M5 result: a failed status check falls back to Continue to Questions; no lookup without an M6 path", async () => {
+  const failed = await readingResult("student", savedReading(), { linkedComprehensionError: true });
+  assert.equal(failed.next.props.children, "Continue to Questions", "the start path reopens a saved activity, never a duplicate");
+  const cases: [string, any][] = [["admin", savedReading()], ["student", savedReading({ readAloudOnly: true })],
+    ["general_user", savedReading({ materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: null })]];
+  for (const [role, reading] of cases) {
+    const page = await readingResult(role, reading);
+    assert.equal(page.mocks.comprehensionLookups, undefined, `${role}: no M6 activity can exist, so nothing is checked`);
+    assert.doesNotMatch(JSON.stringify(page.tree), /Checking your questions|View Comprehension Result|Continue to Questions/);
+  }
+});
+
+const completedM6 = (overrides: Record<string, unknown> = {}) => ({ id: "m6", status: "completed", language: "en",
+  materialId: "material", roomId: "room", activityAssignmentId: "assignment", moduleId: null, passageId: null, oralReadingAttemptId: READING,
+  summary: { totalQuestions: 1, firstCorrect: 1, hintsUsed: 0, firstAttemptPercentage: 100, allResolved: true,
+    byType: { literal: { total: 1, firstCorrect: 1, firstAttemptPercentage: 100 }, inferential: { total: 0 }, critical: { total: 0 } } },
+  questions: [{ id: "q1", type: "literal", resolved: true, options: ["A", "B"], answerHistory: [], firstOptionIndex: 0, firstAnswerCorrect: true,
+    questionText: "Who?", correctOptionIndex: 0 }], ...overrides });
+function linksIn(node: any, found: [unknown, unknown][] = []): [unknown, unknown][] {
+  if (!node || typeof node !== "object") return found;
+  if (Array.isArray(node)) { node.forEach((child) => linksIn(child, found)); return found; }
+  if (node.type === "a") found.push([node.props.children, node.props.to]);
+  linksIn(node.props?.children, found);
+  return found;
+}
+async function resultsPage(role: string, attempt: any) {
+  const calls: string[] = [];
+  const f = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6" }, { comprehensionService: {
+    getComprehension: async () => attempt,
+    startComprehension: async () => { calls.push("start"); throw Error("must not start"); },
+    sendComprehensionAction: async () => { calls.push("action"); throw Error("must not change"); },
+  } }, role);
+  f.render(); await tick();
+  const tree = f.render();
+  const nav = find(tree, node => node.type === "nav" && node.props.className === "m6-actions m6-result-actions") ?? null;
+  return { f, tree, nav, buttons: nav ? linksIn(nav) : [], calls };
+}
+
+test("M6 results: both ways back, at the end of the results card, using the saved links", async () => {
+  // Student, assigned story in a Learning Room.
+  const assigned = await resultsPage("student", completedM6());
+  assert.deepEqual(assigned.buttons, [["Back to Reading Result", `/dashboard/read-aloud/results/${READING}`],
+    ["Back to Learning Room", "/dashboard/learning-rooms/room"]]);
+  const card = find(assigned.tree, node => node.type === "section" && node.props.className === "m6-card");
+  const children = [card.props.children].flat(Infinity).filter(Boolean);
+  assert.equal(children.at(-1).type, "nav", "the buttons are the last thing in the results card");
+  // Student, module in a room; and a module from My Materials.
+  const roomModule = await resultsPage("student", completedM6({ materialId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage" }));
+  assert.deepEqual(roomModule.buttons[1], ["Back to Learning Room", "/dashboard/learning-rooms/room"]);
+  const ownModule = await resultsPage("student", completedM6({ materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage" }));
+  assert.deepEqual(ownModule.buttons, [["Back to Reading Result", `/dashboard/read-aloud/results/${READING}`],
+    ["Back to Reading Module", "/dashboard/materials/module?passageId=passage"]]);
+  // Independent Learner: no Learning Rooms, so the reading's module.
+  const general = await resultsPage("general_user", completedM6({ materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage" }));
+  assert.deepEqual(general.buttons, [["Back to Reading Result", `/m3/general/read-aloud/results/${READING}`],
+    ["Back to Reading Module", "/m3/general/modules/module?passageId=passage"]]);
+  // Opening saved results starts or changes nothing.
+  for (const page of [assigned, roomModule, ownModule, general]) assert.deepEqual(page.calls, []);
+  // Completed results have no top back link (it duplicated the buttons); the heading comes first.
+  for (const page of [assigned, roomModule, ownModule, general]) {
+    assert.equal(find(page.tree, node => node.props?.className === "m6-activity-toolbar"), undefined);
+    assert.equal(find(page.tree, node => node.props?.className === "m6-back-button"), undefined);
+    const main = find(page.tree, node => node.type === "main");
+    assert.equal([main.props.children].flat(Infinity).filter(Boolean)[0].type, "h1");
+  }
+});
+
+test("M6 results: a missing or invalid reading link shows a note instead of a wrong reading", async () => {
+  for (const link of [null, undefined, "", "not-a-reading-id", "../../admin"]) {
+    const page = await resultsPage("student", completedM6({ oralReadingAttemptId: link }));
+    assert.deepEqual(page.buttons, [["Back to Learning Room", "/dashboard/learning-rooms/room"]], String(link));
+    assert.match(JSON.stringify(page.nav), /The reading result for these answers is not available\./);
+    assert.doesNotMatch(JSON.stringify(page.tree), /read-aloud\/results/);
+  }
+});
+
+test("M6 results: Filipino wording, and no navigation buttons while questions are still open", async () => {
+  const fil = await resultsPage("student", completedM6({ language: "fil" }));
+  assert.deepEqual(fil.buttons.map(([label]) => label), ["Bumalik sa Resulta ng Pagbasa", "Bumalik sa Silid-Aralan"]);
+  const open = await resultsPage("general_user", completedM6({ status: "in_progress", materialId: null, roomId: null, activityAssignmentId: null,
+    moduleId: "module", passageId: "passage", summary: { ...completedM6().summary, allResolved: false },
+    questions: [{ ...completedM6().questions[0], resolved: false, firstOptionIndex: null, firstAnswerCorrect: null }] }));
+  assert.equal(open.nav, null);
+});
+
+test("M6 results: the mascot keeps its completion message and dismiss button, at the lower left, never a strip above the results", async () => {
+  const page = await resultsPage("student", completedM6());
+  const main = find(page.tree, node => node.type === "main");
+  assert.match(main.props.className, /\bm6-page--results\b/);
+  assert.doesNotMatch(main.props.className, /m6-page--questions/);
+  const mascot = find(page.tree, node => node.type === "reading-mascot");
+  assert.deepEqual([mascot.props.placement, mascot.props.mood, mascot.props.eventId], ["inline", "celebrate", "m6:completed"]);
+  const mascotSource = readFileSync(new URL("../src/components/reading-feedback/ReadingMascot.tsx", import.meta.url), "utf8");
+  assert.match(mascotSource, /className="reading-mascot-close" aria-label=\{t\("Close"\)\}/, "the X is unchanged");
+  const css = readFileSync(new URL("../src/modules/module6/pages/ComprehensionPage.css", import.meta.url), "utf8");
+  for (const [width, page] of [["1040px", ".m6-page--assigned.m6-page--results"], ["1300px", ".m6-page--results"]]) {
+    const start = css.indexOf(`@container m6-results-shell (min-width: ${width}) {`);
+    assert.ok(start > 0, width);
+    const wide = css.slice(start, css.indexOf("@container", start + 1));
+    assert.ok(wide.includes(`${page} .m6-stage > .m6-mascot-area {`), width);
+  assert.match(wide, /right: calc\(100% - 14px\);/, "a slight overlap with the card's outer edge only");
+  assert.match(wide, /width: min\(280px, calc\(\(100cqw - 100%\) \/ 2 \+ 6px\)\);/, "never wider than the green area beside the card");
+  // Lower left, as in the question flow: the helper sits at the bottom of the visible area.
+  assert.match(wide, /justify-content: flex-end;/);
+  assert.match(wide, /position: sticky; bottom: 12px;/);
+  assert.doesNotMatch(wide, /top: 16px/);
+  }
+  // Narrower areas: at the lower left just after the card (never above it, never over it).
+  const narrow = css.slice(css.indexOf("/* Completed results: the mascot is never a strip above the card."), css.indexOf("@container m6-results-shell"));
+  const rule = narrow.slice(narrow.indexOf(".m6-page--results .m6-stage > .m6-mascot-area {"), narrow.indexOf("}", narrow.indexOf(".m6-page--results .m6-stage > .m6-mascot-area {")));
+  for (const declaration of ["order: 1;", "justify-self: start;"]) assert.ok(rule.includes(declaration), declaration);
+  assert.doesNotMatch(rule, /position: (sticky|fixed|absolute)/, "never floats over the full-width card");
+  // Closing it leaves nothing behind: an empty mascot area is hidden.
+  assert.match(css, /\.m6-page \.m6-stage > \.m6-mascot-area:empty \{ display: none; \}/);
+  // The question page layout is untouched.
+  assert.match(css, /@container m6-shell \(min-width: 940px\) \{/);
+});
+
+// --- M6 introduction: one assessment per learning activity --------------------------------------------
+
+test("M6 introduction labels follow the server's saved state for the reading's activity, for Admin and Independent Learner", async () => {
+  for (const role of ["admin", "general_user"] as const) {
+    const base = role === "admin" ? "/admin/comprehension" : "/m3/general/comprehension";
+    const intro = (lookup: () => Promise<unknown>, starts: unknown[]) => mount("modules/module6/pages/ComprehensionPage.tsx", { moduleId: "module" }, {
+      searchParams: { passageId: "passage", oralReadingAttemptId: READING, roomId: "", activityAssignmentId: "" },
+      comprehensionService: { getComprehensionForReading: lookup, startComprehension: async (input: unknown) => { starts.push(input); return {}; } },
+    }, role);
+    const labels = (tree: any): string[] => JSON.stringify(tree).match(/Start Comprehension|Continue Comprehension|View Comprehension Results|Start or reopen|Retry comprehension|Open Comprehension/g) ?? [];
+
+    // While checking: no button at all.
+    let release: (value: unknown) => void = () => {};
+    const starts: unknown[] = [];
+    const checking = intro(() => new Promise(resolve => { release = resolve; }), starts);
+    checking.render(); await tick();
+    assert.deepEqual(labels(checking.render()), [], `${role}: nothing to press until the server answers`);
+    assert.match(JSON.stringify(checking.render()), /Checking your questions…/);
+    release(null); await tick();
+    assert.deepEqual(labels(checking.render()), ["Start Comprehension"], `${role}: no assessment yet`);
+
+    // Unfinished: Continue Comprehension opens that same attempt; nothing is started.
+    const open = intro(async () => ({ id: "m6-open", status: "in_progress" }), starts);
+    open.render(); await tick();
+    assert.deepEqual(labels(open.render()), ["Continue Comprehension"]);
+    button(open.render(), "Continue Comprehension").props.onClick();
+    assert.deepEqual(open.navigations, [`${base}/m6-open`]);
+
+    // Completed: only View Comprehension Results, to the saved read-only result; never Start/Retry.
+    const done = intro(async () => ({ id: "m6-done", status: "completed" }), starts);
+    done.render(); await tick();
+    assert.deepEqual(labels(done.render()), ["View Comprehension Results"], `${role}: a completed assessment is never offered again`);
+    button(done.render(), "View Comprehension Results").props.onClick();
+    assert.deepEqual(done.navigations, [`${base}/m6-done`]);
+    assert.deepEqual(starts, [], "Continue and View never send a start request");
+
+    // The check fails: a way to check again, never a start button.
+    let fail = true;
+    const failed = intro(async () => { if (fail) throw Error("offline"); return { id: "m6-done", status: "completed" }; }, starts);
+    failed.render(); await tick();
+    assert.deepEqual(labels(failed.render()), []);
+    fail = false;
+    button(failed.render(), "Check again").props.onClick(); failed.render(); await tick();
+    assert.deepEqual(labels(failed.render()), ["View Comprehension Results"]);
+  }
+});
+
+test("an extra attempt saved before the one-assessment rule opens the activity's assessment instead", async () => {
+  const page = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6-extra" }, { comprehensionService: {
+    getComprehension: async () => ({ ...ilAttempt("in_progress"), id: "m6-extra", activityAttemptId: "m6-first" }),
+  } }, "admin");
+  page.render(); await tick();
+  assert.deepEqual(page.navigations, ["/admin/comprehension/m6-first"]);
+  assert.equal(find(page.render(), node => node.type === "fieldset"), undefined, "the extra attempt is never shown for answering");
+  // A completed extra attempt (a saved result) stays viewable as it was saved: no redirect.
+  const saved = await resultsPage("admin", { ...ilAttempt("completed"), id: "m6", activityAttemptId: "m6-first" } as any);
+  assert.deepEqual(saved.calls, []);
+  assert.deepEqual(saved.f.navigations, [], "no redirect away from a saved result");
+  assert.equal(saved.buttons.length, 2, "its results and ways back are shown");
+});
+
+// --- Role-based M6 workflow ------------------------------------------------------------------------
+
+const ilQuestions = (resolved: boolean) => (["literal", "inferential", "critical"] as const).map((type, index) => ({
+  id: `q${index}`, type, questionText: `${type}?`, options: ["A", "B", "C", "D"], answerHistory: [],
+  resolved, firstOptionIndex: resolved ? 0 : null, firstAnswerCorrect: resolved ? index !== 2 : null, correctOptionIndex: resolved ? 0 : null }));
+const ilAttempt = (status: "in_progress" | "completed", resolved = status === "completed") => ({
+  id: "m6-il", status, language: "en", materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage",
+  oralReadingAttemptId: READING, questions: ilQuestions(resolved),
+  summary: { totalQuestions: 3, firstCorrect: resolved ? 2 : 0, hintsUsed: 0, firstAttemptPercentage: resolved ? 67 : 0, allResolved: resolved,
+    byType: { literal: { total: 1, firstCorrect: resolved ? 1 : 0, firstAttemptPercentage: 100 },
+      inferential: { total: 1, firstCorrect: resolved ? 1 : 0, firstAttemptPercentage: 100 }, critical: { total: 1, firstCorrect: 0, firstAttemptPercentage: 0 } } } });
+
+test("Independent Learner M5 -> M6: starts from its own reading with no classroom, finishes, and returns", async () => {
+  // 1. M5 result: Continue to Questions targets this exact reading, with no room or assignment.
+  const result = await readingResult("general_user", savedReading({ materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage" }));
+  const target = new URL(result.next.props.to, "http://x");
+  assert.equal(target.pathname, "/m3/general/modules/module/comprehension");
+  assert.deepEqual(Object.fromEntries(target.searchParams), { passageId: "passage", oralReadingAttemptId: READING });
+
+  // 2. M6 start: the request carries the module, passage and reading only.
+  const inputs: Record<string, unknown>[] = [];
+  const start = mount("modules/module6/pages/ComprehensionPage.tsx", { moduleId: "module" }, {
+    searchParams: { passageId: "passage", oralReadingAttemptId: READING, roomId: "", activityAssignmentId: "" },
+    comprehensionService: { getComprehensionForReading: async () => null, startComprehension: async (input: Record<string, unknown>) => { inputs.push(input); return { ...ilAttempt("in_progress"), language: "en" }; } },
+  }, "general_user");
+  start.render(); await tick();
+  assert.deepEqual(inputs, [], "an Independent Learner starts by choice, never automatically");
+  button(start.render(), "Start Comprehension").props.onClick(); await tick();
+  assert.equal(inputs.length, 1);
+  const sent = JSON.parse(JSON.stringify(inputs[0]));
+  assert.ok(sent.submissionId);
+  delete sent.submissionId;
+  assert.deepEqual(sent, { moduleId: "module", passageId: "passage", oralReadingAttemptId: READING });
+  assert.deepEqual(start.navigations, ["/m3/general/comprehension/m6-il"]);
+
+  // 3. All three question types answered: Finish Assessment completes this attempt only.
+  const actions: any[] = [];
+  let saved: any = ilAttempt("in_progress", true);
+  const finish = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6-il" }, { comprehensionService: {
+    getComprehension: async () => saved,
+    startComprehension: async () => { throw Error("must not start again"); },
+    sendComprehensionAction: async (id: string, action: any) => { actions.push([id, action]); saved = ilAttempt("completed"); return { attempt: saved, outcome: { completed: true } }; },
+  } }, "general_user");
+  finish.render(); await tick();
+  button(finish.render(), "Finish Assessment").props.onClick(); await tick(); await tick();
+  assert.equal(JSON.stringify(actions), JSON.stringify([["m6-il", { action: "complete" }]]));
+  const done = finish.render();
+  assert.match(JSON.stringify(done), /Your comprehension results/);
+  assert.match(JSON.stringify(done), /"67"|67,"%"|\[67/);
+  assert.deepEqual(finish.navigations, [], "Independent Learner results show in place; no Student-only route");
+  assert.deepEqual(linksIn(find(done, node => node.type === "nav")), [
+    ["Back to Reading Result", `/m3/general/read-aloud/results/${READING}`], ["Back to Reading Module", "/m3/general/modules/module?passageId=passage"]]);
+
+  // 4. Back on M5, the completed attempt is recognised; reopening it starts nothing.
+  const back = await readingResult("general_user", savedReading({ materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage" }),
+    { linkedComprehension: { id: "m6-il", status: "completed" } });
+  assert.deepEqual([back.next.props.children, back.next.props.to], ["View Comprehension Result", "/m3/general/comprehension/m6-il"]);
+  const reopened = await resultsPage("general_user", { ...ilAttempt("completed"), id: "m6" });
+  assert.deepEqual(reopened.calls, []);
+  assert.equal(reopened.buttons.length, 2);
+});
+
+test("Admin M6 routes are Admin-only and reuse the existing comprehension page", () => {
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const adminBlock = app.slice(app.indexOf('<Route element={<RequireRole allowedRoles={["admin"]} />}>'), app.indexOf("{/* Teacher routes */}"));
+  for (const route of ['path="oral-reading/modules/:moduleId/comprehension"', 'path="comprehension/:attemptId"']) {
+    assert.match(adminBlock, new RegExp(`${route.replace(/[/:]/g, "\\$&")}\\s*element=\\{<ComprehensionPage role="admin" \\/>\\}`), route);
+  }
+  // No other role's block gains an Admin page, and Teachers still have no M6 route.
+  const roles = [...app.matchAll(/<ComprehensionPage role="(\w+)"/g)].map((match) => match[1]);
+  assert.deepEqual([...new Set(roles)].sort(), ["admin", "general_user", "student"]);
+  const teacherBlock = app.slice(app.indexOf("{/* Teacher routes */}"), app.indexOf("{/* Independent learner routes */}"));
+  assert.doesNotMatch(teacherBlock, /ComprehensionPage/);
+  // Admin practice is never a classroom, assignment or uploaded-material activity.
+  for (const reading of [savedReading(), savedReading({ materialId: null, moduleId: "module", passageId: "passage", roomId: "room" }),
+    savedReading({ materialId: null, moduleId: "module", passageId: null, roomId: null, activityAssignmentId: null })]) {
+    assert.equal(comprehensionTargetForReading("admin", reading), null);
+  }
+});
+
+test("Admin M5 -> M6: own module reading, finish, results, back to the reading, and reopen without a new activity", async () => {
+  const module = { materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: "passage" };
+  // 1. M5 result: Continue to Questions targets this exact reading on the Admin's practice route.
+  const result = await readingResult("admin", savedReading(module));
+  assert.deepEqual(result.mocks.comprehensionLookups, [READING], "the saved status is looked up for this reading only");
+  const target = new URL(result.next.props.to, "http://x");
+  assert.equal(result.next.props.children, "Continue to Questions");
+  assert.equal(target.pathname, "/admin/oral-reading/modules/module/comprehension");
+  assert.deepEqual(Object.fromEntries(target.searchParams), { passageId: "passage", oralReadingAttemptId: READING });
+
+  // 2. M6 start: by choice, with the module, passage and reading only (never a classroom).
+  const inputs: Record<string, unknown>[] = [];
+  const adminAttempt = (status: "in_progress" | "completed", resolved?: boolean) => ({ ...ilAttempt(status, resolved), id: "m6-admin" });
+  const start = mount("modules/module6/pages/ComprehensionPage.tsx", { moduleId: "module" }, {
+    searchParams: { passageId: "passage", oralReadingAttemptId: READING, roomId: "", activityAssignmentId: "" },
+    comprehensionService: { getComprehensionForReading: async () => null, startComprehension: async (input: Record<string, unknown>) => { inputs.push(input); return adminAttempt("in_progress"); } },
+  }, "admin");
+  start.render(); await tick();
+  assert.deepEqual(inputs, [], "nothing starts automatically");
+  button(start.render(), "Start Comprehension").props.onClick(); await tick();
+  const sent = JSON.parse(JSON.stringify(inputs[0]));
+  assert.ok(sent.submissionId);
+  delete sent.submissionId;
+  assert.deepEqual(sent, { moduleId: "module", passageId: "passage", oralReadingAttemptId: READING });
+  assert.deepEqual(start.navigations, ["/admin/comprehension/m6-admin"]);
+
+  // 3. Literal, inferential and critical answered: the same page, scoring and Finish Assessment.
+  const actions: any[] = [];
+  let saved: any = adminAttempt("in_progress", true);
+  const finish = mount("modules/module6/pages/ComprehensionPage.tsx", { attemptId: "m6-admin" }, { comprehensionService: {
+    getComprehension: async () => saved,
+    startComprehension: async () => { throw Error("must not start again"); },
+    sendComprehensionAction: async (id: string, action: any) => { actions.push([id, action]); saved = adminAttempt("completed"); return { attempt: saved, outcome: { completed: true } }; },
+  } }, "admin");
+  finish.render(); await tick();
+  assert.deepEqual(["literal", "inferential", "critical"].every((type) => saved.questions.some((q: any) => q.type === type)), true);
+  button(finish.render(), "Finish Assessment").props.onClick(); await tick(); await tick();
+  assert.equal(JSON.stringify(actions), JSON.stringify([["m6-admin", { action: "complete" }]]));
+  const done = finish.render();
+  assert.match(JSON.stringify(done), /Your comprehension results/);
+  assert.match(JSON.stringify(done), /"67"|67,"%"|\[67/);
+  assert.equal(find(done, node => node.props?.className === "m6-activity-toolbar"), undefined, "no duplicate top link on results");
+  // 4. Both ways back: the Admin's saved reading and the Admin's Oral Reading page, never a Learning Room.
+  assert.deepEqual(linksIn(find(done, node => node.type === "nav")), [
+    ["Back to Reading Result", `/admin/read-aloud/results/${READING}`], ["Back to Oral Reading", "/admin/oral-reading"]]);
+
+  // 5. Back on M5: View Comprehension Result reopens the same saved activity; nothing is started or changed.
+  const back = await readingResult("admin", savedReading(module), { linkedComprehension: { id: "m6-admin", status: "completed" } });
+  assert.deepEqual([back.next.props.children, back.next.props.to], ["View Comprehension Result", "/admin/comprehension/m6-admin"]);
+  const reopened = await resultsPage("admin", { ...adminAttempt("completed"), id: "m6" });
+  assert.deepEqual(reopened.calls, []);
+  assert.deepEqual(reopened.buttons, [["Back to Reading Result", `/admin/read-aloud/results/${READING}`], ["Back to Oral Reading", "/admin/oral-reading"]]);
+});
+
+test("Admin M6 on a module the Admin did not create shows the server's refusal and offers the way back", async () => {
+  const refused = mount("modules/module6/pages/ComprehensionPage.tsx", { moduleId: "module" }, {
+    searchParams: { passageId: "passage", oralReadingAttemptId: READING, roomId: "", activityAssignmentId: "" },
+    comprehensionService: { getComprehensionForReading: async () => null, startComprehension: async () => { throw Error("Admin comprehension practice is available only for published modules you created."); } },
+  }, "admin");
+  refused.render(); await tick();
+  button(refused.render(), "Start Comprehension").props.onClick(); await tick();
+  const tree = refused.render();
+  assert.match(JSON.stringify(find(tree, node => node.props?.role === "alert")), /only for published modules you created/);
+  assert.deepEqual(refused.navigations, []);
+  const back = find(tree, node => node.type === "button" && node.props.className === "m6-back-button");
+  assert.match(JSON.stringify(back.props.children), /Back to Oral Reading/);
+  back.props.onClick();
+  assert.deepEqual(refused.navigations, ["/admin/oral-reading"]);
 });

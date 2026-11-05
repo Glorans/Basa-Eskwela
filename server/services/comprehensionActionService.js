@@ -3,6 +3,8 @@ const {
   ComprehensionError,
   loadOwnedAttempt,
   getComprehensionAttempt,
+  findActivityAttempt,
+  activityKey,
 } = require("./comprehensionAttemptService");
 
 // M6 single-attempt rule: one comprehension question = one final submitted
@@ -65,6 +67,13 @@ function rpcError(error) {
   if (error.code === "P0002") {
     return new ComprehensionError("Activity not found.", 404);
   }
+  // The one-assessment database guard refused a second completed result for this activity.
+  if (error.code === "23505" && /comprehension assessment/.test(error.message ?? "")) {
+    return new ComprehensionError(
+      "This reading activity already has a comprehension assessment. Open its saved result instead.",
+      409,
+    );
+  }
   console.error("[M6 action failed]", {
     code: error.code,
     message: error.message,
@@ -99,8 +108,18 @@ async function applyComprehensionAction(
   }
 
   // Checks ownership before calling the protected database function.
-  await loadOwnedAttempt(requester, attemptId);
+  const owned = await loadOwnedAttempt(requester, attemptId);
   const db = getSupabaseAdmin();
+
+  // One assessment per learning activity: an extra attempt saved for the same activity before
+  // that rule (from a repeated reading) is kept as it is, but it cannot be answered or finished.
+  const current = await findActivityAttempt(db, requester.user.id, activityKey(owned));
+  if (current && current.id !== owned.id) {
+    throw new ComprehensionError(
+      "This reading activity already has a comprehension assessment. Open its saved result instead.",
+      409,
+    );
+  }
 
   if (body.action === "answer") {
     const [saved] = await loadResponses(db, attemptId, body.questionId);
