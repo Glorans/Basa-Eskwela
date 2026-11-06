@@ -294,11 +294,12 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
         transcriptionAbort.current?.abort();
         const abort = new AbortController();
         transcriptionAbort.current = abort;
+        const submissionId = crypto.randomUUID();
         attemptInput = await processOralReading({
           moduleId: module.id,
           materialId: module.materialId, activityAssignmentId: module.activityAssignmentId, passageRevision: module.passageRevision,
           passageId: module.passageId, roomId: module.roomId, assignmentId: module.assignmentId,
-          submissionId: crypto.randomUUID(),
+          submissionId,
           expectedText: module.passage,
           language: module.language,
           recording: audioSegments.length === 1 ? audioSegments[0] : undefined,
@@ -309,6 +310,10 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
             recordingDurationSeconds,
             // English: a few story names (never the whole story) help the recognizer hear them.
             storyNames: storyNames(module.passage, module.passageTitle || module.title, language),
+            readingContext: {
+              moduleId: module.id, passageId: module.passageId, roomId: module.roomId, assignmentId: module.assignmentId,
+              materialId: module.materialId, activityAssignmentId: module.activityAssignmentId, submissionId,
+            },
             signal: abort.signal,
             onStep: (step) => { if (currentGeneration === generation.current) setTranscriptionStep(step); },
           }),

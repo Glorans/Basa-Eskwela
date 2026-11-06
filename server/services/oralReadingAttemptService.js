@@ -2,6 +2,7 @@ const { reportRows } = require("./weeklyReportRows");
 const { loadAssignedReadingSource } = require("./assignedReadingSource");
 const { getReadingWords, scorePassage } = require("./oralReadingScoring");
 const { loadComprehensionForOralAttempts } = require("./teacherComprehensionReview");
+const { verifySavedReading } = require("./readingVerification");
 const {
   SupabaseAuthenticationError,
   getAuthenticatedSupabaseUser,
@@ -397,6 +398,7 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
     }
   }
   const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const verifyReading = dependencies.verifySavedReading ?? verifySavedReading;
 
   if (body.submissionId != null) {
     requireUuid(body.submissionId, "The submission ID");
@@ -412,6 +414,7 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
     }
     if (existing) {
       verifyRetry(existing);
+      await verifyReading(requester, existing, dependencies);
       return toAttemptDto(existing, {
         title: existing.module_title_snapshot,
         language: existing.language_snapshot,
@@ -441,7 +444,11 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
       .eq("submission_id", body.submissionId)
       .maybeSingle();
 
-    if (!lookupError && existing) { verifyRetry(existing); return toAttemptDto(existing, module); }
+    if (!lookupError && existing) {
+      verifyRetry(existing);
+      await verifyReading(requester, existing, dependencies);
+      return toAttemptDto(existing, module);
+    }
   }
 
   if (error || !data) {
@@ -451,6 +458,7 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
       "ATTEMPT_SAVE_FAILED",
     );
   }
+  await verifyReading(requester, data, dependencies);
   return toAttemptDto(data, module);
 }
 

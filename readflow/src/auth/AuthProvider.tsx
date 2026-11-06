@@ -13,6 +13,14 @@ import {
   getAuthProfile,
   type AuthProfile,
 } from "../modules/module1/services/authProfile";
+import api from "../services/api";
+import { getSessionAuthHeaders } from "../services/authHeaders";
+import { createDailyLoginClaimer, isDailyLoginRole } from "../services/dailyLoginClaim";
+
+const claimDailyLogin = createDailyLoginClaimer(async () =>
+  api.post("/api/m8/daily-login", undefined, {
+    headers: await getSessionAuthHeaders("No active session."),
+  }));
 
 interface AuthState {
   user: User | null;
@@ -178,6 +186,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authListener.subscription.unsubscribe();
     };
   }, [clearAuthState, loadAuthenticatedUser]);
+
+  // M8 daily login. Returning to a tab left open overnight counts as the next day's first use.
+  const signedInUserId = state.user?.id;
+  const signedInRole = state.profile?.role;
+  useEffect(() => {
+    if (!signedInUserId || !isDailyLoginRole(signedInRole)) return;
+    const claim = () => {
+      if (document.visibilityState === "visible") void claimDailyLogin(signedInUserId);
+    };
+    claim();
+    document.addEventListener("visibilitychange", claim);
+    return () => document.removeEventListener("visibilitychange", claim);
+  }, [signedInRole, signedInUserId]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

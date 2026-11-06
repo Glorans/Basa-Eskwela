@@ -2,6 +2,7 @@ const { unlink } = require("node:fs/promises");
 const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { transcribeWav } = require("../services/azureSpeechService");
 const { getSpeechErrorResponse } = require("../services/speechErrors");
+const { recordTranscriptReceipt } = require("../services/readingVerification");
 
 const UPLOAD_TOO_LARGE_CODES = new Set(["LIMIT_FILE_SIZE", "LIMIT_FIELD_VALUE"]);
 
@@ -41,6 +42,7 @@ function developmentTiming(details) {
  */
 function createReadAloudAudioHandler({
   transcribe = transcribeWav, remove = unlink, log = console.error, timing = developmentTiming, now = Date.now,
+  recordReceipt = recordTranscriptReceipt,
 } = {}) {
   return async function readAloudAudio(req, res, uploadError) {
     // Set by the route before the upload is read (routes/speech.js).
@@ -83,6 +85,9 @@ function createReadAloudAudioHandler({
       // Lets the browser's network panel show where the time went.
       res.set("Server-Timing", `upload;dur=${uploadMs}, recognition;dur=${recognitionMs}`);
       if (!transcription.text) return res.status(422).json({ success: false, code: "NO_SPEECH", message: "No speech could be recognized from the recording." });
+      // Awaited so the save that follows can find it. M5 continues if this fails: the reading
+      // is saved and simply earns no M8 XP (services/readingVerification.js).
+      await recordReceipt(res.locals?.speechRequester, { language: req.body.language, query: req.query }, transcription.text);
       res.set("Cache-Control", "no-store");
       return res.json({ success: true, message: "Audio transcribed successfully.", transcription });
     } catch (error) {

@@ -49,7 +49,12 @@ type PostConfig = {
   signal: AbortSignal;
   onUploadProgress: (event: UploadProgress) => void;
 };
-type PostReadAloudAudio = (form: FormData, config: PostConfig, names?: readonly string[]) => Promise<{ data: DiagnosticAudioUploadResult }>;
+/** Names the reading this recording is for, so the server can bind its M8 evidence to it. */
+export type ReadAloudContext = Partial<Record<
+  "moduleId" | "passageId" | "roomId" | "assignmentId" | "materialId" | "activityAssignmentId" | "submissionId",
+  string | null
+>>;
+type PostReadAloudAudio = (form: FormData, config: PostConfig, names?: readonly string[], context?: ReadAloudContext) => Promise<{ data: DiagnosticAudioUploadResult }>;
 type ServerCheck = { summary?: PronunciationSummary; saved?: boolean; checkedAt?: string | null };
 type PronunciationResponse = { success: boolean; code?: string; message?: string; saved?: boolean; check?: ServerCheck };
 type SavedPronunciationResponse = { success: boolean; status?: SavedPronunciationCheck["status"]; check?: ServerCheck | null };
@@ -57,13 +62,16 @@ type PostPronunciationAudio = (attemptId: string, form: FormData, config: PostCo
 
 // Story names travel in the query string (?name=Santos): servers without phrase
 // lists ignore it, while an unknown form field would be refused.
-export function readAloudAudioUrl(names: readonly string[] = []) {
+// The reading's IDs travel the same way, for the same reason.
+export function readAloudAudioUrl(names: readonly string[] = [], context: ReadAloudContext = {}) {
   const query = new URLSearchParams(names.map((name) => ["name", name]));
-  return `/api/read-aloud/audio${names.length ? `?${query}` : ""}`;
+  for (const [field, value] of Object.entries(context)) if (value) query.set(field, value);
+  const search = query.toString();
+  return `/api/read-aloud/audio${search ? `?${search}` : ""}`;
 }
 
-const postReadAloudAudio: PostReadAloudAudio = (form, config, names = []) =>
-  api.post<DiagnosticAudioUploadResult>(readAloudAudioUrl(names), form, config);
+const postReadAloudAudio: PostReadAloudAudio = (form, config, names = [], context = {}) =>
+  api.post<DiagnosticAudioUploadResult>(readAloudAudioUrl(names, context), form, config);
 const postPronunciationAudio: PostPronunciationAudio = (attemptId, form, config) =>
   api.post<PronunciationResponse>(`/api/oral-reading/attempts/${encodeURIComponent(attemptId)}/pronunciation`, form, config);
 
@@ -142,6 +150,8 @@ interface TranscribeOptions {
   signal?: AbortSignal;
   /** English only: story names to help recognition (storyNames in resultWords.ts). */
   storyNames?: readonly string[];
+  /** Which reading this is. Not shown anywhere; an upload without it earns no M8 XP. */
+  readingContext?: ReadAloudContext;
   convert?: (audio: Blob) => Promise<Blob>;
   post?: PostReadAloudAudio;
 }
@@ -170,7 +180,7 @@ export async function transcribeOralReadingRecording(
   recording: Blob,
   language: DiagnosticLanguage,
   {
-    recordingDurationSeconds, onStep, signal, storyNames = [],
+    recordingDurationSeconds, onStep, signal, storyNames = [], readingContext = {},
     convert = convertToSpeechWavRecording, post = postReadAloudAudio,
   }: TranscribeOptions,
 ): Promise<DiagnosticTranscription> {
@@ -197,7 +207,7 @@ export async function transcribeOralReadingRecording(
   onStep?.("uploading");
   let result: DiagnosticAudioUploadResult;
   try {
-    result = await sendWithProgressDeadline((config) => post(form, { ...config, headers }, language === "en" ? storyNames : []), {
+    result = await sendWithProgressDeadline((config) => post(form, { ...config, headers }, language === "en" ? storyNames : [], readingContext), {
       wavBytes: wav.size, recordingDurationSeconds, signal, timing, onUploaded: () => onStep?.("recognizing"),
     });
   } finally {
