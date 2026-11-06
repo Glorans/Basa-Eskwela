@@ -10,13 +10,18 @@ import {
 } from "lucide-react";
 
 import { supabase } from "../lib/supabaseClient";
+import { rankByXp } from "../modules/module8/leaderboardRanking";
 
 type Entry = {
   user_id: string;
   display_name: string;
   xp: number;
-  difficulty: string;
+  difficulty?: string;
+  is_me?: boolean;
 };
+
+type RankingLanguage = "en" | "fil";
+type RankingRow = { entry_id: string; display_name: string; xp: number; is_me: boolean };
 
 type Period = "weekly" | "all_time";
 
@@ -38,6 +43,9 @@ const RANK_COLORS = [
 
 export default function IndependentLeaderboard() {
   const [period, setPeriod] = useState<Period>("weekly");
+  // English and Filipino earn XP differently for now, so each language ranks on its own.
+  const [language, setLanguage] = useState<RankingLanguage>("en");
+  const [perLanguage, setPerLanguage] = useState(false);
   const [rows, setRows] = useState<Entry[]>([]);
   const [me, setMe] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
@@ -51,21 +59,37 @@ export default function IndependentLeaderboard() {
         setLoading(true);
         setError("");
 
-        const [auth, result] = await Promise.all([
+        const [auth, separated] = await Promise.all([
           supabase.auth.getUser(),
           supabase.rpc(
-            "m8_independent_leaderboard" as never,
-            { p_period: period } as never
+            "m8_independent_rankings" as never,
+            { p_period: period, p_language: language } as never
           ),
         ]);
 
+        if (auth.error) throw auth.error;
+
+        // Older database: the earlier combined ranking.
+        const missing = ["PGRST202", "42883"].includes(String(separated.error?.code));
+        if (separated.error && !missing) throw separated.error;
+        const result = missing
+          ? await supabase.rpc(
+            "m8_independent_leaderboard" as never,
+            { p_period: period } as never
+          )
+          : null;
+
         if (!active) return;
 
-        if (auth.error) throw auth.error;
-        if (result.error) throw result.error;
+        if (result?.error) throw result.error;
 
         setMe(auth.data.user?.id);
-        setRows((result.data ?? []) as Entry[]);
+        setPerLanguage(!missing);
+        setRows(missing
+          ? ((result?.data ?? []) as Entry[])
+          : ((separated.data ?? []) as RankingRow[]).map((row) => ({
+            user_id: row.entry_id, display_name: row.display_name, xp: row.xp, is_me: row.is_me,
+          })));
       } catch (err) {
         if (!active) return;
 
@@ -84,7 +108,7 @@ export default function IndependentLeaderboard() {
     return () => {
       active = false;
     };
-  }, [period]);
+  }, [period, language]);
 
   const title =
     period === "weekly"
@@ -151,7 +175,29 @@ export default function IndependentLeaderboard() {
               All time
             </button>
           </div>
+
+          {perLanguage && (
+            <div style={toggleStyle} role="group" aria-label="Ranking language">
+              {(["en", "fil"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  style={{ ...toggleButtonStyle, ...(language === option ? activeButtonStyle : {}) }}
+                  aria-pressed={language === option}
+                  onClick={() => setLanguage(option)}
+                >
+                  {option === "en" ? "English" : "Filipino"}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {perLanguage && (
+          <p style={languageNoteStyle}>
+            English and Filipino activities earn XP differently for now, so each language has its own ranking.
+          </p>
+        )}
 
         {/* LOADING */}
         {loading ? (
@@ -182,15 +228,16 @@ export default function IndependentLeaderboard() {
         ) : (
           /* LEADERBOARD LIST */
           <ol style={listStyle}>
-            {rows.map((entry, index) => {
-              const rank = index + 1;
-              const isYou = entry.user_id === me;
+            {/* Equal XP shares a rank, as on the Student leaderboard. Display only. */}
+            {rankByXp(rows.map((row) => ({ ...row, xp: Number(row.xp), rank: 0 }))).map((entry, index) => {
+              const rank = entry.rank;
+              const isYou = entry.is_me ?? entry.user_id === me;
 
               const rankColor =
-                RANK_COLORS[index] ?? "#64748b";
+                RANK_COLORS[rank - 1] ?? "#64748b";
 
-              const difficulty =
-                entry.difficulty || "Easy";
+              // Absent on the per-language rankings: other learners' levels stay private.
+              const difficulty = entry.difficulty ?? "";
 
               const difficultyColor =
                 difficulty.toLowerCase() === "hard"
@@ -240,20 +287,22 @@ export default function IndependentLeaderboard() {
                   {/* LEARNER DETAILS */}
                   <div style={userInfoStyle}>
                     <strong style={userNameStyle}>
-                      {isYou
+                      {isYou && entry.display_name !== "You"
                         ? `You (${entry.display_name})`
                         : entry.display_name}
                     </strong>
 
-                    <span
-                      style={{
-                        ...difficultyStyle,
-                        backgroundColor:
-                          difficultyColor,
-                      }}
-                    >
-                      {difficulty}
-                    </span>
+                    {difficulty && (
+                      <span
+                        style={{
+                          ...difficultyStyle,
+                          backgroundColor:
+                            difficultyColor,
+                        }}
+                      >
+                        {difficulty}
+                      </span>
+                    )}
                   </div>
 
                   {/* XP SCORE */}
@@ -367,6 +416,12 @@ const toggleButtonStyle: CSSProperties = {
 const activeButtonStyle: CSSProperties = {
   backgroundColor: "#173d31",
   color: "#ffffff",
+};
+
+const languageNoteStyle: CSSProperties = {
+  fontSize: "14px",
+  color: "#64748b",
+  margin: "0 0 16px",
 };
 
 const listStyle: CSSProperties = {

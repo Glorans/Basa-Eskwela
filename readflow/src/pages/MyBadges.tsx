@@ -17,13 +17,24 @@ import {
 } from "lucide-react";
 
 import {
+  getMyAchievements,
   getMyGamification,
 } from "../modules/module8/gamificationService";
 
 import type {
   Badge,
   LearnerProgress,
+  MilestoneRow,
+  ReadingSummary,
 } from "../modules/module8/gamificationService";
+import {
+  ACHIEVEMENT_GUIDE,
+  achievementProgress,
+  earnedDate,
+  MILESTONE_GUIDE,
+  milestoneProgress,
+  type AchievementStats,
+} from "../modules/module8/achievements";
 
 // ========================================
 // BADGE ICONS
@@ -48,7 +59,7 @@ function BadgeIcon({ name }: { name: string }) {
 }
 
 // ========================================
-// MY BADGES COMPONENT
+// BADGES COMPONENT
 // ========================================
 
 export default function MyBadges() {
@@ -56,6 +67,9 @@ export default function MyBadges() {
     useState<LearnerProgress | null>(null);
 
   const [badges, setBadges] = useState<Badge[]>([]);
+  const [stats, setStats] = useState<AchievementStats | null>(null);
+  const [reading, setReading] = useState<ReadingSummary | null>(null);
+  const [milestones, setMilestones] = useState<MilestoneRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -73,6 +87,12 @@ export default function MyBadges() {
 
         setProgress(result.progress);
         setBadges(result.badges);
+        setStats(result.stats);
+        setReading(result.reading);
+
+        // Optional: the badges still show if achievements cannot load.
+        const achieved = await getMyAchievements().catch(() => null);
+        if (active) setMilestones(achieved);
       } catch (err) {
         if (!active) return;
 
@@ -141,7 +161,7 @@ export default function MyBadges() {
       </h1>
 
       <p style={subtitleStyle}>
-        Keep reading, earn XP, and unlock exciting badges!
+        Badges mark what you have done. Achievements show how well you read and understand over time. Earned badges stay saved on your account.
       </p>
 
       {/* GAMIFICATION STATISTICS */}
@@ -160,8 +180,14 @@ export default function MyBadges() {
             🔥 Current Streak
           </span>
           <strong style={statValueStyle}>
-            {progress?.current_streak ?? 0} days
+            {progress?.current_streak ?? 0} {(progress?.current_streak ?? 0) === 1 ? "day" : "days"}
           </strong>
+          <small style={statNoteStyle}>
+            Longest: {progress?.longest_streak ?? 0} {(progress?.longest_streak ?? 0) === 1 ? "day" : "days"}
+          </small>
+          {reading && !reading.readToday && (progress?.current_streak ?? 0) > 0 && (
+            <small style={statNoteStyle}>Read today to keep your streak going!</small>
+          )}
         </div>
 
         <div style={statCardStyle}>
@@ -175,7 +201,7 @@ export default function MyBadges() {
 
         <div style={statCardStyle}>
           <span style={statLabelStyle}>
-            📖 Difficulty
+            📖 Reading Level
           </span>
           <strong style={statValueStyle}>
             {/* No progress row yet matches the database default (Easy). */}
@@ -183,12 +209,17 @@ export default function MyBadges() {
               ? progress.difficulty ?? "Not available"
               : "Easy"}
           </strong>
+          <small style={statNoteStyle}>From your reading test</small>
         </div>
       </section>
 
+      <p style={levelNoteStyle}>
+        Your reading level comes from your reading test (the diagnostic). Earning XP does not change your level.
+      </p>
+
       {/* BADGE COLLECTION HEADING */}
       <h2 style={collectionTitleStyle}>
-        🏅 Badge Collection
+        🏅 Badges
       </h2>
 
       {/* BADGE COLLECTION */}
@@ -229,10 +260,31 @@ export default function MyBadges() {
                 {badge.name}
               </h3>
 
-              {/* BADGE DESCRIPTION */}
+              {/* HOW TO EARN IT */}
               <p style={badgeDescriptionStyle}>
-                {badge.description}
+                {ACHIEVEMENT_GUIDE[badge.id]?.howToEarn ?? badge.description}
               </p>
+              {ACHIEVEMENT_GUIDE[badge.id]?.note && (
+                <small style={{ color: "#64748b" }}>{ACHIEVEMENT_GUIDE[badge.id]?.note}</small>
+              )}
+
+              {/* PROGRESS TOWARD A LOCKED BADGE */}
+              {!badge.earned && stats && (() => {
+                const goal = achievementProgress(badge.id, stats);
+                return goal && (
+                  <div style={{ width: "100%" }}>
+                    <progress
+                      value={goal.current}
+                      max={goal.target}
+                      style={{ width: "100%" }}
+                      aria-label={`${badge.name}: ${goal.current} of ${goal.target} ${goal.unit}`}
+                    />
+                    <small style={{ color: "#64748b" }}>
+                      {goal.current.toLocaleString()} / {goal.target.toLocaleString()} {goal.unit}
+                    </small>
+                  </div>
+                );
+              })()}
 
               {/* BADGE STATUS */}
               <div
@@ -257,22 +309,54 @@ export default function MyBadges() {
               </div>
 
               {/* DATE EARNED */}
-              {badge.earned && badge.earned_at && (
+              {badge.earned && earnedDate(badge.earned_at) && (
                 <small
                   style={{
                     color: "#64748b",
                     marginTop: "4px",
                   }}
                 >
-                  Earned:{" "}
-                  {new Date(
-                    badge.earned_at
-                  ).toLocaleDateString()}
+                  Earned: {earnedDate(badge.earned_at)}
                 </small>
               )}
             </article>
           ))}
         </section>
+      )}
+
+      {/* ACHIEVEMENTS: BRONZE, SILVER AND GOLD */}
+      {milestones && milestones.length > 0 && (
+        <>
+          <h2 style={collectionTitleStyle}>
+            🎖️ Achievements
+          </h2>
+          <section style={badgeGridStyle}>
+            {milestones.filter((row) => MILESTONE_GUIDE[row.achievement_id]).map((row) => {
+              const guide = MILESTONE_GUIDE[row.achievement_id];
+              const { count, reached, next } = milestoneProgress(row.qualifying);
+              const earnedAt = reached === "Gold" ? row.gold_at : reached === "Silver" ? row.silver_at : reached === "Bronze" ? row.bronze_at : null;
+              return (
+                <article key={row.achievement_id} style={{ ...badgeCardStyle, borderColor: reached ? "#86c98a" : "#e2e8f0", backgroundColor: reached ? "#f0fdf4" : "#ffffff" }}>
+                  <h3 style={badgeNameStyle}>{guide.name}</h3>
+                  <p style={badgeDescriptionStyle}>{guide.howToEarn}</p>
+                  <div style={badgeStatusStyle}>{reached ? `${reached} earned` : "Not earned yet"}</div>
+                  {next ? (
+                    <div style={{ width: "100%" }}>
+                      <progress value={count} max={next.target} style={{ width: "100%" }}
+                        aria-label={`${guide.name}: ${count} of ${next.target} ${guide.unit} for ${next.tier}`} />
+                      <small style={{ color: "#64748b" }}>{count} / {next.target} {guide.unit} for {next.tier}</small>
+                    </div>
+                  ) : (
+                    <small style={{ color: "#64748b" }}>{count} {guide.unit}</small>
+                  )}
+                  {earnedDate(earnedAt) && (
+                    <small style={{ color: "#64748b", marginTop: "4px" }}>Earned: {earnedDate(earnedAt)}</small>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        </>
       )}
     </main>
   );
@@ -281,6 +365,18 @@ export default function MyBadges() {
 // ========================================
 // PAGE STYLES
 // ========================================
+
+const statNoteStyle: CSSProperties = {
+  display: "block",
+  color: "#64748b",
+  fontSize: "13px",
+  marginTop: "4px",
+};
+
+const levelNoteStyle: CSSProperties = {
+  color: "#475569",
+  margin: "12px 0 0",
+};
 
 const containerStyle: CSSProperties = {
   padding: "24px",

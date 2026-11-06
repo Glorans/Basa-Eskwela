@@ -14,12 +14,14 @@ import { supabase } from "../lib/supabaseClient";
 
 import {
   getClassroomLeaderboard,
+  getClassroomRankings,
   getWeeklyLeaderboard,
   rankByXp,
 } from "../modules/module8/gamificationService";
 
 import type {
   LeaderboardEntry,
+  RankingLanguage,
 } from "../modules/module8/gamificationService";
 
 import {
@@ -67,6 +69,10 @@ export default function Leaderboard() {
   // False until m8_classroom_leaderboard is deployed: then the
   // rankings combine every classroom the student joined.
   const [roomScoped, setRoomScoped] = useState(true);
+
+  // English and Filipino earn XP differently for now, so each language ranks on its own.
+  const [language, setLanguage] = useState<RankingLanguage>("en");
+  const [perLanguage, setPerLanguage] = useState(false);
 
   const [rankingsLoading, setRankingsLoading] =
     useState(false);
@@ -159,8 +165,12 @@ export default function Leaderboard() {
         setRankingsLoading(true);
         setError("");
 
-        const roomRankings =
-          await getClassroomLeaderboard(selectedClassroomId);
+        const separated =
+          await getClassroomRankings(selectedClassroomId, language);
+
+        // Older database: the earlier room function, then the combined one.
+        const roomRankings = separated
+          ?? await getClassroomLeaderboard(selectedClassroomId);
 
         // Fallback while the room-scoped function is not deployed.
         const rankings = roomRankings ?? rankByXp(
@@ -169,6 +179,7 @@ export default function Leaderboard() {
 
         if (!active) return;
 
+        setPerLanguage(separated !== null);
         setRoomScoped(roomRankings !== null);
         setLeaders(rankings);
       } catch (err) {
@@ -197,7 +208,7 @@ export default function Leaderboard() {
     return () => {
       active = false;
     };
-  }, [selectedClassroomId]);
+  }, [selectedClassroomId, language]);
 
   // Only the fallback combines classmates from every joined classroom.
   const combinesClassrooms =
@@ -292,7 +303,29 @@ export default function Leaderboard() {
             />
             Weekly Rankings
           </h2>
+
+          {perLanguage && (
+            <div style={toggleStyle} role="group" aria-label="Ranking language">
+              {(["en", "fil"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  style={{ ...toggleButtonStyle, ...(language === option ? activeToggleStyle : {}) }}
+                  aria-pressed={language === option}
+                  onClick={() => setLanguage(option)}
+                >
+                  {option === "en" ? "English" : "Filipino"}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {perLanguage && (
+          <p style={languageNoteStyle}>
+            English and Filipino activities earn XP differently for now, so each language has its own ranking.
+          </p>
+        )}
 
         {loading || rankingsLoading ? (
           <div style={messageStyle} role="status">
@@ -332,13 +365,13 @@ export default function Leaderboard() {
               const rank = learner.rank;
 
               const isCurrentUser =
-                learner.user_id === currentUserId;
+                learner.is_me ?? learner.user_id === currentUserId;
 
               const rankColor =
                 RANK_COLORS[rank - 1] ?? "#64748b";
 
-              const difficulty =
-                learner.difficulty || "Easy";
+              // Absent on the per-language rankings: classmates' levels stay private.
+              const difficulty = learner.difficulty ?? "";
 
               const difficultyColor =
                 difficulty.toLowerCase() === "hard"
@@ -400,15 +433,17 @@ export default function Leaderboard() {
                       {displayName}
                     </span>
 
-                    <span
-                      style={{
-                        ...difficultyStyle,
-                        backgroundColor:
-                          difficultyColor,
-                      }}
-                    >
-                      {difficulty}
-                    </span>
+                    {difficulty && (
+                      <span
+                        style={{
+                          ...difficultyStyle,
+                          backgroundColor:
+                            difficultyColor,
+                        }}
+                      >
+                        {difficulty}
+                      </span>
+                    )}
                   </div>
 
                   {/* XP SCORE */}
@@ -545,6 +580,36 @@ const headerStyle: CSSProperties = {
   flexWrap: "wrap",
   gap: "16px",
   marginBottom: "24px",
+};
+
+const toggleStyle: CSSProperties = {
+  display: "flex",
+  gap: "4px",
+  backgroundColor: "#f1f5f9",
+  borderRadius: "999px",
+  padding: "4px",
+};
+
+const toggleButtonStyle: CSSProperties = {
+  border: "none",
+  backgroundColor: "transparent",
+  color: "#475569",
+  padding: "9px 16px",
+  borderRadius: "999px",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const activeToggleStyle: CSSProperties = {
+  backgroundColor: "#173d31",
+  color: "#ffffff",
+};
+
+const languageNoteStyle: CSSProperties = {
+  fontSize: "14px",
+  color: "#64748b",
+  margin: "0 0 16px",
 };
 
 const sectionTitleStyle: CSSProperties = {

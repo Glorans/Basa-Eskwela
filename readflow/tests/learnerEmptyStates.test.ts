@@ -4,6 +4,7 @@ import test from "node:test";
 import { createRequire } from "node:module";
 import { createHookRuntime, findAll, loadComponentModule, textOf, tick } from "./helpers/hookRuntime.ts";
 import { rankByXp } from "../src/modules/module8/leaderboardRanking.ts";
+import * as achievements from "../src/modules/module8/achievements.ts";
 
 const require = createRequire(import.meta.url);
 async function mountLearnerPage(name: string, services: Record<string, unknown>, user: { id: string } | null = { id: "reader" }) {
@@ -11,6 +12,8 @@ async function mountLearnerPage(name: string, services: Record<string, unknown>,
   const page = loadComponentModule(new URL(`../src/pages/${name}.tsx`, import.meta.url), id => {
     if (id === "react") return runtime.react;
     if (id.endsWith("/gamificationService") || id.endsWith("/classroomService")) return services;
+    // Real M8 display helpers (badge explanations); they read nothing and award nothing.
+    if (id.endsWith("/module8/achievements")) return achievements;
     if (id.endsWith("/supabaseClient")) return { supabase: { auth: { getUser: async () => ({ data: { user }, error: null }) } } };
     if (id.endsWith(".css")) return {};
     return require(id);
@@ -59,6 +62,7 @@ test("Student leaderboard uses saved rankings and distinguishes empty classrooms
         return scenario.includes("two-rooms") ? [...rooms, { id: "room-2", room_name: "Filipino class", section: null }] : rooms;
       },
       // m8_classroom_leaderboard: only the caller ("You") and classmates of THIS room (pseudonyms).
+      getClassroomRankings: async () => null, // per-language rankings not deployed in these scenarios
       getClassroomLeaderboard: async (roomId: string) => {
         calls.push(`room:${roomId}`);
         if (scenario === "error") throw new Error("Service unavailable");
@@ -129,6 +133,7 @@ test("Student badges distinguish empty catalogs, locked badges and earned badges
   for (const state of ["empty", "locked", "earned", "error"]) {
     let calls = 0;
     const { initial, tree } = await mountLearnerPage("MyBadges", {
+      getMyAchievements: async () => null,
       getMyGamification: async () => {
         calls++;
         if (state === "error") throw new Error("Please log in first.");

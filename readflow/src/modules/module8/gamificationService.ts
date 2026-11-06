@@ -3,6 +3,8 @@ import { supabase } from "../../lib/supabaseClient";
 import { toLearnerProgress } from "./learnerProgress";
 import type { LearnerProgressRow } from "./learnerProgress";
 import { rankByXp } from "./leaderboardRanking";
+import { philippineDate, readingStreaks } from "./readingStreak";
+import type { AchievementStats } from "./achievements";
 
 export type Difficulty = "Easy" | "Medium" | "Hard";
 
@@ -30,12 +32,28 @@ export interface Badge {
 }
 
 export interface LeaderboardEntry {
+  /** A learner's ID on the older functions; an opaque ID on the per-language rankings. */
   user_id: string;
   display_name: string;
   xp: number;
-  difficulty: string;
+  /** Older functions only. The per-language rankings keep classmates' levels private. */
+  difficulty?: string;
   rank: number;
+  is_me?: boolean;
 }
+
+export type RankingLanguage = "en" | "fil";
+
+export interface MilestoneRow {
+  achievement_id: string;
+  qualifying: number;
+  bronze_at: string | null;
+  silver_at: string | null;
+  gold_at: string | null;
+}
+
+/** The function is not deployed yet: older pages and functions keep working. */
+const isMissingFunction = (error: { code?: unknown }) => ["PGRST202", "42883"].includes(String(error.code));
 
 export const difficultyFromDiagnostic = (
   level: ReadingLevel
@@ -65,9 +83,23 @@ export const xpForModule = (
 // Regenerate your Supabase database types after migration.
 const db = supabase as any;
 
+export interface ReadingSummary {
+  readingDays: number;
+  lastReadDate: string | null;
+  readToday: boolean;
+}
+
+/**
+ * The signed-in learner's own M8 records (row-level security limits every read to them).
+ * Reading only: opening the page never grants XP, badges or streak days. The current streak
+ * is calculated from the saved reading days in Philippine time, so it is correct after a break
+ * even though the stored value is only refreshed when a new reading day is saved.
+ */
 export async function getMyGamification(): Promise<{
   progress: LearnerProgress | null;
   badges: Badge[];
+  stats: AchievementStats;
+  reading: ReadingSummary;
 }> {
   const {
     data: { user },
@@ -77,7 +109,7 @@ export async function getMyGamification(): Promise<{
   if (authError) throw authError;
   if (!user) throw new Error("Please log in first.");
 
-  const [progressResult, earnedResult, badgesResult] =
+  const [progressResult, earnedResult, badgesResult, daysResult, xpResult] =
     await Promise.all([
       db
         .from("m8_learner_progress")
@@ -93,6 +125,16 @@ export async function getMyGamification(): Promise<{
       db
         .from("m8_badges")
         .select("id, name, description, icon"),
+
+      db
+        .from("m8_reading_days")
+        .select("reading_date")
+        .eq("user_id", user.id),
+
+      db
+        .from("m8_xp_events")
+        .select("xp_earned, source_type")
+        .eq("user_id", user.id),
     ]);
 
   if (progressResult.error) {
@@ -105,6 +147,10 @@ export async function getMyGamification(): Promise<{
 
   if (badgesResult.error) {
     throw badgesResult.error;
+  }
+
+  if (daysResult.error) {
+    throw daysResult.error;
   }
 
   const earnedMap = new Map<string, string>();
@@ -132,14 +178,73 @@ export async function getMyGamification(): Promise<{
   const rawProgress: LearnerProgressRow | null =
     progressResult.data;
 
-  const progress: LearnerProgress | null = rawProgress
+  const streaks = readingStreaks(
+    (daysResult.data ?? []).map((row: { reading_date: string }) => row.reading_date),
+    philippineDate()
+  );
+  const saved: LearnerProgress | null = rawProgress
     ? toLearnerProgress(rawProgress)
     : null;
+  // Longest never decreases; the current streak follows today's date.
+  const progress: LearnerProgress | null = saved
+    ? { ...saved, current_streak: streaks.current, longest_streak: Math.max(saved.longest_streak, streaks.longest) }
+    : null;
+  const xpRows = (xpResult.error ? [] : xpResult.data ?? []) as { xp_earned: number; source_type: string }[];
+  const loginXp = xpRows.filter((row) => row.source_type === "daily_login").reduce((sum, row) => sum + Number(row.xp_earned ?? 0), 0);
+  const completedActivities = xpRows.filter((row) => ["passage", "assignment", "module"].includes(row.source_type)).length;
+  const counters = rawProgress as (LearnerProgressRow & { read_aloud_count?: number | null; completed_modules?: number | null }) | null;
 
   return {
     progress,
     badges,
+    stats: {
+      totalXp: progress?.total_xp ?? 0,
+      // Daily login XP is in the balance but does not count toward Diamond. Progress only:
+      // the database decides the badge, so a failed read falls back to the balance.
+      ...(loginXp > 0 ? { diamondXp: Math.max(0, (progress?.total_xp ?? 0) - loginXp) } : {}),
+      ...(completedActivities > 0 ? { completedActivities } : {}),
+      readAloudCount: Number(counters?.read_aloud_count ?? 0),
+      completedModules: Number(counters?.completed_modules ?? 0),
+      readingDays: streaks.readingDays,
+      longestStreak: progress?.longest_streak ?? streaks.longest,
+    },
+    reading: { readingDays: streaks.readingDays, lastReadDate: streaks.lastReadDate, readToday: streaks.readToday },
   };
+}
+
+/** The learner's Bronze, Silver and Gold progress; null until m8_my_achievements is deployed. */
+export async function getMyAchievements(): Promise<MilestoneRow[] | null> {
+  const { data, error } = await db.rpc("m8_my_achievements");
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return data ?? [];
+}
+
+type RankingRow = { entry_id: string; display_name?: string; xp?: number; is_me?: boolean };
+const toRanked = (rows: RankingRow[] | null): LeaderboardEntry[] => rankByXp((rows ?? []).map((row) => ({
+  user_id: row.entry_id, display_name: row.display_name ?? "Reader", xp: Number(row.xp ?? 0), is_me: row.is_me === true, rank: 0,
+})));
+
+/** One classroom's weekly ranking in one language; null until m8_classroom_rankings is deployed. */
+export async function getClassroomRankings(roomId: string, language: RankingLanguage): Promise<LeaderboardEntry[] | null> {
+  const { data, error } = await db.rpc("m8_classroom_rankings", { p_room_id: roomId, p_language: language });
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return toRanked(data);
+}
+
+/** The Independent Learner ranking in one language; null until m8_independent_rankings is deployed. */
+export async function getIndependentRankings(period: "weekly" | "all_time", language: RankingLanguage): Promise<LeaderboardEntry[] | null> {
+  const { data, error } = await db.rpc("m8_independent_rankings", { p_period: period, p_language: language });
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return toRanked(data);
 }
 
 export async function getWeeklyLeaderboard(): Promise<
