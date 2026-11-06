@@ -52,7 +52,24 @@ function splitJoinedWords(expectedWords, spokenWords) {
   return spokenWords.flatMap((word) => (!passageWords.has(word) && joined.get(word)) || [word]);
 }
 
-function alignWords(expectedWords, spokenWords) {
+// Filipino only. fil-PH speech recognition writes small spoken numbers as digits
+// ("isang hapon" comes back as "1 hapon"). That is the recognizer's spelling of the
+// same number, not a different word. Used inside the alignment, so a digit pairs with
+// its own number word: "siyam na kalabaw" heard as "9 kalabaw" is one skipped "na", not
+// "na" read as "9". A different number ("2" for "isang"), a stray digit or any other
+// word stays a difference. Saved spoken words stay as recognized. English never uses it.
+const FILIPINO_NUMBER_WORDS = new Map([
+  ["1", ["isa", "isang"]], ["2", ["dalawa", "dalawang"]], ["3", ["tatlo", "tatlong"]], ["4", ["apat"]],
+  ["5", ["lima", "limang"]], ["6", ["anim"]], ["7", ["pito", "pitong"]], ["8", ["walo", "walong"]],
+  ["9", ["siyam"]], ["10", ["sampu", "sampung"]],
+]);
+const sameFilipinoNumber = (first, second) => Boolean(
+  FILIPINO_NUMBER_WORDS.get(first)?.includes(second) || FILIPINO_NUMBER_WORDS.get(second)?.includes(first),
+);
+
+function alignWords(expectedWords, spokenWords, language = "en") {
+  const sameWord = (expected, spoken) => expected === spoken
+    || (language === "fil" && sameFilipinoNumber(expected, spoken));
   const costs = Array.from({ length: expectedWords.length + 1 }, () =>
     Array(spokenWords.length + 1).fill(0),
   );
@@ -84,7 +101,7 @@ function alignWords(expectedWords, spokenWords) {
       spokenIndex += 1
     ) {
       const substitutionCost =
-        expectedWords[expectedIndex - 1] === spokenWords[spokenIndex - 1] ? 0 : 1;
+        sameWord(expectedWords[expectedIndex - 1], spokenWords[spokenIndex - 1]) ? 0 : 1;
 
       costs[expectedIndex][spokenIndex] = Math.min(
         costs[expectedIndex - 1][spokenIndex - 1] + substitutionCost,
@@ -105,7 +122,7 @@ function alignWords(expectedWords, spokenWords) {
     if (
       expectedIndex > 0 &&
       spokenIndex > 0 &&
-      expectedWord === spokenWord &&
+      sameWord(expectedWord, spokenWord) &&
       costs[expectedIndex][spokenIndex] === costs[expectedIndex - 1][spokenIndex - 1]
     ) {
       alignment.push({ type: "match", expectedWord, spokenWord });
@@ -199,11 +216,11 @@ function scorePassage(passage, transcript, language, title = "") {
     error.code = "SCORING_LIMIT";
     throw error;
   }
-  let wordMetrics = toWordMetrics(alignWords(expectedWords, spokenWords));
+  let wordMetrics = toWordMetrics(alignWords(expectedWords, spokenWords, language));
   if (titleWordCount) {
     // Align with the title in front, then drop every entry up to and including
     // the title's last word. The rest covers exactly the body's words.
-    const withTitle = alignWords([...titleWords, ...expectedWords], spokenWords);
+    const withTitle = alignWords([...titleWords, ...expectedWords], spokenWords, language);
     let titleWordsSeen = 0;
     const bodyStart = withTitle.findIndex((word) => {
       if (titleWordsSeen === titleWordCount) return true;
