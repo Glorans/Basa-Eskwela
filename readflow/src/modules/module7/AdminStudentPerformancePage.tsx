@@ -1,8 +1,10 @@
+import PerformanceSelector from './components/PerformanceSelector';
+import { getRoomEnrollments } from '../module4/services/classroomService';
 import { useCallback, useEffect, useState } from 'react';
 import { formatAnalyticsDate as displayDate, formatAnalyticsDateTime as date } from './services/dateDisplay';
 import { formatComprehension, formatQuizScore, formatScore, passageProgressText } from './services/scoreDisplay';
 import { isActiveWarning, recoveryNote } from './services/studentSupportClassification';
-import { m7Request, type AdminStudentDetail, type AdminStudentRow, type Intervention } from './services/m7Service';
+import { m7Request, type AdminSystemData, type AdminStudentDetail, type AdminStudentRow, type Intervention } from './services/m7Service';
 import { InterventionForm, MetricsCards, NotCountedQuizzes, RiskGuidance } from './M7Pages';
 import './m7.css';
 import './m7Dashboard.css';
@@ -22,6 +24,31 @@ export default function AdminStudentPerformancePage() {
   const [error, setError] = useState(''), [loading, setLoading] = useState(true), [revision, setRevision] = useState(0);
   const [filter, setFilter] = useState<'all' | 'active' | 'none'>('all');
   const [selected, setSelected] = useState('');
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
+  const [roomId, setRoomId] = useState('');
+  const [roomError, setRoomError] = useState(''), [roomsLoading, setRoomsLoading] = useState(true);
+  const [roomRevision, setRoomRevision] = useState(0);
+  const [membership, setMembership] = useState<{ roomId: string; studentIds: string[] } | null>(null);
+  const [membershipError, setMembershipError] = useState('');
+  const [membershipRevision, setMembershipRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setRoomsLoading(true); setRoomError('');
+    // Reuse the authorized classroom options; student rows contain names only.
+    m7Request<AdminSystemData>('/system').then(result => {
+      if (active) setRooms(result.details.classroomOptions);
+    }).catch(e => { if (active) setRoomError(e instanceof Error ? e.message : 'Unable to load classrooms.'); })
+      .finally(() => { if (active) setRoomsLoading(false); });
+    return () => { active = false; };
+  }, [roomRevision]);
+  useEffect(() => {
+    let active = true;
+    setMembership(null); setMembershipError('');
+    if (roomId) getRoomEnrollments(roomId).then(rows => {
+      if (active) setMembership({ roomId, studentIds: rows.map(row => row.student_id) });
+    }).catch(e => { if (active) setMembershipError(e instanceof Error ? e.message : 'Unable to load classroom enrollment.'); });
+    return () => { active = false; };
+  }, [roomId, membershipRevision]);
   useEffect(() => {
     let active = true;
     setLoading(true); setError('');
@@ -31,7 +58,12 @@ export default function AdminStudentPerformancePage() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [revision]);
-  const shown = (students || []).filter(s => filter === 'all' || (filter === 'active' ? isActiveWarning(s.classification) : s.classification === 'No assessment data'));
+  const membershipLoading = Boolean(roomId && membership?.roomId !== roomId && !membershipError);
+  // Intersect with the Admin Student-role response, never add accounts from enrollment.
+  const shown = (students || []).filter(s =>
+    (!roomId || (membership?.roomId === roomId && membership.studentIds.includes(s.id))) &&
+    (filter === 'all' || (filter === 'active' ? isActiveWarning(s.classification) : s.classification === 'No assessment data')));
+  const activeStudent = !loading && !error && !membershipLoading && !membershipError && shown.some(student => student.id === selected) ? selected : '';
   return <main className="m7-page m7-dashboard">
     <header className="m7-dashboard-header m7-header-card"><div><h1>Student Performance</h1>
       <p>Individual reading and comprehension results for every Student account. Independent Learners are not included.</p></div></header>
@@ -39,14 +71,27 @@ export default function AdminStudentPerformancePage() {
       {loading && <p role="status">Loading student performance…</p>}
       {error && <div role="alert" className="m7-error">{error} <button onClick={() => setRevision(v => v + 1)}>Retry</button></div>}
       <RiskGuidance />
-      {students && <section><h2>Students ({students.length})</h2>
+      {students && !loading && !error && <section><h2>Students ({students.length})</h2>
         <p>Reading Accuracy is transcript-based (words heard compared with the story). Classification uses completed comprehension quiz scores; a student without completed quizzes shows "No assessment data", never a low score.</p>
-        <label className="m7-support-filter"><span>Show</span><select value={filter} onChange={e => setFilter(e.target.value as typeof filter)}>
+        <div className="m7-performance-controls">
+          <PerformanceSelector id="admin-student-classroom" label="Filter by Classroom" value={roomId} options={rooms}
+            onChange={value => { setRoomId(value); setSelected(''); setMembership(null); setMembershipError(''); }} placeholder="All Classrooms" disabled={roomsLoading || !!roomError} describedBy="admin-student-scope" />
+          <label className="m7-performance-selector"><span>Show</span><select value={filter} onChange={e => { setFilter(e.target.value as typeof filter); setSelected(''); }}>
           <option value="all">All students</option><option value="active">Active warnings and risk</option><option value="none">No assessment data</option></select></label>
-        {!students.length ? <p>No Student accounts yet.</p> : !shown.length ? <p>No students match this filter.</p> :
+          <PerformanceSelector id="admin-student" label="Select Student" value={activeStudent}
+            options={shown.map(student => ({ id: student.id, name: student.name }))} onChange={setSelected}
+            placeholder="Select a student" disabled={membershipLoading || !!membershipError} describedBy="admin-student-scope" />
+        </div>
+        <p id="admin-student-scope" className="m7-performance-scope">Classroom and classification filters narrow the student list only. Student metrics retain their full saved history and current completion across all authorized classrooms, including eligible unassigned work. Risk classifications retain their existing teacher contexts.</p>
+        {roomsLoading && <p role="status">Loading classroom options...</p>}
+        {roomError && <p role="alert">{roomError} Student selection remains available across all classrooms. <button onClick={() => setRoomRevision(v => v + 1)}>Retry classrooms</button></p>}
+        {!roomsLoading && !roomError && !rooms.length && <p>No classrooms available. Students without enrollment remain available under All Classrooms.</p>}
+        {membershipLoading && <p role="status">Loading classroom students...</p>}
+        {membershipError && <p role="alert">{membershipError} <button onClick={() => setMembershipRevision(v => v + 1)}>Retry enrollment</button></p>}
+        {!students.length ? <p>No Student accounts yet.</p> : membershipLoading || membershipError ? null : !shown.length ? <p>No students match these filters.</p> : !activeStudent ? <p>Select a student to view their performance.</p> :
           <div className="m7-scroll"><table><thead><tr><th>Student</th><th>Classrooms</th><th>Classification</th><th>Readings</th><th>Reading accuracy</th><th>Reading speed</th><th>Quizzes</th><th>Comprehension</th><th>Activities completed</th></tr></thead>
-            <tbody>{shown.map(s => <tr key={s.id}>
-              <td><button className="m7-student-action" onClick={() => setSelected(s.id)}>{s.name}</button></td>
+            <tbody>{shown.filter(s => s.id === activeStudent).map(s => <tr key={s.id}>
+              <td>{s.name}</td>
               <td>{s.classrooms.length ? s.classrooms.join(', ') : 'Not enrolled'}</td>
               <td><span className="m7-classification" data-classification={s.classification}>{s.classification}</span></td>
               <td>{s.readingAttempts}</td><td>{percent(s.pronunciationAccuracy)}</td><td>{wpm(s.readingSpeedWpm)}</td>
@@ -54,7 +99,7 @@ export default function AdminStudentPerformancePage() {
               <td>{s.completion.assigned ? `${s.completion.completed} / ${s.completion.assigned}` : 'None assigned'}</td>
             </tr>)}</tbody></table></div>}
       </section>}
-      {selected && <StudentDetail key={selected} studentId={selected} onClose={() => setSelected('')} onSaved={() => setRevision(v => v + 1)} />}
+      {activeStudent && <StudentDetail key={activeStudent} studentId={activeStudent} onClose={() => setSelected('')} onSaved={() => setRevision(v => v + 1)} />}
     </div>
   </main>;
 }

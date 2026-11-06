@@ -1,4 +1,8 @@
 /* Opt-in styles for M7 analytics and reports only. */
+.m7-dashboard .m7-performance-controls { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:16px; margin:20px 0; }
+.m7-dashboard .m7-performance-selector { display:grid; gap:8px; min-width:0; max-width:100%; }
+.m7-dashboard .m7-performance-selector select { width:100%; min-width:0; box-sizing:border-box; padding:10px 12px; border:1px solid #809c96; }
+.m7-dashboard .m7-performance-scope { line-height:1.65; overflow-wrap:anywhere; }
 .m7-dashboard { width:100%; max-width:1400px; margin:auto; padding:clamp(20px,3vw,32px); box-sizing:border-box; background:#173f3b; color:#173f3b; min-height:100%; }
 .m7-dashboard .m7-dashboard-header { display:flex; justify-content:space-between; align-items:center; gap:24px; margin-bottom:24px; }
 .m7-dashboard .m7-dashboard-header h1 { color:white; font-size:clamp(30px,3vw,40px); font-weight:800; line-height:1.2; margin:0; }

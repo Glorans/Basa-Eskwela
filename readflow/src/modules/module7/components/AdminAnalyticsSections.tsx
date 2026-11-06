@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import PerformanceSelector from './PerformanceSelector';
 import { RiskGuidance } from '../M7Pages';
 import { formatAnalyticsDate as displayDate } from '../services/dateDisplay';
 export { formatAnalyticsDate as displayDate } from '../services/dateDisplay';
@@ -13,6 +15,8 @@ export function AdminMetrics({ data }: { data: Metrics }) {
 }
 type Details = AdminSystemData['details'];
 export function PerformanceSections({ data }: { data: Details }) {
+  const [selectedClassroom, setSelectedClassroom] = useState('');
+  const selected = data.classroomComparisons.find(room => room.id === selectedClassroom) ?? data.classroomComparisons[0];
   return <>
     <section><h2>Performance in the selected period</h2><AdminMetrics data={data.performance} />
       {!data.performance.readingAttempts && !data.performance.completedQuizzes && <p>No saved results match these filters.</p>}
@@ -23,7 +27,26 @@ export function PerformanceSections({ data }: { data: Details }) {
       {!data.trends.length ? <p>No results available for a trend.</p> : <div className="m7-scroll"><table><thead><tr><th>Week starting</th><th>Readings</th><th>Reading accuracy</th><th>Speed (WPM)</th><th>Quizzes</th><th>Comprehension</th></tr></thead><tbody>{data.trends.map(row => <tr key={row.weekStart}><td>{displayDate(row.weekStart)}</td><td>{row.readingAttempts}</td><td>{percentage(row.pronunciationAccuracy)}</td><td>{number(row.readingSpeedWpm)}</td><td>{row.completedQuizzes}</td><td>{formatComprehension(row)}</td></tr>)}</tbody></table></div>}
     </section>
     <section><h2>Classroom comparisons</h2><p>Results are attributed by their saved classroom ID. Participation uses current enrollment; students enrolled in multiple rooms may appear in each room.</p>
+      {!!data.classroomComparisons.length && <>
+        {!data.filters.roomId && <div className="m7-performance-controls">
+          <PerformanceSelector id="admin-classroom" label="Select Classroom" value={selected?.id ?? ''}
+            options={data.classroomComparisons.map(room => ({ id: room.id, name: `${room.name} - ${room.teacherName}` }))}
+            onChange={setSelectedClassroom} describedBy="admin-classroom-scope" />
+        </div>}
+        <p id="admin-classroom-scope" className="m7-performance-scope">This selection changes only the classroom detail below. System-wide totals, global filters and classroom comparisons retain their existing scope.</p>
+        {selected && <article aria-labelledby="admin-classroom-detail">
+          <h3 id="admin-classroom-detail">{selected.name} - {selected.teacherName}</h3>
+          <AdminMetrics data={selected} />
+          <div className="m7-metrics">{[['Enrolled Students', selected.enrolledStudents], ['Participating Students', selected.participatingStudents],
+            ['Completed / assigned', `${selected.completed} / ${selected.assigned}`], ['Completion Rate', percentage(selected.completionRate)],
+            ['Incomplete Assignments', selected.incomplete]].map(([label, value]) => <div className="m7-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+          {!selected.readingAttempts && !selected.completedQuizzes && <p>No saved results for this classroom in the selected period.</p>}
+        </article>}
+      </>}
+      {!data.classroomComparisons.length && <p>No classrooms available.</p>}
+      <details><summary>Compare classrooms</summary>
       {!data.classroomComparisons.length ? <p>No classrooms available.</p> : <div className="m7-scroll"><table><thead><tr><th>Classroom / teacher</th><th>Participating / enrolled</th><th>Readings</th><th>Reading accuracy</th><th>Speed (WPM)</th><th>Quizzes</th><th>Comprehension</th><th>Completed / assigned</th></tr></thead><tbody>{data.classroomComparisons.map(row => <tr key={row.id}><td>{row.name}<br />{row.teacherName}</td><td>{row.participatingStudents} / {row.enrolledStudents}</td><td>{row.readingAttempts}</td><td>{percentage(row.pronunciationAccuracy)}</td><td>{number(row.readingSpeedWpm)}</td><td>{row.completedQuizzes}</td><td>{formatComprehension(row)}</td><td>{row.completed} / {row.assigned} ({percentage(row.completionRate)})</td></tr>)}</tbody></table></div>}
+      </details>
     </section>
   </>;
 }

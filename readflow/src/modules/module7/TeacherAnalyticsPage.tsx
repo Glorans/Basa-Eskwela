@@ -1,3 +1,5 @@
+import PerformanceSelector from "./components/PerformanceSelector";
+import PerformanceTabs from "./components/PerformanceTabs";
 import AnalyticsFilterBar from "./components/AnalyticsFilterBar";
 import { allTime, type AnalyticsScope } from "./services/analyticsFilters";
 import { formatScore } from "./services/scoreDisplay";
@@ -191,6 +193,10 @@ function AssessmentSourceNote({
 export default function TeacherAnalyticsPage() {
   const [scope,setScope] = useState<AnalyticsScope>(allTime);
   const [tab,setTab] = useState(0);
+  const [performanceTab, setPerformanceTab] = useState(0);
+  const [selectedClassroom, setSelectedClassroom] = useState('');
+  const [studentClassroom, setStudentClassroom] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState('');
   const request = useRef(0);
   const [rooms,setRooms] = useState<{id:string;name:string}[]>([]);
 
@@ -314,6 +320,16 @@ export default function TeacherAnalyticsPage() {
     void loadAnalytics();
     return () => { request.current++; };
   }, [loadAnalytics]);
+
+  const availableClassrooms = classPerformance?.classrooms ?? [];
+  const activeClassroom = availableClassrooms.some(room => room.roomId === selectedClassroom)
+    ? selectedClassroom : availableClassrooms[0]?.roomId ?? '';
+  const studentRooms = rooms.filter(room => !scope.roomId || room.id === scope.roomId);
+  const activeStudentRoom = scope.roomId || (studentRooms.some(room => room.id === studentClassroom) ? studentClassroom : '');
+  const availableStudents = (studentPerformance?.students ?? []).filter(student =>
+    !activeStudentRoom || student.classrooms.some(room => room.roomId === activeStudentRoom));
+  const activeStudent = availableStudents.some(student => student.studentId === selectedStudent)
+    ? selectedStudent : availableStudents[0]?.studentId ?? '';
 
   const metrics: AnalyticsMetric[] = analytics
     ? [
@@ -745,6 +761,8 @@ export default function TeacherAnalyticsPage() {
           )}
 
           </div><div role="tabpanel" id="analytics-panel-1" aria-labelledby="analytics-tab-1" hidden={tab !== 1} tabIndex={0}>
+          <PerformanceTabs value={performanceTab} onChange={setPerformanceTab} />
+          <div role="tabpanel" id="performance-panel-0" aria-labelledby="performance-tab-0" hidden={performanceTab !== 0} tabIndex={0}>
           {/* CLASS PERFORMANCE OVERVIEW */}
 
           {classPerformance && (
@@ -808,6 +826,12 @@ export default function TeacherAnalyticsPage() {
                 />
               </div>
 
+              {!scope.roomId && <div className="m7-performance-controls">
+                <PerformanceSelector id="teacher-classroom" label="Select Classroom" value={activeClassroom}
+                  options={availableClassrooms.map(room => ({ id: room.roomId, name: room.section ? `${room.roomName} - ${room.section}` : room.roomName }))}
+                  onChange={setSelectedClassroom} placeholder={availableClassrooms.length ? undefined : 'No classrooms available'} />
+              </div>}
+              <p className="m7-performance-scope">Classroom details follow the applied performance period. Summary metrics above cover the applied global filters.</p>
               {classPerformance.classrooms.length ===
               0 ? (
                 <div
@@ -831,7 +855,7 @@ export default function TeacherAnalyticsPage() {
                     marginTop: "24px",
                   }}
                 >
-                  {classPerformance.classrooms.map(
+                  {availableClassrooms.filter(room => room.roomId === activeClassroom).map(
                     (room) => {
                       const roomMetrics: AnalyticsMetric[] =
                         [
@@ -972,6 +996,8 @@ export default function TeacherAnalyticsPage() {
             </section>
           )}
 
+          </div>
+          <div role="tabpanel" id="performance-panel-1" aria-labelledby="performance-tab-1" hidden={performanceTab !== 1} tabIndex={0}>
           {/* STUDENT PERFORMANCE AND PROGRESS TRACKING */}
 
           {studentPerformance && (
@@ -1028,8 +1054,14 @@ export default function TeacherAnalyticsPage() {
                 />
               </div>
 
-              {studentPerformance.students.length ===
-              0 ? (
+              <div className="m7-performance-controls">
+                {!scope.roomId && <PerformanceSelector id="teacher-student-classroom" label="Filter by Classroom" value={activeStudentRoom}
+                  options={studentRooms} onChange={setStudentClassroom} placeholder="All Classrooms" />}
+                <PerformanceSelector id="teacher-student" label="Select Student" value={activeStudent}
+                  options={availableStudents.map(student => ({ id: student.studentId, name: student.studentName }))}
+                  onChange={setSelectedStudent} placeholder={availableStudents.length ? undefined : 'No students available'} />
+              </div>
+              {availableStudents.length === 0 ? (
                 <div
                   className="m3-empty-state"
                   style={{
@@ -1038,7 +1070,7 @@ export default function TeacherAnalyticsPage() {
                 >
                   <GraduationCap size={36} />
                   <h2>
-                    No enrolled students yet
+                    {studentPerformance.students.length ? "No students in this classroom" : "No enrolled students yet"}
                   </h2>
                   <p>
                     Student performance will appear
@@ -1053,7 +1085,7 @@ export default function TeacherAnalyticsPage() {
                     marginTop: "24px",
                   }}
                 >
-                  {studentPerformance.students.map(
+                  {availableStudents.filter(student => student.studentId === activeStudent).map(
                     (student) => {
                       const verifiedCompletion =
                         completion?.students?.find(
@@ -1494,6 +1526,7 @@ export default function TeacherAnalyticsPage() {
             </section>
           )}
 
+          </div>
           </div><div role="tabpanel" id="analytics-panel-2" aria-labelledby="analytics-tab-2" hidden={tab !== 2} tabIndex={0}>
           {/* QUIZ SCORE TRACKING */}
 
