@@ -271,6 +271,7 @@ export default function Leaderboard() {
                 {room.section
                   ? ` - ${room.section}`
                   : ""}
+                {room.archived_at ? " (Archived)" : ""}
               </option>
             ))
           )}
@@ -288,6 +289,13 @@ export default function Leaderboard() {
             <strong>
               {selectedClassroom.room_name}
             </strong>
+          </p>
+        )}
+
+        {/* Archived rooms stay viewable; the database shows pseudonyms there. */}
+        {!combinesClassrooms && selectedClassroom?.archived_at && (
+          <p style={archivedNoteStyle} role="note">
+            This classroom is archived. Student names are hidden to protect privacy.
           </p>
         )}
       </section>
@@ -560,6 +568,12 @@ const selectedRoomStyle: CSSProperties = {
   marginBottom: 0,
   fontSize: "14px",
   color: "#64748b",
+};
+
+const archivedNoteStyle: CSSProperties = {
+  ...selectedRoomStyle,
+  marginTop: "8px",
+  color: "#475569",
 };
 
 // ========================================
