@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { supabase } from "../../../lib/supabaseClient";
 import {
   createClassroom,
@@ -22,7 +21,6 @@ export default function LearningRoomsPage() {
   const [creating, setCreating] = useState(false);
   // Archived rooms live on the Archived Classrooms page; this page lists active rooms only.
   const activeRooms = classrooms.filter((room) => !isRoomArchived(room));
-  const archivedCount = classrooms.length - activeRooms.length;
 
   useEffect(() => {
     async function loadClassrooms() {
@@ -321,15 +319,6 @@ export default function LearningRoomsPage() {
                 <RoomCard key={room.id} room={room} />
               ))}
             </div>
-          )}
-          {archivedCount > 0 && (
-            <p className="mt-6 text-sm text-[#5c7471]">
-              {archivedCount === 1 ? "1 archived classroom is" : `${archivedCount} archived classrooms are`} kept in{" "}
-              <Link to="/m3/teacher/archived-classrooms" className="font-bold text-[#173f3b] underline">
-                Archived Classrooms
-              </Link>
-              .
-            </p>
           )}
         </>
       )}

@@ -40,15 +40,15 @@ test("Teacher sidebar: Archived Classrooms sits directly below Reports and above
   assert.match(read("App.tsx"), /path="archived-classrooms"\s+element=\{<ArchivedClassroomsPage \/>\}/);
 });
 
-test("Teacher Learning Rooms lists active rooms only and points to Archived Classrooms", async () => {
-  const page = await mount("modules/module4/pages/LearningRoomsPage.tsx", (id) => id === "react-router-dom" ? { Link: "a" }
-    : id.includes("supabaseClient") ? auth
+test("Teacher Learning Rooms lists active rooms only without an archived classroom notice", async () => {
+  const page = await mount("modules/module4/pages/LearningRoomsPage.tsx", (id) => id.includes("supabaseClient") ? auth
     : id.endsWith("/components/RoomCard") ? { default: "room-card" }
     : id.includes("classroomService") ? { getTeacherClassrooms: async () => [ACTIVE, ARCHIVED], isRoomArchived, createClassroom: async () => ({}) }
     : undefined);
   const cards = findAll(page.view(), (node) => node.type === "room-card");
   assert.deepEqual(cards.map((card) => card.props.room.id), ["active"]);
-  assert.match(page.text(), /1 archived classroom is kept in.*Archived Classrooms/);
+  assert.doesNotMatch(page.text(), /archived classrooms? (?:is|are) kept in/);
+  assert.equal(findAll(page.view(), (node) => node.props.to === "/m3/teacher/archived-classrooms").length, 0);
 });
 
 test("Archived Classrooms shows only archived rooms; Restore returns one to Learning Rooms with feedback", async () => {
