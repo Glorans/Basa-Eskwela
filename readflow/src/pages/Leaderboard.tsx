@@ -380,10 +380,11 @@ export default function Leaderboard() {
                   ? "#fef3c7"
                   : "#dcfce7";
 
+              // The classroom rankings already label the viewer ("You" or "You (Maria)");
+              // the older functions send the learner's own name, which is wrapped here.
               const displayName = isCurrentUser
-                ? learner.display_name.toLowerCase() ===
-                  "you"
-                  ? "You"
+                ? /^you(?: \(.*\))?$/i.test(learner.display_name)
+                  ? learner.display_name
                   : `You (${learner.display_name})`
                 : learner.display_name;
 
