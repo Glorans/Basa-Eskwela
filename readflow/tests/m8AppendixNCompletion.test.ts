@@ -58,7 +58,7 @@ test("Philippine-time midnight decides 'today', not UTC", () => {
 
 // --- The page's data: reads only, correct streak after a break --------------------------------
 
-function service(rows: Record<string, unknown>, writes: string[]) {
+function service(rows: Record<string, unknown>, writes: string[], myBadges?: unknown[]) {
   const db = {
     auth: { getUser: async () => ({ data: { user: { id: "me" } }, error: null }) },
     from(table: string) {
@@ -71,7 +71,11 @@ function service(rows: Record<string, unknown>, writes: string[]) {
       for (const write of ["insert", "update", "upsert", "delete"]) query[write] = () => { writes.push(`${table}.${write}`); throw new Error("no writes"); };
       return query;
     },
-    rpc() { writes.push("rpc"); throw new Error("no rpc"); },
+    // Only the read-only badge list may be called; before claiming is deployed it is missing.
+    rpc(name: string) {
+      if (name === "m8_my_badges") return Promise.resolve(myBadges ? { data: myBadges, error: null } : { data: null, error: { code: "PGRST202" } });
+      writes.push(`rpc:${name}`); throw new Error("no rpc");
+    },
   };
   return loadComponentModule(new URL("../src/modules/module8/gamificationService.ts", import.meta.url), (id) => {
     if (id.endsWith("/supabaseClient")) return { supabase: db };
@@ -101,7 +105,22 @@ test("opening the page only reads, and replaces an out-of-date stored streak", a
   assert.equal(JSON.stringify(result.stats), JSON.stringify({ totalXp: 60, readAloudCount: 4, completedModules: 0, readingDays: 2, longestStreak: 2 }));
   assert.equal(JSON.stringify(result.reading), JSON.stringify({ readingDays: 2, lastReadDate: daysAgo(4), readToday: false }));
   assert.notEqual(result.reading.lastReadDate, today);
-  assert.equal(result.badges[0].earned, true);
+  assert.equal(result.claiming, false, "claiming not deployed: the earlier display");
+  assert.equal(result.badges[0].state, "claimed");
+  assert.equal(result.badges[0].claimed_at, "2026-10-26T15:04:00Z");
+});
+
+test("with claiming deployed, the page shows the database's Locked / Ready / Claimed and still only reads", async () => {
+  const writes: string[] = [];
+  const module = service({ m8_learner_progress: null, m8_earned_badges: [], m8_badges: [], m8_reading_days: [] }, writes, [
+    { badge_id: "first_read", name: "First Read", description: "d", icon: "Star", eligible: true, unlocked_at: "2026-11-01T00:00:00Z", claimed_at: null },
+    { badge_id: "level_up", name: "Level Up", description: "d", icon: "ArrowUpCircle", eligible: true, unlocked_at: null, claimed_at: "2026-10-26T15:04:00Z" },
+    { badge_id: "bookworm", name: "Bookworm", description: "d", icon: "BookOpenCheck", eligible: false, unlocked_at: null, claimed_at: null },
+  ]);
+  const result = await module.getMyGamification();
+  assert.deepEqual(writes, []);
+  assert.equal(result.claiming, true);
+  assert.deepEqual(result.badges.map((b: { id: string; state: string }) => [b.id, b.state]), [["first_read", "ready"], ["level_up", "claimed"], ["bookworm", "locked"]]);
 });
 
 // --- Functions 2 and 3: achievements ----------------------------------------------------------
@@ -134,7 +153,8 @@ test("achievement progress is capped, and badges without a simple count show non
 test("the achievements page explains badges, the streak and the reading level honestly", () => {
   const page = read("src/pages/MyBadges.tsx");
   assert.match(page, /Badges mark what you have done\. Achievements show how well you read and understand over time\./);
-  assert.match(page, /Badges Earned/);
+  assert.match(page, /Badges \{claimedWord\}/);
+  assert.match(page, /const claimedWord = claiming \? "Claimed" : "Earned";/);
   assert.match(page, /getMyAchievements/);
   assert.match(page, /Longest: \{progress\?\.longest_streak/);
   assert.match(page, /Read today to keep your streak going!/);

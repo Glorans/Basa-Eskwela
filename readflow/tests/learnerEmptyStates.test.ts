@@ -130,16 +130,19 @@ test("Student badges distinguish empty catalogs, locked badges and earned badges
   assert.doesNotMatch(pageSource, /student\.badgesEarned|student\.badgesTotal/);
   assert.doesNotMatch(pageSource, MOCK_BADGE_CONTENT);
   assert.match(sidebarSource, /\/dashboard\/badges/);
-  for (const state of ["empty", "locked", "earned", "error"]) {
+  // "earned": before claiming is deployed. "ready" and "claimed": with claiming (m8_my_badges).
+  for (const state of ["empty", "locked", "earned", "ready", "claimed", "error"]) {
     let calls = 0;
     const { initial, tree } = await mountLearnerPage("MyBadges", {
       getMyAchievements: async () => null,
+      getMyAchievementClaims: async () => [],
       getMyGamification: async () => {
         calls++;
         if (state === "error") throw new Error("Please log in first.");
-        return { progress: null, badges: state === "empty" ? [] : [{
+        const badgeState = state === "earned" ? "claimed" : state;
+        return { progress: null, claiming: state === "ready" || state === "claimed", badges: state === "empty" ? [] : [{
           id: "badge", name: "Saved achievement", description: "Saved description", icon: "Star",
-          earned: state === "earned", earned_at: state === "earned" ? "2026-10-01T00:00:00Z" : null,
+          state: badgeState, claimed_at: badgeState === "claimed" ? "2026-10-01T00:00:00Z" : null,
         }] };
       },
     });
@@ -152,13 +155,17 @@ test("Student badges distinguish empty catalogs, locked badges and earned badges
       assert.equal(findAll(tree, node => node.type === "article").length, 0);
     } else if (state === "error") {
       assert.match(text, /Please log in first/);
-      assert.doesNotMatch(text, /No badges are available yet|Unlocked/);
+      assert.doesNotMatch(text, /No badges are available yet|Earned:|Claimed/);
     } else {
       const cards = findAll(tree, node => node.type === "article");
       assert.equal(cards.length, 1);
       assert.match(textOf(cards[0]), /Saved achievement.*Saved description/);
-      assert.match(textOf(cards[0]), state === "earned" ? /Unlocked/ : /Locked/);
-      assert.doesNotMatch(textOf(cards[0]), state === "earned" ? /Locked/ : /Unlocked/);
+      const card = textOf(cards[0]);
+      const expected = { locked: /Locked/, earned: /Earned.*Earned: Oct 1, 2026/, ready: /Claim$/, claimed: /Claimed.*Claimed: Oct 1, 2026/ }[state];
+      assert.match(card, expected as RegExp, state);
+      if (state !== "locked") assert.doesNotMatch(card, /Locked/, state);
+      if (state !== "ready") assert.equal(findAll(cards[0], node => node.type === "button").length, 0, `${state}: no Claim button`);
+      else assert.equal(findAll(cards[0], node => node.type === "button").length, 1, "one Claim button");
     }
   }
 });

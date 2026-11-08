@@ -99,3 +99,60 @@ export function earnedDate(value: string | null): string | null {
   if (!value || !Number.isFinite(Date.parse(value))) return null;
   return new Date(value).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", year: "numeric", month: "short", day: "numeric" });
 }
+
+// ========================================
+// CLAIMING (m8_f2_f3_reward_claims_v1)
+// ========================================
+// The database decides eligibility and stores claims. These helpers only turn its answers into what the
+// page shows: Locked, Ready to claim or Claimed.
+
+export type RewardState = "locked" | "ready" | "claimed";
+
+/** A badge's state from m8_my_badges: claimed wins, then eligible. */
+export function badgeState(badge: { eligible: boolean; claimed_at: string | null }): RewardState {
+  if (badge.claimed_at) return "claimed";
+  return badge.eligible ? "ready" : "locked";
+}
+
+export type TierKey = "bronze" | "silver" | "gold";
+export interface AchievementClaimRow { achievement_id: string; tier: string; claimed_at: string }
+export interface TierStatus {
+  key: TierKey;
+  tier: AchievementTier;
+  target: number;
+  reachedAt: string | null;
+  claimedAt: string | null;
+  state: RewardState;
+}
+
+/**
+ * Bronze, Silver and Gold of one achievement, each with its own state. Reaching a tier never claims it,
+ * and claiming one tier never claims another. Without claim data (claiming not installed yet) a reached
+ * tier shows as earned, as before.
+ */
+export function milestoneTiers(
+  row: { achievement_id: string; bronze_at: string | null; silver_at: string | null; gold_at: string | null },
+  claims: readonly AchievementClaimRow[] | null,
+): TierStatus[] {
+  const reached: Record<TierKey, string | null> = { bronze: row.bronze_at, silver: row.silver_at, gold: row.gold_at };
+  return TIERS.map(({ tier, target }) => {
+    const key = tier.toLowerCase() as TierKey;
+    const reachedAt = reached[key] ?? null;
+    const claimedAt = claims === null
+      ? reachedAt
+      : claims.find((claim) => claim.achievement_id === row.achievement_id && claim.tier === key)?.claimed_at ?? null;
+    const state: RewardState = claimedAt ? "claimed" : reachedAt ? "ready" : "locked";
+    return { key, tier, target, reachedAt, claimedAt, state };
+  });
+}
+
+/** The database refused a claim because the reward is not unlocked (code 55000). */
+export const isLockedError = (error: unknown) => String((error as { code?: unknown } | null)?.code ?? "") === "55000";
+
+/** A learner-friendly message for a refused claim. */
+export function claimErrorMessage(error: unknown): string {
+  const code = String((error as { code?: unknown } | null)?.code ?? "");
+  if (code === "55000") return "This reward is still locked. Keep reading to unlock it!";
+  if (code === "42501") return "Only Students and Independent Learners can claim rewards. Please log in again.";
+  return "We could not claim this reward right now. Please try again.";
+}

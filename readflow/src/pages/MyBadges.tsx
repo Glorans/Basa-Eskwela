@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
 import {
@@ -17,6 +17,9 @@ import {
 } from "lucide-react";
 
 import {
+  claimAchievement,
+  claimBadge,
+  getMyAchievementClaims,
   getMyAchievements,
   getMyGamification,
 } from "../modules/module8/gamificationService";
@@ -30,10 +33,16 @@ import type {
 import {
   ACHIEVEMENT_GUIDE,
   achievementProgress,
+  claimErrorMessage,
   earnedDate,
+  isLockedError,
   MILESTONE_GUIDE,
   milestoneProgress,
+  milestoneTiers,
+  type AchievementClaimRow,
   type AchievementStats,
+  type RewardState,
+  type TierKey,
 } from "../modules/module8/achievements";
 
 // ========================================
@@ -70,6 +79,13 @@ export default function MyBadges() {
   const [stats, setStats] = useState<AchievementStats | null>(null);
   const [reading, setReading] = useState<ReadingSummary | null>(null);
   const [milestones, setMilestones] = useState<MilestoneRow[] | null>(null);
+  // Claimed achievement tiers; null until reward claiming is deployed (tiers then show as earned).
+  const [tierClaims, setTierClaims] = useState<AchievementClaimRow[] | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  // Blocks a second click before React re-renders the disabled button (rapid double-click).
+  const claimInFlight = useRef(false);
+  const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -87,12 +103,19 @@ export default function MyBadges() {
 
         setProgress(result.progress);
         setBadges(result.badges);
+        setClaiming(result.claiming);
         setStats(result.stats);
         setReading(result.reading);
 
         // Optional: the badges still show if achievements cannot load.
-        const achieved = await getMyAchievements().catch(() => null);
-        if (active) setMilestones(achieved);
+        const [achieved, claimed] = await Promise.all([
+          getMyAchievements().catch(() => null),
+          result.claiming ? getMyAchievementClaims().catch(() => null) : Promise.resolve(null),
+        ]);
+        if (!active) return;
+        setMilestones(achieved);
+        // If the claims cannot load, hide the Claim buttons rather than offer claims that may exist.
+        setTierClaims(result.claiming ? claimed ?? null : null);
       } catch (err) {
         if (!active) return;
 
@@ -114,8 +137,53 @@ export default function MyBadges() {
   }, []);
 
   const earnedBadges = badges.filter(
-    (badge) => badge.earned
+    (badge) => badge.state === "claimed"
   ).length;
+
+  // Claiming: the database rechecks the rule and saves the claim once. The card updates in place.
+  async function handleClaimBadge(badge: Badge) {
+    if (claimInFlight.current) return;
+    claimInFlight.current = true;
+    setBusy(`badge:${badge.id}`);
+    setNotice(null);
+    try {
+      const { claimedAt } = await claimBadge(badge.id);
+      setBadges((current) => current.map((item) =>
+        item.id === badge.id ? { ...item, state: "claimed", claimed_at: claimedAt, preserved: false } : item));
+      setNotice({ kind: "success", text: `🎉 You claimed the ${badge.name} badge!` });
+    } catch (err) {
+      setNotice({ kind: "error", text: claimErrorMessage(err) });
+      // The database says it is still locked: show that instead of a Claim button that cannot work.
+      if (isLockedError(err)) {
+        setBadges((current) => current.map((item) => item.id === badge.id ? { ...item, state: "locked" } : item));
+      }
+    } finally {
+      claimInFlight.current = false;
+      setBusy(null);
+    }
+  }
+
+  async function handleClaimTier(achievementId: string, name: string, tier: TierKey, label: string) {
+    if (claimInFlight.current) return;
+    claimInFlight.current = true;
+    setBusy(`tier:${achievementId}:${tier}`);
+    setNotice(null);
+    try {
+      const { claimedAt } = await claimAchievement(achievementId, tier);
+      setTierClaims((current) => [
+        ...(current ?? []).filter((claim) => !(claim.achievement_id === achievementId && claim.tier === tier)),
+        { achievement_id: achievementId, tier, claimed_at: claimedAt },
+      ]);
+      setNotice({ kind: "success", text: `🎉 You claimed ${name} ${label}!` });
+    } catch (err) {
+      setNotice({ kind: "error", text: claimErrorMessage(err) });
+    } finally {
+      claimInFlight.current = false;
+      setBusy(null);
+    }
+  }
+
+  const claimedWord = claiming ? "Claimed" : "Earned";
 
   // ========================================
   // LOADING STATE
@@ -161,8 +229,19 @@ export default function MyBadges() {
       </h1>
 
       <p style={subtitleStyle}>
-        Badges mark what you have done. Achievements show how well you read and understand over time. Earned badges stay saved on your account.
+        {claiming
+          ? "Badges mark what you have done. Achievements show how well you read and understand over time. When you unlock one, press Claim to add it to your collection. Claimed rewards stay saved on your account."
+          : "Badges mark what you have done. Achievements show how well you read and understand over time. Earned badges stay saved on your account."}
       </p>
+
+      {/* CLAIM FEEDBACK */}
+      <div aria-live="polite" role="status">
+        {notice && (
+          <p style={notice.kind === "success" ? noticeSuccessStyle : noticeErrorStyle}>
+            {notice.text}
+          </p>
+        )}
+      </div>
 
       {/* GAMIFICATION STATISTICS */}
       <section style={statsGridStyle}>
@@ -192,7 +271,7 @@ export default function MyBadges() {
 
         <div style={statCardStyle}>
           <span style={statLabelStyle}>
-            🏅 Badges Earned
+            🏅 Badges {claimedWord}
           </span>
           <strong style={statValueStyle}>
             {earnedBadges} / {badges.length}
@@ -232,24 +311,14 @@ export default function MyBadges() {
               key={badge.id}
               style={{
                 ...badgeCardStyle,
-                borderColor: badge.earned
-                  ? "#86c98a"
-                  : "#e2e8f0",
-                backgroundColor: badge.earned
-                  ? "#f0fdf4"
-                  : "#ffffff",
+                ...cardColors[badge.state],
               }}
             >
               {/* BADGE ICON */}
               <div
                 style={{
                   ...iconContainerStyle,
-                  color: badge.earned
-                    ? "#16a34a"
-                    : "#94a3b8",
-                  backgroundColor: badge.earned
-                    ? "#dcfce7"
-                    : "#f1f5f9",
+                  ...iconColors[badge.state],
                 }}
               >
                 <BadgeIcon name={badge.icon ?? ""} />
@@ -269,7 +338,7 @@ export default function MyBadges() {
               )}
 
               {/* PROGRESS TOWARD A LOCKED BADGE */}
-              {!badge.earned && stats && (() => {
+              {badge.state === "locked" && stats && (() => {
                 const goal = achievementProgress(badge.id, stats);
                 return goal && (
                   <div style={{ width: "100%" }}>
@@ -286,37 +355,26 @@ export default function MyBadges() {
                 );
               })()}
 
-              {/* BADGE STATUS */}
-              <div
-                style={{
-                  ...badgeStatusStyle,
-                  color: badge.earned
-                    ? "#15803d"
-                    : "#64748b",
-                }}
-              >
-                {badge.earned ? (
-                  <>
-                    <CheckCircle2 size={16} />
-                    <span>Unlocked</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock size={16} />
-                    <span>Locked</span>
-                  </>
-                )}
-              </div>
+              {/* BADGE STATUS: LOCKED, READY TO CLAIM OR CLAIMED */}
+              {rewardStatus({
+                state: badge.state,
+                claimedWord,
+                busy: busy === `badge:${badge.id}`,
+                disabled: busy !== null,
+                label: badge.name,
+                onClaim: () => void handleClaimBadge(badge),
+              })}
 
-              {/* DATE EARNED */}
-              {badge.earned && earnedDate(badge.earned_at) && (
+              {/* DATE CLAIMED */}
+              {badge.state === "claimed" && earnedDate(badge.claimed_at) && (
                 <small
                   style={{
                     color: "#64748b",
                     marginTop: "4px",
                   }}
                 >
-                  Earned: {earnedDate(badge.earned_at)}
+                  {/* Preserved badges were awarded automatically before claiming began. */}
+                  {claiming ? (badge.preserved ? "Awarded" : "Claimed") : "Earned"}: {earnedDate(badge.claimed_at)}
                 </small>
               )}
             </article>
@@ -333,13 +391,16 @@ export default function MyBadges() {
           <section style={badgeGridStyle}>
             {milestones.filter((row) => MILESTONE_GUIDE[row.achievement_id]).map((row) => {
               const guide = MILESTONE_GUIDE[row.achievement_id];
-              const { count, reached, next } = milestoneProgress(row.qualifying);
-              const earnedAt = reached === "Gold" ? row.gold_at : reached === "Silver" ? row.silver_at : reached === "Bronze" ? row.bronze_at : null;
+              const { count, next } = milestoneProgress(row.qualifying);
+              const tiers = milestoneTiers(row, claiming ? tierClaims : null);
+              // Claim data failed to load: show progress only, no Claim buttons.
+              const canClaim = !claiming || tierClaims !== null;
+              const cardState: RewardState = tiers.some((t) => t.state === "ready") && canClaim ? "ready"
+                : tiers.some((t) => t.state === "claimed") ? "claimed" : "locked";
               return (
-                <article key={row.achievement_id} style={{ ...badgeCardStyle, borderColor: reached ? "#86c98a" : "#e2e8f0", backgroundColor: reached ? "#f0fdf4" : "#ffffff" }}>
+                <article key={row.achievement_id} style={{ ...badgeCardStyle, ...cardColors[cardState] }}>
                   <h3 style={badgeNameStyle}>{guide.name}</h3>
                   <p style={badgeDescriptionStyle}>{guide.howToEarn}</p>
-                  <div style={badgeStatusStyle}>{reached ? `${reached} earned` : "Not earned yet"}</div>
                   {next ? (
                     <div style={{ width: "100%" }}>
                       <progress value={count} max={next.target} style={{ width: "100%" }}
@@ -349,9 +410,31 @@ export default function MyBadges() {
                   ) : (
                     <small style={{ color: "#64748b" }}>{count} {guide.unit}</small>
                   )}
-                  {earnedDate(earnedAt) && (
-                    <small style={{ color: "#64748b", marginTop: "4px" }}>Earned: {earnedDate(earnedAt)}</small>
-                  )}
+                  <ul style={tierListStyle} aria-label={`${guide.name} tiers`}>
+                    {tiers.map((t) => (
+                      <li key={t.key} style={tierRowStyle}>
+                        <span style={tierNameStyle}>
+                          {t.tier} <small style={{ color: "#64748b", fontWeight: 400 }}>· {t.target} {guide.unit}</small>
+                        </span>
+                        {t.state === "ready" && !canClaim ? (
+                          <span style={{ ...badgeStatusStyle, marginBottom: 0, color: "#64748b" }}>Reached</span>
+                        ) : rewardStatus({
+                          state: t.state,
+                          claimedWord,
+                          busy: busy === `tier:${row.achievement_id}:${t.key}`,
+                          disabled: busy !== null,
+                          label: `${guide.name} ${t.tier}`,
+                          onClaim: () => void handleClaimTier(row.achievement_id, guide.name, t.key, t.tier),
+                          compact: true,
+                        })}
+                        {t.state === "claimed" && earnedDate(t.claimedAt) && (
+                          <small style={{ color: "#64748b", width: "100%", textAlign: "left" }}>
+                            {claimedWord}: {earnedDate(t.claimedAt)}
+                          </small>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 </article>
               );
             })}
@@ -363,8 +446,129 @@ export default function MyBadges() {
 }
 
 // ========================================
+// REWARD STATUS: LOCKED, CLAIM BUTTON OR CLAIMED
+// ========================================
+
+// A plain render function (no hooks), so the status is part of the card's own tree.
+function rewardStatus({ state, claimedWord, busy, disabled, label, onClaim, compact = false }: {
+  state: RewardState;
+  claimedWord: string;
+  busy: boolean;
+  disabled: boolean;
+  label: string;
+  onClaim: () => void;
+  compact?: boolean;
+}) {
+  const spacing = compact ? { marginBottom: 0 } : {};
+  if (state === "ready") {
+    return (
+      <button
+        type="button"
+        style={{ ...claimButtonStyle, ...(compact ? claimButtonCompactStyle : {}), opacity: disabled && !busy ? 0.6 : 1 }}
+        onClick={onClaim}
+        disabled={disabled}
+        aria-label={`Claim ${label}`}
+      >
+        {busy ? "Claiming..." : "Claim"}
+      </button>
+    );
+  }
+  if (state === "claimed") {
+    return (
+      <div style={{ ...badgeStatusStyle, ...spacing, color: "#15803d" }}>
+        <CheckCircle2 size={16} />
+        <span>{claimedWord}</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...badgeStatusStyle, ...spacing, color: "#64748b" }}>
+      <Lock size={16} />
+      <span>Locked</span>
+    </div>
+  );
+}
+
+// ========================================
 // PAGE STYLES
 // ========================================
+
+const cardColors: Record<RewardState, CSSProperties> = {
+  claimed: { borderColor: "#86c98a", backgroundColor: "#f0fdf4" },
+  ready: { borderColor: "#f5c451", backgroundColor: "#fffbeb" },
+  locked: { borderColor: "#e2e8f0", backgroundColor: "#ffffff" },
+};
+
+const iconColors: Record<RewardState, CSSProperties> = {
+  claimed: { color: "#16a34a", backgroundColor: "#dcfce7" },
+  ready: { color: "#b45309", backgroundColor: "#fef3c7" },
+  locked: { color: "#94a3b8", backgroundColor: "#f1f5f9" },
+};
+
+const claimButtonStyle: CSSProperties = {
+  backgroundColor: "#173d31",
+  color: "#ffffff",
+  border: "none",
+  borderRadius: "10px",
+  padding: "10px 22px",
+  fontSize: "15px",
+  fontWeight: 700,
+  cursor: "pointer",
+  marginBottom: "8px",
+  minHeight: "44px",
+};
+
+const claimButtonCompactStyle: CSSProperties = {
+  padding: "6px 16px",
+  fontSize: "14px",
+  marginBottom: 0,
+  minHeight: "36px",
+};
+
+const noticeSuccessStyle: CSSProperties = {
+  backgroundColor: "#f0fdf4",
+  border: "1px solid #86c98a",
+  color: "#15803d",
+  borderRadius: "12px",
+  padding: "12px 16px",
+  margin: "0 0 16px",
+  fontWeight: 600,
+};
+
+const noticeErrorStyle: CSSProperties = {
+  ...noticeSuccessStyle,
+  backgroundColor: "#fef2f2",
+  border: "1px solid #fca5a5",
+  color: "#b91c1c",
+};
+
+const tierListStyle: CSSProperties = {
+  listStyle: "none",
+  padding: 0,
+  margin: "12px 0 0",
+  width: "100%",
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px",
+};
+
+const tierRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "6px",
+  padding: "8px 10px",
+  border: "1px solid #e2e8f0",
+  borderRadius: "10px",
+  backgroundColor: "#ffffff",
+};
+
+const tierNameStyle: CSSProperties = {
+  fontWeight: 700,
+  color: "#173d31",
+  fontSize: "15px",
+};
 
 const statNoteStyle: CSSProperties = {
   display: "block",

@@ -4,7 +4,8 @@ import { toLearnerProgress } from "./learnerProgress";
 import type { LearnerProgressRow } from "./learnerProgress";
 import { rankByXp } from "./leaderboardRanking";
 import { philippineDate, readingStreaks } from "./readingStreak";
-import type { AchievementStats } from "./achievements";
+import { badgeState } from "./achievements";
+import type { AchievementClaimRow, AchievementStats, RewardState, TierKey } from "./achievements";
 
 export type Difficulty = "Easy" | "Medium" | "Hard";
 
@@ -27,8 +28,12 @@ export interface Badge {
   name: string;
   description: string;
   icon: string;
-  earned: boolean;
-  earned_at: string | null;
+  /** Locked, Ready to claim or Claimed, as the database decided. */
+  state: RewardState;
+  /** When the learner pressed Claim, or, if preserved, when it was awarded automatically. */
+  claimed_at: string | null;
+  /** Awarded automatically before claiming began: claimed_at is the original award date. */
+  preserved: boolean;
 }
 
 export interface LeaderboardEntry {
@@ -98,6 +103,8 @@ export interface ReadingSummary {
 export async function getMyGamification(): Promise<{
   progress: LearnerProgress | null;
   badges: Badge[];
+  /** False until reward claiming is deployed: every unlocked badge then shows as earned, as before. */
+  claiming: boolean;
   stats: AchievementStats;
   reading: ReadingSummary;
 }> {
@@ -109,7 +116,7 @@ export async function getMyGamification(): Promise<{
   if (authError) throw authError;
   if (!user) throw new Error("Please log in first.");
 
-  const [progressResult, earnedResult, badgesResult, daysResult, xpResult] =
+  const [progressResult, earnedResult, badgesResult, daysResult, xpResult, claimResult] =
     await Promise.all([
       db
         .from("m8_learner_progress")
@@ -135,6 +142,8 @@ export async function getMyGamification(): Promise<{
         .from("m8_xp_events")
         .select("xp_earned, source_type")
         .eq("user_id", user.id),
+
+      db.rpc("m8_my_badges"),
     ]);
 
   if (progressResult.error) {
@@ -159,21 +168,30 @@ export async function getMyGamification(): Promise<{
     earnedMap.set(item.badge_id, item.earned_at);
   }
 
-  const badges: Badge[] = (badgesResult.data ?? []).map(
-    (badge: {
-      id: string;
-      name: string;
-      description: string;
-      icon: string;
-    }) => ({
-      id: badge.id,
-      name: badge.name,
-      description: badge.description,
-      icon: badge.icon,
-      earned: earnedMap.has(badge.id),
-      earned_at: earnedMap.get(badge.id) ?? null,
-    })
-  );
+  if (claimResult.error && !isMissingFunction(claimResult.error)) {
+    throw claimResult.error;
+  }
+  const claiming = !claimResult.error;
+
+  // With claiming: the database's Locked / Ready / Claimed. Before it is deployed: earned badges as before.
+  const badges: Badge[] = claiming
+    ? ((claimResult.data ?? []) as MyBadgeRow[]).map(toBadge)
+    : (badgesResult.data ?? []).map(
+      (badge: {
+        id: string;
+        name: string;
+        description: string;
+        icon: string;
+      }): Badge => ({
+        id: badge.id,
+        name: badge.name,
+        description: badge.description,
+        icon: badge.icon,
+        state: earnedMap.has(badge.id) ? "claimed" : "locked",
+        claimed_at: earnedMap.get(badge.id) ?? null,
+        preserved: earnedMap.has(badge.id),
+      })
+    );
 
   const rawProgress: LearnerProgressRow | null =
     progressResult.data;
@@ -197,6 +215,7 @@ export async function getMyGamification(): Promise<{
   return {
     progress,
     badges,
+    claiming,
     stats: {
       totalXp: progress?.total_xp ?? 0,
       // Daily login XP is in the balance but does not count toward Diamond. Progress only:
@@ -220,6 +239,52 @@ export async function getMyAchievements(): Promise<MilestoneRow[] | null> {
     throw error;
   }
   return data ?? [];
+}
+
+interface MyBadgeRow {
+  badge_id: string;
+  name: string;
+  description: string;
+  icon: string;
+  eligible: boolean;
+  claimed_at: string | null;
+  preserved?: boolean;
+}
+const toBadge = (row: MyBadgeRow): Badge => ({
+  id: row.badge_id, name: row.name, description: row.description, icon: row.icon,
+  state: badgeState({ eligible: row.eligible === true, claimed_at: row.claimed_at ?? null }), claimed_at: row.claimed_at ?? null,
+  preserved: row.preserved === true,
+});
+
+/**
+ * Claims one badge for the signed-in learner. The database rechecks the rule, so a locked badge is
+ * refused (code 55000) and a repeat returns the first claim. Returns the claim date.
+ */
+export async function claimBadge(badgeId: string): Promise<{ claimedAt: string; newlyClaimed: boolean }> {
+  const { data, error } = await db.rpc("m8_claim_badge", { p_badge_id: badgeId });
+  if (error) throw error;
+  const row = (data ?? [])[0] as { claimed_at: string; newly_claimed: boolean } | undefined;
+  if (!row?.claimed_at) throw new Error("The badge was not claimed. Please try again.");
+  return { claimedAt: row.claimed_at, newlyClaimed: row.newly_claimed === true };
+}
+
+/** The learner's claimed achievement tiers; null until reward claiming is deployed. */
+export async function getMyAchievementClaims(): Promise<AchievementClaimRow[] | null> {
+  const { data, error } = await db.rpc("m8_my_achievement_claims");
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return data ?? [];
+}
+
+/** Claims one tier of one achievement. Other tiers stay as they are. */
+export async function claimAchievement(achievementId: string, tier: TierKey): Promise<{ claimedAt: string; newlyClaimed: boolean }> {
+  const { data, error } = await db.rpc("m8_claim_achievement", { p_achievement_id: achievementId, p_tier: tier });
+  if (error) throw error;
+  const row = (data ?? [])[0] as { claimed_at: string; newly_claimed: boolean } | undefined;
+  if (!row?.claimed_at) throw new Error("The achievement was not claimed. Please try again.");
+  return { claimedAt: row.claimed_at, newlyClaimed: row.newly_claimed === true };
 }
 
 type RankingRow = { entry_id: string; display_name?: string; xp?: number; is_me?: boolean };
