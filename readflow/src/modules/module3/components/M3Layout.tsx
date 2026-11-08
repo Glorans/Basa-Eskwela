@@ -16,6 +16,7 @@ import {
   Users,
   UserRound,
   X,
+  Archive,
 } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import mascot from "../../../assets/mascot.png";
@@ -75,6 +76,7 @@ function getNavItems(role: M3Role) {
     items.push({ label: "Student Support", to: "/m3/teacher/student-support", icon: ClipboardList, end: true });
     items.push({ label: "Analytics", to: "/m3/teacher/analytics", icon: ChartNoAxesCombined, end: true });
     items.push({ label: "Reports", to: "/m3/teacher/reports", icon: ClipboardList, end: true });
+    items.push({ label: "Archived Classrooms", to: "/m3/teacher/archived-classrooms", icon: Archive, end: true });
   }
 
   if (role === "general_user") {

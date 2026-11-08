@@ -369,7 +369,9 @@ export default function ComprehensionPage({ role, results = false }: Props) {
       roomId: readingRoomId, activityAssignmentId: readingAssignmentId, viewReading: "1",
     })}` : home;
   const reviewingQuestions = Boolean(readingMaterialId && attempt?.status !== "completed");
-  const question = attempt?.questions[index];
+  // An unfinished assessment of an archived classroom: no question is offered (the server refuses answers too).
+  const archivedOpen = attempt?.roomArchived === true && attempt.status !== "completed";
+  const question = archivedOpen ? undefined : attempt?.questions[index];
   // F2 Receive Scaffolding Prompt: after an incorrect final answer the mascot shows this question's
   // own clue (also after a refresh). Without a valid clue it keeps the general encouragement.
   const clue = question?.resolved && question.firstAnswerCorrect === false && question.scaffoldingPrompt?.trim()
@@ -409,6 +411,15 @@ export default function ComprehensionPage({ role, results = false }: Props) {
       <h1>{attempt?.materialId && attempt.status === "completed" ? t("Your Assessment Results") : t("Comprehension Activity")}</h1>
       {materialId && roomId && activityAssignmentId && error && !attempt &&
         <p><Link state={activityState} to={`/dashboard/reading-materials/${materialId}/read-aloud?${new URLSearchParams({ roomId, activityAssignmentId, recordAgain: "1" })}`}>{t("Read the story again")}</Link></p>}
+
+      {archivedOpen && (
+        <div className="m6-card" role="note">
+          <p>{language === "fil"
+            ? "Naka-archive na ang klaseng ito. Naka-save ang mga sagot mo, pero hindi na maipapasa ang mga bagong sagot."
+            : "This classroom is archived. Your saved answers are kept, but new answers cannot be submitted."}</p>
+          <Link className="m6-button" to={readingTarget} state={activityState}>{t("Back to Reading Result")}</Link>
+        </div>
+      )}
 
       {error && (
         <div className="m6-card m6-error" role="alert">

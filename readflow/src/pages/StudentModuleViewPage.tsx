@@ -38,6 +38,12 @@ export default function StudentModuleViewPage({
     query.get("assignmentId") ??
     undefined;
 
+  // Opened from an archived classroom: the passages are for silent reading only. Saving a new reading is
+  // refused by the server for archived rooms anyway; this only hides the recorder entry.
+  const archivedRoom = Boolean(
+    (navigationState as { archivedRoom?: boolean } | null)?.archivedRoom || query.get("archived") === "1",
+  );
+
   const cameFromClassroom =
     role === "student" &&
     Boolean(roomId) &&
@@ -223,6 +229,11 @@ export default function StudentModuleViewPage({
           </p>
         </article>
 
+        {archivedRoom ? (
+          <p className="basa-reading-module-actions" role="note">
+            This classroom is archived. You can read these passages, but new read-aloud recordings cannot be saved.
+          </p>
+        ) : (
         <div className="basa-reading-module-actions">
           <Link
             to={readAloudTarget(role, module.id, {
@@ -246,6 +257,7 @@ export default function StudentModuleViewPage({
             Start Read-Aloud
           </Link>
         </div>
+        )}
       </section>
     </div>
   );

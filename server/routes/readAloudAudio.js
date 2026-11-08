@@ -3,6 +3,16 @@ const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { transcribeWav } = require("../services/azureSpeechService");
 const { getSpeechErrorResponse } = require("../services/speechErrors");
 const { recordTranscriptReceipt } = require("../services/readingVerification");
+const { ARCHIVED_CLASSROOM_CODE, ARCHIVED_CLASSROOM_MESSAGE, isArchivedReadingContext } = require("../services/roomArchive");
+
+// An archived classroom accepts no new reading: refuse before the paid speech-to-text call.
+async function readingContextArchived(query) {
+  const context = { roomId: query?.roomId, activityAssignmentId: query?.activityAssignmentId, assignmentId: query?.assignmentId };
+  // No classroom context (Independent Learner, Admin practice): nothing to check, no database call.
+  if (!Object.values(context).some((value) => typeof value === "string" && value)) return false;
+  const { getSupabaseAdmin } = require("../services/supabaseAdmin");
+  return isArchivedReadingContext(getSupabaseAdmin(), context);
+}
 
 const UPLOAD_TOO_LARGE_CODES = new Set(["LIMIT_FILE_SIZE", "LIMIT_FIELD_VALUE"]);
 
@@ -42,7 +52,7 @@ function developmentTiming(details) {
  */
 function createReadAloudAudioHandler({
   transcribe = transcribeWav, remove = unlink, log = console.error, timing = developmentTiming, now = Date.now,
-  recordReceipt = recordTranscriptReceipt,
+  recordReceipt = recordTranscriptReceipt, contextArchived = readingContextArchived,
 } = {}) {
   return async function readAloudAudio(req, res, uploadError) {
     // Set by the route before the upload is read (routes/speech.js).
@@ -72,6 +82,10 @@ function createReadAloudAudioHandler({
       // transcribeWav() verifies the WAV container and its duration itself.
       // English only: phrase lists are used where the recognizer is tested (en-US).
       const phrases = languageCode === "en-US" ? parsePhraseHints(req.query?.name) : [];
+      // Classroom readings only (the context names a room or assignment): an archived room gets no transcription.
+      if (await contextArchived(req.query)) {
+        return res.status(409).json({ success: false, code: ARCHIVED_CLASSROOM_CODE, message: ARCHIVED_CLASSROOM_MESSAGE });
+      }
       const recognitionStartedAt = now();
       let transcription;
       try {

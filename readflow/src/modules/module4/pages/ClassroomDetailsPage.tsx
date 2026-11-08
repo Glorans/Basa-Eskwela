@@ -619,7 +619,7 @@ function ModuleAssignmentSection({
                   </div>
                 </div>
 
-                {removalSupported && (
+                {removalSupported && !archived && (
                   <button
                     type="button"
                     disabled={Boolean(changingModuleId)}
@@ -1297,13 +1297,24 @@ export default function ClassroomDetailsPage() {
           </div>
         )}
       </div>
-      {/* Back */}
+      {/* Back: an archived room belongs to Archived Classrooms */}
       <Link
-        to="/m3/teacher/learning-rooms"
+        to={isRoomArchived(classroom) ? "/m3/teacher/archived-classrooms" : "/m3/teacher/learning-rooms"}
         className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-white/80 transition hover:text-white"
       >
-        ← Back to Learning Rooms
+        {isRoomArchived(classroom) ? "← Back to Archived Classrooms" : "← Back to Learning Rooms"}
       </Link>
+
+      {isRoomArchived(classroom) && (
+        <p role="note" className="mb-5 rounded-2xl bg-white/80 px-5 py-4 text-sm text-[#173f3b]">
+          <strong>This classroom is archived and read-only.</strong> You can review its students, assigned readings and saved
+          results. Nothing can be assigned, edited or removed until you restore it from the actions menu (⋮).{" "}
+          <Link to={`/m3/teacher/oral-reading?roomId=${encodeURIComponent(classroom.id)}`} className="font-bold underline">
+            Review this classroom&apos;s reading and comprehension results
+          </Link>
+          .
+        </p>
+      )}
 
       {/* Classroom Information */}
       <ClassroomInfoSection
@@ -1348,10 +1359,10 @@ export default function ClassroomDetailsPage() {
         roomName={classroom.room_name}
         students={students}
         onClose={closeStudentsPanel}
-        onRemoveStudent={handleRemoveStudent}
+        onRemoveStudent={isRoomArchived(classroom) ? undefined : handleRemoveStudent}
       />
 
-      {legacySubject && !classroom.subject && (
+      {legacySubject && !classroom.subject && !isRoomArchived(classroom) && (
         <LegacyRoomSubjectPanel
           options={legacySubject}
           selected={legacySubjectChoice}
@@ -1451,7 +1462,7 @@ export default function ClassroomDetailsPage() {
                       {activity.due_at && <p className="text-sm">Due {formatDueDateTime(activity.due_at)}</p>}
                       {activity.removed_at && <p className="text-sm font-bold text-[#5c7471]">Removed · hidden from the student</p>}
                     </div>
-                    {activityRemovalSupported && (
+                    {activityRemovalSupported && !isRoomArchived(classroom) && (
                       <button type="button" disabled={Boolean(changingActivityId)}
                         onClick={() => void handleToggleActivityRemoved(activity, title, studentName)}
                         className="ml-auto shrink-0 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-[#173f3b] transition hover:bg-[#f4f7f5] disabled:opacity-60">

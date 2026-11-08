@@ -10,6 +10,7 @@ const {
   summarizeComprehension,
 } = require("./comprehensionScoring");
 const { displayEvidence } = require("./passageEvidence");
+const { ARCHIVED_CLASSROOM_MESSAGE, isArchivedRoomDatabaseError, isRoomArchived } = require("./roomArchive");
 
 class ComprehensionError extends Error {
   constructor(message, statusCode = 500) {
@@ -336,8 +337,16 @@ async function getComprehensionAttempt(requester, attemptId) {
     ]),
   );
 
+  // Display only: an unfinished assessment of an archived classroom opens read-only. Answers are refused on
+  // the server either way (applyComprehensionAction and the database), so a failed check shows it as open.
+  let roomArchived = false;
+  if (attempt.status !== "completed" && attempt.room_id) {
+    roomArchived = await isRoomArchived(getSupabaseAdmin(), attempt.room_id).catch(() => false);
+  }
+
   return {
     id: attempt.id,
+    roomArchived,
     moduleId: attempt.module_id,
     materialId: attempt.material_id ?? null,
     roomId: attempt.room_id ?? null,
@@ -571,6 +580,8 @@ async function startComprehensionAttempt(requester, body = {}) {
 
   if (!completedReadings?.length || completedReadings[0].passage_snapshot !== module.passage
     || (completedReadings[0].language_snapshot && completedReadings[0].language_snapshot !== module.language)) {
+    // In an archived classroom no reading can be saved any more: say why, instead of asking for one.
+    if (await isRoomArchived(db, module.roomId)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
     throw new ComprehensionError(
       "Complete and save oral reading for the current story first. If the story changed, please read it aloud again.",
       403,
@@ -591,6 +602,9 @@ async function startComprehensionAttempt(requester, body = {}) {
   });
   const current = await findActivityAttempt(db, requester.user.id, activity);
   if (current) return getComprehensionAttempt(requester, current.id);
+
+  // A saved assessment reopens above (read-only results); an archived room starts no new one.
+  if (await isRoomArchived(db, module.roomId)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
 
   const questions = await loadReviewedQuestions(
     module.id,
@@ -618,6 +632,8 @@ async function startComprehensionAttempt(requester, body = {}) {
     })
     .select("id")
     .single();
+
+  if (isArchivedRoomDatabaseError(saveError)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
 
   // Handle identical start requests arriving together.
   if (saveError?.code === "23505") {

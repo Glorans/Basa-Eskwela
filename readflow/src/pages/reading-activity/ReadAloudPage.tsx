@@ -210,6 +210,12 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
 
   }, [moduleId, materialId, passageId, roomId, assignmentId, activityAssignmentId, recordAgain, viewReading, loadRevision]);
 
+  // Archived classroom notice. Filipino wording is a draft for the translation review (not yet in activityLanguage).
+  const archivedNotice = language === "fil"
+    ? { notice: "Naka-archive na ang klaseng ito. Maaari mong basahin ang kuwento, pero hindi na maipapasa ang bagong recording at mga sagot.",
+      saved: "Nasa ibaba ang iyong mga naka-save na resulta." }
+    : { notice: "This classroom is archived. You can read the story, but new recordings and answers cannot be submitted.",
+      saved: "Your saved results are below." };
   const isProcessing = processingStatus === "processing" || processingStatus === "saving" || processingStatus === "saving-recording";
   const recordingBusy = isStarting || isStopping || isProcessing;
   const statusMessage = processingStatus === "processing"
@@ -420,7 +426,17 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
             </div>
           </div>
           <div className="read-aloud-controls">
-            {continueTarget ? <>
+            {/* Archived classroom (server flag): the story is read-only. No recorder, so no microphone or
+                speech-to-text starts; the server refuses transcription and saving for archived rooms anyway. */}
+            {module.roomArchived === true ? <div className="read-aloud-archived" role="note">
+              <p>{archivedNotice.notice}</p>
+              {savedAttempts.length > 0 && <p>{archivedNotice.saved}</p>}
+              {continueTarget && (
+                <button className="read-aloud-continue" type="button" onClick={() => navigate(continueTarget, { state: activityState })}>
+                  {t("View Reading Result")}
+                </button>
+              )}
+            </div> : continueTarget ? <>
               <p role="status">{t("Your reading is saved.")}</p>
               <button className="read-aloud-continue" type="button" onClick={() => navigate(continueTarget, { state: activityState })}>
                 {module.readAloudOnly ? t("View Reading Result")

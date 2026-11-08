@@ -19,6 +19,9 @@ export default function JoinClassroomPage() {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Archived rooms are not active Learning Rooms; their readings stay read-only in Reading History.
+  const activeRooms = classrooms.filter((room) => !isRoomArchived(room));
+  const archivedCount = classrooms.length - activeRooms.length;
 
   useEffect(() => {
     async function loadStudentClassrooms() {
@@ -235,8 +238,8 @@ export default function JoinClassroomPage() {
 
         {!loading && (
           <span className="rounded-full bg-white/10 px-3 py-1 text-sm font-semibold text-white/80">
-            {classrooms.length}{" "}
-            {classrooms.length === 1 ? "Room" : "Rooms"}
+            {activeRooms.length}{" "}
+            {activeRooms.length === 1 ? "Room" : "Rooms"}
           </span>
         )}
       </div>
@@ -248,7 +251,7 @@ export default function JoinClassroomPage() {
             Loading your learning rooms...
           </p>
         </div>
-      ) : classrooms.length === 0 ? (
+      ) : activeRooms.length === 0 ? (
         /* Empty State */
         <div className="rounded-3xl bg-[#dce8e7] px-6 py-14 text-center shadow-md">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#f7cf4a] text-3xl">
@@ -260,14 +263,15 @@ export default function JoinClassroomPage() {
           </h3>
 
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#5c7471]">
-            You haven't joined a classroom yet. Ask your teacher for a
-            room code and enter it above.
+            {archivedCount > 0
+              ? "You have no active classrooms right now. Ask your teacher for a room code and enter it above."
+              : "You haven't joined a classroom yet. Ask your teacher for a room code and enter it above."}
           </p>
         </div>
       ) : (
         /* Classroom Cards */
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {classrooms.map((room) => (
+          {activeRooms.map((room) => (
             <article
               key={room.id}
               className="flex min-h-[265px] flex-col rounded-3xl bg-[#dce8e7] p-6 shadow-md transition duration-200 hover:-translate-y-1 hover:shadow-lg"
@@ -329,6 +333,21 @@ export default function JoinClassroomPage() {
             </article>
           ))}
         </div>
+      )}
+
+      {!loading && archivedCount > 0 && (
+        <p className="mt-6 text-sm text-white/80">
+          {archivedCount === 1 ? "1 classroom was archived by your teacher." : `${archivedCount} classrooms were archived by your teacher.`}{" "}
+          You can still read their stories and see your saved results in{" "}
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard/reading-history#archived-readings")}
+            className="font-bold text-white underline"
+          >
+            Reading History → Archived Readings
+          </button>
+          .
+        </p>
       )}
     </section>
   );

@@ -96,6 +96,8 @@ function createDatabase() {
       ],
       learning_paths: [{ id: PATH, path_name: "English Easy", language: "English" }],
       enrollments: [{ student_id: STUDENT, room_id: ROOM }],
+      // An active classroom (saving checks the archive state on every request).
+      rooms: [{ id: ROOM, teacher_id: TEACHER, archived_at: null }],
       room_modules: [{ id: ROOM, room_id: ROOM, module_id: MODULE }],
       module_passages: [],
       oral_reading_attempts: [],

@@ -45,6 +45,8 @@ import { M3ContentProvider } from "./modules/module3/context/M3ContentContext";
 
 import LearningRoomsPage from "./modules/module4/pages/LearningRoomsPage";
 import ClassroomDetailsPage from "./modules/module4/pages/ClassroomDetailsPage";
+import ArchivedClassroomsPage from "./modules/module4/pages/ArchivedClassroomsPage";
+import ArchivedReadingsSection from "./modules/module4/components/ArchivedReadingsSection";
 import JoinClassroomPage from "./modules/module4/pages/JoinClassroomPage";
 import StudentClassroomPage from "./modules/module4/pages/StudentClassroomPage";
 import StudentReadingActivityPage from "./modules/module4/pages/StudentReadingActivityPage";
@@ -233,7 +235,7 @@ function App() {
 
             <Route
               path="reading-history"
-              element={<ReadingHistoryPage role="student" />}
+              element={<><ReadingHistoryPage role="student" /><ArchivedReadingsSection /></>}
             />
 
             <Route
@@ -450,6 +452,11 @@ function App() {
             <Route
               path="learning-rooms/:roomId"
               element={<ClassroomDetailsPage />}
+            />
+
+            <Route
+              path="archived-classrooms"
+              element={<ArchivedClassroomsPage />}
             />
 
             <Route

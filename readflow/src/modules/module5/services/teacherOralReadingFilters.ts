@@ -8,6 +8,8 @@ export interface TeacherOralReadingFilters {
   learnerId: string;
   moduleId: string;
   comprehensionStatus?: TeacherComprehensionStatus | "";
+  /** One classroom only (opened from that classroom's page, e.g. an archived classroom). */
+  roomId?: string;
 }
 
 export function filterTeacherOralReadingAttempts(
@@ -22,5 +24,6 @@ export function filterTeacherOralReadingAttempts(
     && (!filters.learnerId || attempt.learnerId === filters.learnerId)
     && (!filters.moduleId || attempt.moduleId === filters.moduleId)
     && (!filters.comprehensionStatus || attempt.comprehension.status === filters.comprehensionStatus)
+    && (!filters.roomId || attempt.roomId === filters.roomId)
   ));
 }

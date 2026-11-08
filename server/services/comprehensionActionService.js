@@ -1,4 +1,5 @@
 const { getSupabaseAdmin } = require("./supabaseAdmin");
+const { ARCHIVED_CLASSROOM_MESSAGE, isArchivedRoomDatabaseError, isRoomArchived } = require("./roomArchive");
 const {
   ComprehensionError,
   loadOwnedAttempt,
@@ -58,6 +59,8 @@ async function finishQuestions(db, responses) {
 }
 
 function rpcError(error) {
+  // The room was archived while this answer was on its way: the database refused it.
+  if (isArchivedRoomDatabaseError(error)) return new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
   if (error.code === "42501") {
     return new ComprehensionError("Access to this activity has been revoked or is not authorized.", 403);
   }
@@ -110,6 +113,10 @@ async function applyComprehensionAction(
   // Checks ownership before calling the protected database function.
   const owned = await loadOwnedAttempt(requester, attemptId);
   const db = getSupabaseAdmin();
+
+  // Checked on every answer, so an assessment opened before the room was archived cannot continue.
+  // Its saved answers stay as they are and can still be viewed; it continues after a Restore.
+  if (await isRoomArchived(db, owned.room_id)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
 
   // One assessment per learning activity: an extra attempt saved for the same activity before
   // that rule (from a repeated reading) is kept as it is, but it cannot be answered or finished.

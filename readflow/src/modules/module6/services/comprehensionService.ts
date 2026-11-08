@@ -52,6 +52,8 @@ export interface ComprehensionAttempt {
   /** The learning activity's one assessment; differs from id only for an extra attempt saved before that rule. */
   activityAttemptId?: string | null;
   roomId?: string | null;
+  /** Set by the server for an unfinished assessment of an archived classroom: read-only, no new answers. */
+  roomArchived?: boolean;
   passageTitle: string;
   passageText: string;
   language: "en" | "fil";

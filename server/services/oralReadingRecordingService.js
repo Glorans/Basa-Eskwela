@@ -1,5 +1,6 @@
 const { randomUUID } = require("node:crypto");
 const { getSupabaseAdmin } = require("./supabaseAdmin");
+const { ARCHIVED_CLASSROOM_CODE, ARCHIVED_CLASSROOM_MESSAGE, isArchivedRoomDatabaseError, isRoomArchived } = require("./roomArchive");
 const {
   OralReadingPersistenceError,
   getOralReadingAttempt,
@@ -45,9 +46,13 @@ async function loadRecording(supabase, attemptId) {
 
 async function saveOralReadingRecording(requester, attemptId, files, dependencies = {}) {
   // Check ownership before accessing recording storage.
-  await (dependencies.getOralReadingAttempt ?? getOralReadingAttempt)(requester, attemptId, dependencies);
+  const attempt = await (dependencies.getOralReadingAttempt ?? getOralReadingAttempt)(requester, attemptId, dependencies);
   validateRecordingFiles(files);
   const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  // An archived room accepts no new recording, also from a page opened before it was archived.
+  if (await (dependencies.isRoomArchived ?? isRoomArchived)(supabase, attempt?.roomId)) {
+    throw new OralReadingPersistenceError(ARCHIVED_CLASSROOM_MESSAGE, 409, ARCHIVED_CLASSROOM_CODE);
+  }
   // A retry must not replace an existing recording.
   if (await loadRecording(supabase, attemptId)) return;
 
@@ -76,6 +81,9 @@ async function saveOralReadingRecording(requester, attemptId, files, dependencie
       if (error.code === "23505" && (await loadRecording(supabase, attemptId))) {
         await supabase.storage.from(BUCKET).remove(uploaded);
         return;
+      }
+      if (isArchivedRoomDatabaseError(error)) {
+        throw new OralReadingPersistenceError(ARCHIVED_CLASSROOM_MESSAGE, 409, ARCHIVED_CLASSROOM_CODE);
       }
       throw new OralReadingPersistenceError(
         "Your result is saved, but its recording could not be saved. Retry saving before leaving this page.",

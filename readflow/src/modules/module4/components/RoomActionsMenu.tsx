@@ -161,10 +161,11 @@ export default function RoomActionsMenu({
             }
           }}
         >
-          <button type="button" role="menuitem" tabIndex={-1} className={itemClass}
+          {/* An archived room is read-only: Restore is its only action. */}
+          {!archived && <button type="button" role="menuitem" tabIndex={-1} className={itemClass}
             onClick={() => { close(true); onEdit(); }}>
             <Pencil size={18} aria-hidden="true" /> Edit Learning Room
-          </button>
+          </button>}
           {archiveSupported && <button type="button" role="menuitem" tabIndex={-1}
             className={itemClass} disabled={archiveBusy} aria-busy={archiveBusy}
             onClick={() => { close(true); onToggleArchive(); }}>

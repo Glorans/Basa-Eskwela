@@ -1,6 +1,6 @@
 import { Eye, Mic2, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { classifyComprehensionLevel } from "../../module2/services/diagnosticScoring";
 import M3PageHeader from "../../module3/components/M3PageHeader";
 import {
@@ -63,9 +63,12 @@ export default function TeacherOralReadingResultsPage() {
   const [learnerId, setLearnerId] = useState("");
   const [moduleId, setModuleId] = useState("");
   const [comprehensionStatus, setComprehensionStatus] = useState<TeacherComprehensionStatus | "">("");
+  // ?roomId= limits the list to one classroom (linked from that classroom, including archived ones).
+  const [searchParams] = useSearchParams();
+  const roomId = searchParams.get("roomId") ?? "";
   const filteredAttempts = useMemo(
-    () => filterTeacherOralReadingAttempts(attempts, { searchQuery, learnerId, moduleId, comprehensionStatus }),
-    [attempts, searchQuery, learnerId, moduleId, comprehensionStatus],
+    () => filterTeacherOralReadingAttempts(attempts, { searchQuery, learnerId, moduleId, comprehensionStatus, roomId }),
+    [attempts, searchQuery, learnerId, moduleId, comprehensionStatus, roomId],
   );
   const learners = useMemo(
     () => [...new Map(attempts.map((attempt) => [attempt.learnerId, attempt.learnerName])).entries()]
@@ -172,6 +175,12 @@ export default function TeacherOralReadingResultsPage() {
             )}
           </div>
 
+          {roomId && (
+            <p className="m5-review-count" role="note">
+              Showing one classroom&apos;s results.{" "}
+              <Link to="/m3/teacher/oral-reading">Show all classrooms</Link>
+            </p>
+          )}
           <p className="m5-review-count" aria-live="polite">
             Showing {filteredAttempts.length} of {attempts.length} results
           </p>

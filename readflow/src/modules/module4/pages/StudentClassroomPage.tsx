@@ -34,6 +34,8 @@ export default function StudentClassroomPage() {
   const [progressError, setProgressError] = useState("");
   const [openingActivity, setOpeningActivity] = useState<string>();
   const [openingError, setOpeningError] = useState<{ id: string; message: string }>();
+  // Archived room: an activity that was never started opens its story here, read-only (no recorder).
+  const [archivedStory, setArchivedStory] = useState<{ id: string; title: string; passage: string }>();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -159,7 +161,7 @@ export default function StudentClassroomPage() {
 
               {isRoomArchived(classroom) && (
                 <p role="note" className="mb-2 rounded-xl bg-[#5c7471]/15 px-3 py-2 text-sm font-bold text-[#173f3b]">
-                  Your teacher archived this learning room. You can still see your saved work, but new activities cannot be started.
+                  Your teacher archived this learning room. You can still read its stories and see your saved results, but new readings and answers cannot be submitted.
                 </p>
               )}
 
@@ -277,19 +279,21 @@ export default function StudentClassroomPage() {
                   type="button"
                   onClick={() =>
                     navigate(
-                      `/dashboard/materials/${module.module_id}?roomId=${classroom.id}&assignmentId=${module.assignment_id}`,
+                      `/dashboard/materials/${module.module_id}?roomId=${classroom.id}&assignmentId=${module.assignment_id}${isRoomArchived(classroom) ? "&archived=1" : ""}`,
                       {
                         state: {
                           fromClassroom: true,
                           roomId: classroom.id,
                           assignmentId: module.assignment_id,
+                          // Archived room: the passages open for silent reading only.
+                          ...(isRoomArchived(classroom) ? { archivedRoom: true } : {}),
                         },
                       }
                     )
                   }
                   className="w-full rounded-xl bg-[#f7cf4a] px-4 py-3 text-sm font-extrabold text-[#173f3b] transition hover:bg-[#f2c83a]"
                 >
-                  Open Reading Module →
+                  {isRoomArchived(classroom) ? "Read Module →" : "Open Reading Module →"}
                 </button>
               </div>
             </article>
@@ -401,6 +405,21 @@ export default function StudentClassroomPage() {
                       const saved = available.find(item => item.activityAssignmentId === activity.assignment_id
                         && item.materialId === activity.material_id && item.roomId === classroom.id);
                       if (!saved) throw new Error("This reading activity is not assigned to you.");
+                      if (isRoomArchived(classroom)) {
+                        // Archived room: saved results open as before; an unfinished assessment opens its saved
+                        // reading instead (no new answers); a story never started opens here, read-only.
+                        if (saved.oralReadingAttemptId && saved.status !== "Completed") {
+                          navigate(`/dashboard/read-aloud/results/${encodeURIComponent(saved.oralReadingAttemptId)}`,
+                            { state: activityLanguageState(activity.language) });
+                        } else if (saved.oralReadingAttemptId || saved.comprehensionAttemptId) {
+                          navigate(assignedReadingTarget(saved), { state: { ...activityLanguageState(activity.language), readingActivity: saved } });
+                        } else {
+                          const story = await getOralReadingModule(undefined, { materialId: saved.materialId,
+                            roomId: saved.roomId, activityAssignmentId: saved.activityAssignmentId });
+                          setArchivedStory({ id: activity.assignment_id, title: activity.title, passage: story.passage });
+                        }
+                        return;
+                      }
                       const target = assignedReadingTarget(saved);
                       // Resolve on the card so navigation never opens an empty recorder.
                       const oralReadingModule = saved.oralReadingAttemptId || saved.comprehensionAttemptId ? undefined
@@ -416,9 +435,24 @@ export default function StudentClassroomPage() {
                   }}
                   className="w-full rounded-xl bg-[#f7cf4a] px-4 py-3 text-sm font-extrabold text-[#173f3b] transition hover:bg-[#f2c83a]"
                 >
-                  {openingActivity === activity.assignment_id ? <span role="status">{t("Opening your reading activity...")}</span> : t("Open Reading Activity")}
+                  {openingActivity === activity.assignment_id ? <span role="status">{t("Opening your reading activity...")}</span>
+                    : isRoomArchived(classroom)
+                      ? (progress.find(item => item.activityAssignmentId === activity.assignment_id)?.oralReadingAttemptId
+                        || progress.find(item => item.activityAssignmentId === activity.assignment_id)?.comprehensionAttemptId
+                        ? "View Saved Results" : "Read Story")
+                      : t("Open Reading Activity")}
                 </button>
                 {openingError?.id === activity.assignment_id && <p role="alert">{openingError.message}</p>}
+                {archivedStory?.id === activity.assignment_id && (
+                  <div role="region" aria-label={`${archivedStory.title} (read-only)`} className="mt-4 rounded-2xl bg-white/80 p-4 text-left text-[#173f3b]">
+                    <p className="text-xs font-bold uppercase tracking-wide text-[#6d8582]">Read-only · archived classroom</p>
+                    <p className="mt-2 whitespace-pre-line leading-7">{archivedStory.passage}</p>
+                    <button type="button" onClick={() => setArchivedStory(undefined)}
+                      className="mt-3 rounded-xl bg-white px-4 py-2 text-sm font-extrabold text-[#173f3b]">
+                      Close story
+                    </button>
+                  </div>
+                )}
               </div>
             </article>
             );

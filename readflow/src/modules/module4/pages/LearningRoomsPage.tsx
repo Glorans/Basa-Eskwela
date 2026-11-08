@@ -8,62 +8,7 @@ import {
   type Classroom,
   type ReadingLanguage,
 } from "../services/classroomService";
-
-function RoomCard({ room }: { room: Classroom }) {
-  return (
-    <article
-      className="flex min-h-[260px] flex-col rounded-3xl bg-[#dce8e7] p-6 shadow-md transition duration-200 hover:-translate-y-1 hover:shadow-lg"
-    >
-      {/* Card Top */}
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f7cf4a] text-2xl">
-          📖
-        </div>
-
-        {isRoomArchived(room) && (
-          <span className="rounded-full bg-[#5c7471] px-3 py-1 text-xs font-bold text-white">Archived</span>
-        )}
-        {room.section && (
-          <span className="rounded-full bg-[#ef7468] px-3 py-1 text-xs font-bold text-white">
-            {room.section}
-          </span>
-        )}
-      </div>
-
-      {/* Room Information */}
-      <h3 className="text-xl font-extrabold text-[#173f3b]">
-        {room.room_name}
-      </h3>
-
-      {room.description?.trim() && room.description.trim().toLowerCase() !== "none" && (
-        <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#5c7471]">
-          {room.description}
-        </p>
-      )}
-
-      {/* Room Code */}
-      <div className="mt-5 rounded-2xl bg-white/70 px-4 py-3">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#6d8582]">
-          Room Code
-        </p>
-
-        <p className="mt-1 text-xl font-black tracking-[0.15em] text-[#173f3b]">
-          {room.room_code}
-        </p>
-      </div>
-
-      {/* View Button */}
-      <div className="mt-auto pt-5">
-        <Link
-          to={`/m3/teacher/learning-rooms/${room.id}`}
-          className="block w-full rounded-xl bg-[#f7cf4a] px-4 py-3 text-center text-sm font-extrabold text-[#173f3b] transition hover:bg-[#f2c83a]"
-        >
-          View Classroom
-        </Link>
-      </div>
-    </article>
-  );
-}
+import RoomCard from "../components/RoomCard";
 
 export default function LearningRoomsPage() {
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
@@ -75,6 +20,9 @@ export default function LearningRoomsPage() {
   const [description, setDescription] = useState("");
   const [subject, setSubject] = useState<ReadingLanguage | "">("");
   const [creating, setCreating] = useState(false);
+  // Archived rooms live on the Archived Classrooms page; this page lists active rooms only.
+  const activeRooms = classrooms.filter((room) => !isRoomArchived(room));
+  const archivedCount = classrooms.length - activeRooms.length;
 
   useEffect(() => {
     async function loadClassrooms() {
@@ -363,23 +311,25 @@ export default function LearningRoomsPage() {
       ) : (
         /* Room Cards */
         <>
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {classrooms.filter((room) => !isRoomArchived(room)).map((room) => (
-              <RoomCard key={room.id} room={room} />
-            ))}
-          </div>
-          {classrooms.some(isRoomArchived) && (
-            <section aria-labelledby="archivedRoomsHeading" className="mt-10">
-              <h2 id="archivedRoomsHeading" className="text-xl font-extrabold text-[#173f3b]">Archived Learning Rooms</h2>
-              <p className="mt-1 text-sm text-[#5c7471]">
-                Students cannot join or start new activities here. Records, results and XP are kept. Open a room to restore it.
-              </p>
-              <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {classrooms.filter(isRoomArchived).map((room) => (
-                  <RoomCard key={room.id} room={room} />
-                ))}
-              </div>
-            </section>
+          {activeRooms.length === 0 ? (
+            <p role="status" className="rounded-2xl bg-white/60 px-5 py-4 text-sm text-[#5c7471]">
+              All your learning rooms are archived. Create a new room, or restore one from Archived Classrooms.
+            </p>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {activeRooms.map((room) => (
+                <RoomCard key={room.id} room={room} />
+              ))}
+            </div>
+          )}
+          {archivedCount > 0 && (
+            <p className="mt-6 text-sm text-[#5c7471]">
+              {archivedCount === 1 ? "1 archived classroom is" : `${archivedCount} archived classrooms are`} kept in{" "}
+              <Link to="/m3/teacher/archived-classrooms" className="font-bold text-[#173f3b] underline">
+                Archived Classrooms
+              </Link>
+              .
+            </p>
           )}
         </>
       )}

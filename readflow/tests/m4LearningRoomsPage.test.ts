@@ -38,6 +38,8 @@ async function fixture(rooms: any[] = [], fail = false) {
   } }).outputText, {
     module, exports: module.exports, console: { error() {} },
     require: (id: string) => id === "react" ? react : id === "react-router-dom" ? { Link: "a" }
+      // The shared card (also used by Archived Classrooms) renders as a stub element carrying its room.
+      : id.endsWith("/components/RoomCard") ? { default: "room-card" }
       : id.includes("supabaseClient") ? { supabase: { auth: { getUser: async () => ({ data: { user: { id: "teacher" } }, error: null }) } } }
       : id.includes("classroomService") ? {
         getTeacherClassrooms: async () => rooms,

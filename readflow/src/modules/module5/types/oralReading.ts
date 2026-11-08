@@ -14,6 +14,8 @@ export interface OralReadingContext {
 
 export interface OralReadingModule extends OralReadingContext {
   readAloudOnly?: boolean;
+  /** Set by the server: the reading belongs to an archived classroom (read-only, no recorder). */
+  roomArchived?: boolean;
   passageTitle?: string;
   id: string | null;
   title: string;

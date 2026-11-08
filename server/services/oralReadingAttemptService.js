@@ -1,5 +1,6 @@
 const { reportRows } = require("./weeklyReportRows");
 const { loadAssignedReadingSource } = require("./assignedReadingSource");
+const { ARCHIVED_CLASSROOM_CODE, ARCHIVED_CLASSROOM_MESSAGE, isArchivedRoomDatabaseError, isRoomArchived } = require("./roomArchive");
 const { getReadingWords, scorePassage } = require("./oralReadingScoring");
 const { loadComprehensionForOralAttempts } = require("./teacherComprehensionReview");
 const { verifySavedReading } = require("./readingVerification");
@@ -429,6 +430,10 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
   if (materialId && body.passageRevision !== module.passageRevision) {
     throw new OralReadingPersistenceError("This story changed. Reload it and record the current story before saving.", 409);
   }
+  // Checked on every save, so a reading page opened before the room was archived cannot save afterwards.
+  if (await (dependencies.isRoomArchived ?? isRoomArchived)(supabase, module.roomId)) {
+    throw new OralReadingPersistenceError(ARCHIVED_CLASSROOM_MESSAGE, 409, ARCHIVED_CLASSROOM_CODE);
+  }
   const payload = buildAttemptInsert(requester, module, body);
   const { data, error } = await supabase
     .from("oral_reading_attempts")
@@ -451,6 +456,10 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
     }
   }
 
+  // The database refused it: the room was archived while this request was in flight.
+  if (isArchivedRoomDatabaseError(error)) {
+    throw new OralReadingPersistenceError(ARCHIVED_CLASSROOM_MESSAGE, 409, ARCHIVED_CLASSROOM_CODE);
+  }
   if (error || !data) {
     throw new OralReadingPersistenceError(
       "Your result could not be saved. Please try again.",

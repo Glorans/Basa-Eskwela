@@ -30,6 +30,7 @@ const {
 } = require("../services/oralReadingRecordingService");
 const { assessPronunciationWav } = require("../services/azureSpeechService");
 const { splitEmbeddedTitle } = require("../services/oralReadingScoring");
+const { ARCHIVED_CLASSROOM_CODE, ARCHIVED_CLASSROOM_MESSAGE, isRoomArchived } = require("../services/roomArchive");
 const {
   PronunciationCheckInProgressError,
   SUMMARY_COLUMNS: PRONUNCIATION_SUMMARY_COLUMNS,
@@ -201,7 +202,9 @@ function createOralReadingRouter(dependencies = {}) {
     try {
       const requester = await authorize(req, dependencies);
       const module = await loadAssignedReadingSource(requester, req.params.materialId, req.query, dependencies);
-      return res.json({ success: true, module });
+      // The page shows an archived classroom's story read-only (no recorder); saving is refused anyway.
+      const roomArchived = await (dependencies.isRoomArchived ?? isRoomArchived)(getAdmin(), module.roomId);
+      return res.json({ success: true, module: { ...module, roomArchived } });
     } catch (error) {
       return sendOralReadingError(res, error, "Unable to load the assigned story.");
     }
@@ -211,7 +214,8 @@ function createOralReadingRouter(dependencies = {}) {
     try {
       const requester = await authorizePractice(req, dependencies);
       const module = await loadModule(requester, req.params.moduleId, dependencies, req.query);
-      return res.json({ success: true, module });
+      const roomArchived = await (dependencies.isRoomArchived ?? isRoomArchived)(getAdmin(), module.roomId);
+      return res.json({ success: true, module: { ...module, roomArchived } });
     } catch (error) {
       return sendOralReadingError(res, error, "Unable to load the oral-reading activity.");
     }
@@ -315,6 +319,10 @@ function createOralReadingRouter(dependencies = {}) {
         }
         if (existing.row?.status === "running" && !isStale(existing.row, now())) {
           throw new PronunciationCheckInProgressError();
+        }
+        // A saved check is still shown above; an archived room starts no new one.
+        if (await (dependencies.isRoomArchived ?? isRoomArchived)(supabase, attempt.roomId)) {
+          throw new OralReadingPersistenceError(ARCHIVED_CLASSROOM_MESSAGE, 409, ARCHIVED_CLASSROOM_CODE);
         }
         // The trusted number of saved recording files (server-written metadata).
         expectedParts = await loadRecordingPartCount(supabase, attempt.id);
