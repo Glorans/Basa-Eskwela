@@ -60,10 +60,6 @@ export default function ArchivedClassroomsPage() {
     <section className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 lg:px-8">
       <header className="mb-6">
         <h1 className="text-3xl font-extrabold text-[#173f3b] md:text-4xl">Archived Classrooms</h1>
-        <p className="mt-2 max-w-3xl text-[#5c7471]">
-          Archived classrooms are read-only. Open one to review its students, assigned readings and saved results.
-          Nothing was deleted: enrollments, results, XP and history are kept. Restore a classroom to use it again.
-        </p>
       </header>
 
       <div aria-live="polite" role="status">

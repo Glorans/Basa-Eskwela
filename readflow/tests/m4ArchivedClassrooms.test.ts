@@ -64,7 +64,8 @@ test("Archived Classrooms shows only archived rooms; Restore returns one to Lear
     } : undefined);
   let cards = findAll(page.view(), (node) => node.type === "room-card");
   assert.deepEqual(cards.map((card) => card.props.room.id), ["old"], "only the archived room");
-  assert.match(page.text(), /read-only/);
+  assert.deepEqual(findAll(page.view(), (node) => node.type === "h1").map(textOf), ["Archived Classrooms"]);
+  assert.doesNotMatch(page.text(), /Archived classrooms are read-only|Open one to review its students|Nothing was deleted|Restore a classroom to use it again/);
   fail = true;
   await buttons(page.view(), /Restore Classroom/)[0].props.onClick(); await tick();
   assert.match(page.text(), /Only the room's Teacher can restore it/, "a failure is explained");
