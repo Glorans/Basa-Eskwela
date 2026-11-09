@@ -7,6 +7,7 @@ import {
   supportsRoomArchive,
   isRoomArchived,
   setClassroomArchived,
+  getAdminClassroomActions,
   type Classroom,
   type EnrolledStudent,
   type AssignedReadingModule,
@@ -34,8 +35,15 @@ export default function AdminClassroomDetailsPage() {
   // Archive/Restore (proposed m4_room_archive): Admins may archive or restore any room.
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [archiveError, setArchiveError] = useState("");
-  // Admin removal is withheld from this interface pending product review.
-  // The installed Admin RPC authorization remains in force.
+  // This page stays a read-only overview. Admin management (edit, assign modules, remove students)
+  // happens on the shared classroom page in Admin mode, offered only for actions the database lists.
+  const [canManage, setCanManage] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void getAdminClassroomActions().then((actions) => { if (live) setCanManage(actions.length > 0); });
+    return () => { live = false; };
+  }, []);
 
   async function handleToggleArchive() {
     if (!classroom || archiveBusy) return;
@@ -177,6 +185,16 @@ export default function AdminClassroomDetailsPage() {
                 <p className="max-w-2xl text-sm leading-6 text-[#5c7471] md:text-base">
                   {classroom.description}
                 </p>
+              )}
+
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/admin/learning-rooms/${classroom.id}/manage`)}
+                  className="mt-4 rounded-xl bg-[#173f3b] px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-[#0f2f2c]"
+                >
+                  Manage Classroom
+                </button>
               )}
             </div>
           </div>

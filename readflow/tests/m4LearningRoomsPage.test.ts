@@ -8,8 +8,26 @@ import ts from "typescript";
 const require = createRequire(import.meta.url);
 const source = readFileSync(new URL("../src/modules/module4/pages/LearningRoomsPage.tsx", import.meta.url), "utf8");
 const tick = () => new Promise(resolve => setImmediate(resolve));
+// The create form is the shared LearningRoomForm (props-only, no hooks): expand it in place.
+const formSource = readFileSync(new URL("../src/modules/module4/components/LearningRoomForm.tsx", import.meta.url), "utf8");
+function compile(code: string, requireFn: (id: string) => any) {
+  const module = { exports: {} as any };
+  vm.runInNewContext(ts.transpileModule(code, { compilerOptions: {
+    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX,
+  } }).outputText, { module, exports: module.exports, require: requireFn });
+  return module.exports;
+}
+const learningRoomForm = compile(formSource, (id) => require(id));
+function expand(tree: any): any {
+  if (Array.isArray(tree)) return tree.map(expand);
+  if (!tree || typeof tree !== "object") return tree;
+  if (typeof tree.type === "function") return expand(tree.type(tree.props));
+  return tree.props?.children === undefined ? tree
+    : { ...tree, props: { ...tree.props, children: expand(tree.props.children) } };
+}
 function find(tree: any, predicate: (node: any) => boolean): any {
   if (!tree || typeof tree !== "object") return;
+  if (typeof tree.type === "function") return find(tree.type(tree.props), predicate);
   if (predicate(tree)) return tree;
   for (const child of [tree.props?.children].flat(Infinity)) {
     const result = find(child, predicate);
@@ -40,6 +58,7 @@ async function fixture(rooms: any[] = [], fail = false) {
     require: (id: string) => id === "react" ? react : id === "react-router-dom" ? { Link: "a" }
       // The shared card (also used by Archived Classrooms) renders as a stub element carrying its room.
       : id.endsWith("/components/RoomCard") ? { default: "room-card" }
+      : id.endsWith("/components/LearningRoomForm") ? learningRoomForm
       : id.includes("supabaseClient") ? { supabase: { auth: { getUser: async () => ({ data: { user: { id: "teacher" } }, error: null }) } } }
       : id.includes("classroomService") ? {
         getTeacherClassrooms: async () => rooms,
@@ -53,7 +72,7 @@ async function fixture(rooms: any[] = [], fail = false) {
   });
   function render() {
     cursor = 0;
-    const tree = module.exports.default();
+    const tree = expand(module.exports.default());
     const pending = effects; effects = []; pending.forEach(fn => fn());
     return tree;
   }

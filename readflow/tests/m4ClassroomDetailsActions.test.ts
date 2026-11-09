@@ -44,6 +44,12 @@ type Options = {
   targeting?: boolean;
   /** rooms.archived_at once the proposed archive migration exists; undefined = column absent. */
   archivedAt?: string | null;
+  /** Renders the page as <ClassroomDetailsPage workspace="admin" />. */
+  workspace?: "teacher" | "admin";
+  /** m4_admin_classroom_actions() for the signed-in Admin. */
+  adminActions?: string[];
+  /** Lets assignReadingActivity record its calls (Admin F7 tests). */
+  activityAssign?: boolean;
 };
 
 /** Replaces function-type elements with what they render, recursively. */
@@ -57,11 +63,31 @@ function expand(node: any): any {
 
 async function mount(options: Options = {}) {
   const calls: unknown[][] = [];
+  const materialLoads: unknown[][] = [];
   const dialogs: string[] = [];
   const prompts: string[] = [];
   const assigned: any[] = [];
   const archiveState = { at: options.archivedAt ?? null };
   const service = {
+    getAdminClassroomActions: async () => {
+      calls.push(["getAdminClassroomActions"]);
+      return options.adminActions ?? [];
+    },
+    adminRemoveEnrolledStudent: async (enrollmentId: string) => {
+      calls.push(["adminRemoveEnrolledStudent", enrollmentId]);
+      return true;
+    },
+    adminUpdateClassroom: async (roomId: string, input: { roomName: string; section: string; description: string }) => {
+      calls.push(["adminUpdateClassroom", roomId, { ...input }]);
+      return { ...room, room_name: input.roomName.trim(), section: input.section.trim() || null, description: input.description.trim() || null };
+    },
+    adminAssignModuleToRoom: async (roomId: string, moduleId: string, dueAt: string | null = null) => {
+      calls.push(["adminAssignModuleToRoom", roomId, moduleId, dueAt]);
+      const module = modules.find((item) => item.id === moduleId)!;
+      assigned.push({ assignment_id: `assignment-${assigned.length + 1}`, module_id: moduleId, title: module.title,
+        difficulty: module.difficulty, assigned_at: "2026-10-18", due_at: dueAt, removed_at: null });
+      return "assignment";
+    },
     supportsRoomArchive: (room: any) => Boolean(room) && Object.prototype.hasOwnProperty.call(room, "archived_at"),
     isRoomArchived: (room: any) => Boolean(room?.archived_at),
     setClassroomArchived: async (roomId: string, archive: boolean) => {
@@ -91,7 +117,11 @@ async function mount(options: Options = {}) {
       calls.push(["getAssignedModules", roomId]);
       return assigned.map((module) => ({ ...module }));
     },
-    getUploadedReadingMaterials: async () => [{ id: "mat-1", title: "Kite story", language: "en" }],
+    getUploadedReadingMaterials: async (...args: unknown[]) => {
+      calls.push(["getUploadedReadingMaterials", ...args]);
+      materialLoads.push(args);
+      return [{ id: "mat-1", title: "Kite story", language: "en" }];
+    },
     getClassroomReadingActivities: async () => (options.activities ?? []).map((activity) => ({ ...activity })),
     supportsOptionalColumn: async () => options.optionalColumns ?? false,
     parseOptionalDueDate: (value: string) => (value ? new Date(value).toISOString() : null),
@@ -109,7 +139,10 @@ async function mount(options: Options = {}) {
       return true;
     },
     getReadingActivityError: () => assert.fail("getReadingActivityError is not under test"),
-    assignReadingActivity: async () => assert.fail("assignReadingActivity is not under test"),
+    assignReadingActivity: async (...args: unknown[]) => {
+      if (!options.activityAssign) assert.fail("assignReadingActivity is not under test");
+      calls.push(["assignReadingActivity", ...args]);
+    },
     updateClassroom: async (roomId: string, input: { roomName: string; section: string; description: string }) => {
       calls.push(["updateClassroom", roomId, { ...input }]);
       if (options.updateError !== undefined) throw options.updateError;
@@ -160,7 +193,7 @@ async function mount(options: Options = {}) {
     if (id.endsWith("/components/RoomActionsMenu")) return { default: (props: any) => {
       const h = require("react").createElement;
       return h("div", {},
-        h("button", { onClick: props.onEdit }, "Edit Learning Room"),
+        props.onEdit && h("button", { onClick: props.onEdit }, "Edit Learning Room"),
         props.archiveSupported && h("button", { onClick: props.onToggleArchive, disabled: props.archiveBusy },
           props.archived ? "Restore Learning Room" : "Archive Learning Room"));
     } };
@@ -172,7 +205,7 @@ async function mount(options: Options = {}) {
     document: { getElementById: () => null },
   });
 
-  const view = () => expand(runtime.render(page.default, {}));
+  const view = () => expand(runtime.render(page.default, options.workspace ? { workspace: options.workspace } : {}));
   view();
   await tick();
   calls.length = 0;
@@ -184,7 +217,7 @@ async function mount(options: Options = {}) {
     return found[0];
   };
   return {
-    calls, dialogs, prompts, byId, button, view,
+    calls, materialLoads, dialogs, prompts, byId, button, view,
     text: () => textOf(view()),
     heading: () => textOf(findAll(view(), (node) => node.type === "h1")[0]),
     alert: () => findAll(view(), (node) => node.props?.role === "alert").map(textOf).join(""),
@@ -509,7 +542,7 @@ test("removing from the panel keeps the confirmation and updates the panel and t
   assert.match(page.text(), new RegExp(overview(1, 0)));
 });
 
-test("the Admin roster stays view-only while removal is under review", async () => {
+test("the Admin overview roster stays view-only; removal lives on the Admin management page", async () => {
   const { readFileSync } = await import("node:fs");
   const runtime = createHookRuntime(require("react"));
   const panel = loadComponentModule(new URL("../src/modules/module4/components/EnrolledStudentsPanel.tsx", import.meta.url), (id) => (id === "react" ? runtime.react : require(id)));
@@ -520,7 +553,10 @@ test("the Admin roster stays view-only while removal is under review", async () 
   const admin = readFileSync(new URL("../src/modules/module4/pages/AdminClassroomDetailsPage.tsx", import.meta.url), "utf8");
   assert.match(admin, /<EnrolledStudentsPanel[\s\S]*?\/>/);
   assert.doesNotMatch(admin.match(/<EnrolledStudentsPanel[\s\S]*?\/>/)![0], /onRemoveStudent/);
-  assert.doesNotMatch(admin, /\b(?:adminRemoveEnrolledStudent|removeEnrolledStudent|getAdminClassroomActions)\b/);
+  assert.doesNotMatch(admin, /\b(?:adminRemoveEnrolledStudent|removeEnrolledStudent)\b/);
+  // The overview links to management only when the database lists Admin actions.
+  assert.match(admin, /getAdminClassroomActions\(\)[\s\S]*actions\.length > 0/);
+  assert.match(admin, /\/admin\/learning-rooms\/\$\{classroom\.id\}\/manage/);
 });
 
 test("a legacy room without a saved subject keeps the language picker with an explanation", async () => {
@@ -647,4 +683,123 @@ test("an archived room can be restored and disables assignment buttons while arc
   assert.ok(page.calls.some((call) => call[0] === "setClassroomArchived" && call[2] === false));
   assert.match(page.text(), /Archive Learning Room/);
   assert.equal(page.button("Assign Module").props.disabled, false);
+});
+
+// Admin management (proposed m4_admin_room_management): the same page in Admin mode.
+
+test("Teacher mode never asks for Admin actions and loads the Teacher's own materials", async () => {
+  const page = await mount();
+  page.view();
+  await tick();
+  assert.ok(!page.calls.some((call) => call[0] === "getAdminClassroomActions"));
+  assert.deepEqual(page.materialLoads, [[]], "no owner argument: the signed-in Teacher's uploads");
+});
+
+test("Admin mode before the Admin migration: removal and archive only, no edit or assignment", async () => {
+  const page = await mount({ workspace: "admin", adminActions: ["remove_enrollment"], archivedAt: null });
+  for (let i = 0; i < 3; i++) await tick();
+  assert.equal(page.all((node) => node.type === "button" && textOf(node) === "Edit Learning Room").length, 0);
+  assert.equal(page.all((node) => node.type === "button" && textOf(node) === "Assign Module").length, 0);
+  assert.equal(page.all((node) => node.type === "button" && textOf(node) === "Assign Activity").length, 0);
+  assert.equal(page.all((node) => node.type === "button" && textOf(node) === "Archive Learning Room").length, 1);
+  await page.remove("Ana Reyes");
+  assert.deepEqual(page.calls.filter((call) => /remove/i.test(String(call[0]))), [["adminRemoveEnrolledStudent", "enr-1"]]);
+  assert.doesNotMatch(page.text(), /Ana Reyes/);
+  assert.match(page.text(), /belongs to its Teacher/);
+});
+
+test("Admin mode loads only the classroom Teacher's materials and offers no legacy-subject change", async () => {
+  const page = await mount({ workspace: "admin", adminActions: ["remove_enrollment"], legacy: { subject: null, contentLanguages: ["fil"], choices: ["fil"], canSet: true } });
+  for (let i = 0; i < 3; i++) await tick();
+  assert.deepEqual(page.materialLoads, [["teacher-1"]]);
+  assert.doesNotMatch(page.text(), /Save subject|Set the room subject/i);
+});
+
+test("Admin mode with the migration: edits save through the audited Admin function", async () => {
+  const page = await mount({ workspace: "admin", adminActions: ["remove_enrollment", "create_room", "update_room", "assign_module", "unassign_module"] });
+  for (let i = 0; i < 3; i++) await tick();
+  page.calls.length = 0;
+  page.click("Edit Learning Room");
+  page.change("roomName", "  Story Club ");
+  await page.submit("roomName");
+  assert.deepEqual(page.calls, [["adminUpdateClassroom", "room", { roomName: "  Story Club ", section: "Grade 4", description: "Morning class" }]]);
+  assert.equal(page.heading(), "Story Club");
+});
+
+test("Admin mode assigns a whole-class module through the Admin path, never as the Teacher", async () => {
+  const page = await mount({ workspace: "admin", adminActions: ["remove_enrollment", "update_room", "assign_module", "unassign_module"] });
+  for (let i = 0; i < 3; i++) await tick();
+  page.calls.length = 0;
+  page.click("Assign Module");
+  page.change("moduleLanguage", "en");
+  page.change("readingModule", "mod-1");
+  await page.submit("readingModule");
+  assert.deepEqual(page.calls.filter((call) => /^(adminA|a)ssignModule/.test(String(call[0]))), [["adminAssignModuleToRoom", "room", "mod-1", null]]);
+  assert.ok(!page.calls.some((call) => call[0] === "assignModuleToRoom"));
+  assert.match(page.text(), /Fables/);
+});
+
+test("Admin mode shows reading activities read-only", async () => {
+  const page = await mount({ workspace: "admin", adminActions: ["remove_enrollment", "assign_module", "unassign_module"], optionalColumns: true,
+    activities: [{ id: "act-1", room_id: "room", material_id: "mat-1", student_id: "stu-1", assigned_by: "teacher-1",
+      assigned_at: "2026-10-20", due_at: null, status: "completed", question_set_id: null, question_set_name: null, removed_at: null }] });
+  for (let i = 0; i < 3; i++) await tick();
+  assert.match(page.text(), /Ana Reyes · completed/);
+  assert.match(page.text(), /assigned by the classroom's Teacher/);
+  assert.equal(page.all((node) => node.type === "button" && textOf(node) === "Assign Activity").length, 0);
+  assert.equal(page.all((node) => node.type === "li" && textOf(node).includes("Ana Reyes · completed")
+    && findAll(node, (child) => child.type === "button").length > 0).length, 0);
+});
+
+// Admin F7 (proposed m4_admin_activity_assignment): the Teacher's activity form, on behalf of the room's Teacher.
+
+test("Teacher mode assigns activities exactly as before (no Admin option)", async () => {
+  const page = await mount({ activityAssign: true });
+  page.click("Assign Activity");
+  page.change("activityLanguage", "en");
+  page.change("readingMaterial", "mat-1");
+  for (let i = 0; i < 3; i++) await tick();
+  page.all((node) => node.type === "input" && node.props.type === "checkbox" && textOf(node) === "")
+    .slice(0, 1).forEach((box) => box.props.onChange());
+  // Let the material's question sets finish loading before submitting.
+  for (let i = 0; i < 4; i++) { page.view(); await tick(); }
+  await page.submit("readingMaterial");
+  for (let i = 0; i < 3; i++) await tick();
+  const sent = page.calls.filter((call) => call[0] === "assignReadingActivity");
+  assert.equal(sent.length, 1, page.alert());
+  assert.equal(sent[0].length, 6, "five arguments, no Admin option");
+  assert.deepEqual(sent[0].slice(1, 3), ["room", "mat-1"]);
+});
+
+test("Admin mode with F7 assigns through the same form on behalf of the room's Teacher", async () => {
+  const page = await mount({ workspace: "admin", activityAssign: true,
+    adminActions: ["remove_enrollment", "update_room", "assign_module", "unassign_module", "assign_activity", "unassign_activity"] });
+  for (let i = 0; i < 3; i++) await tick();
+  assert.match(page.text(), /classroom Teacher's uploaded reading materials/);
+  page.click("Assign Activity");
+  page.change("activityLanguage", "en");
+  const options = findAll(page.byId("readingMaterial"), (node) => node.type === "option").map((node) => node.props.value);
+  assert.ok(options.includes("mat-1"));
+  page.change("readingMaterial", "mat-1");
+  for (let i = 0; i < 3; i++) await tick();
+  page.all((node) => node.type === "input" && node.props.type === "checkbox" && textOf(node) === "")
+    .slice(0, 1).forEach((box) => box.props.onChange());
+  // Let the material's question sets finish loading before submitting.
+  for (let i = 0; i < 4; i++) { page.view(); await tick(); }
+  await page.submit("readingMaterial");
+  for (let i = 0; i < 3; i++) await tick();
+  const sent = page.calls.filter((call) => call[0] === "assignReadingActivity");
+  assert.equal(sent.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(sent[0].at(-1))), { asAdmin: true });
+  assert.deepEqual(sent[0].slice(1, 3), ["room", "mat-1"]);
+});
+
+test("Admin mode with F7 can remove and restore an activity", async () => {
+  const page = await mount({ workspace: "admin", optionalColumns: true,
+    adminActions: ["remove_enrollment", "assign_activity", "unassign_activity"],
+    activities: [{ id: "act-1", room_id: "room", material_id: "mat-1", student_id: "stu-1", assigned_by: "teacher-1",
+      assigned_at: "2026-10-20", due_at: null, status: "assigned", question_set_id: null, question_set_name: null, removed_at: null }] });
+  for (let i = 0; i < 3; i++) await tick();
+  await page.clickFor("Kite story", "Remove");
+  assert.deepEqual(page.calls.filter((call) => call[0] === "setReadingActivityRemoved"), [["setReadingActivityRemoved", "act-1", true]]);
 });

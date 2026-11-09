@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabaseClient";
-import type { Classroom } from "../services/classroomService";
+import {
+  adminCreateClassroom,
+  getAdminClassroomActions,
+  getApprovedTeachersForAdmin,
+  type ApprovedTeacher,
+  type Classroom,
+  type ReadingLanguage,
+} from "../services/classroomService";
+import LearningRoomForm from "../components/LearningRoomForm";
 
 export default function AdminLearningRoomsPage() {
   const navigate = useNavigate();
@@ -9,6 +17,87 @@ export default function AdminLearningRoomsPage() {
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Admin room creation (proposed m4_admin_room_management): the button appears only when the
+  // database lists create_room. The room is owned by the approved Teacher the Admin selects.
+  const [canCreate, setCanCreate] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [teachers, setTeachers] = useState<ApprovedTeacher[]>([]);
+  const [teachersLoading, setTeachersLoading] = useState(false);
+  const [teacherId, setTeacherId] = useState("");
+  const [roomName, setRoomName] = useState("");
+  const [section, setSection] = useState("");
+  const [description, setDescription] = useState("");
+  const [subject, setSubject] = useState<ReadingLanguage | "">("");
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [createdNotice, setCreatedNotice] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    void getAdminClassroomActions().then((actions) => { if (live) setCanCreate(actions.includes("create_room")); });
+    return () => { live = false; };
+  }, []);
+
+  function errorText(err: unknown, fallback: string) {
+    const text = (err as { message?: unknown } | null)?.message;
+    return typeof text === "string" && text ? text : fallback;
+  }
+
+  function resetForm() {
+    setTeacherId("");
+    setRoomName("");
+    setSection("");
+    setDescription("");
+    setSubject("");
+    setFormError("");
+  }
+
+  async function openCreateForm() {
+    resetForm();
+    setCreatedNotice("");
+    setShowCreateForm(true);
+    setTeachersLoading(true);
+    try {
+      setTeachers(await getApprovedTeachersForAdmin());
+    } catch (err) {
+      setTeachers([]);
+      setFormError(errorText(err, "Unable to load approved Teachers."));
+    } finally {
+      setTeachersLoading(false);
+    }
+  }
+
+  async function handleCreateRoom(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (creating) return;
+    if (!teacherId) {
+      setFormError("Select an approved Teacher for this learning room.");
+      return;
+    }
+    if (!roomName.trim()) {
+      setFormError("Room name is required.");
+      return;
+    }
+    if (!subject) {
+      setFormError("Please select English or Filipino.");
+      return;
+    }
+    try {
+      setCreating(true);
+      setFormError("");
+      const room = await adminCreateClassroom({ teacherId, subject, roomName, section, description });
+      const owner = teachers.find((teacher) => teacher.id === teacherId)?.display_name ?? "the selected Teacher";
+      setClassrooms((current) => [room, ...current]);
+      resetForm();
+      setShowCreateForm(false);
+      setCreatedNotice(`"${room.room_name}" was created for ${owner}. Room code: ${room.room_code}`);
+    } catch (err) {
+      console.error("Failed to create learning room as Admin:", err);
+      setFormError(errorText(err, "Unable to create learning room."));
+    } finally {
+      setCreating(false);
+    }
+  }
 
   useEffect(() => {
     async function loadClassrooms() {
@@ -99,13 +188,38 @@ export default function AdminLearningRoomsPage() {
       <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-extrabold text-white md:text-4xl">
-            Learning Rooms
+            {showCreateForm ? "Create Learning Room" : "Learning Rooms"}
           </h1>
 
           <p className="mt-2 text-sm text-white/70 md:text-base">
-            View and monitor classrooms created by teachers.
+            {showCreateForm
+              ? "Create a classroom and choose the approved Teacher who will manage it."
+              : "View and monitor classrooms created by teachers."}
           </p>
         </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+        {canCreate && (
+          <button
+            type="button"
+            disabled={creating}
+            onClick={() => {
+              if (showCreateForm) {
+                resetForm();
+                setShowCreateForm(false);
+              } else {
+                void openCreateForm();
+              }
+            }}
+            className={`rounded-2xl px-5 py-3 font-bold shadow-md transition hover:-translate-y-0.5 disabled:opacity-60 ${
+              showCreateForm
+                ? "bg-[#ef7468] text-white hover:bg-[#df665c]"
+                : "bg-[#f7cf4a] text-[#173f3b] hover:bg-[#f2c83a]"
+            }`}
+          >
+            {showCreateForm ? "Cancel" : "+ Create Learning Room"}
+          </button>
+        )}
 
         <div className="w-fit rounded-2xl bg-white/10 px-5 py-3 text-center">
           <p className="text-2xl font-black text-white">
@@ -118,10 +232,57 @@ export default function AdminLearningRoomsPage() {
               : "Learning Rooms"}
           </p>
         </div>
+        </div>
       </div>
 
-      {/* Empty State */}
-      {classrooms.length === 0 ? (
+      {createdNotice && !showCreateForm && (
+        <p role="status" className="mb-6 rounded-2xl bg-[#e5f5e9] px-5 py-4 text-sm font-bold text-[#173f3b]">
+          {createdNotice}
+        </p>
+      )}
+
+      {showCreateForm ? (
+        <>
+          {formError && (
+            <div role="alert" className="mb-6 rounded-2xl border border-[#ef7468]/40 bg-[#fff0ee] px-5 py-4 text-sm font-semibold text-[#a9443c]">
+              {formError}
+            </div>
+          )}
+          <LearningRoomForm
+            roomName={roomName}
+            section={section}
+            description={description}
+            subject={subject}
+            creating={creating}
+            onRoomNameChange={setRoomName}
+            onSectionChange={setSection}
+            onDescriptionChange={setDescription}
+            onSubjectChange={setSubject}
+            onSubmit={(event) => void handleCreateRoom(event)}
+            submitLabel="Create Learning Room"
+            ownerField={(
+              <div className="mb-5">
+                <label htmlFor="roomTeacher" className="mb-2 block text-sm font-bold text-[#173f3b]">
+                  Teacher <span className="text-[#e45f55]">*</span>
+                </label>
+                <select id="roomTeacher" value={teacherId} required disabled={creating || teachersLoading}
+                  aria-describedby="roomTeacherHelp" onChange={(event) => setTeacherId(event.target.value)}
+                  className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-[#173f3b] outline-none transition focus:border-[#f7cf4a]">
+                  <option value="">{teachersLoading ? "Loading approved Teachers..." : "Choose an approved Teacher"}</option>
+                  {teachers.map((teacher) => (
+                    <option key={teacher.id} value={teacher.id}>{teacher.display_name}</option>
+                  ))}
+                </select>
+                <p id="roomTeacherHelp" className="mt-1 text-sm text-[#5c7471]">
+                  {!teachersLoading && teachers.length === 0
+                    ? "There are no approved Teachers yet. Approve a Teacher before creating a learning room."
+                    : "The selected Teacher owns and manages this learning room. You keep Admin access to it."}
+                </p>
+              </div>
+            )}
+          />
+        </>
+      ) : classrooms.length === 0 ? (
         <div className="rounded-3xl bg-[#dce8e7] px-6 py-14 text-center shadow-md">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#f7cf4a] text-3xl">
             🏫

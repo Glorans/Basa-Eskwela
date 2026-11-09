@@ -372,6 +372,12 @@ function App() {
               path="learning-rooms/:roomId"
               element={<AdminClassroomDetailsPage />}
             />
+
+            {/* M4 Admin management: the Teacher classroom page in Admin mode (audited database functions). */}
+            <Route
+              path="learning-rooms/:roomId/manage"
+              element={<ClassroomDetailsPage workspace="admin" />}
+            />
           </Route>
         </Route>
 

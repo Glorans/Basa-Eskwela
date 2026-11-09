@@ -381,6 +381,83 @@ export async function adminRemoveEnrolledStudent(enrollmentId: string): Promise<
   return data === true;
 }
 
+// ==========================
+// ADMIN CLASSROOM MANAGEMENT (proposed m4_admin_room_management)
+// ==========================
+// The Admin acts as themselves through audited database functions; the room stays owned by an
+// approved Teacher. Pages show these controls only when getAdminClassroomActions() lists them.
+
+export type ApprovedTeacher = { id: string; display_name: string };
+
+/** Approved Teachers an Admin may make the owner of a new learning room. */
+export async function getApprovedTeachersForAdmin(): Promise<ApprovedTeacher[]> {
+  const { data, error } = await supabase.rpc("m4_admin_classroom_teachers" as never);
+  if (error) {
+    console.error("Error loading approved Teachers:", error);
+    throw new Error("Unable to load approved Teachers.");
+  }
+  return ((data ?? []) as ApprovedTeacher[]).map((row) => ({ id: String(row.id), display_name: String(row.display_name) }));
+}
+
+function adminRoomError(error: { code?: string; message?: string }, fallback: string): Error {
+  if (error.code === "42501") return new Error("Admin access is required.");
+  if (error.code === "23505") return new Error("That room code was just taken. Please try again.");
+  if (error.code === "22023" && error.message) return new Error(error.message);
+  if (error.code === "55000") return new Error("This learning room is archived. Restore it before making changes.");
+  return new Error(fallback);
+}
+
+/** Admin creates a room owned by the selected approved Teacher, using the same room-code generator. */
+export async function adminCreateClassroom(input: CreateClassroomInput): Promise<Classroom> {
+  if (!input.teacherId) throw new Error("Select an approved Teacher for this learning room.");
+  if (!["en", "fil"].includes(input.subject)) throw new Error("Please select English or Filipino.");
+  const roomCode = await generateUniqueRoomCode();
+  const { data, error } = await supabase.rpc("m4_admin_create_room" as never, {
+    p_teacher_id: input.teacherId, p_room_name: input.roomName, p_section: input.section,
+    p_description: input.description, p_subject: input.subject, p_room_code: roomCode,
+  } as never);
+  if (error) {
+    console.error("Error creating classroom as Admin:", error);
+    throw adminRoomError(error, "Unable to create learning room.");
+  }
+  return data as Classroom;
+}
+
+/** Admin edits a room's name, section and description (never its owner, code or subject). */
+export async function adminUpdateClassroom(roomId: string, input: UpdateClassroomInput): Promise<Classroom> {
+  const { data, error } = await supabase.rpc("m4_admin_update_room" as never, {
+    p_room_id: roomId, p_room_name: input.roomName, p_section: input.section, p_description: input.description,
+  } as never);
+  if (error) {
+    console.error("Error updating classroom as Admin:", error);
+    throw adminRoomError(error, "Unable to update classroom.");
+  }
+  return data as Classroom;
+}
+
+/**
+ * Admin assigns a module to the whole class through m4_assign_module. The database keeps the
+ * room's Teacher as the assigning owner (learner visibility rules) and records the Admin as the actor.
+ */
+export async function adminAssignModuleToRoom(roomId: string, moduleId: string, dueAt: string | null = null): Promise<string> {
+  assertNewDueDate(dueAt);
+  const { data, error } = await supabase.rpc("m4_assign_module" as never, {
+    p_room_id: roomId, p_module_id: moduleId, p_mode: "whole_class", p_students: [], p_due_at: dueAt,
+  } as never);
+  if (error) {
+    console.error("Error assigning module as Admin:", error);
+    const known: Record<string, string> = {
+      "22023": "Choose an available published module and a future due date, then try again.",
+      "42501": "This learning room's Teacher must be approved before modules can be assigned.",
+      "23514": "This reading module does not match the classroom subject.",
+      "23505": "This reading module is already assigned.",
+      "55000": "This learning room is archived. Restore it before assigning modules.",
+    };
+    throw new Error(known[error.code ?? ""] ?? "Unable to assign reading module.");
+  }
+  return String(data);
+}
+
 export async function removeEnrolledStudent(
   enrollmentId: string
 ): Promise<void> {
@@ -697,15 +774,19 @@ export type UploadedReadingMaterial = {
   uploaded_by: string;
   language: ReadingLanguage | null;
 };
-export async function getUploadedReadingMaterials(): Promise<
+/**
+ * Completed reading materials of one uploader: the signed-in Teacher by default, or (Admin F7) the
+ * classroom's Teacher. Admins assign only that Teacher's materials; the database enforces it again.
+ */
+export async function getUploadedReadingMaterials(ownerId?: string): Promise<
   UploadedReadingMaterial[]
 > {
-  const user = await getAuthenticatedUser(() => new Error("User not authenticated."));
+  const uploader = ownerId ?? (await getAuthenticatedUser(() => new Error("User not authenticated."))).id;
 
   const { data, error } = await supabase
     .from("uploaded_materials")
     .select("id, title, uploaded_by, language")
-    .eq("uploaded_by", user.id)
+    .eq("uploaded_by", uploader)
     .eq("extraction_status", "completed")
     .order("created_at", { ascending: false });
 
@@ -844,7 +925,13 @@ export async function assignReadingActivity(
   materialId: string,
   studentIds: string[],
   dueAt: string | null = null,
-  questionSetId: string | null = null
+  questionSetId: string | null = null,
+  /**
+   * asAdmin (proposed m4_admin_activity_assignment): an Admin assigns on behalf of the room's approved
+   * Teacher. The row stays attributed to that Teacher (assigned_by); the database checks the Admin
+   * session, the Teacher's ownership of room and material, and records the Admin in the M4 audit log.
+   */
+  { asAdmin = false }: { asAdmin?: boolean } = {}
 ): Promise<void> {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuid.test(roomId)) throw new ReadingActivityValidationError("The classroom is invalid. Reopen it from Learning Rooms.");
@@ -870,11 +957,17 @@ export async function assignReadingActivity(
   for (const result of [room, material, enrollments, existing]) {
     if (result.error) throw result.error;
   }
-  if (!room.data || room.data.teacher_id !== user.id) {
-    throw new ReadingActivityValidationError("This classroom is unavailable or belongs to another teacher. Reopen your classroom from Learning Rooms.");
+  // The Teacher assigns as themselves; an Admin assigns on behalf of the room's Teacher.
+  const owner = asAdmin ? room.data?.teacher_id : user.id;
+  if (!room.data || !owner || room.data.teacher_id !== owner) {
+    throw new ReadingActivityValidationError(asAdmin
+      ? "This classroom is unavailable. Reopen it from Learning Rooms."
+      : "This classroom is unavailable or belongs to another teacher. Reopen your classroom from Learning Rooms.");
   }
-  if (!material.data || material.data.uploaded_by !== user.id || material.data.extraction_status !== "completed") {
-    throw new ReadingActivityValidationError("Select a completed reading material from your own uploads.");
+  if (!material.data || material.data.uploaded_by !== owner || material.data.extraction_status !== "completed") {
+    throw new ReadingActivityValidationError(asAdmin
+      ? "Select a completed reading material uploaded by this classroom's Teacher."
+      : "Select a completed reading material from your own uploads.");
   }
   if (uniqueStudentIds.some(id => !enrollments.data?.some(row => row.student_id === id))) {
     throw new ReadingActivityValidationError("One or more selected students are no longer enrolled in this classroom. Refresh and select the students again.");
@@ -891,7 +984,7 @@ export async function assignReadingActivity(
     room_id: roomId,
     material_id: materialId,
     student_id: studentId,
-    assigned_by: user.id,
+    assigned_by: owner,
     due_at: dueAt,
     status: "assigned",
     // The database trigger accepts only a reviewed set of this material.

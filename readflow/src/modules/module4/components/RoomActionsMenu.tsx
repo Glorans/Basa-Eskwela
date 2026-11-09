@@ -6,7 +6,8 @@ type RoomActionsMenuProps = {
   archiveSupported: boolean;
   archived: boolean;
   archiveBusy: boolean;
-  onEdit: () => void;
+  /** Omitted when the signed-in user may not edit this room (e.g. an Admin before the M4 Admin migration). */
+  onEdit?: () => void;
   onToggleArchive: () => void;
 };
 
@@ -162,7 +163,7 @@ export default function RoomActionsMenu({
           }}
         >
           {/* An archived room is read-only: Restore is its only action. */}
-          {!archived && <button type="button" role="menuitem" tabIndex={-1} className={itemClass}
+          {!archived && onEdit && <button type="button" role="menuitem" tabIndex={-1} className={itemClass}
             onClick={() => { close(true); onEdit(); }}>
             <Pencil size={18} aria-hidden="true" /> Edit Learning Room
           </button>}

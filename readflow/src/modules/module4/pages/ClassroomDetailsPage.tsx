@@ -27,6 +27,10 @@ import {
   supportsRoomArchive,
   isRoomArchived,
   setClassroomArchived,
+  getAdminClassroomActions,
+  adminRemoveEnrolledStudent,
+  adminUpdateClassroom,
+  adminAssignModuleToRoom,
   type ModuleTargeting,
   type LegacyRoomSubjectOptions,
   type ReadingActivityAssignment,
@@ -119,7 +123,8 @@ type ClassroomInfoSectionProps = {
   onRoomNameChange: (value: string) => void;
   onSectionChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
-  onStartEdit: () => void;
+  /** Omitted when the signed-in user may not edit the room. */
+  onStartEdit?: () => void;
   archiveBusy: boolean;
   archiveError: string;
   onToggleArchive: () => void;
@@ -340,6 +345,8 @@ type ModuleAssignmentSectionProps = {
   onRoomLanguageChange: (language: ReadingLanguage | "") => void;
   onAssignModule: (event: React.FormEvent<HTMLFormElement>) => void;
   onToggleModuleRemoved: (module: AssignedReadingModule) => void;
+  /** False hides Assign Module (an Admin before the M4 Admin migration). */
+  canAssign?: boolean;
 };
 
 function ModuleAssignmentSection({
@@ -369,6 +376,7 @@ function ModuleAssignmentSection({
   onRoomLanguageChange,
   onAssignModule,
   onToggleModuleRemoved,
+  canAssign = true,
 }: ModuleAssignmentSectionProps) {
   return (
     <div className="rounded-3xl bg-[#dce8e7] p-6 shadow-md">
@@ -383,7 +391,7 @@ function ModuleAssignmentSection({
           </p>
         </div>
 
-        <button
+        {canAssign && <button
           type="button"
           disabled={assigningModule || (archived && !showModuleForm)}
           onClick={onToggleForm}
@@ -396,7 +404,7 @@ function ModuleAssignmentSection({
           {showModuleForm
             ? "Cancel"
             : "Assign Module"}
-        </button>
+        </button>}
       </div>
 
       {/* Assign Module */}
@@ -640,8 +648,19 @@ function ModuleAssignmentSection({
   );
 }
 
-export default function ClassroomDetailsPage() {
+// workspace="admin": an Admin manages any room through audited M4 functions (proposed
+// m4_admin_room_management). The room stays owned by its Teacher. The dependent
+// m4_admin_activity_assignment migration enables audited assignment of that Teacher's materials.
+export default function ClassroomDetailsPage({ workspace = "teacher" }: { workspace?: "teacher" | "admin" } = {}) {
   const { roomId } = useParams<{ roomId: string }>();
+  const isAdmin = workspace === "admin";
+  const [adminActions, setAdminActions] = useState<string[]>([]);
+  const canEdit = !isAdmin || adminActions.includes("update_room");
+  const canAssignModules = !isAdmin || adminActions.includes("assign_module");
+  const canChangeModules = !isAdmin || adminActions.includes("unassign_module");
+  const canRemoveStudents = !isAdmin || adminActions.includes("remove_enrollment");
+  const canAssignActivities = !isAdmin || adminActions.includes("assign_activity");
+  const canChangeActivities = !isAdmin || adminActions.includes("unassign_activity");
 
   const [classroom, setClassroom] = useState<Classroom | null>(null);
   const [students, setStudents] = useState<EnrolledStudent[]>([]);
@@ -718,7 +737,14 @@ export default function ClassroomDetailsPage() {
   }, []);
 
   useEffect(() => {
-    if (!classroom || classroom.subject) {
+    if (!isAdmin) return;
+    let live = true;
+    void getAdminClassroomActions().then((actions) => { if (live) setAdminActions(actions); });
+    return () => { live = false; };
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!classroom || classroom.subject || isAdmin) {
       setLegacySubject(null);
       return;
     }
@@ -829,7 +855,7 @@ export default function ClassroomDetailsPage() {
           getRoomEnrollments(roomId),
           getPublishedModules(),
           getAssignedModules(roomId, { includeRemoved: true }),
-          getUploadedReadingMaterials(),
+          isAdmin ? Promise.resolve([] as UploadedReadingMaterial[]) : getUploadedReadingMaterials(),
         ]);
 
         setClassroom(room);
@@ -837,7 +863,8 @@ export default function ClassroomDetailsPage() {
         setStudents(enrolledStudents);
         setPublishedModules(availableModules);
         setAssignedModules(roomModules);
-        setUploadedMaterials(availableMaterials);
+        // Admins assign only the classroom Teacher's own completed materials (Admin F7).
+        setUploadedMaterials(isAdmin ? await getUploadedReadingMaterials(room.teacher_id) : availableMaterials);
 
         setRoomName(room.room_name);
         setSection(room.section ?? "");
@@ -869,7 +896,8 @@ export default function ClassroomDetailsPage() {
     }
 
     try {
-      await removeEnrolledStudent(enrollmentId);
+      if (isAdmin) await adminRemoveEnrolledStudent(enrollmentId);
+      else await removeEnrolledStudent(enrollmentId);
 
       setStudents((currentStudents) =>
         currentStudents.filter(
@@ -930,11 +958,8 @@ export default function ClassroomDetailsPage() {
       savingRoom.current = true;
       setSaving(true);
 
-      const updatedRoom = await updateClassroom(roomId, {
-        roomName,
-        section,
-        description,
-      });
+      const input = { roomName, section, description };
+      const updatedRoom = isAdmin ? await adminUpdateClassroom(roomId, input) : await updateClassroom(roomId, input);
 
       setClassroom(updatedRoom);
       setEditing(false);
@@ -1015,6 +1040,8 @@ export default function ClassroomDetailsPage() {
 
       if (selectedOnly) {
         await assignModuleToSelectedStudents(roomId, selectedModuleId, moduleStudentIds, dueAt);
+      } else if (isAdmin) {
+        await adminAssignModuleToRoom(roomId, selectedModuleId, dueAt);
       } else {
         await assignModuleToRoom(roomId, selectedModuleId, user.id, dueAt);
       }
@@ -1030,7 +1057,7 @@ export default function ClassroomDetailsPage() {
     } catch (err) {
       console.error("Failed to assign reading module:", err);
       const text = (err as { message?: unknown } | null)?.message;
-      setModuleError(selectedOnly && typeof text === "string" && text ? text : "Unable to assign reading module.");
+      setModuleError((selectedOnly || isAdmin) && typeof text === "string" && text ? text : "Unable to assign reading module.");
     } finally {
       moduleRequestPending.current = false;
       setAssigningModule(false);
@@ -1153,13 +1180,19 @@ export default function ClassroomDetailsPage() {
       activityRequestPending.current = true;
       setAssigningActivity(true);
 
-      await assignReadingActivity(
-        roomId,
-        selectedMaterialId,
-        selectedStudentIds,
-        dueAt,
-        selectedQuestionSetId || null
-      );
+      // The Teacher call is unchanged; only Admin mode adds the on-behalf-of option.
+      if (isAdmin) {
+        await assignReadingActivity(roomId, selectedMaterialId, selectedStudentIds, dueAt,
+          selectedQuestionSetId || null, { asAdmin: true });
+      } else {
+        await assignReadingActivity(
+          roomId,
+          selectedMaterialId,
+          selectedStudentIds,
+          dueAt,
+          selectedQuestionSetId || null
+        );
+      }
 
       setActivitySuccess("Reading activity assigned successfully!");
 
@@ -1296,21 +1329,38 @@ export default function ClassroomDetailsPage() {
         )}
       </div>
       {/* Back: an archived room belongs to Archived Classrooms */}
+      {isAdmin ? (
+        <Link
+          to={`/admin/learning-rooms/${encodeURIComponent(classroom.id)}`}
+          className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-white/80 transition hover:text-white"
+        >
+          ← Back to Classroom Overview
+        </Link>
+      ) : (
       <Link
         to={isRoomArchived(classroom) ? "/m3/teacher/archived-classrooms" : "/m3/teacher/learning-rooms"}
         className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-white/80 transition hover:text-white"
       >
         {isRoomArchived(classroom) ? "← Back to Archived Classrooms" : "← Back to Learning Rooms"}
       </Link>
+      )}
+
+      {isAdmin && (
+        <p role="note" className="mb-5 rounded-2xl bg-white/80 px-5 py-4 text-sm text-[#173f3b]">
+          <strong>Admin management.</strong> This learning room belongs to its Teacher, who keeps managing it.
+          Your changes are recorded under your Admin account.
+        </p>
+      )}
 
       {isRoomArchived(classroom) && (
         <p role="note" className="mb-5 rounded-2xl bg-white/80 px-5 py-4 text-sm text-[#173f3b]">
           <strong>This classroom is archived and read-only.</strong> You can review its students, assigned readings and saved
-          results. Nothing can be assigned, edited or removed until you restore it from the actions menu (⋮).{" "}
+          results. Nothing can be assigned, edited or removed until you restore it from the actions menu (⋮).
+          {!isAdmin && <>{" "}
           <Link to={`/m3/teacher/oral-reading?roomId=${encodeURIComponent(classroom.id)}`} className="font-bold underline">
             Review this classroom&apos;s reading and comprehension results
           </Link>
-          .
+          .</>}
         </p>
       )}
 
@@ -1325,7 +1375,7 @@ export default function ClassroomDetailsPage() {
         onRoomNameChange={setRoomName}
         onSectionChange={setSection}
         onDescriptionChange={setDescription}
-        onStartEdit={handleStartEdit}
+        onStartEdit={canEdit ? handleStartEdit : undefined}
         archiveBusy={archiveBusy}
         archiveError={archiveError}
         onToggleArchive={() => void handleToggleArchive()}
@@ -1357,7 +1407,7 @@ export default function ClassroomDetailsPage() {
         roomName={classroom.room_name}
         students={students}
         onClose={closeStudentsPanel}
-        onRemoveStudent={isRoomArchived(classroom) ? undefined : handleRemoveStudent}
+        onRemoveStudent={isRoomArchived(classroom) || !canRemoveStudents ? undefined : handleRemoveStudent}
       />
 
       {legacySubject && !classroom.subject && !isRoomArchived(classroom) && (
@@ -1385,7 +1435,8 @@ export default function ClassroomDetailsPage() {
           roomLanguage={roomLanguage}
           deadlinesSupported={moduleDeadlinesSupported}
           moduleDueAt={moduleDueAt}
-          removalSupported={moduleRemovalSupported}
+          removalSupported={moduleRemovalSupported && canChangeModules}
+          canAssign={canAssignModules}
           changingModuleId={changingModuleId}
           targetingEnabled={moduleTargetingEnabled}
           archived={isRoomArchived(classroom)}
@@ -1416,12 +1467,15 @@ export default function ClassroomDetailsPage() {
             </h2>
 
             <p className="mt-1 text-sm text-[#5c7471]">
-              Assign uploaded reading materials to the whole class
-              or selected students.
+              {!isAdmin
+                ? "Assign uploaded reading materials to the whole class or selected students."
+                : canAssignActivities
+                  ? "Assign the classroom Teacher's uploaded reading materials to the whole class or selected students. The activity stays under the Teacher; your Admin account is recorded."
+                  : "Reading activities are assigned by the classroom's Teacher from their own reading materials. Admins can review them here."}
             </p>
           </div>
 
-          <button
+          {canAssignActivities && <button
             type="button"
             onClick={handleToggleActivityForm}
             disabled={assigningActivity || (isRoomArchived(classroom) && !showActivityForm)}
@@ -1434,7 +1488,7 @@ export default function ClassroomDetailsPage() {
             {showActivityForm
               ? "Cancel"
               : "Assign Activity"}
-          </button>
+          </button>}
         </div>
 
         <div className="mt-5" aria-label="Assigned reading activities">
@@ -1460,7 +1514,7 @@ export default function ClassroomDetailsPage() {
                       {activity.due_at && <p className="text-sm">Due {formatDueDateTime(activity.due_at)}</p>}
                       {activity.removed_at && <p className="text-sm font-bold text-[#5c7471]">Removed · hidden from the student</p>}
                     </div>
-                    {activityRemovalSupported && !isRoomArchived(classroom) && (
+                    {activityRemovalSupported && canChangeActivities && !isRoomArchived(classroom) && (
                       <button type="button" disabled={Boolean(changingActivityId)}
                         onClick={() => void handleToggleActivityRemoved(activity, title, studentName)}
                         className="ml-auto shrink-0 rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-[#173f3b] transition hover:bg-[#f4f7f5] disabled:opacity-60">
@@ -1474,7 +1528,7 @@ export default function ClassroomDetailsPage() {
           ) : !activityListError && <p className="mt-2 text-sm text-[#5c7471]">No reading activities assigned yet.</p>}
         </div>
 
-        {!showActivityForm && (
+        {!showActivityForm && canAssignActivities && (
           <div className="mt-5 rounded-2xl bg-white/60 px-5 py-7 text-center">
             <div className="mb-2 text-3xl">📄</div>
 
@@ -1483,13 +1537,14 @@ export default function ClassroomDetailsPage() {
             </p>
 
             <p className="mt-1 text-sm text-[#6d8582]">
-              Use a completed reading material uploaded through
-              Reading Materials.
+              {isAdmin
+                ? "Use a completed reading material uploaded by this classroom's Teacher."
+                : "Use a completed reading material uploaded through Reading Materials."}
             </p>
           </div>
         )}
 
-        {showActivityForm && (
+        {showActivityForm && canAssignActivities && (
           <form
             onSubmit={handleAssignActivity}
             className="mt-5 rounded-2xl bg-white/70 p-5"
@@ -1538,8 +1593,9 @@ export default function ClassroomDetailsPage() {
 
               {uploadedMaterials.length === 0 ? (
                 <p className="mt-2 text-sm text-[#a9443c]">
-                  No completed uploaded materials are available.
-                  Upload and process a reading material first.
+                  {isAdmin
+                    ? "This classroom's Teacher has no completed reading materials yet."
+                    : "No completed uploaded materials are available. Upload and process a reading material first."}
                 </p>
               ) : !roomLanguage ? (
                 <p className="mt-2 text-sm text-[#6d8582]">

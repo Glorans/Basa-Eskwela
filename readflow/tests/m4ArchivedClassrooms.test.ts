@@ -43,6 +43,7 @@ test("Teacher sidebar: Archived Classrooms sits directly below Reports and above
 test("Teacher Learning Rooms lists active rooms only without an archived classroom notice", async () => {
   const page = await mount("modules/module4/pages/LearningRoomsPage.tsx", (id) => id.includes("supabaseClient") ? auth
     : id.endsWith("/components/RoomCard") ? { default: "room-card" }
+    : id.endsWith("/components/LearningRoomForm") ? { default: "learning-room-form" }
     : id.includes("classroomService") ? { getTeacherClassrooms: async () => [ACTIVE, ARCHIVED], isRoomArchived, createClassroom: async () => ({}) }
     : undefined);
   const cards = findAll(page.view(), (node) => node.type === "room-card");
@@ -81,14 +82,15 @@ test("Archived Classrooms shows only archived rooms; Restore returns one to Lear
 test("Archived classroom details are read-only for the Teacher, except Restore, and link to its results", () => {
   const details = read("modules/module4/pages/ClassroomDetailsPage.tsx");
   assert.match(details, /\{removalSupported && !archived && \(/, "no module Remove/Restore");
-  assert.match(details, /\{activityRemovalSupported && !isRoomArchived\(classroom\) && \(/, "no activity Remove/Restore");
-  assert.match(details, /onRemoveStudent=\{isRoomArchived\(classroom\) \? undefined : handleRemoveStudent\}/, "no student removal");
+  // (Admin mode, M4 Admin management, adds its own conditions; the archived condition is unchanged.)
+  assert.match(details, /\{activityRemovalSupported && canChangeActivities && !isRoomArchived\(classroom\) && \(/, "no activity Remove/Restore");
+  assert.match(details, /onRemoveStudent=\{isRoomArchived\(classroom\) \|\| !canRemoveStudents \? undefined : handleRemoveStudent\}/, "no student removal");
   assert.match(details, /\{legacySubject && !classroom\.subject && !isRoomArchived\(classroom\) && \(/);
   assert.match(details, /disabled=\{assigningModule \|\| \(archived && !showModuleForm\)\}/, "Assign Module stays disabled (existing)");
   assert.match(details, /\/m3\/teacher\/oral-reading\?roomId=\$\{encodeURIComponent\(classroom\.id\)\}/);
   assert.match(details, /"← Back to Archived Classrooms"/);
   const menu = read("modules/module4/components/RoomActionsMenu.tsx");
-  assert.match(menu, /\{!archived && <button[^>]*role="menuitem"[\s\S]*?Edit Learning Room/, "Edit is hidden; Restore remains");
+  assert.match(menu, /\{!archived && onEdit && <button[^>]*role="menuitem"[\s\S]*?Edit Learning Room/, "Edit is hidden; Restore remains");
   assert.match(menu, /archived \? "Restore Learning Room" : "Archive Learning Room"/);
 });
 
