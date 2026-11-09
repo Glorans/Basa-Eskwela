@@ -22,6 +22,8 @@ const CONTENT: Record<EmailConfirmationNoticeKind, { heading: string; message: s
   "maybe-sent": {
     heading: "Check Your Email!", tone: "info", Icon: Mail,
     message: "If your email address needs verification, you'll receive a confirmation link. Please check your inbox and Spam folder.",
+    // Neutral on purpose: never says whether this address already has an account.
+    help: "Already have a Basa Eskwela account? Log in instead, or use Forgot password to reset it. No email after a few minutes? Select Resend Confirmation Email.",
   },
   expired: {
     heading: "Confirmation Link Expired", tone: "warning", Icon: MailX,

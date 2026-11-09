@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AuthFormError from "../components/AuthFormError.tsx";
 import AuthLayout from "../components/AuthLayout.tsx";
@@ -22,9 +22,13 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [showAccountHelp, setShowAccountHelp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Set synchronously, so even submits fired before React re-renders (and disables the
+  // button) send only one sign-up request. Cleared after a failure so the user can retry.
+  const inFlight = useRef(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (inFlight.current) return;
     setError("");
     setShowAccountHelp(false);
 
@@ -49,6 +53,7 @@ export default function SignupPage() {
       return;
     }
 
+    inFlight.current = true;
     setSubmitting(true);
     try {
       const { hasSession, confirmationSent } = await register(email, password);
@@ -68,6 +73,7 @@ export default function SignupPage() {
           ? signupError.message
           : "We couldn't finish account setup. If your account was created, log in to continue.",
       );
+      inFlight.current = false;
       setSubmitting(false);
     }
   }

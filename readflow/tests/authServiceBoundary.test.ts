@@ -57,10 +57,10 @@ test("logout, forgot-password, and reset-password mutations use authService", as
   assert.doesNotMatch(resetPassword, /supabase\.auth\.(onAuthStateChange|getSession)/);
 });
 
-test("account email and password mutations use authService", async () => {
+test("account password mutations use authService; Settings never changes the email", async () => {
   const settings = await source("modules/module1/pages/Settings.tsx");
 
-  assert.match(settings, /await updateEmail\(normalizedEmail\)/);
+  assert.doesNotMatch(settings, /updateEmail/);
   assert.match(settings, /await updatePassword\(password\)/);
   assert.doesNotMatch(settings, /supabase\.auth\.updateUser/);
   assert.match(settings, /useAuth\(\)/);

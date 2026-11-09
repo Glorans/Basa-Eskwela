@@ -6,15 +6,13 @@ import {
   updateNickname,
   type AuthProfile,
 } from "../services/authProfile";
-import { updateEmail, updatePassword } from "../../../services/authService";
+import { updatePassword } from "../../../services/authService";
 import {
   FULL_NAME_MAX_LENGTH,
   getPasswordValidationError,
   getProfileNameValidationError,
   isAppRole,
-  isValidSignupEmail,
   NICKNAME_MAX_LENGTH,
-  normalizeAuthEmail,
   PASSWORD_REQUIREMENTS,
   ROLE_LABELS,
 } from "../utils/authOnboarding";
@@ -39,7 +37,6 @@ export default function Settings() {
   } = useAuth();
   const [account, setAccount] = useState<LoadedAccount>();
   const [profileName, setProfileName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -56,7 +53,6 @@ export default function Settings() {
 
   async function loadAccount(refresh = false) {
     setLoading(true);
-    setError("");
 
     try {
       const currentProfile = refresh ? await refreshProfile() : profile;
@@ -68,7 +64,6 @@ export default function Settings() {
       const loaded = { userId: user.id, email: user.email, profile: currentProfile };
       setAccount(loaded);
       setProfileName(getEditableProfileValue(currentProfile));
-      setEmail(user.email);
     } catch {
       setError("We couldn't load your profile. Please try again.");
     } finally {
@@ -91,7 +86,6 @@ export default function Settings() {
     }
 
     const normalizedName = profileName.trim();
-    const normalizedEmail = normalizeAuthEmail(email);
 
     const editableProfileField = getEditableProfileField(account.profile.role);
     if (!editableProfileField) {
@@ -104,11 +98,6 @@ export default function Settings() {
 
     if (profileValidationError) {
       setError(profileValidationError);
-      return;
-    }
-
-    if (!isValidSignupEmail(normalizedEmail)) {
-      setError("Enter a valid email address.");
       return;
     }
 
@@ -125,23 +114,26 @@ export default function Settings() {
       }
     }
 
+    const savedDisplayName = editsNickname
+      ? account.profile.nickname ?? ""
+      : account.profile.full_name;
+    const nameChanged = normalizedName !== savedDisplayName;
+    if (!nameChanged && !password) {
+      setSuccess("There are no changes to save.");
+      return;
+    }
+
     setSaving(true);
+    let nameSaved = false;
 
     try {
-      const savedDisplayName = editsNickname
-        ? account.profile.nickname ?? ""
-        : account.profile.full_name;
-      if (normalizedName !== savedDisplayName) {
+      if (nameChanged) {
         if (editsNickname) {
           await updateNickname(account.userId, normalizedName);
         } else {
           await updateFullName(account.userId, normalizedName);
         }
-      }
-
-      const emailChanged = normalizedEmail !== normalizeAuthEmail(account.email);
-      if (emailChanged) {
-        await updateEmail(normalizedEmail);
+        nameSaved = true;
       }
 
       if (password) {
@@ -151,18 +143,20 @@ export default function Settings() {
       setPassword("");
       setConfirmPassword("");
       await loadAccount(true);
+      const label = editsNickname ? "Nickname" : "Name";
       setSuccess(
-        emailChanged
-          ? "Profile saved. Check your email to confirm the address change."
-          : "Profile changes saved.",
+        password && nameSaved
+          ? `${label} saved and password changed.`
+          : password
+            ? "Your password was changed."
+            : `${label} saved.`,
       );
     } catch (saveError) {
       await loadAccount(true);
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "We couldn't save your profile changes. Please try again.",
-      );
+      const message = saveError instanceof Error
+        ? saveError.message
+        : "We couldn't save your profile changes. Please try again.";
+      setError(nameSaved ? `${message} Your ${editsNickname ? "nickname" : "name"} was saved.` : message);
     } finally {
       setSaving(false);
     }
@@ -171,7 +165,6 @@ export default function Settings() {
   function handleCancel() {
     if (!account) return;
     setProfileName(getEditableProfileValue(account.profile));
-    setEmail(account.email);
     setPassword("");
     setConfirmPassword("");
     setError("");
@@ -204,7 +197,7 @@ export default function Settings() {
         {error && !account ? (
           <div>
             <p className="basa-settings-error" role="alert">{error}</p>
-            <button type="button" className="basa-settings-save" onClick={() => void loadAccount(true)}>
+            <button type="button" className="basa-settings-save" onClick={() => { setError(""); void loadAccount(true); }}>
               Try Again
             </button>
           </div>
@@ -249,10 +242,15 @@ export default function Settings() {
                 <input
                   id="email"
                   type="email"
-                  value={email}
-                  disabled={saving}
-                  onChange={(event) => setEmail(event.target.value)}
+                  className="basa-settings-readonly-input"
+                  value={account?.email ?? ""}
+                  readOnly
+                  aria-readonly="true"
+                  aria-describedby="emailHelp"
                 />
+                <p id="emailHelp" className="basa-settings-help">
+                  Your registered email address can't be changed here.
+                </p>
 
                 <label htmlFor="password">Change Password</label>
                 <div className="basa-password-field">

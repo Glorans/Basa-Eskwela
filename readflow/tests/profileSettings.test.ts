@@ -123,10 +123,12 @@ test("successful Settings saves refresh central profile state", async () => {
   );
 });
 
-test("existing email and password settings remain delegated to authService", async () => {
+test("password settings stay delegated to authService; the email is read-only", async () => {
   const settings = await source("modules/module1/pages/Settings.tsx");
 
-  assert.match(settings, /await updateEmail\(normalizedEmail\)/);
+  // Email changes are not offered in Settings: the registered address is shown read-only.
+  assert.doesNotMatch(settings, /updateEmail/);
+  assert.match(settings, /id="email"[\s\S]*?readOnly/);
   assert.match(settings, /await updatePassword\(password\)/);
   assert.match(settings, /Change Password/);
   assert.match(settings, /Confirm Password/);

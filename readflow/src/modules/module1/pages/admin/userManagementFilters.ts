@@ -18,7 +18,6 @@ interface UserFilters {
   searchQuery: string;
   role: UserRoleFilter;
   status: UserStatusFilter;
-  pendingTeachers?: boolean;
 }
 
 export function filterManagedUsers(users: ManagedUser[], filters: UserFilters) {
@@ -31,7 +30,6 @@ export function filterManagedUsers(users: ManagedUser[], filters: UserFilters) {
     const matchesRole = !filters.role || user.role === filters.role;
     const matchesStatus = !filters.status || user.status === filters.status;
 
-    return matchesSearch && matchesRole && matchesStatus
-      && (!filters.pendingTeachers || isPendingTeacher(user));
+    return matchesSearch && matchesRole && matchesStatus;
   });
 }

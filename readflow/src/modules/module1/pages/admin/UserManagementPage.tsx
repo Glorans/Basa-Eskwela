@@ -32,17 +32,15 @@ export default function UserManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("");
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("");
-  const [pendingTeachers, setPendingTeachers] = useState(false);
   const filteredUsers = useMemo(
     () => filterManagedUsers(users, {
       searchQuery,
       role: roleFilter,
       status: statusFilter,
-      pendingTeachers,
     }),
-    [users, searchQuery, roleFilter, statusFilter, pendingTeachers],
+    [users, searchQuery, roleFilter, statusFilter],
   );
-  const hasActiveFilters = Boolean(searchQuery.trim() || roleFilter || statusFilter || pendingTeachers);
+  const hasActiveFilters = Boolean(searchQuery.trim() || roleFilter || statusFilter);
 
   async function loadUsers() {
     setLoading(true);
@@ -87,7 +85,6 @@ export default function UserManagementPage() {
     setSearchQuery("");
     setRoleFilter("");
     setStatusFilter("");
-    setPendingTeachers(false);
   }
 
   return (
@@ -109,11 +106,6 @@ export default function UserManagementPage() {
       ) : (
         <div className="admin-users-table-wrap">
           <div className="admin-users-controls">
-            <button type="button" className="admin-users-clear" aria-pressed={pendingTeachers} onClick={() => {
-              const next = !pendingTeachers;
-              clearFilters();
-              setPendingTeachers(next);
-            }}>Pending Teachers</button>
             <label className="admin-users-control admin-users-search">
               <span>Search users</span>
               <input

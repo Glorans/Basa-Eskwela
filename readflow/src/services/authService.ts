@@ -110,9 +110,31 @@ export async function requestPasswordReset(email: string, redirectTo: string) {
   throwIfAuthError(error);
 }
 
+// Messages only describe what the auth provider actually reported. "same_password" means the
+// provider compared the new password with the current one; there is no password history.
+export function passwordChangeError(error: { message: string; code?: string; status?: number }) {
+  const code = error.code ?? "";
+  if (code === "same_password") {
+    return new AuthServiceError("Your new password must be different from your current password. Your password was not changed.");
+  }
+  if (code === "weak_password") {
+    return new AuthServiceError("Choose a stronger password. Your password was not changed.");
+  }
+  if (code === "reauthentication_needed" || code === "reauthentication_not_valid") {
+    return new AuthServiceError("For your security, sign out and sign in again, then change your password. Your password was not changed.");
+  }
+  if (code.startsWith("over_") || error.status === 429) {
+    return new AuthServiceError("Too many attempts. Please wait a few minutes before changing your password again.");
+  }
+  if (code === "session_not_found" || code === "session_expired" || error.status === 401) {
+    return new AuthServiceError("Your session has ended. Sign in again to change your password.");
+  }
+  return new AuthServiceError("We couldn't change your password right now. Please try again. Your password was not changed.");
+}
+
 export async function updatePassword(password: string) {
   const { error } = await supabase.auth.updateUser({ password });
-  throwIfAuthError(error);
+  if (error) throw passwordChangeError(error);
 }
 
 export async function updateEmail(email: string) {

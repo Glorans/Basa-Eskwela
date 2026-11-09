@@ -83,6 +83,18 @@
   font: inherit;
 }
 
+/* Registered email: visible and selectable, but not editable (matches Role/Status). */
+.basa-settings-columns input.basa-settings-readonly-input {
+  background: #f1f5f4;
+  color: #526561;
+  cursor: default;
+}
+
+.basa-settings-columns #emailHelp {
+  margin: -8px 0 16px;
+  font-size: 0.8rem;
+}
+
 .basa-settings-columns input:disabled,
 .basa-settings-actions button:disabled,
 .basa-password-field button:disabled {
