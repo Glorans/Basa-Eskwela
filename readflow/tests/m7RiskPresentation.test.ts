@@ -28,12 +28,11 @@ test("Teachers and Admins see the same guidance; old thresholds are gone from ev
   }
 });
 
-test("notification wording follows whether notifications are active, and never claims they run when off", () => {
+test("Teacher support removes notification UI but keeps alert and recovery history", () => {
   const page = source("M7Pages.tsx");
-  assert.match(page, /data\.notificationsActive \? 'Alerts are processed after quiz completion/);
-  assert.match(page, /Background notifications are not active yet/);
-  assert.match(page, /calculated from saved quizzes each time this page loads/);
-  assert.match(page, /data\.notificationsActive \? 'No saved alerts yet/);
+  assert.doesNotMatch(page, /Notifications \(|No unread alerts|Background notifications are not active yet|View performance analytics|View weekly reports/);
+  assert.match(page, /Alert and recovery history/);
+  assert.match(page, /Current classification does not depend on saved alert history/);
 });
 
 test("recovery progress, and duplicates shown as not counted", () => {
@@ -64,15 +63,15 @@ test("quiz tables show no Hints column: M6 no longer records hints", () => {
   assert.match(table, /<th>Activity<\/th><th>Completed \(PHT\)<\/th><th>First-answer score<\/th><\/tr>/);
   assert.doesNotMatch(table, /Hints|hintsUsed/);
   // The same table serves Supporting quiz history, the not-counted results and learner progress.
-  assert.match(page, /<h3>Supporting quiz history<\/h3><QuizTable/);
+  assert.match(page, /<h2>Quiz History<\/h2><QuizTable/);
   assert.match(page, /Other saved results \(not counted\)<\/h3><p>\{NOT_COUNTED_NOTE\}<\/p><QuizTable/);
   assert.match(table, /className="m7-scroll"/, "the responsive table wrapper is kept");
-  // Teacher Analytics > Assessments > Quiz Score Tracking: same rule; its scores remain.
+  // Teacher Analytics > Student Performance > Comprehension history: scores remain.
   const analytics = source("TeacherAnalyticsPage.tsx");
   assert.doesNotMatch(analytics, /Hints Used|hintsUsed|hints and/i);
-  assert.match(analytics, /"Correct",\s*"Score",\s*\]/);
-  assert.match(analytics, /formatPercentage\(\s*score\.scorePercentage\s*\)/);
-  assert.match(analytics, /counts the one final answer\s+given to each question/);
+  assert.match(analytics, /<th>First-answer score<\/th>/);
+  assert.match(analytics, /score\(result.scorePercentage\)/);
+  assert.match(analytics, /result.correctAnswers.*result.totalQuestions/);
 });
 
 test("module progress reads as passages completed; other activities add nothing", () => {

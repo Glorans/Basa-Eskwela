@@ -1,6 +1,8 @@
 import { allTime, filterRecords, type AnalyticsScope } from "./analyticsFilters.ts";
 import { getTeacherQuizAttempts, quizMetrics, type TeacherQuizAttempt } from "./teacherQuizService";
 import { countIndependentAssessments } from "./assessmentSource.ts";
+import { activeRecords, isActiveClassroom, type ActiveClassroomScope } from "./activeClassrooms.ts";
+import { getRoomEnrollments, getTeacherClassrooms } from "../../module4/services/classroomService";
 
 import { supabase } from "../../../lib/supabaseClient";
 import { getApiUrl } from "../../../lib/apiUrl";
@@ -109,10 +111,26 @@ export function calculateTeacherAnalytics(
   };
 }
 
-export async function getTeacherAnalytics(loadQuizzes = getTeacherQuizAttempts, scope: AnalyticsScope = allTime): Promise<TeacherAnalyticsSummary> {
-  const [attempts, quizzes] = await Promise.all([getTeacherOralReadingAttempts(), loadQuizzes()]);
+/** The Teacher's active rooms and the learners currently enrolled in them. */
+export async function getActiveClassroomScope(): Promise<ActiveClassroomScope> {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) throw new Error("Please sign in again to view analytics.");
+  const rooms = (await getTeacherClassrooms(user.id)).filter(isActiveClassroom);
+  const enrollments = await Promise.all(rooms.map(room => getRoomEnrollments(room.id)));
+  return {
+    rooms: rooms.map(room => ({ id: room.id, name: room.room_name })),
+    roomIds: new Set(rooms.map(room => room.id)),
+    studentIds: new Set(enrollments.flat().map(student => student.student_id)),
+  };
+}
 
-  return calculateTeacherAnalytics(filterRecords(attempts, scope), filterRecords(quizzes, scope));
+export async function getTeacherAnalytics(loadQuizzes = getTeacherQuizAttempts, scope: AnalyticsScope = allTime, loadActive: () => Promise<ActiveClassroomScope> = getActiveClassroomScope): Promise<TeacherAnalyticsSummary> {
+  const [attempts, quizzes, active] = await Promise.all([getTeacherOralReadingAttempts(), loadQuizzes(), loadActive()]);
+
+  return calculateTeacherAnalytics(
+    filterRecords(activeRecords(attempts, active, attempt => attempt.learnerId), scope),
+    filterRecords(activeRecords(quizzes, active, quiz => quiz.studentId), scope),
+  );
 }
 
 export async function getTeacherCompletionAnalytics(): Promise<TeacherCompletionAnalytics> {

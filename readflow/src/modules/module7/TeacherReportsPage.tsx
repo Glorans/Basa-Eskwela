@@ -4,8 +4,7 @@ import "./m7Dashboard.css";
 
 export default function TeacherReportsPage() {
   return (
-    <main className="m7-page m7-dashboard">
-      <header className="m7-dashboard-header m7-header-card"><div><h1>Reports</h1><p>Generate weekly performance reports and revisit saved results.</p></div></header>
+    <main className="m7-page m7-dashboard" aria-label="Reports">
       <div className="m7-dashboard-content">
       <WeeklyReportSection />
       </div>

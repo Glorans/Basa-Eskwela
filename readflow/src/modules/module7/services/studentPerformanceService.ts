@@ -1,5 +1,6 @@
 import { allTime, filterRecords, type AnalyticsScope } from "./analyticsFilters.ts";
 import { getTeacherQuizAttempts, quizMetrics } from "./teacherQuizService";
+import { isActiveClassroom } from "./activeClassrooms.ts";
 
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -110,7 +111,11 @@ export async function getStudentPerformance(loadQuizzes = getTeacherQuizAttempts
     );
   }
 
-  const classrooms = (await getTeacherClassrooms(user.id)).filter(room => !scope.roomId || room.id === scope.roomId);
+  const activeRooms = (await getTeacherClassrooms(user.id)).filter(isActiveClassroom);
+  const activeRoomIds = new Set(activeRooms.map(room => room.id));
+  // Work saved to an archived room is excluded; unattributed work stays with currently enrolled learners.
+  const inActiveRoom = (record: { roomId?: string | null }) => !record.roomId || activeRoomIds.has(record.roomId);
+  const classrooms = activeRooms.filter(room => !scope.roomId || room.id === scope.roomId);
 
   const [
     enrollmentsByRoom,
@@ -217,7 +222,7 @@ export async function getStudentPerformance(loadQuizzes = getTeacherQuizAttempts
     TeacherOralReadingAttemptSummary[]
   >();
 
-  filterRecords(attempts, scope).forEach((attempt) => {
+  filterRecords(attempts.filter(inActiveRoom), scope).forEach((attempt) => {
     if (!studentMap.has(attempt.learnerId)) return;
 
     const existing =
@@ -249,7 +254,7 @@ export async function getStudentPerformance(loadQuizzes = getTeacherQuizAttempts
     student.averageReadingSpeedWpm =
       readingMetrics.averageReadingSpeedWpm;
 
-    Object.assign(student, quizMetrics(filterRecords(quizzes, scope).filter(quiz => quiz.studentId === student.studentId)));
+    Object.assign(student, quizMetrics(filterRecords(quizzes.filter(inActiveRoom), scope).filter(quiz => quiz.studentId === student.studentId)));
   });
 
   const students = [...studentMap.values()].sort(

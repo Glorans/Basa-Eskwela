@@ -1,3 +1,4 @@
+import * as adminLabels from '../src/modules/module7/services/adminClassroomLabels.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -8,14 +9,23 @@ import * as score from '../src/modules/module7/services/scoreDisplay.ts';
 import * as dates from '../src/modules/module7/services/dateDisplay.ts';
 import * as source from '../src/modules/module7/services/assessmentSource.ts';
 import * as risk from '../src/modules/module7/services/studentSupportClassification.ts';
+import * as active from '../src/modules/module7/services/activeClassrooms.ts';
 const require = createRequire(import.meta.url);
+// Active rooms and the learners currently enrolled in them, from the saved fixture memberships.
+const activeScope = (rooms: { id: string; name: string }[]) => ({
+  rooms, roomIds: new Set(rooms.map(room => room.id)),
+  studentIds: new Set(rooms.flatMap(room => fixtures.memberships[room.id] ?? [])),
+});
 
 function setup(file: string, overrides: Record<string, any> = {}) {
   const runtime = createHookRuntime(require('react'));
   const calls: string[] = [];
+  const scopes: any[] = [];
   const response = async (name: string, value: any) => { calls.push(name); if (overrides[name] instanceof Error) throw overrides[name]; return overrides[name] ?? value; };
   const module = loadComponentModule(new URL(`../src/modules/module7/${file}`, import.meta.url), id => {
+    if (id.endsWith('/adminClassroomLabels')) return adminLabels;
     if (id === 'react') return runtime.react;
+    if (id === 'react-router-dom') return { Link: 'link' };
     if (id === 'react/jsx-runtime') return require(id);
     if (id === 'lucide-react') return new Proxy({}, { get: (_, name) => String(name) });
     if (id.endsWith('.css')) return {};
@@ -27,78 +37,117 @@ function setup(file: string, overrides: Record<string, any> = {}) {
     if (id.endsWith('PerformanceSelector')) return { default: 'selector' };
     if (id.endsWith('PerformanceTabs')) return { default: 'performance-tabs' };
     if (id.endsWith('AnalyticsFilterBar')) return { default: 'global-filters' };
+    if (id.endsWith('TeacherAnalyticsOverview')) return { default: 'teacher-overview' };
     if (id.endsWith('WeeklyReportSection')) return { default: 'weekly-reports' };
     if (id.endsWith('M7Pages')) return { RiskGuidance: 'risk-guidance', MetricsCards: 'metrics', NotCountedQuizzes: 'historical-quizzes', InterventionForm: 'intervention-form' };
     if (id.endsWith('teacherQuizService')) return { getTeacherQuizAttempts: () => response('teacher-quizzes', []) };
+    if (id.endsWith('activeClassrooms.ts')) return active;
     if (id.endsWith('teacherAnalyticsService')) return {
-      getTeacherAnalytics: () => response('teacher-analytics', fixtures.teacherAnalytics),
+      getActiveClassroomScope: () => response('active-classrooms', activeScope(fixtures.rooms)),
+      getTeacherAnalytics: (_quizzes: unknown, scope: unknown) => { scopes.push(scope); return response('teacher-analytics', fixtures.teacherAnalytics); },
       getTeacherCompletionAnalytics: () => response('teacher-completion', fixtures.teacherCompletion),
     };
     if (id.endsWith('classPerformanceService')) return { getClassPerformance: () => response('class-performance', fixtures.classPerformance) };
     if (id.endsWith('studentPerformanceService')) return { getStudentPerformance: () => response('student-performance', fixtures.studentPerformance) };
     if (id.endsWith('quizScoreService')) return { getQuizScores: () => response('quiz-scores', fixtures.quizzes) };
-    if (id.endsWith('classroomService')) return { getRoomEnrollments: (id: string) => response(`enrollment:${id}`, (fixtures.memberships[id] ?? []).map(student_id => ({ student_id }))) };
+    if (id.endsWith('classroomService')) return { getClassroomById: async (id: string) => ({id,room_code:id === 'room-a' ? 'ABC123' : 'XYZ789'}), getRoomEnrollments: (id: string) => response(`enrollment:${id}`, (fixtures.memberships[id] ?? []).map(student_id => ({ student_id }))) };
     if (id.endsWith('m7Service')) return { m7Request: (path: string) => response(path, path === '/system' ? fixtures.adminSystem : fixtures.adminStudents) };
     throw Error(`Unexpected import ${id}`);
-  }, { Error });
+  }, { Error, requestAnimationFrame: (callback: () => void) => callback(), document: { getElementById: () => null } });
   const render = (props = {}) => runtime.render(module.default ?? module.PerformanceSections, props);
-  return { ...runtime, module, render, calls };
+  return { ...runtime, module, render, calls, scopes };
 }
 const byId = (tree: any, id: string) => findAll(tree, node => node.props?.id === id)[0];
 const selectors = (tree: any, id: string) => byId(tree, id).props;
 const text = (tree: any) => JSON.stringify(tree);
 
-test('Teacher class and student selections keep one dashboard, IDs, metrics and snapshot scope', async () => {
-  const app = setup('TeacherAnalyticsPage.tsx');
-  app.render(); await tick(); let tree = app.render();
-  const initialCalls = [...app.calls];
-  assert.equal(selectors(tree, 'teacher-classroom').value, 'room-a');
-  selectors(tree, 'teacher-classroom').onChange('room-b'); tree = app.render();
-  assert.equal(selectors(tree, 'teacher-classroom').value, 'room-b');
-  const classPanel = byId(tree, 'performance-panel-0');
-  assert.equal(findAll(classPanel, node => node.key === 'room-b').length, 1);
-  assert.equal(findAll(classPanel, node => node.key === 'room-a').length, 0);
-  findAll(tree, node => node.type === 'performance-tabs')[0].props.onChange(1); tree = app.render();
-  assert.equal(byId(tree, 'performance-panel-0').props.hidden, true);
-  assert.equal(byId(tree, 'performance-panel-1').props.hidden, false);
-  const before = text(findAll(byId(tree, 'performance-panel-1'), node => node.key === 'ana'));
-  selectors(tree, 'teacher-student-classroom').onChange('room-b'); tree = app.render();
-  assert.equal(text(findAll(byId(tree, 'performance-panel-1'), node => node.key === 'ana')), before, 'multi-room student metrics and all room progress stay identical');
-  selectors(tree, 'teacher-student').onChange('ben'); tree = app.render();
-  assert.equal(findAll(byId(tree, 'performance-panel-1'), node => node.key === 'ana').length, 0);
-  assert.equal(findAll(byId(tree, 'performance-panel-1'), node => node.key === 'ben').length, 1);
-  selectors(tree, 'teacher-student-classroom').onChange('room-a'); tree = app.render();
-  assert.equal(selectors(tree, 'teacher-student').value, 'ana', 'unavailable selection falls back to an available student');
-  selectors(tree, 'teacher-student-classroom').onChange('room-empty'); tree = app.render();
-  assert.equal(selectors(tree, 'teacher-student').options.length, 0);
-  assert.match(text(tree), /No students in this classroom/);
-  assert.deepEqual(app.calls, initialCalls, 'local navigation never refetches or recalculates');
-  assert.doesNotMatch(text(tree), /The student list follows|teacher-student-scope/);
-});
-
-test('Teacher global classroom filter supplies equivalent controls without duplicate local filters', async () => {
+test('Teacher function navigation mounts only one dashboard and preserves refresh', async () => {
   const app = setup('TeacherAnalyticsPage.tsx'); app.render(); await tick(); let tree = app.render();
-  findAll(tree, node => node.type === 'global-filters')[0].props.onApply({ ...filters.allTime, roomId: 'room-a' });
-  app.render(); await tick(); tree = app.render();
-  assert.equal(byId(tree, 'teacher-student-classroom'), undefined);
-  assert.equal(byId(tree, 'teacher-classroom'), undefined);
-  assert.deepEqual(selectors(tree, 'teacher-student').options.map((s: any) => s.id), ['ana']);
+  assert.equal(findAll(tree, n => n.props.role === 'tabpanel').length, 1);
+  assert.ok(byId(tree, 'analytics-panel-0'));
+  assert.equal(findAll(tree, n => n.type === 'weekly-reports').length, 0);
+  const calls = [...app.calls];
+  for (const index of [1, 2, 0]) {
+    byId(tree, `analytics-tab-${index}`).props.onClick(); tree = app.render();
+    assert.equal(findAll(tree, n => n.props.role === 'tabpanel').length, 1);
+    assert.ok(byId(tree, `analytics-panel-${index}`));
+  }
+  assert.deepEqual(app.calls, calls);
+  const refresh = findAll(tree, n => n.props['aria-label'] === 'Refresh analytics')[0];
+  assert.equal(refresh.props.title, 'Refresh analytics'); refresh.props.onClick();
+  assert.equal(findAll(app.render(), n => n.props['aria-label'] === 'Refresh analytics')[0].props.disabled, true);
+  await tick(); assert.ok(app.calls.length > calls.length);
 });
 
-test('Teacher handles loading, failed requests, no classrooms and no students', async () => {
-  const app = setup('TeacherAnalyticsPage.tsx', { 'class-performance': { ...fixtures.classPerformance, classrooms: [] }, 'student-performance': { totalStudents: 0, students: [] } });
-  assert.match(text(app.render()), /Loading/); await tick();
-  assert.match(text(app.render()), /No classrooms found/); assert.match(text(app.render()), /No enrolled students yet/);
-  const failed = setup('TeacherAnalyticsPage.tsx', { 'class-performance': Error('Class fixture failed'), 'student-performance': Error('Student fixture failed') });
-  failed.render(); await tick(); const tree = failed.render();
-  assert.match(text(tree), /Class fixture failed/); assert.match(text(tree), /Student fixture failed/);
+test('Teacher selects students, searches, and opens existing scoped progress', async () => {
+  const app = setup('TeacherAnalyticsPage.tsx'); app.render(); await tick(); let tree = app.render();
+  byId(tree, 'analytics-tab-1').props.onClick(); tree = app.render();
+  selectors(tree, 'teacher-student').onChange('ben'); tree = app.render();
+  assert.equal(selectors(tree, 'teacher-student').value, 'ben');
+  assert.match(text(tree), /No results yet/);
+  findAll(tree, n => n.props['aria-label'] === 'View progress for Ben')[0].props.onClick(); tree = app.render();
+  assert.ok(byId(tree, 'student-progress-details'));
+  assert.match(text(tree), /No completed assessments/);
+  findAll(tree, n => n.type === 'input')[0].props.onChange({target:{value:'no match'}}); tree = app.render();
+  assert.match(text(tree), /No students match this name/);
+  assert.equal(byId(tree, 'student-progress-details'), undefined);
 });
 
-test('Admin classroom selection keeps comparison rows and system performance intact', () => {
+test('Teacher applies classroom scope and distinguishes failed and empty results', async () => {
+  const app = setup('TeacherAnalyticsPage.tsx'); app.render(); await tick(); let tree = app.render();
+  findAll(tree, n => n.type === 'global-filters')[0].props.onApply({...filters.allTime, roomId:'room-a'});
+  app.render(); await tick(); tree = app.render(); byId(tree, 'analytics-tab-1').props.onClick(); tree = app.render();
+  assert.deepEqual(selectors(tree, 'teacher-student').options.map((s:any) => s.id), ['ana']);
+  const failed = setup('TeacherAnalyticsPage.tsx', {'teacher-analytics':Error('Analytics unavailable')});
+  assert.match(text(failed.render()), /Loading/); await tick();
+  assert.match(text(failed.render()), /Analytics unavailable/);
+  const empty = setup('TeacherAnalyticsPage.tsx', {'class-performance':{...fixtures.classPerformance,totalClassrooms:0,classrooms:[]}});
+  empty.render(); await tick(); assert.match(text(empty.render()), /No classrooms found/);
+});
+
+test('Teacher Analytics lists active classrooms only and totals completion from them', async () => {
+  const app = setup('TeacherAnalyticsPage.tsx', {'active-classrooms':activeScope(fixtures.rooms.slice(0, 2))});
+  app.render(); await tick(); const tree = app.render();
+  const bar = findAll(tree, n => n.type === 'global-filters')[0].props;
+  assert.deepEqual(bar.rooms.map((room: any) => room.id), ['room-a', 'room-b']);
+  assert.equal(bar.resetMissingRoom, true);
+  const rows = findAll(tree, n => n.props?.['aria-label'] === 'Completion by Classroom')[0];
+  assert.equal(findAll(rows, n => n.type === 'article').length, 2);
+  assert.doesNotMatch(text(tree), /Empty classroom/);
+  assert.match(text(tree), /4 of 8/, 'completion totals are recomputed from active rooms only');
+});
+
+test('A selected classroom that is archived falls back to All Classrooms and keeps the period', async () => {
+  const app = setup('TeacherAnalyticsPage.tsx', {'active-classrooms':activeScope(fixtures.rooms.slice(0, 2))});
+  app.render(); await tick(); let tree = app.render();
+  const period = { startDate: '2026-11-02', endDate: '2026-11-08' };
+  findAll(tree, n => n.type === 'global-filters')[0].props.onApply({ roomId: 'room-empty', ...period });
+  app.render(); await tick(); app.render(); await tick(); tree = app.render();
+  assert.match(text(tree), /selected classroom has been archived, so All Classrooms is shown/);
+  assert.doesNotMatch(text(tree), /Loading analytics/);
+  assert.equal(JSON.stringify(app.scopes.at(-1)), JSON.stringify({ roomId: '', ...period }), 'period is kept');
+  byId(tree, 'analytics-tab-1').props.onClick(); tree = app.render();
+  assert.deepEqual(selectors(tree, 'teacher-student').options.map((s: any) => s.id), ['ana', 'ben'], 'All Classrooms student list');
+});
+
+test('No active classrooms shows an empty state instead of archived results', async () => {
+  const app = setup('TeacherAnalyticsPage.tsx', {'active-classrooms':activeScope([])});
+  app.render(); await tick(); const tree = app.render();
+  assert.match(text(tree), /No active classrooms/);
+  const link = findAll(tree, n => n.type === 'link')[0];
+  assert.equal(link.props.to, '/m3/teacher/archived-classrooms');
+  assert.doesNotMatch(text(tree), /Enrolled Students|Activity Completion|Class Average/);
+  assert.deepEqual(findAll(tree, n => n.type === 'global-filters')[0].props.rooms, []);
+});
+
+test('Admin classroom selection keeps comparison rows and system performance intact', async () => {
+  const labels = await adminLabels.loadAdminClassroomLabels(fixtures.adminSystem.details as any, async id => ({id,room_code:id === 'room-a' ? 'ABC123':'XYZ789'}));
   const app = setup('components/AdminAnalyticsSections.tsx');
-  let tree = app.render({ data: fixtures.adminSystem.details });
+  let tree = app.render({ data: fixtures.adminSystem.details, labels });
+  assert.deepEqual(selectors(tree, 'admin-classroom').options.slice(0,2).map((room:any)=>room.name), ['Grade 5 \u2014 Teacher T \u00b7 Room ABC123','Grade 5 \u2014 Teacher T \u00b7 Room XYZ789']);
+  assert.equal(selectors(tree, 'admin-classroom').value, 'room-a');
   const tableBefore = text(findAll(tree, node => node.type === 'table'));
-  selectors(tree, 'admin-classroom').onChange('room-b'); tree = app.render({ data: fixtures.adminSystem.details });
+  selectors(tree, 'admin-classroom').onChange('room-b'); tree = app.render({ data: fixtures.adminSystem.details, labels });
   assert.equal(text(findAll(tree, node => node.type === 'table')), tableBefore);
   const detail = findAll(tree, node => node.props?.['aria-labelledby'] === 'admin-classroom-detail')[0];
   assert.equal(findAll(detail, node => node.props?.data)[0].props.data, fixtures.adminSystem.details.classroomComparisons[1]);

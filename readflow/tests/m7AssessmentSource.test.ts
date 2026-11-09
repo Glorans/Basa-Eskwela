@@ -29,16 +29,9 @@ test('the source note distinguishes All Classrooms with independent work, withou
   assert.match(assessmentSourceNote(true, 5), /independent comprehension assessments are excluded/);
 });
 
-test('Teacher Analytics shows the source note in Overview and Assessments and a Source column per quiz', async () => {
+test('Teacher Analytics preserves source notes and classroom labels in student history', async () => {
   const page = await readFile(new URL('../src/modules/module7/TeacherAnalyticsPage.tsx', import.meta.url), 'utf8');
-  const assessments = page.indexOf('id="analytics-panel-2"');
-  assert.ok(assessments > 0);
-  const overview = page.slice(page.indexOf('id="analytics-panel-0"'), page.indexOf('id="analytics-panel-1"'));
-  assert.match(overview, /<AssessmentSourceNote[\s\S]*?independentCount=\{analytics\.independentComprehensionAttempts\}/);
-  const quizPanel = page.slice(assessments);
-  assert.match(quizPanel, /<AssessmentSourceNote[\s\S]*?independentCount=\{quizScores\.independentQuizzes\}/);
-  assert.match(quizPanel, /"Reading Module",\s*"Source",/);
-  // Names come only from the rooms loaded from the Teacher's own completion analytics.
-  assert.match(quizPanel, /assessmentSourceLabel\(\s*score,\s*rooms\s*\)/);
-  assert.match(page, /classroomFiltered=\{Boolean\(scope\.roomId\)\}/);
+  assert.match(page, /assessmentSourceNote\(Boolean\(scope.roomId\), analytics.independentComprehensionAttempts\)/);
+  assert.match(page, /<th>Source<\/th>/);
+  assert.match(page, /assessmentSourceLabel\(result, rooms\)/);
 });

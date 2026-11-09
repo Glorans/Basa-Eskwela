@@ -155,367 +155,341 @@ async function requestWeeklyReports(
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Weekly Performance Report PDF (A4 portrait, table layout). Layout only: every
+// value is printed from the saved report snapshot with the existing formatters.
+// ---------------------------------------------------------------------------
 function downloadWeeklyReportPdf(
   savedReport: SavedWeeklyReport
 ): void {
   const report = savedReport.report;
-  const pdf = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4",
-  });
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  pdf.setProperties({ title: `${PDF_BRAND} ${PDF_TITLE}`, subject: `${report.period.startDate} to ${report.period.endDate} (PHT)`, creator: PDF_BRAND });
+  pdf.setLineHeightFactor(1.3);
 
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
+  const left = 15;
+  const width = pageWidth - 30;
+  const contentTop = 19; // below the running header on continuation pages
+  const bottom = pageHeight - 18; // above the footer
+  const periodText = `${report.period.startDate} to ${report.period.endDate} (PHT)`;
+  let y = 14;
 
-  const left = 18;
-  const right = pageWidth - 18;
-  const contentWidth = right - left;
-  const bottomLimit = pageHeight - 22;
+  const mm = (points: number) => points * 0.3528;
+  const lineHeight = (points: number) => mm(points) * 1.3;
+  const style = (points: number, weight: "normal" | "bold" = "normal", color: PdfColor = PDF_TEXT) => {
+    pdf.setFont("helvetica", weight);
+    pdf.setFontSize(points);
+    pdf.setTextColor(...color);
+  };
+  const wrap = (value: string, available: number) => pdf.splitTextToSize(value, available) as string[];
+  const newPage = () => { pdf.addPage(); y = contentTop; };
 
-  let y = 22;
+  const HEADING = 11;
+  const NOTE = 8;
+  const CELL = 8.5;
+  const HEAD = 7.8;
+  const PAD_X = 2;
+  const PAD_Y = 1.15;
+  const SECTION_GAP = 5;
+  const headingHeight = lineHeight(HEADING) + 3;
 
-  function ensureSpace(height: number) {
-    if (y + height > bottomLimit) {
-      pdf.addPage();
-      y = 22;
-    }
+  function noteHeight(value: string | undefined, available = width) {
+    if (!value) return 0;
+    style(NOTE);
+    return wrap(value, available).length * lineHeight(NOTE) + 2;
   }
 
-  function addText(
-    value: string,
-    options: {
-      size?: number;
-      bold?: boolean;
-      gap?: number;
-    } = {}
-  ) {
-    const size = options.size ?? 10;
-    const gap = options.gap ?? 5;
-
-    pdf.setFont(
-      "helvetica",
-      options.bold ? "bold" : "normal"
-    );
-    pdf.setFontSize(size);
-    pdf.setTextColor(35, 55, 50);
-
-    const lines = pdf.splitTextToSize(
-      value,
-      contentWidth
-    ) as string[];
-
-    const lineHeight = size * 0.42 + 1;
-
-    ensureSpace(lines.length * lineHeight + gap);
-
-    pdf.text(lines, left, y);
-    y += lines.length * lineHeight + gap;
+  function note(value: string | undefined, x = left, available = width, color: PdfColor = PDF_MUTED) {
+    if (!value) return;
+    style(NOTE, "normal", color);
+    const lines = wrap(value, available);
+    pdf.text(lines, x, y, { baseline: "top" });
+    y += lines.length * lineHeight(NOTE) + 2;
   }
 
-  function addSection(title: string) {
-    ensureSpace(18);
-    y += 5;
+  function heading(title: string, x = left, available = width) {
+    style(HEADING, "bold", PDF_GREEN);
+    pdf.text(title, x, y, { baseline: "top" });
+    y += lineHeight(HEADING) + 1;
+    pdf.setDrawColor(...PDF_GREEN);
+    pdf.setLineWidth(0.35);
+    pdf.line(x, y, x + available, y);
+    y += 2;
+  }
 
-    pdf.setDrawColor(195, 210, 205);
-    pdf.line(left, y, right, y);
-    y += 8;
+  // Measures every cell once so rows can be kept whole and headers repeated.
+  function measure(table: PdfTable, available: number) {
+    const widths = table.columns.map((column) => column.share * available);
+    const cells = (values: string[], points: number, weight: "normal" | "bold") => {
+      style(points, weight);
+      const lines = values.map((value, index) => wrap(value, widths[index] - PAD_X * 2));
+      return { lines, height: Math.max(...lines.map((cell) => cell.length)) * lineHeight(points) + PAD_Y * 2 };
+    };
+    return {
+      widths,
+      header: cells(table.columns.map((column) => column.header), HEAD, "bold"),
+      rows: [
+        ...table.rows.map((row) => ({ ...cells(row, CELL, "normal"), total: false })),
+        ...(table.totalRow ? [{ ...cells(table.totalRow, CELL, "bold"), total: true }] : []),
+      ],
+    };
+  }
+  type Measured = ReturnType<typeof measure>;
 
-    addText(title, {
-      size: 13,
-      bold: true,
-      gap: 5,
+  function drawCells(table: PdfTable, measured: Measured, lines: string[][], height: number, x: number, points: number, weight: "normal" | "bold", color: PdfColor) {
+    style(points, weight, color);
+    let cellX = x;
+    lines.forEach((cell, index) => {
+      const right = table.columns[index].align === "right";
+      pdf.text(cell, right ? cellX + measured.widths[index] - PAD_X : cellX + PAD_X, y + PAD_Y, { baseline: "top", align: right ? "right" : "left" });
+      cellX += measured.widths[index];
+    });
+    y += height;
+  }
+
+  function drawHeader(table: PdfTable, measured: Measured, x: number, available: number) {
+    pdf.setFillColor(...PDF_HEADER_FILL);
+    pdf.rect(x, y, available, measured.header.height, "F");
+    drawCells(table, measured, measured.header.lines, measured.header.height, x, HEAD, "bold", PDF_GREEN);
+  }
+
+  /** Rows are never split; headers repeat on each page; the last row never sits alone. */
+  function drawTable(table: PdfTable, measured: Measured, continuation: string, x = left, available = width) {
+    drawHeader(table, measured, x, available);
+    let rowsOnPage = 0;
+    measured.rows.forEach((row, index) => {
+      const next = measured.rows[index + 1];
+      const lastPairSplits = index === measured.rows.length - 2 && rowsOnPage > 0 && next && y + row.height + next.height > bottom;
+      if (y + row.height > bottom || lastPairSplits) {
+        newPage();
+        style(NOTE, "bold", PDF_MUTED);
+        pdf.text(`${continuation} (continued)`, x, y, { baseline: "top" });
+        y += lineHeight(NOTE) + 1.5;
+        drawHeader(table, measured, x, available);
+        rowsOnPage = 0;
+      }
+      if (row.total) {
+        pdf.setFillColor(...PDF_TOTAL_FILL);
+        pdf.rect(x, y, available, row.height, "F");
+      }
+      drawCells(table, measured, row.lines, row.height, x, CELL, row.total ? "bold" : "normal", PDF_TEXT);
+      pdf.setDrawColor(...PDF_RULE);
+      pdf.setLineWidth(0.2);
+      pdf.line(x, y, x + available, y);
+      rowsOnPage += 1;
     });
   }
 
-  function addField(label: string, value: string | number) {
-    addText(`${label}: ${value}`, {
-      size: 10,
-      gap: 3,
+  // Height needed to keep a block's start together: header plus up to two rows.
+  const leadHeight = (measured: Measured) =>
+    measured.header.height + measured.rows.slice(0, 2).reduce((sum, row) => sum + row.height, 0);
+
+  /** A titled section: heading, optional note and tables, or an empty message. Headings never sit alone. */
+  function section(title: string, tables: PdfTable[], options: { note?: string; empty?: string } = {}) {
+    const blocks = tables.filter((table) => table.rows.length || table.totalRow).map((table) => ({ table, measured: measure(table, width) }));
+    const empty = blocks.length === 0 ? options.empty ?? "No records." : undefined;
+    const lead = headingHeight + noteHeight(options.note) + (blocks[0] ? leadHeight(blocks[0].measured) : noteHeight(empty));
+    if (y + lead > bottom) newPage();
+    heading(title);
+    note(options.note);
+    if (empty) note(empty, left, width, PDF_TEXT);
+    blocks.forEach(({ table, measured }, index) => {
+      if (index > 0) {
+        y += 3;
+        if (y + leadHeight(measured) > bottom) newPage();
+      }
+      drawTable(table, measured, title);
     });
+    y += SECTION_GAP;
   }
 
-  function addFooter() {
-    const pages = pdf.getNumberOfPages();
-
-    for (let page = 1; page <= pages; page += 1) {
-      pdf.setPage(page);
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(8);
-      pdf.setTextColor(110, 120, 115);
-
-      pdf.text(
-        `ReadFlow | Page ${page} of ${pages}`,
-        pageWidth / 2,
-        pageHeight - 12,
-        { align: "center" }
-      );
-    }
+  /** Two small Metric | Result tables side by side. */
+  function metricPair(sections: { title: string; table: PdfTable }[]) {
+    const gutter = 8;
+    const half = (width - gutter) / 2;
+    const measured = sections.map(({ table }) => measure(table, half));
+    const tallest = Math.max(...measured.map((item) => item.header.height + item.rows.reduce((sum, row) => sum + row.height, 0)));
+    if (y + headingHeight + tallest > bottom) newPage();
+    const start = y;
+    let end = y;
+    sections.forEach(({ title, table }, index) => {
+      const x = left + index * (half + gutter);
+      y = start;
+      heading(title, x, half);
+      drawTable(table, measured[index], title, x, half);
+      end = Math.max(end, y);
+    });
+    y = end + SECTION_GAP;
   }
 
-  addText("ReadFlow", {
-    size: 20,
-    bold: true,
-    gap: 6,
+  const metricColumns: PdfColumn[] = [{ header: "Metric", share: 0.62 }, { header: "Result", share: 0.38, align: "right" }];
+  const wpm = (value: number | null) => value === null ? "N/A" : formatNumber(value);
+
+  // Page 1 header: brand, title and the saved report's metadata.
+  const center = left + width / 2;
+  style(18, "bold", PDF_GREEN);
+  pdf.text(PDF_BRAND, center, y, { baseline: "top", align: "center" });
+  y += lineHeight(18);
+  style(12, "normal", PDF_TEXT);
+  pdf.text(PDF_TITLE, center, y, { baseline: "top", align: "center" });
+  y += lineHeight(12) + 3;
+  const meta: [string, string, number][] = [
+    ["Reporting Period", periodText, 0.33],
+    ["Generated", `${formatTimestamp(report.generatedAt)} (PHT)`, 0.3],
+    ["Report ID", savedReport.id, 0.37],
+  ];
+  const metaLines = meta.map(([, value, share]) => { style(8.5, "bold"); return wrap(value, share * width - 6); });
+  const metaHeight = 4 + lineHeight(7) + Math.max(...metaLines.map((lines) => lines.length)) * lineHeight(8.5) + 3;
+  pdf.setFillColor(...PDF_TOTAL_FILL);
+  pdf.setDrawColor(...PDF_RULE);
+  pdf.setLineWidth(0.2);
+  pdf.roundedRect(left, y, width, metaHeight, 1.5, 1.5, "FD");
+  let metaX = left + 3;
+  meta.forEach(([label, , share], index) => {
+    style(7, "bold", PDF_MUTED);
+    pdf.text(label.toUpperCase(), metaX, y + 3, { baseline: "top" });
+    style(8.5, "bold", PDF_TEXT);
+    pdf.text(metaLines[index], metaX, y + 3 + lineHeight(7) + 0.8, { baseline: "top" });
+    metaX += share * width;
   });
+  y += metaHeight + 7;
 
-  addText("Weekly Performance Report", {
-    size: 16,
-    bold: true,
-    gap: 8,
-  });
-
-  addField(
-    "Reporting Period",
-    `${report.period.startDate} to ${report.period.endDate} (PHT)`
-  );
-
-  addField(
-    "Generated",
-    `${formatTimestamp(report.generatedAt)} (PHT)`
-  );
-
-  addField("Report ID", savedReport.id);
-
-  addSection("Reading Performance");
-
-  addField(
-    "Reading Attempts",
-    report.reading.totalAttempts
-  );
-
-  addField(
-    "Students With Attempts",
-    report.reading.studentsWithAttempts
-  );
-
-  addField(
-    "Average Reading Accuracy",
-    formatPercentage(
-      report.reading.averagePronunciationAccuracy
-    )
-  );
-
-  addField(
-    "Average Reading Speed",
-    report.reading.averageReadingSpeedWpm === null
-      ? "N/A"
-      : `${formatNumber(
-          report.reading.averageReadingSpeedWpm
-        )} WPM`
-  );
-
-  addSection("Comprehension Performance");
-
-  addField(
-    "Completed Assessments",
-    report.comprehension.completedAssessments
-  );
-
-  addField(
-    "Students With Assessments",
-    report.comprehension.studentsWithAssessments
-  );
-
-  addField(
-    "Average Comprehension Score",
-    formatPercentage(
-      report.comprehension.averageScore
-    )
-  );
+  metricPair([
+    { title: "Reading Performance", table: { columns: metricColumns, rows: [
+      ["Reading Attempts", String(report.reading.totalAttempts)],
+      ["Students With Attempts", String(report.reading.studentsWithAttempts)],
+      ["Average Reading Accuracy", formatPercentage(report.reading.averagePronunciationAccuracy)],
+      ["Average Reading Speed (WPM)", wpm(report.reading.averageReadingSpeedWpm)],
+    ] } },
+    { title: "Comprehension Performance", table: { columns: metricColumns, rows: [
+      ["Completed Assessments", String(report.comprehension.completedAssessments)],
+      ["Students With Assessments", String(report.comprehension.studentsWithAssessments)],
+      ["Average Comprehension Score", formatPercentage(report.comprehension.averageScore)],
+    ] } },
+  ]);
 
   if (report.scope === "admin") {
-    if (report.learnerScope) addText(report.learnerScope);
-    addSection("Classroom Comparisons");
-    if (!report.classroomComparisons?.length) addText("No classrooms.");
-    report.classroomComparisons?.forEach((room) => {
-      ensureSpace(25);
-      addText(`${room.roomName} (${room.teacherName})`, { bold: true, gap: 3 });
-      addField("Participating / Enrolled", `${room.participatingStudents} / ${room.enrolledStudents}`);
-      addField("Readings / Average Reading Accuracy", `${room.readingAttempts} / ${formatPercentage(room.averageReadingAccuracy)}`);
-      addField("Assessments / Average Score", `${room.completedAssessments} / ${formatPercentage(room.averageScore)}`);
-      y += 3;
-    });
-    addSection("Student Performance Summaries");
-    if (!report.studentSummaries?.length) addText("No student results during the selected period.");
-    report.studentSummaries?.forEach((student) => {
-      ensureSpace(25);
-      addText(student.studentName, { bold: true, gap: 3 });
-      addField("Readings / Average Reading Accuracy", `${student.readingAttempts} / ${formatPercentage(student.averageReadingAccuracy)}`);
-      addField("Average Reading Speed", student.averageReadingSpeedWpm === null ? "N/A" : `${Math.round(student.averageReadingSpeedWpm)} WPM`);
-      addField("Assessments / Average Score", `${student.completedAssessments} / ${formatPercentage(student.averageScore)}`);
-      y += 3;
-    });
-    addSection("Competency Results");
-    Object.entries(report.competency ?? {}).forEach(([type, result]) => addField(COMPETENCY_LABELS[type] ?? type, competencyText(result)));
+    section("Classroom Comparisons", [{
+      columns: [
+        { header: "Classroom", share: 0.21 }, { header: "Teacher", share: 0.17 },
+        { header: "Participating / Enrolled", share: 0.13, align: "right" }, { header: "Readings", share: 0.1, align: "right" },
+        { header: "Avg. Reading Accuracy", share: 0.13, align: "right" }, { header: "Assessments", share: 0.14, align: "right" },
+        { header: "Avg. Score", share: 0.12, align: "right" },
+      ],
+      rows: (report.classroomComparisons ?? []).map((room) => [
+        room.roomName, room.teacherName, `${room.participatingStudents} / ${room.enrolledStudents}`, String(room.readingAttempts),
+        formatPercentage(room.averageReadingAccuracy), String(room.completedAssessments), formatPercentage(room.averageScore),
+      ]),
+    }], { note: report.learnerScope, empty: "No classrooms." });
+
+    section("Student Performance Summaries", [{
+      columns: [
+        { header: "Student", share: 0.28 }, { header: "Readings", share: 0.11, align: "right" },
+        { header: "Avg. Reading Accuracy", share: 0.15, align: "right" }, { header: "Avg. Reading Speed (WPM)", share: 0.16, align: "right" },
+        { header: "Assessments", share: 0.14, align: "right" }, { header: "Avg. Score", share: 0.16, align: "right" },
+      ],
+      rows: (report.studentSummaries ?? []).map((student) => [
+        student.studentName, String(student.readingAttempts), formatPercentage(student.averageReadingAccuracy),
+        student.averageReadingSpeedWpm === null ? "N/A" : String(Math.round(student.averageReadingSpeedWpm)),
+        String(student.completedAssessments), formatPercentage(student.averageScore),
+      ]),
+    }], { empty: "No student results during the selected period." });
+
+    section("Competency Results", [{
+      columns: [{ header: "Competency", share: 0.5 }, { header: "Result", share: 0.5, align: "right" }],
+      rows: Object.entries(report.competency ?? {}).map(([type, result]) => [COMPETENCY_LABELS[type] ?? type, competencyText(result)]),
+    }], { empty: "No competency results." });
   }
 
   if (report.riskClassifications) {
-    addSection("Current Risk Classifications");
-    addText(RISK_NOTE);
-    Object.entries(report.riskClassifications.counts).forEach(([label, count]) => addField(label, String(count)));
-    report.riskClassifications.students.forEach((student) => addField(student.studentName, student.classification));
+    section("Student Support / Risk Classification", [
+      // Category totals on one row: one column per existing classification.
+      { columns: Object.keys(report.riskClassifications.counts).map((label, _, labels) => ({ header: label, share: 1 / labels.length, align: "right" as const })),
+        rows: Object.keys(report.riskClassifications.counts).length ? [Object.values(report.riskClassifications.counts).map(String)] : [] },
+      { columns: [{ header: "Student", share: 0.6 }, { header: "Classification", share: 0.4 }],
+        rows: report.riskClassifications.students.map((student) => [student.studentName, student.classification]) },
+    ], { note: RISK_NOTE, empty: "No students to classify." });
   }
 
-  addSection("Current Assignment Completion Snapshot");
+  const completion = report.currentCompletionSnapshot;
+  section("Classroom Completion", [{
+    columns: [
+      { header: "Classroom", share: 0.46 }, { header: "Total Assignments", share: 0.18, align: "right" },
+      { header: "Completed", share: 0.16, align: "right" }, { header: "Completion Rate", share: 0.2, align: "right" },
+    ],
+    rows: completion.classrooms.map((room) => [room.roomName, String(room.totalAssignments), String(room.completedAssignments), formatPercentage(room.completionRate)]),
+    totalRow: completion.classrooms.length
+      ? [`All classrooms (${completion.totalClassrooms})`, String(completion.totalAssignments), String(completion.completedAssignments), formatPercentage(completion.completionRate)]
+      : undefined,
+  }], { empty: "No classroom records available." });
 
-  addText(
-    "The following values reflect assignment status when " +
-      "this report was generated. They are not historical " +
-      "completion rates for the selected week.",
-    { size: 9, gap: 6 }
-  );
+  const recordColumns = (fourth: string, fifth: string): PdfColumn[] => [
+    { header: "Student", share: 0.23 }, { header: "Reading Material", share: 0.33 }, { header: "Date Completed (PHT)", share: 0.2 },
+    { header: fourth, share: 0.11, align: "right" }, { header: fifth, share: 0.13, align: "right" },
+  ];
 
-  addField(
-    "Classrooms",
-    report.currentCompletionSnapshot.totalClassrooms
-  );
+  section("Weekly Reading Activity Records", [{
+    columns: recordColumns("Accuracy", "Speed (WPM)"),
+    rows: report.reading.attempts.map((attempt) => [
+      attempt.studentName, attempt.moduleTitle, formatTimestamp(attempt.completedAt),
+      formatPercentage(attempt.pronunciationAccuracy), wpm(attempt.readingSpeedWpm),
+    ]),
+  }], { empty: "No recorded reading attempts during the selected period." });
 
-  addField(
-    "Total Assignments",
-    report.currentCompletionSnapshot.totalAssignments
-  );
+  section("Weekly Comprehension Results", [{
+    columns: recordColumns("Correct Answers", "Score"),
+    rows: report.comprehension.assessments.map((assessment) => [
+      assessment.studentName, assessment.moduleTitle, formatTimestamp(assessment.completedAt),
+      formatAnswerCounts(assessment.correctAnswers, assessment.totalQuestions), formatScore(assessment.scorePercentage, 2),
+    ]),
+  }], { empty: "No completed comprehension assessments during the selected period." });
 
-  addField(
-    "Completed Assignments",
-    report.currentCompletionSnapshot.completedAssignments
-  );
-
-  addField(
-    "Completion Rate",
-    formatPercentage(
-      report.currentCompletionSnapshot.completionRate
-    )
-  );
-
-  addSection("Classroom Completion Breakdown");
-
-  if (
-    report.currentCompletionSnapshot.classrooms.length === 0
-  ) {
-    addText("No classroom records available.");
-  } else {
-    report.currentCompletionSnapshot.classrooms.forEach(
-      (room, index) => {
-        ensureSpace(23);
-
-        addText(`${index + 1}. ${room.roomName}`, {
-          bold: true,
-          gap: 3,
-        });
-
-        addField(
-          "Assignments",
-          room.totalAssignments
-        );
-
-        addField(
-          "Completed",
-          room.completedAssignments
-        );
-
-        addField(
-          "Completion Rate",
-          formatPercentage(room.completionRate)
-        );
-
-        y += 3;
-      }
-    );
+  // Running header (continuation pages) and footer with page numbers on every page.
+  const pages = pdf.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    pdf.setPage(page);
+    pdf.setDrawColor(...PDF_RULE);
+    pdf.setLineWidth(0.2);
+    if (page > 1) {
+      // Centered as one line: bold brand, then the title and period in the muted style.
+      const running = `  |  ${PDF_TITLE} - ${periodText}`;
+      style(8.5, "bold", PDF_GREEN);
+      const brandWidth = pdf.getTextWidth(PDF_BRAND);
+      style(7.5, "normal", PDF_MUTED);
+      const start = left + (width - brandWidth - pdf.getTextWidth(running)) / 2;
+      pdf.text(running, start + brandWidth, 9.4, { baseline: "top" });
+      style(8.5, "bold", PDF_GREEN);
+      pdf.text(PDF_BRAND, start, 9, { baseline: "top" });
+      pdf.line(left, 14, left + width, 14);
+    }
+    pdf.line(left, pageHeight - 13, left + width, pageHeight - 13);
+    style(7.5, "normal", PDF_MUTED);
+    pdf.text(`${PDF_BRAND} | ${PDF_TITLE} | ${periodText}`, left, pageHeight - 11, { baseline: "top" });
+    pdf.text(`Page ${page} of ${pages}`, left + width, pageHeight - 11, { baseline: "top", align: "right" });
   }
 
-  addSection("Weekly Reading Activity Records");
+  pdf.save(weeklyReportPdfFilename(savedReport));
+}
 
-  if (report.reading.attempts.length === 0) {
-    addText(
-      "No recorded reading attempts during the selected period."
-    );
-  } else {
-    report.reading.attempts.forEach((attempt, index) => {
-      ensureSpace(25);
+// Layout constants for downloadWeeklyReportPdf (read only when a PDF is generated).
+type PdfColor = [number, number, number];
+interface PdfColumn { header: string; share: number; align?: "left" | "right" }
+interface PdfTable { columns: PdfColumn[]; rows: string[][]; totalRow?: string[] }
 
-      addText(
-        `${index + 1}. ${attempt.studentName}`,
-        { bold: true, gap: 3 }
-      );
+const PDF_GREEN: PdfColor = [22, 78, 58];
+const PDF_TEXT: PdfColor = [33, 47, 43];
+const PDF_MUTED: PdfColor = [92, 108, 102];
+const PDF_HEADER_FILL: PdfColor = [226, 239, 230];
+const PDF_TOTAL_FILL: PdfColor = [244, 248, 245];
+const PDF_RULE: PdfColor = [214, 226, 219];
+const PDF_BRAND = "Basa Eskwela";
+const PDF_TITLE = "Weekly Performance Report";
 
-      addField("Module", attempt.moduleTitle);
-
-      addField(
-        "Completed",
-        formatTimestamp(attempt.completedAt)
-      );
-
-      addField(
-        "Reading Accuracy",
-        formatPercentage(
-          attempt.pronunciationAccuracy
-        )
-      );
-
-      addField(
-        "Reading Speed",
-        attempt.readingSpeedWpm === null
-          ? "N/A"
-          : `${formatNumber(
-              attempt.readingSpeedWpm
-            )} WPM`
-      );
-
-      y += 3;
-    });
-  }
-
-  addSection("Weekly Comprehension Results");
-
-  if (report.comprehension.assessments.length === 0) {
-    addText(
-      "No completed comprehension assessments during the selected period."
-    );
-  } else {
-    report.comprehension.assessments.forEach(
-      (assessment, index) => {
-        ensureSpace(25);
-
-        addText(
-          `${index + 1}. ${assessment.studentName}`,
-          { bold: true, gap: 3 }
-        );
-
-        addField(
-          "Module",
-          assessment.moduleTitle
-        );
-
-        addField(
-          "Completed",
-          formatTimestamp(assessment.completedAt)
-        );
-
-        addField(
-          "Correct Answers",
-          formatAnswerCounts(assessment.correctAnswers, assessment.totalQuestions)
-        );
-
-        addField(
-          "Score",
-          formatScore(assessment.scorePercentage, 2)
-        );
-
-        y += 3;
-      }
-    );
-  }
-
-  addFooter();
-
-  const filename =
-    `ReadFlow_Weekly_Report_` +
-    `${report.period.startDate}_to_` +
-    `${report.period.endDate}_` +
-    `${savedReport.id.slice(0, 8)}.pdf`;
-
-  pdf.save(filename);
+function weeklyReportPdfFilename(savedReport: SavedWeeklyReport): string {
+  const { period } = savedReport.report;
+  return `Basa_Eskwela_Weekly_Report_${period.startDate}_to_${period.endDate}_${savedReport.id.slice(0, 8)}.pdf`;
 }
 
 const panelStyle = {
@@ -576,7 +550,7 @@ function ReportMetric({
 }
 
 /** Teacher reports by default; scope "admin" uses the Admin-only routes and adds school-wide sections. */
-export default function WeeklyReportSection({ scope = "teacher" }: { scope?: ReportScope } = {}) {
+export default function WeeklyReportSection({ scope = "teacher", compact = false }: { scope?: ReportScope; compact?: boolean } = {}) {
   const [initialPeriod] = useState(
     getCurrentPhilippineWeek
   );
@@ -764,8 +738,9 @@ export default function WeeklyReportSection({ scope = "teacher" }: { scope?: Rep
 
   return (
     <section
+      className={compact ? "m7-weekly-compact" : undefined}
       aria-labelledby="weekly-report-heading"
-      style={{ marginTop: "28px" }}
+      style={{ marginTop: scope === "teacher" ? 0 : "28px" }}
     >
       <div style={{ marginBottom: "20px" }}>
         <h2 id="weekly-report-heading">
@@ -780,15 +755,14 @@ export default function WeeklyReportSection({ scope = "teacher" }: { scope?: Rep
           Weekly Performance Report
         </h2>
 
-        <p>
-          {scope === "admin"
-            ? "Generate a school-wide report for all Student accounts using recorded reading attempts, completed comprehension assessments, classroom comparisons, competency results and current assignment completion data. Independent Learner practice is not included."
-            : "Generate a report using recorded reading attempts, completed comprehension assessments, and current assignment completion data."}
-        </p>
+        {scope === "admin" && <p>
+          Generate a school-wide report for all Student accounts using recorded reading attempts, completed comprehension assessments, classroom comparisons, competency results and current assignment completion data. Independent Learner practice is not included.
+        </p>}
       </div>
 
-      <div style={panelStyle}>
+      <div className="m7-report-controls" style={panelStyle}>
         <div
+          className="m7-report-dates"
           style={{
             display: "flex",
             flexWrap: "wrap",
@@ -865,7 +839,7 @@ export default function WeeklyReportSection({ scope = "teacher" }: { scope?: Rep
           </button>
         </div>
 
-        <p
+        {scope === "admin" && !compact && (<p
           style={{
             fontSize: "12px",
             color: "#64748b",
@@ -875,7 +849,7 @@ export default function WeeklyReportSection({ scope = "teacher" }: { scope?: Rep
           Reporting periods follow Philippine Standard Time
           (PHT, UTC+8), from 12:00 AM on the start date
           through the end of the selected end date.
-        </p>
+        </p>)}
 
         {error && (
           <p
@@ -901,7 +875,7 @@ export default function WeeklyReportSection({ scope = "teacher" }: { scope?: Rep
         )}
       </div>
 
-      <div style={{ ...panelStyle, marginTop: "24px" }}>
+      <div className="m7-saved-reports" style={{ ...panelStyle, marginTop: "24px" }}>
         <div
           style={{
             display: "flex",
@@ -927,15 +901,17 @@ export default function WeeklyReportSection({ scope = "teacher" }: { scope?: Rep
           <button
             type="button"
             className="m3-button m3-button--secondary"
+            aria-label={compact ? "Refresh saved reports" : undefined}
+            title={compact ? "Refresh saved reports" : undefined}
             disabled={historyLoading}
             onClick={() => void loadReportHistory()}
           >
-            <RefreshCw size={16} />
-            {historyLoading ? "Loading..." : "Refresh"}
+            <RefreshCw size={16} aria-hidden="true" className={historyLoading ? "m3-spinner" : ""} />
+            {!compact && (historyLoading ? "Loading..." : "Refresh")}
           </button>
         </div>
 
-        <p
+        {!compact && (<p
           style={{
             color: "#64748b",
             fontSize: "13px",
@@ -943,7 +919,7 @@ export default function WeeklyReportSection({ scope = "teacher" }: { scope?: Rep
         >
           Reopen previously generated reports without
           recalculating their saved statistics. Load more to view older reports.
-        </p>
+        </p>)}
 
         {historyError && (
           <p

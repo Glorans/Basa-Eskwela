@@ -23,6 +23,9 @@ const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
     if (specifier.endsWith("/teacherQuizService")) {
       return { url: "data:text/javascript,export const getTeacherQuizAttempts = () => { throw new Error('Unexpected quiz request'); }; export const quizMetrics = () => {};", shortCircuit: true };
     }
+    if (specifier.endsWith("/classroomService")) {
+      return { url: "data:text/javascript,export const getTeacherClassrooms = () => { throw new Error('Unexpected classroom request'); }; export const getRoomEnrollments = getTeacherClassrooms;", shortCircuit: true };
+    }
     if (specifier.endsWith("/oralReadingService")) {
       return { url: "data:text/javascript,export const getTeacherOralReadingAttempts = () => { throw new Error('Unexpected reading request'); }", shortCircuit: true };
     }

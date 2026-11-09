@@ -1,0 +1,44 @@
+/* Teacher Student Support only; shared Admin and learner presentation stays unchanged. */
+.m7-support-page .m7-support-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:0 0 20px; }
+.m7-support-page .m7-support-tabs button { text-align:left; justify-content:flex-start; border:1px solid transparent; }
+.m7-support-page .m7-support-tabs button[aria-selected="true"] { background:#f5edcd; border-color:#c9b96e; box-shadow:none; }
+.m7-support-page :is(button,input,select,textarea,summary):focus:not(:focus-visible) { outline:none; box-shadow:none; }
+.m7-support-page :is(button,input,select,textarea,summary,[tabindex]):focus-visible { outline:2px solid #705b2c; outline-offset:3px; box-shadow:none; }
+.m7-support-page .m7-support-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-bottom:20px; }
+.m7-support-page .m7-support-controls label { display:grid; gap:8px; min-width:0; }
+.m7-support-page :is(input,select,textarea) { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #809c96; }
+.m7-support-page .m7-selected-support { margin:0 0 16px; }
+.m7-support-page .m7-support-disclosure { padding:12px 16px; margin:12px 0 20px; background:#dfeee5; border-radius:12px; }
+.m7-support-page .m7-support-disclosure summary { font-weight:800; min-height:44px; box-sizing:border-box; }
+.m7-support-page .m7-support-info { margin:12px 0 0; padding:0; background:transparent; box-shadow:none; }
+.m7-support-page .m7-support-info li { margin:8px 0; }
+.m7-support-page section { background:transparent; box-shadow:none; padding:0; margin:24px 0; }
+.m7-support-page section h2 { font-size:21px; margin:0 0 16px; }
+.m7-support-page .m7-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr)); gap:12px; }
+.m7-support-page .m7-card { background:#dfeee5; box-shadow:none; padding:16px; min-width:0; overflow-wrap:anywhere; }
+.m7-support-page .m7-card:nth-child(3n+2) { background:#f5edcd; }
+.m7-support-page .m7-card:nth-child(3n) { background:#f5dfd8; }
+.m7-support-page .m7-competency-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.m7-support-page .m7-competency-cards h3 { margin:0 0 12px; }
+.m7-support-page .m7-competency-cards strong { font-size:28px; }
+.m7-support-page table { min-width:540px; }
+.m7-support-page :is(th,td) { overflow-wrap:anywhere; }
+.m7-support-page thead th { overflow-wrap:normal; word-break:normal; }
+.m7-support-page .m7-classification { white-space:nowrap; overflow-wrap:normal; }
+.m7-support-page .m7-support-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.m7-support-page .m7-support-section-heading h2 { margin:0; }
+.m7-support-page .m7-intervention-history { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.m7-support-page .m7-intervention-history article > button { justify-self:start; align-self:start; width:auto; }
+.m7-support-page .m7-intervention-status { padding:6px 10px; border-radius:12px; background:#fffdf5; }
+.m7-support-page .m7-notes { white-space:pre-wrap; }
+.m7-support-page .m7-field-label { display:block; margin-bottom:4px; font-size:13px; font-weight:800; color:#526b63; white-space:normal; }
+.m7-support-page .m7-support-alerts { padding:16px; background:#f5dfd8; border-radius:12px; }
+.m7-support-page .m7-support-alerts h2 { font-size:18px; margin:0 0 8px; }
+.m7-support-page .m7-support-alerts ul { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.m7-support-page .m7-support-alerts li { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.m7-support-page .m7-intervention-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:20px; margin:20px 0; background:#dce8e7; border-radius:16px; }
+.m7-support-page .m7-intervention-form :is(h3,div,[role="alert"],label:has(textarea)) { grid-column:1/-1; }
+.m7-support-page .m7-intervention-form h3 { margin:0; }
+.m7-support-page .m7-intervention-form textarea { min-height:110px; resize:vertical; }
+@media(max-width:700px) { .m7-support-page .m7-support-tabs,.m7-support-page .m7-competency-cards,.m7-support-page .m7-intervention-history { grid-template-columns:1fr; } }
+@media(max-width:480px) { .m7-support-page .m7-support-controls,.m7-support-page .m7-intervention-form { grid-template-columns:1fr; } }

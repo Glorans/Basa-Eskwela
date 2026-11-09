@@ -13,12 +13,18 @@ const compile = (source: string) => ts.transpileModule(source, { compilerOptions
 
 function pdfOf(report: unknown, id = "abcdef12-0000-4000-8000-000000000000") {
   const text: string[] = [];
+  const placed: { value: string; y: number; page: number }[] = [];
   let saved: { name: string; bytes: number; pages: number } | null = null;
   class CapturingPdf extends jsPDF {
     constructor(...args: unknown[]) {
       super(...args);
       const write = this.text;
-      this.text = (value: unknown, ...rest: unknown[]) => { text.push(...[value].flat().map(String)); return write.call(this, value, ...rest); };
+      this.text = (value: unknown, ...rest: unknown[]) => {
+        const values = [value].flat().map(String);
+        text.push(...values);
+        placed.push(...values.map(item => ({ value: item, y: Number(rest[1]), page: this.getCurrentPageInfo().pageNumber })));
+        return write.call(this, value, ...rest);
+      };
       this.save = (name: string) => { saved = { name, bytes: this.output("arraybuffer").byteLength, pages: this.getNumberOfPages() }; return this; };
     }
   }
@@ -35,7 +41,7 @@ function pdfOf(report: unknown, id = "abcdef12-0000-4000-8000-000000000000") {
     return { supabase: {} };
   } });
   module.exports.downloadWeeklyReportPdf({ id, periodStart: "2026-10-26", periodEnd: "2026-11-01", createdAt: "2026-11-02T01:00:00.000Z", report });
-  return { all: text.join("\n"), saved: saved as unknown as { name: string; bytes: number; pages: number } };
+  return { all: text.join("\n"), text, placed, saved: saved as unknown as { name: string; bytes: number; pages: number } };
 }
 
 const baseReport = () => ({
@@ -50,10 +56,10 @@ const baseReport = () => ({
 
 test("Teacher PDF: real values, Philippine-time period, labels, WPM and a safe filename", () => {
   const { all, saved } = pdfOf({ ...baseReport(), riskClassifications: { counts: { "At Risk": 1 }, students: [{ studentId: "s", studentName: "Ana Santos", classification: "At Risk" }] } });
-  assert.equal(saved.name, "ReadFlow_Weekly_Report_2026-10-26_to_2026-11-01_abcdef12.pdf");
+  assert.equal(saved.name, "Basa_Eskwela_Weekly_Report_2026-10-26_to_2026-11-01_abcdef12.pdf");
   assert.ok(saved.bytes > 1000 && saved.pages >= 1);
   assert.match(all, /2026-10-26 to 2026-11-01 \(PHT\)/);
-  for (const shown of ["Reading Accuracy", "88.25", "WPM", "Ana Santos", "The Garden", "5", "83", "Grade 5 Sampaguita", "Current Risk Classifications", "At Risk", "75% benchmark"]) {
+  for (const shown of ["Reading Accuracy", "88.25", "WPM", "Ana Santos", "The Garden", "5", "83", "Grade 5 Sampaguita", "Student Support / Risk Classification", "At Risk", "75% benchmark"]) {
     assert.ok(all.includes(shown), shown);
   }
   assert.doesNotMatch(all, /pronunciation/i, "transcript accuracy is never called pronunciation");
@@ -80,6 +86,72 @@ test("No data prints N/A, never 0%; a report saved before risk sections were add
   assert.ok(saved.bytes > 0);
   assert.match(all, /N\/A/);
   assert.doesNotMatch(all, /\b0(\.00)?%/);
-  assert.doesNotMatch(all, /Current Risk Classifications/);
+  assert.doesNotMatch(all, /Risk Classification/);
   assert.match(all, /No completed comprehension assessments during the selected period/);
+});
+
+// ---- Table layout -----------------------------------------------------------
+const many = (count: number) => {
+  const report = baseReport();
+  report.reading.attempts = Array.from({ length: count }, (_, i) => ({ attemptId: `r${i}`, studentId: `s${i % 7}`, studentName: `Student ${i % 7}`,
+    moduleTitle: i % 5 ? `Material ${i}` : `Ang Matalinong Pagong at ang Mabilis na Kuneho sa Gitna ng Kagubatan ${i}`,
+    completedAt: new Date(Date.UTC(2026, 9, 26, 1, i)).toISOString(), pronunciationAccuracy: 50 + (i % 50) + 0.25, readingSpeedWpm: 200 + i + 0.75 }));
+  report.comprehension.assessments = Array.from({ length: count }, (_, i) => ({ attemptId: `q${i}`, studentId: `s${i % 7}`, studentName: `Learner ${i % 7}`,
+    moduleTitle: `Story ${i}`, completedAt: new Date(Date.UTC(2026, 9, 27, 2, i)).toISOString(), correctAnswers: i % 7, totalQuestions: 6 + (i % 3),
+    scorePercentage: Math.round((i % 7) / (6 + (i % 3)) * 10000) / 100 }));
+  return report;
+};
+const FOOTER = "Basa Eskwela | Weekly Performance Report | 2026-10-26 to 2026-11-01 (PHT)";
+
+test("PDF is branded Basa Eskwela on every page and has no completion snapshot paragraph", () => {
+  const { all, text, saved } = pdfOf(many(120));
+  assert.ok(saved.pages > 2);
+  assert.doesNotMatch(all, /ReadFlow/);
+  assert.doesNotMatch(all, /not historical completion rates|reflect assignment status/);
+  assert.equal(text.filter(value => value === FOOTER).length, saved.pages);
+  for (let page = 1; page <= saved.pages; page += 1) assert.ok(text.includes(`Page ${page} of ${saved.pages}`));
+  for (const heading of ["Reading Performance", "Comprehension Performance", "Classroom Completion", "Weekly Reading Activity Records", "Weekly Comprehension Results"]) {
+    assert.ok(text.includes(heading), heading);
+  }
+  for (const header of ["Metric", "Result", "Total Assignments", "Completed", "Completion Rate", "Reading Material", "Date Completed (PHT)", "Speed (WPM)"]) {
+    assert.ok(all.includes(header), header);
+  }
+});
+
+test("every reading and comprehension record is printed with its exact saved values; repeats are kept", () => {
+  const report = many(90);
+  report.reading.attempts.push({ ...report.reading.attempts[1], attemptId: "repeat" });
+  const lines = pdfOf(report).text;
+  const count = (value: string) => lines.filter(line => line === value).length;
+  for (const attempt of report.reading.attempts) {
+    assert.ok(count(`${attempt.pronunciationAccuracy.toFixed(2)}%`) >= 1, attempt.attemptId);
+  }
+  // Speeds are unique per record, so each must print exactly once; the repeated attempt prints twice.
+  for (const attempt of report.reading.attempts.slice(2, 90)) assert.equal(count(attempt.readingSpeedWpm.toFixed(2)), 1, attempt.attemptId);
+  assert.equal(count(report.reading.attempts[1].readingSpeedWpm.toFixed(2)), 2, "repeated attempt is not merged");
+  for (const assessment of report.comprehension.assessments) {
+    assert.equal(count(assessment.moduleTitle), 1, assessment.moduleTitle);
+    assert.ok(count(`${assessment.correctAnswers}/${assessment.totalQuestions}`) >= 1 && count(`${assessment.scorePercentage.toFixed(2)}%`) >= 1, assessment.attemptId);
+  }
+});
+
+test("long tables repeat their headers, keep rows above the footer, and never leave a lone last row", () => {
+  const { text, placed, saved } = pdfOf(many(150));
+  const continued = (title: string) => text.filter(value => value === `${title} (continued)`).length;
+  assert.ok(continued("Weekly Reading Activity Records") >= 2);
+  assert.ok(continued("Weekly Comprehension Results") >= 2);
+  assert.equal(text.filter(value => value === "Speed (WPM)").length, continued("Weekly Reading Activity Records") + 1, "header repeated on each continued page");
+  assert.equal(text.filter(value => value === "Score").length, continued("Weekly Comprehension Results") + 1, "header repeated on each continued page");
+  const body = placed.filter(item => item.value !== FOOTER && !/^Page \d+ of \d+$/.test(item.value));
+  assert.ok(body.every(item => item.y < 297 - 18), "no body text in the footer area");
+  const lastPageRows = placed.filter(item => item.page === saved.pages && /^\d+\/\d+$/.test(item.value));
+  assert.ok(lastPageRows.length >= 2, "the final page carries at least two result rows");
+});
+
+test("Classroom Completion is a table with the saved totals; empty sections say so", () => {
+  const { all } = pdfOf(baseReport());
+  for (const shown of ["Grade 5 Sampaguita", "All classrooms (1)", "50.00%"]) assert.ok(all.includes(shown), shown);
+  const empty = baseReport();
+  empty.currentCompletionSnapshot = { ...empty.currentCompletionSnapshot, totalClassrooms: 0, totalAssignments: 0, completedAssignments: 0, completionRate: null, classrooms: [] } as never;
+  assert.match(pdfOf(empty).all, /No classroom records available/);
 });

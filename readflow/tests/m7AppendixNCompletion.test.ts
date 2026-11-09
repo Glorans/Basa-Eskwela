@@ -1,3 +1,4 @@
+import * as adminLabels from '../src/modules/module7/services/adminClassroomLabels.ts';
 // M7 Appendix N completion: Independent Learner progress, Admin student performance, Admin reports,
 // navigation and labels. No network: the analytics request function is a stub.
 import assert from "node:assert/strict";
@@ -18,6 +19,7 @@ const links = (tree: unknown) => findAll(tree, (node: any) => node.type === "a")
 function load(path: string, responses: Record<string, unknown>, requests: string[] = []) {
   const runtime = createHookRuntime(require("react"));
   const module = loadComponentModule(new URL(`../src/modules/module7/${path}`, import.meta.url), (id) => {
+    if (id.endsWith('/adminClassroomLabels')) return adminLabels;
     if (id === "react") return runtime.react;
     if (id === "react/jsx-runtime") return require("react/jsx-runtime");
     if (id === "react-router-dom") return { Link: "a" };
@@ -159,5 +161,5 @@ test("labels: M7 never calls transcript-based Reading Accuracy a pronunciation s
     const visible = read(file).match(/"[^"]*[Pp]ronunciation accuracy[^"]*"|>[^<]*[Pp]ronunciation accuracy[^<]*</g) ?? [];
     assert.deepEqual(visible, [], file);
   }
-  assert.match(read("modules/module7/TeacherAnalyticsPage.tsx"), /"Average transcript-based reading accuracy"/);
+  assert.match(read("modules/module7/TeacherAnalyticsPage.tsx"), /"Existing transcript-based reading accuracy\."/);
 });

@@ -1,0 +1,85 @@
+/* Teacher overview only; shared Admin, Support and Reports styles stay unchanged. */
+.m7-dashboard.m7-teacher-dashboard .m7-dashboard-header { padding:16px 20px; margin-bottom:16px; gap:16px; flex-direction:row; align-items:center; }
+.m7-dashboard.m7-teacher-dashboard .m7-dashboard-header h1 { font-size:clamp(24px,2.5vw,32px); margin:0; }
+.m7-dashboard.m7-teacher-dashboard .m7-dashboard-header p { margin:4px 0 0; font-size:14px; line-height:1.5; }
+.m7-dashboard.m7-teacher-dashboard button.m7-refresh-icon { width:44px; height:44px; min-width:44px; padding:0; flex-shrink:0; }
+.m7-dashboard.m7-teacher-dashboard section[aria-label="Analytics filters"] { padding:16px; margin:12px 0 20px; }
+.m7-dashboard.m7-teacher-dashboard .m7-filter-form { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.m7-dashboard.m7-teacher-dashboard .m7-filter-form label { gap:6px; }
+.m7-dashboard.m7-teacher-dashboard .m7-filter-actions { gap:10px; }
+.m7-teacher-dashboard .m7-teacher-overview section { background:#fffdf5; box-shadow:none; margin:24px 0; }
+.m7-teacher-dashboard .m7-section-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:20px; }
+.m7-teacher-dashboard .m7-section-heading h2,.m7-teacher-dashboard .m7-support-shortcut h2 { margin:0; font-size:24px; line-height:1.3; }
+.m7-teacher-dashboard .m7-eyebrow { margin:0 0 6px; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#526b63; }
+.m7-teacher-dashboard .m7-overview-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:1fr; gap:16px; }
+.m7-teacher-dashboard .m7-overview-cards article { background:#dfeee5; border-radius:16px; padding:22px; border:0; display:flex; flex-direction:column; }
+.m7-teacher-dashboard .m7-overview-cards article:nth-child(2) { background:#f5edcd; }
+.m7-teacher-dashboard .m7-overview-cards article:nth-child(3) { background:#e9e0ef; }
+.m7-teacher-dashboard .m7-overview-cards h3 { font-size:15px; margin:0 0 14px; }
+.m7-teacher-dashboard .m7-overview-cards strong { display:block; font-size:clamp(24px,2.8vw,36px); line-height:1.25; overflow-wrap:anywhere; }
+.m7-teacher-dashboard .m7-teacher-overview p { line-height:1.65; }
+.m7-teacher-dashboard .m7-overview-cards p { font-size:13px; margin:12px 0 0; color:#465f55; }
+.m7-teacher-dashboard .m7-overview-note { font-size:13px; color:#465f55; margin:16px 0 0; }
+.m7-teacher-dashboard .m7-score-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+.m7-teacher-dashboard .m7-score-overview { padding:20px; border:1px solid #d4dfd3; border-radius:16px; }
+.m7-teacher-dashboard .m7-score-overview h3 { margin:0 0 12px; font-size:17px; }
+.m7-teacher-dashboard .m7-score-overview strong { display:block; font-size:28px; }
+.m7-teacher-dashboard .m7-score-overview p { color:#465f55; font-size:14px; margin-bottom:0; }
+.m7-teacher-dashboard .m7-score-track { height:12px; border-radius:12px; background:#e0e7de; overflow:hidden; margin-top:18px; }
+.m7-teacher-dashboard .m7-score-track span { display:block; height:100%; background:#247561; border-radius:12px; }
+.m7-teacher-dashboard .m7-score-overview:nth-child(2) .m7-score-track span { background:#d99d19; }
+.m7-teacher-dashboard .m7-overview-empty { padding:20px; background:#edf3eb; border-radius:12px; }
+.m7-teacher-dashboard .m7-student-search { display:grid; gap:6px; font-size:13px; min-width:0; }
+.m7-teacher-dashboard .m7-student-search input { padding:10px 12px; border:1px solid #809c96; width:100%; box-sizing:border-box; }
+.m7-teacher-dashboard .m7-progress-table { min-width:720px; font-size:14px; }
+.m7-teacher-dashboard .m7-progress-table caption { text-align:left; padding:8px 0 16px; font-size:13px; color:#465f55; }
+.m7-teacher-dashboard .m7-progress-table thead th { background:#edf3eb; white-space:nowrap; }
+.m7-teacher-dashboard .m7-progress-table tbody th { background:transparent; }
+.m7-teacher-dashboard .m7-progress-table td,.m7-teacher-dashboard .m7-progress-table tbody th { border-bottom:1px solid #dce6da; vertical-align:middle; }
+.m7-teacher-dashboard .m7-progress-table small { display:block; margin-top:5px; color:#526b63; }
+.m7-dashboard.m7-teacher-dashboard .m7-support-shortcut { display:flex; align-items:center; gap:16px; border:0; background:#e9e0ef; padding:16px 20px; }
+.m7-teacher-dashboard .m7-support-shortcut > div { flex:1; }
+.m7-teacher-dashboard .m7-support-shortcut a { flex-shrink:0; }
+.m7-teacher-dashboard .m7-details { margin-top:24px; min-width:0; }
+.m7-teacher-dashboard .m7-details > h2 { font-size:24px; margin:0 0 12px; }
+.m7-dashboard.m7-teacher-dashboard .m7-details .m7-tabs { margin:12px 0; gap:8px; }
+.m7-dashboard.m7-teacher-dashboard .m7-details section { padding:16px; margin:16px 0 !important; box-shadow:none; background:transparent; }
+.m7-teacher-dashboard .m7-details h2 { font-size:22px; margin:0 0 8px; }
+.m7-teacher-dashboard .m7-details p { line-height:1.5; }
+.m7-teacher-dashboard .m7-compact-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.m7-teacher-dashboard .m7-compact-metric { background:#dfeee5; padding:16px; border:0; border-radius:16px; box-shadow:none; }
+.m7-teacher-dashboard .m7-compact-metric:nth-child(3n+2) { background:#f5edcd; }
+.m7-teacher-dashboard .m7-compact-metric:nth-child(3n) { background:#e9e0ef; }
+.m7-teacher-dashboard .m7-compact-metric h3 { display:flex; align-items:center; gap:8px; font-size:14px; margin:0 0 10px; }
+.m7-teacher-dashboard .m7-compact-metric h3 svg { flex-shrink:0; }
+.m7-teacher-dashboard .m7-compact-metric strong { font-size:26px; line-height:1.25; }
+.m7-teacher-dashboard .m7-compact-metric p { margin:8px 0 0; font-size:13px; color:#465f55; }
+.m7-teacher-dashboard .m7-completion-row { display:grid; gap:8px; background:#dfeee5; border-radius:12px; padding:12px 16px; }
+.m7-teacher-dashboard .m7-weekly-compact .m7-report-controls,.m7-teacher-dashboard .m7-weekly-compact .m7-saved-reports { padding:16px !important; background:#dfeee5 !important; box-shadow:none !important; border-radius:16px !important; }
+.m7-teacher-dashboard .m7-weekly-compact .m7-report-dates { display:grid !important; grid-template-columns:1fr 1fr auto; gap:12px !important; }
+.m7-teacher-dashboard .m7-report-dates label { min-width:0; }
+.m7-teacher-dashboard .m7-weekly-compact div { min-width:0; overflow-wrap:anywhere; }
+.m7-teacher-dashboard .m7-report-dates input { box-sizing:border-box; width:100%; border-radius:12px !important; }
+.m7-teacher-dashboard button[aria-label="Refresh saved reports"] { width:44px; height:44px; min-width:44px; padding:0; }
+.m7-teacher-dashboard .m7-saved-reports table { min-width:480px; font-size:14px; }
+.m7-teacher-dashboard .m7-saved-reports td,.m7-teacher-dashboard .m7-saved-reports th { padding:10px 12px !important; }
+@media(min-width:1100px) { .m7-teacher-dashboard .m7-compact-metrics:has(> :nth-child(4):last-child) { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(max-width:900px) { .m7-teacher-dashboard .m7-compact-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .m7-teacher-dashboard .m7-weekly-compact .m7-report-dates { grid-template-columns:1fr 1fr; } .m7-teacher-dashboard .m7-report-dates > button { grid-column:1/-1; } }
+@media(max-width:480px) { .m7-teacher-dashboard .m7-compact-metrics,.m7-teacher-dashboard .m7-weekly-compact .m7-report-dates { grid-template-columns:1fr; } }
+@media(max-width:1000px) { .m7-teacher-dashboard .m7-overview-cards { grid-template-columns:1fr; } .m7-teacher-dashboard .m7-support-shortcut { align-items:stretch; flex-direction:column; } }
+@media(max-width:600px) { .m7-teacher-dashboard .m7-score-grid { grid-template-columns:1fr; } .m7-teacher-dashboard .m7-section-heading { align-items:stretch; flex-direction:column; } }
+@media(max-width:480px) { .m7-dashboard.m7-teacher-dashboard .m7-filter-form { grid-template-columns:1fr; } .m7-dashboard.m7-teacher-dashboard .m7-filter-actions button { padding:10px; } }
+/* Function navigation: one mounted panel, compact heading, keyboard-only focus. */
+.m7-dashboard.m7-teacher-dashboard .m7-function-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:16px 0; }
+.m7-dashboard.m7-teacher-dashboard .m7-function-tabs button { justify-content:space-between; text-align:left; background:#dce8e7; border:1px solid transparent; }
+.m7-dashboard.m7-teacher-dashboard .m7-function-tabs button[aria-selected="true"] { background:#f5edcd; border-color:#c9b96e; box-shadow:none; }
+.m7-dashboard.m7-teacher-dashboard :is(button,input,select,a):focus:not(:focus-visible) { outline:none; box-shadow:none; }
+.m7-dashboard.m7-teacher-dashboard :is(button,input,select,a,[role="tabpanel"]):focus-visible { outline:2px solid #705b2c; outline-offset:3px; box-shadow:none; }
+.m7-teacher-dashboard .m7-compact-metric:nth-child(3n) { background:#f5dfd8; }
+.m7-teacher-dashboard [aria-controls="student-progress-details"] { margin-top:16px; }
+.m7-teacher-dashboard .m7-completion-row + .m7-completion-row { margin-top:12px; }
+@media(max-width:600px) { .m7-dashboard.m7-teacher-dashboard .m7-function-tabs { grid-template-columns:1fr; gap:8px; } }
+
+.m7-teacher-dashboard .m7-analytics-navigation { display:grid; grid-template-columns:minmax(0,1fr) 44px; align-items:start; gap:12px; margin-bottom:16px; }
+.m7-teacher-dashboard .m7-analytics-navigation > .m7-refresh-icon { grid-column:2; grid-row:1; }
+.m7-dashboard.m7-teacher-dashboard .m7-analytics-navigation > .m7-function-tabs { grid-column:1; grid-row:1; margin:0; }

@@ -1,5 +1,6 @@
+import { loadAdminClassroomLabels } from './services/adminClassroomLabels';
 import PerformanceSelector from './components/PerformanceSelector';
-import { getRoomEnrollments } from '../module4/services/classroomService';
+import { getRoomEnrollments, getClassroomById } from '../module4/services/classroomService';
 import { useCallback, useEffect, useState } from 'react';
 import { formatAnalyticsDate as displayDate, formatAnalyticsDateTime as date } from './services/dateDisplay';
 import { formatComprehension, formatQuizScore, formatScore, passageProgressText } from './services/scoreDisplay';
@@ -35,8 +36,9 @@ export default function AdminStudentPerformancePage() {
     let active = true;
     setRoomsLoading(true); setRoomError('');
     // Reuse the authorized classroom options; student rows contain names only.
-    m7Request<AdminSystemData>('/system').then(result => {
-      if (active) setRooms(result.details.classroomOptions);
+    m7Request<AdminSystemData>('/system').then(async result => {
+      const labels = await loadAdminClassroomLabels(result.details, getClassroomById);
+      if (active) setRooms(labels.map(room => ({id:room.id,name:room.label})));
     }).catch(e => { if (active) setRoomError(e instanceof Error ? e.message : 'Unable to load classrooms.'); })
       .finally(() => { if (active) setRoomsLoading(false); });
     return () => { active = false; };
@@ -64,7 +66,7 @@ export default function AdminStudentPerformancePage() {
     (!roomId || (membership?.roomId === roomId && membership.studentIds.includes(s.id))) &&
     (filter === 'all' || (filter === 'active' ? isActiveWarning(s.classification) : s.classification === 'No assessment data')));
   const activeStudent = !loading && !error && !membershipLoading && !membershipError && shown.some(student => student.id === selected) ? selected : '';
-  return <main className="m7-page m7-dashboard">
+  return <main className="m7-page m7-dashboard m7-admin-dashboard">
     <header className="m7-dashboard-header m7-header-card"><div><h1>Student Performance</h1>
       <p>Individual reading and comprehension results for every Student account. Independent Learners are not included.</p></div></header>
     <div className="m7-dashboard-content">

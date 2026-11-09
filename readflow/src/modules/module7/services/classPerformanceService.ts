@@ -1,6 +1,7 @@
 import { allTime, filterRecords, type AnalyticsScope } from "./analyticsFilters.ts";
 import { getTeacherQuizAttempts, quizMetrics } from "./teacherQuizService";
 import { attributeClassroomAttempts } from "./classroomAttribution";
+import { isActiveClassroom } from "./activeClassrooms.ts";
 
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -73,7 +74,8 @@ export async function getClassPerformance(loadQuizzes = getTeacherQuizAttempts, 
     );
   }
 
-  const classrooms = (await getTeacherClassrooms(user.id)).filter(room => !scope.roomId || room.id === scope.roomId);
+  // Active classrooms only; attempts and quizzes are attributed to these rooms alone.
+  const classrooms = (await getTeacherClassrooms(user.id)).filter(room => isActiveClassroom(room) && (!scope.roomId || room.id === scope.roomId));
 
   const [
     enrollmentsByClass,
