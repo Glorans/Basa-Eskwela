@@ -230,3 +230,56 @@
     transition: none;
   }
 }
+
+
+/* ABOUT US — UPPER RIGHT CORNER */
+
+.landing-page {
+  position: relative;
+}
+
+.landing-top-nav {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  left: auto;
+  width: auto;
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.landing-top-about {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  padding: 10px 20px;
+  background: #ffcf4d;
+  border: 2px solid #ffcf4d;
+  border-radius: 12px;
+  color: #004a4d;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.2s ease;
+}
+
+.landing-top-about:hover {
+  background: #ffda70;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 600px) {
+  .landing-top-nav {
+    top: 16px;
+    right: 16px;
+  }
+
+  .landing-top-about {
+    padding: 8px 14px;
+    font-size: 0.85rem;
+  }
+}

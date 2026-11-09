@@ -1,11 +1,15 @@
+
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 
 import LandingPage from "./pages/LandingPage";
+import AboutUsPage from "./pages/AboutUsPage";
 
 import ForgotPasswordPage from "./modules/module1/pages/ForgotPasswordPage";
 import LoginPage from "./modules/module1/pages/LoginPage";
 import ResetPasswordPage from "./modules/module1/pages/ResetPasswordPage";
 import SignupPage from "./modules/module1/pages/SignupPage";
+import TermsPage from "./pages/TermsPage";
+import PrivacyPage from "./pages/PrivacyPage";
 import RoleSelectionPage from "./modules/module1/pages/RoleSelectionPage";
 import ProfileSetupPage from "./modules/module1/pages/ProfileSetupPage";
 import TeacherVerificationPage from "./modules/module1/pages/TeacherVerificationPage";
@@ -64,16 +68,26 @@ import TeacherOralReadingAttemptPage from "./modules/module5/pages/TeacherOralRe
 import ComprehensionPage from "./modules/module6/pages/ComprehensionPage";
 import TeacherAnalyticsPage from "./modules/module7/TeacherAnalyticsPage";
 import TeacherReportsPage from "./modules/module7/TeacherReportsPage";
-import { StudentProgressPage, AdminAnalyticsPage, TeacherSupportPage } from "./modules/module7/M7Pages";
+import {
+  StudentProgressPage,
+  AdminAnalyticsPage,
+  TeacherSupportPage,
+} from "./modules/module7/M7Pages";
 import AdminStudentPerformancePage from "./modules/module7/AdminStudentPerformancePage";
 import AdminReportsPage from "./modules/module7/AdminReportsPage";
 
 function App() {
   return (
     <Routes>
+      {/* PUBLIC PAGES */}
       <Route path="/" element={<LandingPage />} />
+      <Route path="/about" element={<AboutUsPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+
+      {/* KEEP: TERMS AND CONDITIONS + PRIVACY POLICY */}
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
 
       <Route
         path="/forgot-password"
@@ -82,7 +96,9 @@ function App() {
 
       <Route
         path="/verification"
-        element={<Navigate to="/forgot-password" replace />}
+        element={
+          <Navigate to="/forgot-password" replace />
+        }
       />
 
       <Route
@@ -90,11 +106,13 @@ function App() {
         element={<ResetPasswordPage />}
       />
 
+      {/* AUTHENTICATION AND ONBOARDING */}
       <Route element={<RequireAuth allowUnassignedRole />}>
         <Route
           path="/teacher-verification"
           element={<TeacherVerificationPage />}
         />
+
         <Route
           path="/select-role"
           element={<RoleSelectionPage />}
@@ -104,7 +122,11 @@ function App() {
       <Route
         element={
           <RequireRole
-            allowedRoles={["teacher", "student", "general_user"]}
+            allowedRoles={[
+              "teacher",
+              "student",
+              "general_user",
+            ]}
           />
         }
       >
@@ -114,9 +136,12 @@ function App() {
         />
       </Route>
 
+      {/* DIAGNOSTIC ASSESSMENT */}
       <Route
         element={
-          <RequireRole allowedRoles={DIAGNOSTIC_LEARNER_ROLES} />
+          <RequireRole
+            allowedRoles={DIAGNOSTIC_LEARNER_ROLES}
+          />
         }
       >
         <Route element={<DiagnosticFlow />}>
@@ -128,43 +153,59 @@ function App() {
 
             <Route
               path="/diagnostic/:language/reading"
-              element={<DiagnosticLanguageRoute step="reading" />}
+              element={
+                <DiagnosticLanguageRoute step="reading" />
+              }
             />
 
             <Route
               path="/diagnostic/:language/questions"
-              element={<DiagnosticLanguageRoute step="questions" />}
+              element={
+                <DiagnosticLanguageRoute step="questions" />
+              }
             />
           </Route>
 
           <Route
             path="/diagnostic/:language/result"
-            element={<DiagnosticLanguageRoute step="result" />}
+            element={
+              <DiagnosticLanguageRoute step="result" />
+            }
           />
 
           <Route
             path="/diagnostic/reading"
             element={
-              <Navigate to="/diagnostic/en/reading" replace />
+              <Navigate
+                to="/diagnostic/en/reading"
+                replace
+              />
             }
           />
 
           <Route
             path="/diagnostic/questions"
             element={
-              <Navigate to="/diagnostic/en/questions" replace />
+              <Navigate
+                to="/diagnostic/en/questions"
+                replace
+              />
             }
           />
 
           <Route
             path="/diagnostic/result"
             element={
-              <Navigate to="/diagnostic/en/result" replace />
+              <Navigate
+                to="/diagnostic/en/result"
+                replace
+              />
             }
           />
         </Route>
       </Route>
 
+      {/* SHARED CONTENT PROVIDER */}
       <Route
         element={
           <M3ContentProvider>
@@ -172,11 +213,25 @@ function App() {
           </M3ContentProvider>
         }
       >
-        {/* Student routes */}
-        <Route element={<RequireRole allowedRoles={["student"]} />}>
-          <Route path="/dashboard" element={<BasaLayout />}>
-            <Route index element={<StudentDashboard />} />
-            <Route path="progress" element={<StudentProgressPage />} />
+        {/* STUDENT ROUTES */}
+        <Route
+          element={
+            <RequireRole allowedRoles={["student"]} />
+          }
+        >
+          <Route
+            path="/dashboard"
+            element={<BasaLayout />}
+          >
+            <Route
+              index
+              element={<StudentDashboard />}
+            />
+
+            <Route
+              path="progress"
+              element={<StudentProgressPage />}
+            />
 
             <Route
               path="join-classroom"
@@ -210,7 +265,9 @@ function App() {
 
             <Route
               path="reading-materials/:materialId/comprehension"
-              element={<ComprehensionPage role="student" />}
+              element={
+                <ComprehensionPage role="student" />
+              }
             />
 
             <Route
@@ -220,27 +277,43 @@ function App() {
 
             <Route
               path="materials/:moduleId/comprehension"
-              element={<ComprehensionPage role="student" />}
+              element={
+                <ComprehensionPage role="student" />
+              }
             />
 
             <Route
               path="comprehension/:attemptId"
-              element={<ComprehensionPage role="student" />}
+              element={
+                <ComprehensionPage role="student" />
+              }
             />
 
             <Route
               path="comprehension/:attemptId/results"
-              element={<ComprehensionPage role="student" results />}
+              element={
+                <ComprehensionPage
+                  role="student"
+                  results
+                />
+              }
             />
 
             <Route
               path="reading-history"
-              element={<><ReadingHistoryPage role="student" /><ArchivedReadingsSection /></>}
+              element={
+                <>
+                  <ReadingHistoryPage role="student" />
+                  <ArchivedReadingsSection />
+                </>
+              }
             />
 
             <Route
               path="read-aloud/results/:attemptId"
-              element={<ReadingResultPage role="student" />}
+              element={
+                <ReadingResultPage role="student" />
+              }
             />
 
             <Route
@@ -260,47 +333,71 @@ function App() {
           </Route>
         </Route>
 
-        {/* Admin routes */}
-        <Route element={<RequireRole allowedRoles={["admin"]} />}>
+        {/* ADMINISTRATOR ROUTES */}
+        <Route
+          element={
+            <RequireRole allowedRoles={["admin"]} />
+          }
+        >
           <Route
             path="/m3/admin"
             element={<M3Layout role="admin" />}
           >
-            <Route index element={<Module3Page />} />
+            <Route
+              index
+              element={<Module3Page />}
+            />
 
             <Route
               path="modules/new"
-              element={<ModuleFormPage mode="create" />}
+              element={
+                <ModuleFormPage mode="create" />
+              }
             />
 
             <Route
               path="modules/:moduleId"
-              element={<ModuleDetailPage role="admin" />}
+              element={
+                <ModuleDetailPage role="admin" />
+              }
             />
 
             <Route
               path="modules/:moduleId/edit"
-              element={<ModuleFormPage mode="edit" />}
+              element={
+                <ModuleFormPage mode="edit" />
+              }
             />
 
             <Route
               path="materials/:materialId"
-              element={<MaterialDetailPage role="admin" />}
+              element={
+                <MaterialDetailPage role="admin" />
+              }
             />
 
             <Route
               path="materials/:materialId/questions"
-              element={<MaterialDetailPage role="admin" />}
+              element={
+                <MaterialDetailPage role="admin" />
+              }
             />
 
             <Route
               path="materials/:materialId/question-sets/:setId"
-              element={<QuestionReviewPage role="admin" />}
+              element={
+                <QuestionReviewPage role="admin" />
+              }
             />
 
             <Route
               path="materials/:materialId/question-sets/:setId/edit"
-              element={<QuestionReviewPage role="admin" editing />}
+              element={
+                <QuestionReviewPage
+                  role="admin"
+                  editing
+                />
+              }
             />
 
             <Route
@@ -315,52 +412,92 @@ function App() {
           >
             <Route
               index
-              element={<Navigate to="users" replace />}
+              element={
+                <Navigate to="users" replace />
+              }
             />
 
             <Route
               path="users"
               element={<UserManagementPage />}
             />
-            <Route path="teacher-invitations" element={<TeacherInvitationsPage />} />
 
-            <Route path="analytics" element={<AdminAnalyticsPage />} />
-            {/* M7 - Admin student performance, competency, interventions and weekly reports (Admin-only API) */}
-            <Route path="student-performance" element={<AdminStudentPerformancePage />} />
-            <Route path="reports" element={<AdminReportsPage />} />
+            <Route
+              path="teacher-invitations"
+              element={<TeacherInvitationsPage />}
+            />
 
-            {/* M5 - admin self-practice; results stay private to the admin's own account */}
-            <Route path="oral-reading" element={<AdminOralReadingPage />} />
+            <Route
+              path="analytics"
+              element={<AdminAnalyticsPage />}
+            />
+
+            <Route
+              path="student-performance"
+              element={
+                <AdminStudentPerformancePage />
+              }
+            />
+
+            <Route
+              path="reports"
+              element={<AdminReportsPage />}
+            />
+
+            {/* ADMIN ORAL READING */}
+            <Route
+              path="oral-reading"
+              element={<AdminOralReadingPage />}
+            />
+
             <Route
               path="oral-reading/modules/:moduleId/read-aloud"
-              element={<ReadAloudPage role="admin" />}
+              element={
+                <ReadAloudPage role="admin" />
+              }
             />
+
             <Route
               path="read-aloud/results/:attemptId"
-              element={<ReadingResultPage role="admin" />}
+              element={
+                <ReadingResultPage role="admin" />
+              }
             />
-            {/* M6 - Admin comprehension practice on the Admin's own published modules; own results only */}
+
+            {/* ADMIN COMPREHENSION */}
             <Route
               path="oral-reading/modules/:moduleId/comprehension"
-              element={<ComprehensionPage role="admin" />}
+              element={
+                <ComprehensionPage role="admin" />
+              }
             />
+
             <Route
               path="comprehension/:attemptId"
-              element={<ComprehensionPage role="admin" />}
+              element={
+                <ComprehensionPage role="admin" />
+              }
             />
+
             <Route
               path="reading-history"
-              element={<ReadingHistoryPage role="admin" />}
+              element={
+                <ReadingHistoryPage role="admin" />
+              }
             />
-            {/* M5 F5/F7 - read-only review of students' saved assessments, kept apart from the Admin's own practice. */}
+
             <Route
               path="student-reading-assessments"
-              element={<AdminStudentReadingAssessmentsPage />}
+              element={
+                <AdminStudentReadingAssessmentsPage />
+              }
             />
 
             <Route
               path="diagnostic-results"
-              element={<AdminDiagnosticResultsPage />}
+              element={
+                <AdminDiagnosticResultsPage />
+              }
             />
 
             <Route
@@ -370,75 +507,116 @@ function App() {
 
             <Route
               path="learning-rooms/:roomId"
-              element={<AdminClassroomDetailsPage />}
+              element={
+                <AdminClassroomDetailsPage />
+              }
             />
           </Route>
         </Route>
 
-        {/* Teacher routes */}
-        <Route element={<RequireRole allowedRoles={["teacher"]} />}>
+        {/* TEACHER ROUTES */}
+        <Route
+          element={
+            <RequireRole allowedRoles={["teacher"]} />
+          }
+        >
           <Route
             path="/m3/teacher"
             element={<M3Layout role="teacher" />}
           >
             <Route
               index
-              element={<Navigate to="materials" replace />}
+              element={
+                <Navigate
+                  to="materials"
+                  replace
+                />
+              }
             />
 
             <Route
               path="modules"
-              element={<ModuleCatalogPage role="teacher" />}
+              element={
+                <ModuleCatalogPage role="teacher" />
+              }
             />
 
             <Route
               path="modules/:moduleId"
-              element={<ModuleDetailPage role="teacher" />}
+              element={
+                <ModuleDetailPage role="teacher" />
+              }
             />
 
             <Route
               path="materials"
-              element={<MaterialLibraryPage role="teacher" />}
+              element={
+                <MaterialLibraryPage role="teacher" />
+              }
             />
 
             <Route
               path="materials/upload"
-              element={<UploadMaterialPage role="teacher" />}
+              element={
+                <UploadMaterialPage role="teacher" />
+              }
             />
 
             <Route
               path="materials/:materialId"
-              element={<MaterialDetailPage role="teacher" />}
+              element={
+                <MaterialDetailPage role="teacher" />
+              }
             />
 
             <Route
               path="materials/:materialId/questions"
-              element={<MaterialDetailPage role="teacher" />}
+              element={
+                <MaterialDetailPage role="teacher" />
+              }
             />
 
             <Route
               path="materials/:materialId/question-sets/:setId"
-              element={<QuestionReviewPage role="teacher" />}
+              element={
+                <QuestionReviewPage role="teacher" />
+              }
             />
 
             <Route
               path="materials/:materialId/question-sets/:setId/edit"
-              element={<QuestionReviewPage role="teacher" editing />}
+              element={
+                <QuestionReviewPage
+                  role="teacher"
+                  editing
+                />
+              }
             />
 
             <Route
               path="oral-reading"
-              element={<TeacherOralReadingResultsPage />}
+              element={
+                <TeacherOralReadingResultsPage />
+              }
             />
 
             <Route
               path="oral-reading/:attemptId"
-              element={<TeacherOralReadingAttemptPage />}
+              element={
+                <TeacherOralReadingAttemptPage />
+              }
             />
 
-            <Route path="student-support" element={<TeacherSupportPage />} />
-            <Route path="reports" element={<TeacherReportsPage />} />
-            {/* M7 - Teacher Analytics */}
+            <Route
+              path="student-support"
+              element={<TeacherSupportPage />}
+            />
+
+            <Route
+              path="reports"
+              element={<TeacherReportsPage />}
+            />
+
             <Route
               path="analytics"
               element={<TeacherAnalyticsPage />}
@@ -466,67 +644,109 @@ function App() {
           </Route>
         </Route>
 
-        {/* Independent learner routes */}
+        {/* INDEPENDENT LEARNER ROUTES */}
         <Route
-          element={<RequireRole allowedRoles={["general_user"]} />}
+          element={
+            <RequireRole
+              allowedRoles={["general_user"]}
+            />
+          }
         >
           <Route
             path="/m3/general"
-            element={<M3Layout role="general_user" />}
+            element={
+              <M3Layout role="general_user" />
+            }
           >
             <Route
               index
-              element={<Navigate to="materials" replace />}
+              element={
+                <Navigate
+                  to="materials"
+                  replace
+                />
+              }
             />
 
             <Route
               path="modules"
-              element={<ModuleCatalogPage role="general_user" />}
+              element={
+                <ModuleCatalogPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
               path="modules/:moduleId"
-              element={<ModuleDetailPage role="general_user" />}
+              element={
+                <ModuleDetailPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
               path="modules/:moduleId/read-aloud"
-              element={<ReadAloudPage role="general_user" />}
+              element={
+                <ReadAloudPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
               path="modules/:moduleId/comprehension"
-              element={<ComprehensionPage role="general_user" />}
+              element={
+                <ComprehensionPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
               path="comprehension/:attemptId"
-              element={<ComprehensionPage role="general_user" />}
+              element={
+                <ComprehensionPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
               path="reading-history"
-              element={<ReadingHistoryPage role="general_user" />}
-            />
-
-            <Route
-              path="read-aloud/results/:attemptId"
-              element={<ReadingResultPage role="general_user" />}
+              element={
+                <ReadingHistoryPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
               path="materials"
-              element={<MaterialLibraryPage role="general_user" />}
+              element={
+                <MaterialLibraryPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
               path="materials/upload"
-              element={<UploadMaterialPage role="general_user" />}
+              element={
+                <UploadMaterialPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
               path="materials/:materialId"
-              element={<MaterialDetailPage role="general_user" />}
+              element={
+                <MaterialDetailPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
@@ -534,10 +754,13 @@ function App() {
               element={<IndependentLeaderboard />}
             />
 
-            {/* M7 - personal learning progress (own records only) */}
             <Route
               path="progress"
-              element={<StudentProgressPage role="general_user" />}
+              element={
+                <StudentProgressPage
+                  role="general_user"
+                />
+              }
             />
 
             <Route
