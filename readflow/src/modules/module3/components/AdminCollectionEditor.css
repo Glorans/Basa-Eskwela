@@ -32,7 +32,21 @@
 .m3-collection-editor .m3-editor-badge { display: inline-flex; width: fit-content; padding: 5px 10px; border-radius: 99px; background: #edf3ef; color: #355c4c; font-size: .76rem; font-weight: 750; line-height: 1.4; }
 .m3-collection-editor .m3-editor-badge--pending { background: #fff2d8; color: #79541b; }
 .m3-collection-editor .m3-editor-badge--ready { background: #e3f3e9; color: #256342; }
-.m3-collection-editor .m3-editor-upload { padding: 14px; background: #f6f8f5; border: 1px dashed #becdc2; border-radius: 12px; }
+.m3-collection-editor .m3-editor-upload { display: grid; gap: 6px; padding: 14px; background: #f6f8f5; border: 1px dashed #becdc2; border-radius: 12px; min-width: 0; }
+.m3-collection-editor .m3-editor-upload-heading { font-weight: 700; }
+.m3-collection-editor .m3-editor-upload-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; min-width: 0; }
+.m3-collection-editor .m3-editor-upload-choose { position: relative; cursor: pointer; }
+.m3-collection-editor .m3-editor-upload-choose:focus-within { outline: 2px solid #244e3f; outline-offset: 2px; }
+.m3-collection-editor .m3-editor-upload-choose:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+/* The native control stays focusable and clickable through its label, but its own
+   "No file chosen" text is hidden: the chosen name is shown from editor state. */
+.m3-collection-editor .m3-editor-upload-input { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; opacity: 0; }
+.m3-collection-editor .m3-editor-upload-name { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88rem; color: #31453b; }
+.m3-collection-editor .m3-editor-upload-status { margin: 0; font-size: .86rem; overflow-wrap: anywhere; }
+.m3-collection-editor .m3-editor-upload-status:empty { display: none; }
+.m3-collection-editor .m3-editor-upload-status--extracting { color: #244e3f; font-weight: 700; }
+.m3-collection-editor .m3-editor-upload-status--done { color: #22603f; }
+.m3-collection-editor .m3-editor-upload-status--error { padding: 8px 10px; border-radius: 8px; background: #fff0ee; color: #8c3029; }
 .m3-collection-editor input[type=file] { height: auto; min-height: 42px; padding: 0; border: 0; background: transparent; font-size: .8rem; }
 .m3-collection-editor input[type=file]::file-selector-button { padding: 10px 12px; margin-right: 10px; border: 1px solid #b9c9c0; border-radius: 8px; background: #fff; color: #244e3f; font: inherit; font-weight: 700; cursor: pointer; }
 .m3-collection-editor .m3-editor-review { border: 1px solid #dce5df; border-radius: 12px; background: #f7f9f6; min-width: 0; }

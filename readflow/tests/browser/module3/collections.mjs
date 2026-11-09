@@ -108,9 +108,14 @@ try {
   await click('Remove Passage',2);await until('!!document.querySelector("dialog[open]")');await click('Confirm');await click('Save Draft');
   assert.deepEqual(await evaluate('window.calls.at(-1).removed'),[],'unsaved removal is not sent as persisted deletion');
   await evaluate(`{const e=document.querySelector('input[type=file]');const d=new DataTransfer();d.items.add(new File(['text'],'passage.txt',{type:'text/plain'}));e.files=d.files;e.dispatchEvent(new Event('change',{bubbles:true}));}`);
-  await until('document.querySelector("section textarea").value==="Extracted selected text"');await click('Save Draft');
+  // The passage already has text, so replacing it needs confirmation.
+  await until('!!document.querySelector("dialog[open]")');await click('Confirm');
+  await until('document.querySelector("section textarea").value==="Extracted selected text"');
+  assert.equal(await evaluate('document.querySelector(".m3-editor-upload-name").textContent'),'passage.txt','chosen file name stays visible');
+  await click('Save Draft');
   assert.equal(await evaluate('window.stored.passages[1].passageText'),'First story');
   await evaluate(`window.deferExtraction=true;{const e=document.querySelector('input[type=file]');const d=new DataTransfer();d.items.add(new File(['text'],'cancel.txt',{type:'text/plain'}));e.files=d.files;e.dispatchEvent(new Event('change',{bubbles:true}));}`);
+  await until('!!document.querySelector("dialog[open]")');await click('Confirm');
   await until('document.body.innerText.includes("Cancel Extraction")');await click('Cancel Extraction');
   await until('!document.body.innerText.includes("Cancel Extraction")');
   assert.equal(await evaluate('document.querySelector("section textarea").value'),'Extracted selected text');

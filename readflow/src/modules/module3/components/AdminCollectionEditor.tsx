@@ -6,6 +6,7 @@ import PassageBank from "./PassageBank";
 import ReadOnlyPassageBank from "./ReadOnlyPassageBank";
 import { resolveLearningPath, learningPathSelectionIssue } from "../utils/learningPathSelection";
 import { groupPublishIssues } from "../utils/publishIssues";
+import { passageUploadIssue, suggestedPassageTitle } from "../utils/passageUpload";
 import { SIX_ONLY, isBalancedBank, numberWord, targetBankSize } from "../utils/passageBankSize.ts";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
@@ -36,6 +37,19 @@ import {
   type AdminCollection,
   type AdminPassage,
 } from "../services/adminCollectionService";
+
+interface PassageUpload {
+  fileName: string;
+  status: "selected" | "extracting" | "done" | "error" | "cancelled";
+  message: string;
+}
+
+// Axios reports an unreachable server as a bare "Network Error".
+function uploadErrorMessage(text: string) {
+  return /^Network Error$/i.test(text)
+    ? "The extraction service could not be reached. Check your connection and try again, or type the passage text."
+    : text;
+}
 
 export default function AdminCollectionEditor({
   mode,
@@ -80,8 +94,12 @@ export default function AdminCollectionEditor({
   const [draftMessage, setDraftMessage] = useState("");
   const [issues, setIssues] = useState<string[]>([]);
   const [extracting, setExtracting] = useState<string | null>(null);
+  // Per-passage file selection and extraction result, keyed by passage id.
+  const [uploads, setUploads] = useState<Record<string, PassageUpload>>({});
 
   const generation = useRef(0);
+  const collectionRef = useRef(collection);
+  collectionRef.current = collection;
   const savedIds = useRef(new Set<string>());
   const extractionController = useRef<AbortController | null>(null);
 
@@ -138,6 +156,7 @@ export default function AdminCollectionEditor({
     setRemoved([]);
     setDirty(false);
     setBankDirty(null);
+    setUploads({});
     savedIds.current = new Set();
 
     if (mode === "create") {
@@ -325,60 +344,118 @@ export default function AdminCollectionEditor({
     }
   }
 
-  async function extract(id: string, file?: File) {
-    if (!file || !collection) return;
+  function setUpload(id: string, upload: PassageUpload | null) {
+    setUploads((current) => {
+      const next = { ...current };
+      if (upload) next[id] = upload;
+      else delete next[id];
+      return next;
+    });
+  }
 
-    if (file.size > 25 * 1024 * 1024) {
-      setMessage("The selected file exceeds 25 MB.");
-      return;
-    }
+  async function extract(id: string, file?: File) {
+    const passage = collection?.passages.find((item) => item.id === id);
+    if (!file || !collection || !passage) return;
+
+    const fileName = file.name;
+    const fail = (text: string) =>
+      setUpload(id, { fileName, status: "error", message: text });
+
+    const issue = passageUploadIssue(file, ADMIN_MODULE_FILE_ACCEPT);
+    if (issue) return fail(issue);
 
     const language = learningPaths.find(
       (path) => path.id === collection.learningPathId,
     )?.language;
 
     if (!language) {
-      setMessage("Select a learning path before extracting.");
-      return;
+      return fail(
+        "Select a learning path before extracting. Choose the module's Language and Reading Level above, then choose the file again.",
+      );
     }
 
     const current = generation.current;
+    setUpload(id, { fileName, status: "selected", message: "" });
+
+    if (
+      passage.passageText.trim() &&
+      !(await confirmReadFlow(
+        `This passage already has text. Replace it with the text extracted from "${fileName}"?`,
+      ))
+    ) {
+      if (generation.current === current) {
+        setUpload(id, {
+          fileName,
+          status: "cancelled",
+          message: "Extraction cancelled. The passage text was kept.",
+        });
+      }
+      return;
+    }
+    if (generation.current !== current) return;
+
     const controller = new AbortController();
 
     extractionController.current = controller;
     setExtracting(id);
-
-    await perform(async () => {
-      try {
-        const result = await extractAdminModulePassage(
-          { file, learningPathLanguage: language },
-          undefined,
-          controller.signal,
-        );
-
-        if (
-          generation.current !== current ||
-          controller.signal.aborted
-        ) {
-          return;
-        }
-
-        changePassage(id, {
-          passageText: result.extractedText,
-        });
-
-        setMessage(
-          "Extracted text is ready to edit. Review it before saving the draft.",
-        );
-      } catch (error) {
-        if (!controller.signal.aborted) throw error;
-      } finally {
-        if (extractionController.current === controller) {
-          extractionController.current = null;
-          setExtracting(null);
-        }
-      }
+    setUpload(id, {
+      fileName,
+      status: "extracting",
+      message: `Extracting text from "${fileName}"…`,
     });
+
+    await perform(
+      async () => {
+        try {
+          const result = await extractAdminModulePassage(
+            { file, learningPathLanguage: language },
+            undefined,
+            controller.signal,
+          );
+
+          if (
+            generation.current !== current ||
+            controller.signal.aborted
+          ) {
+            return;
+          }
+
+          // The title is filled only when this passage has none yet.
+          const title = suggestedPassageTitle(result.extractedText);
+          const titleFilled = Boolean(
+            title &&
+              !collectionRef.current?.passages
+                .find((item) => item.id === id)
+                ?.title.trim(),
+          );
+          changePassage(id, {
+            passageText: result.extractedText,
+            ...(titleFilled && title ? { title } : {}),
+          });
+          setUpload(id, {
+            fileName,
+            status: "done",
+            message: `Extracted text is ready to edit. Review it before saving the draft.${
+              titleFilled
+                ? " The passage title was filled from the document's first line."
+                : ""
+            }`,
+          });
+        } catch (error) {
+          if (!controller.signal.aborted) throw error;
+        } finally {
+          if (extractionController.current === controller) {
+            extractionController.current = null;
+            setExtracting(null);
+          }
+        }
+      },
+      (text) => {
+        if (text && generation.current === current) {
+          fail(uploadErrorMessage(text));
+        }
+      },
+    );
   }
 
   function generateQuestions(passageId: string) {
@@ -730,24 +807,68 @@ export default function AdminCollectionEditor({
                   />
                 </label>
 
-                <label className="m3-editor-upload">
-                  Upload / Extract into this passage
-                  <span className="m3-editor-help">
-                    Choose a document to extract reading text.
-                    Maximum 25 MB.
+                <div className="m3-editor-upload">
+                  <span className="m3-editor-upload-heading">
+                    Upload / Extract into this passage
                   </span>
-                  <input
-                    type="file"
-                    accept={ADMIN_MODULE_FILE_ACCEPT}
-                    onChange={(event) => {
-                      void extract(
-                        passage.id,
-                        event.target.files?.[0],
-                      );
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
+                  <span
+                    className="m3-editor-help"
+                    id={`upload-help-${passage.id}`}
+                  >
+                    Choose a PDF, DOCX, JPG, JPEG or PNG document to
+                    extract reading text. Maximum 25 MB.
+                  </span>
+                  <div className="m3-editor-upload-row">
+                    <label className="m3-button m3-button--secondary m3-editor-upload-choose">
+                      {uploads[passage.id]
+                        ? "Choose Another File"
+                        : "Choose File"}
+                      <input
+                        className="m3-editor-upload-input"
+                        type="file"
+                        accept={ADMIN_MODULE_FILE_ACCEPT}
+                        aria-describedby={`upload-help-${passage.id} upload-status-${passage.id}`}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          // Cleared so the same file can be chosen again; its
+                          // name stays visible from the upload state.
+                          event.target.value = "";
+                          void extract(passage.id, file);
+                        }}
+                      />
+                    </label>
+                    <span
+                      className="m3-editor-upload-name"
+                      title={uploads[passage.id]?.fileName}
+                    >
+                      {uploads[passage.id]?.fileName ??
+                        "No file selected"}
+                    </span>
+                    {uploads[passage.id] &&
+                      uploads[passage.id].status !== "extracting" && (
+                        <button
+                          type="button"
+                          className="m3-button m3-button--secondary"
+                          onClick={() => setUpload(passage.id, null)}
+                        >
+                          Clear File
+                        </button>
+                      )}
+                  </div>
+                  <p
+                    id={`upload-status-${passage.id}`}
+                    className={`m3-editor-upload-status m3-editor-upload-status--${
+                      uploads[passage.id]?.status ?? "idle"
+                    }`}
+                    role={
+                      uploads[passage.id]?.status === "error"
+                        ? "alert"
+                        : "status"
+                    }
+                  >
+                    {uploads[passage.id]?.message ?? ""}
+                  </p>
+                </div>
 
                 <div className="m3-collection-actions">
                   {[-1, 1].map((direction) => (
@@ -823,9 +944,12 @@ export default function AdminCollectionEditor({
                 className="m3-button m3-button--secondary"
                 onClick={() => {
                   extractionController.current?.abort();
-                  setMessage(
-                    "Extraction cancelled. Passage text was preserved.",
-                  );
+                  setUpload(passage.id, {
+                    fileName: uploads[passage.id]?.fileName ?? "",
+                    status: "cancelled",
+                    message:
+                      "Extraction cancelled. The passage text was kept.",
+                  });
                 }}
               >
                 Cancel Extraction

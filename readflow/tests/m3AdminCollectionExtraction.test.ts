@@ -10,10 +10,14 @@ import { createHookRuntime, findAll, loadComponentModule, textOf, tick } from ".
 
 const require = createRequire(import.meta.url);
 const editorUrl = new URL("../src/modules/module3/components/AdminCollectionEditor.tsx", import.meta.url);
-const ACCEPT = "test-accept-list";
+const ACCEPT = ".pdf,.docx,.jpg,.jpeg,.png,application/pdf";
 const PATH = { id: "path-en", name: "English Path", language: "en", readingLevel: "Instructional", difficultyTier: "Easy" };
 
-function mount(extract: (input: { file: unknown; learningPathLanguage: string }) => Promise<unknown> = async () => ({ extractedText: "" })) {
+function mount(
+  extract: (input: { file: unknown; learningPathLanguage: string }) => Promise<unknown> = async () => ({ extractedText: "" }),
+  confirm: (message: string) => boolean = () => true,
+) {
+  const confirms: string[] = [];
   const extractCalls: { file: unknown; learningPathLanguage: string }[] = [];
   const drafts: { passageText: string; title: string }[] = [];
   const runtime = createHookRuntime(require("react"));
@@ -63,7 +67,9 @@ function mount(extract: (input: { file: unknown; learningPathLanguage: string })
         },
       };
     }
-    if (id.endsWith("/ReadFlowDialog")) return { confirmReadFlow: async () => true };
+    if (id.endsWith("/ReadFlowDialog")) {
+      return { confirmReadFlow: async (message: string) => { confirms.push(message); return confirm(message); } };
+    }
     if (id.endsWith(".css")) return {};
     if (id.startsWith("./")) return { default: function StubComponent() { return null; } };
     // Pure M3 helpers (labels, publish-issue grouping) run for real.
@@ -84,18 +90,28 @@ function mount(extract: (input: { file: unknown; learningPathLanguage: string })
       textarea,
       textareaFieldset: findAll(tree, (node) => node.type === "fieldset" && findAll(node, (child) => child === textarea).length > 0)[0],
       fileInput: findAll(tree, (node) => node.type === "input" && node.props.type === "file")[0],
+      fileInputs: findAll(tree, (node) => node.type === "input" && node.props.type === "file"),
+      textareas: findAll(tree, (node) => node.type === "textarea" && node.props.className === "m3-editor-passage-text"),
+      passageTitles: findAll(tree, (node) => node.type === "input" && node.props.maxLength === 200),
+      uploadNames: findAll(tree, (node) => node.props?.className === "m3-editor-upload-name").map(textOf),
+      uploadStatuses: findAll(tree, (node) => typeof node.props?.className === "string" && node.props.className.startsWith("m3-editor-upload-status ")).map(textOf),
       languageSelect: findAll(labelled(tree, "Language"), (node) => node.type === "select")[0],
       levelSelect: findAll(labelled(tree, "Reading Level"), (node) => node.type === "select")[0],
       titleInput: findAll(labelled(tree, "Title"), (node) => node.type === "input")[0],
       saveDraft: findAll(tree, (node) => node.type === "button" && textOf(node) === "Save Draft")[0],
     };
   };
-  const chooseFile = async () => {
-    ui().fileInput.props.onChange({ target: { files: [{ name: "story.pdf", size: 1024 }], value: "story.pdf" } });
-    await tick();
-    await tick();
+  const chooseFile = async (name = "story.pdf", index = 0, size = 1024) => {
+    const target = { files: [{ name, size }], value: name };
+    ui().fileInputs[index].props.onChange({ target });
+    assert.equal(target.value, "", "the input is reset so the same file can be chosen again");
+    for (let i = 0; i < 4; i++) await tick();
   };
-  return { ui, extractCalls, drafts, chooseFile };
+  const choosePath = () => {
+    ui().languageSelect.props.onChange({ target: { value: PATH.language } });
+    ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
+  };
+  return { ui, extractCalls, drafts, chooseFile, choosePath, confirms };
 }
 
 function assertEditable(textarea: any, fieldset: any) {
@@ -169,4 +185,101 @@ test("a failed extraction keeps the typed passage text editable and shows the er
   assert.match(view.text, /Unable to read this file\./);
   assert.equal(view.textarea.props.value, "Text typed before extracting.");
   assertEditable(view.textarea, view.textareaFieldset);
+});
+
+test("the chosen file name stays visible after selection and extraction", async () => {
+  const m = mount(async () => ({ extractedText: "Story text." }));
+  m.choosePath();
+  assert.deepEqual(m.ui().uploadNames, ["No file selected"]);
+  await m.chooseFile("My Story.docx");
+  const view = m.ui();
+  assert.deepEqual(view.uploadNames, ["My Story.docx"]);
+  assert.match(view.text, /Choose Another File/);
+  assert.match(view.text, /Clear File/);
+  assert.equal(view.textarea.props.value, "Story text.");
+});
+
+test("an unsupported file is refused next to the upload field without a request", async () => {
+  const m = mount();
+  m.choosePath();
+  await m.chooseFile("notes.txt");
+  const view = m.ui();
+  assert.deepEqual(m.extractCalls, []);
+  assert.deepEqual(view.uploadNames, ["notes.txt"]);
+  assert.match(view.uploadStatuses[0], /not supported\. Choose a PDF, DOCX, JPG, JPEG or PNG file\./);
+});
+
+test("files over 25 MB and empty files are refused before upload", async () => {
+  const m = mount();
+  m.choosePath();
+  await m.chooseFile("big.pdf", 0, 25 * 1024 * 1024 + 1);
+  assert.match(m.ui().uploadStatuses[0], /25 MB/);
+  await m.chooseFile("empty.pdf", 0, 0);
+  assert.match(m.ui().uploadStatuses[0], /empty/);
+  assert.deepEqual(m.extractCalls, []);
+});
+
+test("existing passage text is replaced only after confirmation", async () => {
+  const declined = mount(async () => ({ extractedText: "New text." }), () => false);
+  declined.choosePath();
+  declined.ui().textarea.props.onChange({ target: { value: "Teacher's typed text." } });
+  await declined.chooseFile();
+  assert.equal(declined.confirms.length, 1);
+  assert.deepEqual(declined.extractCalls, []);
+  assert.equal(declined.ui().textarea.props.value, "Teacher's typed text.");
+  assert.match(declined.ui().uploadStatuses[0], /cancelled\. The passage text was kept\./);
+
+  const accepted = mount(async () => ({ extractedText: "New text." }));
+  accepted.choosePath();
+  accepted.ui().textarea.props.onChange({ target: { value: "Old text." } });
+  await accepted.chooseFile();
+  assert.equal(accepted.confirms.length, 1);
+  assert.equal(accepted.ui().textarea.props.value, "New text.");
+});
+
+const STORY = ["The Little Garden", "", "Mia planted seeds."].join("\n");
+
+test("an empty passage title is filled from a heading line; a typed title is kept", async () => {
+  const m = mount(async () => ({ extractedText: STORY }));
+  m.choosePath();
+  await m.chooseFile();
+  assert.equal(m.ui().passageTitles[0].props.value, "The Little Garden");
+  assert.match(m.ui().uploadStatuses[0], /title was filled/);
+
+  const typed = mount(async () => ({ extractedText: STORY }));
+  typed.choosePath();
+  typed.ui().passageTitles[0].props.onChange({ target: { value: "My Title" } });
+  await typed.chooseFile();
+  assert.equal(typed.ui().passageTitles[0].props.value, "My Title");
+  assert.equal(typed.ui().textarea.props.value, STORY);
+
+  // A sentence wrapped across lines (PDF/OCR) is not a heading.
+  const wrapped = mount(async () => ({ extractedText: "The red bus stops at the gate every\nmorning." }));
+  wrapped.choosePath();
+  await wrapped.chooseFile();
+  assert.equal(wrapped.ui().passageTitles[0].props.value, "");
+  assert.doesNotMatch(wrapped.ui().uploadStatuses[0], /title was filled/);
+});
+
+test("each passage card keeps its own file and extracted text", async () => {
+  const m = mount(async (input: any) => ({ extractedText: `Text from ${input.file.name}` }));
+  m.choosePath();
+  const add = findAll(m.ui().tree, (node) => node.type === "button" && textOf(node).includes("Add Passage Below"))[0];
+  add.props.onClick();
+  assert.equal(m.ui().fileInputs.length, 2);
+  await m.chooseFile("second.pdf", 1);
+  let view = m.ui();
+  assert.deepEqual(view.textareas.map((t: any) => t.props.value), ["", "Text from second.pdf"]);
+  assert.deepEqual(view.uploadNames, ["No file selected", "second.pdf"]);
+  await m.chooseFile("first.docx", 0);
+  view = m.ui();
+  assert.deepEqual(view.textareas.map((t: any) => t.props.value), ["Text from first.docx", "Text from second.pdf"]);
+  assert.deepEqual(view.uploadNames, ["first.docx", "second.pdf"]);
+});
+
+test("a network failure shows a clear message in the passage card", async () => {
+  const m = mount(async () => { throw new Error("Network Error"); });
+  m.choosePath();
+  await m.chooseFile();
+  assert.match(m.ui().uploadStatuses[0], /could not be reached/);
 });
