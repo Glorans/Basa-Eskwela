@@ -7,6 +7,18 @@ import ReadOnlyPassageBank from "./ReadOnlyPassageBank";
 import { resolveLearningPath, learningPathSelectionIssue } from "../utils/learningPathSelection";
 import { groupPublishIssues } from "../utils/publishIssues";
 import { passageUploadIssue, suggestedPassageTitle } from "../utils/passageUpload";
+import {
+  applyDraft,
+  buildDraft,
+  clearDraft,
+  draftDiffers,
+  draftHasContent,
+  draftModuleKey,
+  readDraft,
+  writeDraft,
+  type ModuleDraft,
+} from "../utils/moduleDraftStorage";
+import { useAuth } from "../../../auth/useAuth";
 import { SIX_ONLY, isBalancedBank, numberWord, targetBankSize } from "../utils/passageBankSize.ts";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
@@ -67,6 +79,17 @@ export default function AdminCollectionEditor({
     refreshModules,
     publishModule,
   } = useM3Content();
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
+  // Unsaved work is kept per account and per module ("new" for Create Reading Module).
+  const draftKey = mode === "detail" ? "" : draftModuleKey(mode, moduleId);
+  const [recoverable, setRecoverable] = useState<ModuleDraft | null>(null);
+  const recoveryChecked = useRef<string | null>(null);
+  // Id of the blank collection made for Create Reading Module. Moving between Edit and
+  // Create reuses this component, so for one render the previous module is still in
+  // state; drafts are only kept or offered for the collection that belongs to the key.
+  const createdId = useRef("");
+  const [resetCount, setResetCount] = useState(0);
 
   const [collection, setCollection] =
     useState<AdminCollection | null>(null);
@@ -157,11 +180,13 @@ export default function AdminCollectionEditor({
     setDirty(false);
     setBankDirty(null);
     setUploads({});
+    setRecoverable(null);
     savedIds.current = new Set();
 
     if (mode === "create") {
+      createdId.current = crypto.randomUUID();
       setCollection({
-        id: crypto.randomUUID(),
+        id: createdId.current,
         title: "",
         learningPathId: "",
         difficulty: "Easy",
@@ -201,12 +226,148 @@ export default function AdminCollectionEditor({
       generation.current++;
       extractionController.current?.abort();
     };
-  }, [mode, moduleId]);
+  }, [mode, moduleId, resetCount]);
 
   const readOnly =
     mode === "detail" ||
     collection?.status !== "draft" ||
     Boolean(collection?.publishedAt);
+  const collectionMatchesKey = Boolean(
+    collection && collection.id === (mode === "create" ? createdId.current : moduleId),
+  );
+  const canKeepDraft = Boolean(collection && collectionMatchesKey && userId && draftKey && !readOnly);
+
+  // Once per loaded module: offer unsaved work left from an earlier visit.
+  useEffect(() => {
+    if (!collection || !canKeepDraft || learningPathsLoading) return;
+    const marker = `${userId}:${draftKey}:${generation.current}`;
+    if (recoveryChecked.current === marker) return;
+    recoveryChecked.current = marker;
+    const draft = readDraft(userId, draftKey);
+    if (!draft) return;
+    const worthOffering = mode === "create" ? draftHasContent(draft) : draftDiffers(draft, collection);
+    if (worthOffering) setRecoverable(draft);
+    else clearDraft(userId, draftKey);
+  }, [collection, canKeepDraft, learningPathsLoading, userId, draftKey, mode]);
+
+  // Keep every unsaved change on this device (text fields only) until it is saved or discarded.
+  useEffect(() => {
+    if (!dirty || !collection || !canKeepDraft || recoverable) return;
+    const path = learningPaths.find((item) => item.id === collection.learningPathId);
+    writeDraft(buildDraft({
+      userId,
+      moduleKey: draftKey,
+      mode: mode === "create" ? "create" : "edit",
+      collection,
+      language: pathLanguage ?? path?.language ?? null,
+      readingLevel: pathReadingLevel ?? path?.readingLevel ?? null,
+      removed,
+    }));
+  }, [dirty, collection, canKeepDraft, recoverable, learningPaths, userId, draftKey, mode, pathLanguage, pathReadingLevel, removed]);
+
+  // Warn before a refresh, tab close or in-app link would leave unsaved changes behind.
+  useEffect(() => {
+    if (!dirty || readOnly) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    // After "Leave Page" the original link is clicked again and let through, so its own
+    // handlers still run (for example, closing the mobile navigation drawer).
+    let allowNextClick = false;
+    const onLinkClick = (event: MouseEvent) => {
+      if (allowNextClick) {
+        allowNextClick = false;
+        return;
+      }
+      if (
+        event.defaultPrevented || event.button !== 0
+        || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
+      ) return;
+      const anchor = (event.target as Element | null)?.closest?.("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if ((anchor.target && anchor.target !== "_self") || anchor.hasAttribute("download")) return;
+      const url = new URL(anchor.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void confirmReadFlow(
+        "This module has unsaved changes. They stay on this device, and you can resume them when you come back to this module. Leave this page?",
+        { confirm: "Leave Page", cancel: "Continue Editing" },
+      ).then((leave) => {
+        if (!leave) return;
+        if (anchor.isConnected) {
+          allowNextClick = true;
+          anchor.click();
+          allowNextClick = false;
+        } else {
+          navigate(`${url.pathname}${url.search}${url.hash}`);
+        }
+      });
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", onLinkClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("click", onLinkClick, true);
+    };
+  }, [dirty, readOnly, navigate]);
+
+  // An edit draft started from an older saved version than the one loaded now.
+  // Unknown versions are treated as older, never as current.
+  const recoverableIsOlder = Boolean(
+    recoverable && collection && mode !== "create"
+      && (typeof recoverable.baseRevision !== "number" || recoverable.baseRevision !== collection.revision),
+  );
+
+  async function useOlderDraft() {
+    if (!(await confirmReadFlow(
+      "This module was saved after these unsaved changes were made. If you use them and then choose Save Draft, the newer saved module title, settings, passage titles, passage text and passage order will be replaced. Nothing is saved until you choose Save Draft.",
+      { confirm: "Use My Older Changes", cancel: "Go Back" },
+    ))) return;
+    resumeDraft();
+    setMessage("Older unsaved changes restored. Saving now replaces the newer saved version. To keep the newer version instead, choose Discard Changes.");
+  }
+
+  function resumeDraft() {
+    if (!recoverable || !collection) return;
+    const restored = applyDraft(recoverable, collection, { keepUnlistedPassages: mode !== "create" });
+    const path = learningPaths.find((item) => item.id === restored.collection.learningPathId);
+    setCollection({
+      ...restored.collection,
+      learningPathId: path ? path.id : "",
+      language: path?.language ?? null,
+      difficulty: restored.collection.difficulty as AdminCollection["difficulty"],
+    });
+    setRemoved(restored.removed);
+    setPathLanguage(recoverable.language);
+    setPathReadingLevel(recoverable.readingLevel);
+    setRecoverable(null);
+    setDirty(true);
+    setIssues([]);
+    setDraftMessage("");
+    setMessage("Unsaved changes restored. Review them, then choose Save Draft.");
+  }
+
+  function discardRecoverable() {
+    clearDraft(userId, draftKey);
+    setRecoverable(null);
+    setMessage(recoverableIsOlder
+      ? "Kept the newer saved version. The older unsaved changes were discarded."
+      : "The unsaved changes were discarded.");
+  }
+
+  async function discardChanges() {
+    if (!(await confirmReadFlow(
+      mode === "create"
+        ? "Discard everything entered for this new module? This cannot be undone."
+        : "Discard all unsaved changes to this module and return to the last saved draft? This cannot be undone.",
+      { confirm: "Discard Changes", cancel: "Continue Editing" },
+    ))) return;
+    if (!recoverable) clearDraft(userId, draftKey);
+    setResetCount((count) => count + 1);
+  }
 
   async function perform(
     work: () => Promise<void>,
@@ -307,6 +468,8 @@ export default function AdminCollectionEditor({
         collection,
         learningPaths.map((path) => path.id),
       );
+      // A recovered draft still awaiting a decision is not this save's work: keep it.
+      if (!recoverable) clearDraft(userId, draftKey);
 
       await refreshModules();
 
@@ -316,6 +479,7 @@ export default function AdminCollectionEditor({
       });
     } else {
       await saveCollection(collection, removed);
+      if (!recoverable) clearDraft(userId, draftKey);
       await reload();
     }
 
@@ -590,6 +754,52 @@ export default function AdminCollectionEditor({
         <p className="m3-editor-notice" role="status">
           {message}
         </p>
+      )}
+
+      {recoverable && !recoverableIsOlder && (
+        <section className="m3-editor-recovery" aria-labelledby="m3-recovery-title">
+          <h2 id="m3-recovery-title">Unsaved changes found</h2>
+          <p>
+            Changes to this {mode === "create" ? "new module" : "module"} from{" "}
+            {new Date(recoverable.savedAt).toLocaleString()} were not saved.
+            Resume them to keep working, or discard them.
+          </p>
+          <div className="m3-collection-actions">
+            <button type="button" className="m3-button m3-button--primary" onClick={resumeDraft}>
+              Resume Unsaved Changes
+            </button>
+            <button type="button" className="m3-button m3-button--secondary" onClick={discardRecoverable}>
+              Discard Them
+            </button>
+          </div>
+        </section>
+      )}
+
+      {recoverable && recoverableIsOlder && (
+        <section
+          className="m3-editor-recovery m3-editor-recovery--older"
+          aria-labelledby="m3-recovery-title"
+        >
+          <h2 id="m3-recovery-title">Older unsaved changes found</h2>
+          <p>
+            You have unsaved changes from{" "}
+            {new Date(recoverable.savedAt).toLocaleString()}, but this module
+            was saved again after they were made. The saved version shown below
+            is newer.
+          </p>
+          <p className="m3-editor-recovery-warning">
+            Keeping the saved version is recommended. Using the older changes
+            would replace the newer saved content when you choose Save Draft.
+          </p>
+          <div className="m3-collection-actions">
+            <button type="button" className="m3-button m3-button--primary" onClick={discardRecoverable}>
+              Keep Saved Version
+            </button>
+            <button type="button" className="m3-button m3-button--secondary" onClick={() => void useOlderDraft()}>
+              Use My Older Changes…
+            </button>
+          </div>
+        </section>
       )}
 
       {bankDirty && (
@@ -1153,6 +1363,17 @@ export default function AdminCollectionEditor({
             onClick={() => void saveDraft()}
           >
             {saving ? "Saving..." : "Save Draft"}
+          </button>
+        )}
+
+        {!readOnly && dirty && (
+          <button
+            type="button"
+            className="m3-button m3-button--secondary"
+            disabled={busy || saving}
+            onClick={() => void discardChanges()}
+          >
+            Discard Changes
           </button>
         )}
 

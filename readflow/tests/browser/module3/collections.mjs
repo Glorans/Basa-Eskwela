@@ -45,11 +45,13 @@ const server = await createServer({ root, configFile:false, envDir: fileURLToPat
     if(id.endsWith('/context/M3ContentContext'))return '\0context';
     if(id.endsWith('/services/adminCollectionService'))return '\0service';
     if(id.endsWith('/services/adminModuleExtraction'))return '\0extraction';
+    if(id.endsWith('/auth/useAuth'))return '\0auth';
   },
   async load(id) {
     if(id==='\0fixture.tsx')return (await transformWithEsbuild(fixture, 'fixture.tsx', { loader: 'tsx', jsx: 'automatic' })).code;
     if(id==='\0context')return "export const useM3Content=()=>({learningPaths:[{id:'path',name:'English',language:'en',readingLevel:'Instructional',difficultyTier:'Medium'}],refreshModules:async()=>{window.refreshedStatus=window.stored.status;},publishModule:async()=>{if(window.publicationError)throw Error(window.publicationError);if(window.publicationIssue)return {ok:false,message:window.publicationIssue};window.stored.status='published';window.stored.publishedAt='2026-10-07';return {ok:true};},learningPathsLoading:false,learningPathsError:null});";
     if(id==='\0service')return service;
+    if(id==='\0auth')return "export const useAuth=()=>({user:{id:'fixture-admin'}});export default useAuth;";
     if(id==='\0extraction')return "export const ADMIN_MODULE_FILE_ACCEPT='.txt';export const extractAdminModulePassage=async(input,callback,signal)=>window.deferExtraction?new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('Cancelled')))):({extractedText:'Extracted selected text'});";
   },
   configureServer(s){s.middlewares.use(async(req,res,next)=>{if(!req.url.startsWith('/m3/'))return next();res.setHeader('Content-Type','text/html');res.end(await s.transformIndexHtml('/fixture.html','<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/collections-fixture.tsx"></script></body></html>'));});}

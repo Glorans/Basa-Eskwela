@@ -50,10 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
   const userRef = useRef<User | null>(null);
+  // Id of the user whose profile is currently loaded (null while loading or after an error).
+  const profileUserIdRef = useRef<string | null>(null);
 
   const clearAuthState = useCallback((authEvent: AuthChangeEvent | null) => {
     requestIdRef.current += 1;
     userRef.current = null;
+    profileUserIdRef.current = null;
     setState({
       user: null,
       profile: null,
@@ -67,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (user: User, authEvent: AuthChangeEvent | null) => {
       const requestId = ++requestIdRef.current;
       userRef.current = user;
+      profileUserIdRef.current = null;
       setState({
         user,
         profile: null,
@@ -78,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void getAuthProfile(user.id)
         .then((profile) => {
           if (!mountedRef.current || requestId !== requestIdRef.current) return;
+          profileUserIdRef.current = user.id;
           setState({ user, profile, loading: false, profileError: false, authEvent });
         })
         .catch(() => {
@@ -108,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
+      profileUserIdRef.current = user.id;
       setState((current) => ({ ...current, user, profile, profileError: false }));
       return profile;
     } catch (error) {
@@ -134,9 +140,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (
-        (event === "TOKEN_REFRESHED" || event === "USER_UPDATED")
+      // supabase-js re-emits SIGNED_IN for the same user whenever a hidden tab becomes
+      // visible again. Treating that as a new sign-in reset `loading`, which unmounted
+      // every protected page (and its unsaved form state) until the profile reloaded.
+      const sameLoadedUser =
+        event === "SIGNED_IN"
         && userRef.current?.id === session.user.id
+        && profileUserIdRef.current === session.user.id;
+      if (
+        sameLoadedUser
+        || ((event === "TOKEN_REFRESHED" || event === "USER_UPDATED")
+          && userRef.current?.id === session.user.id)
       ) {
         userRef.current = session.user;
         setState((current) => ({
@@ -144,6 +158,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           user: session.user,
           authEvent: event,
         }));
+        if (sameLoadedUser) {
+          // Still pick up role/approval changes on tab return, but in the background:
+          // the loaded profile stays in place (no loading state, nothing unmounts) and
+          // is replaced only if it changed. Deferred like the full load below, because
+          // Supabase calls inside this callback can wait on the auth lock.
+          const user = session.user;
+          const requestId = requestIdRef.current;
+          window.setTimeout(() => {
+            if (!mountedRef.current || requestId !== requestIdRef.current) return;
+            void getAuthProfile(user.id)
+              .then((profile) => {
+                if (
+                  !mountedRef.current
+                  || requestId !== requestIdRef.current
+                  || userRef.current?.id !== user.id
+                ) return;
+                setState((current) =>
+                  JSON.stringify(current.profile) === JSON.stringify(profile)
+                    ? current
+                    : { ...current, profile, profileError: false });
+              })
+              .catch(() => {
+                // Keep the loaded profile; the server still enforces every permission.
+              });
+          }, 0);
+        }
         return;
       }
 

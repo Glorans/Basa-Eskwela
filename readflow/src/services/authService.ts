@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabaseClient.ts";
 import { normalizeAuthEmail } from "../modules/module1/utils/authOnboarding.ts";
+import { clearAllModuleDrafts } from "../modules/module3/utils/moduleDraftStorage.ts";
 
 /** account_help: the page should offer Log In and Forgot Password as next steps. */
 export type AuthServiceErrorKind = "account_help";
@@ -95,6 +96,8 @@ export function login(email: string, password: string) {
 
 export async function logout() {
   const { error } = await supabase.auth.signOut();
+  // Unsaved module text kept for recovery must not outlive an explicit logout.
+  if (!error) clearAllModuleDrafts();
   return !error;
 }
 

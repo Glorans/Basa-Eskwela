@@ -2,9 +2,10 @@ import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 type DialogKind = "confirmation" | "success" | "error" | "warning";
+export interface DialogLabels { confirm?: string; cancel?: string }
 let dialogOpen = false;
 
-function Dialog({ message, kind, finish }: { message: string; kind: DialogKind; finish: (value: boolean) => void }) {
+function Dialog({ message, kind, finish, labels }: { message: string; kind: DialogKind; finish: (value: boolean) => void; labels?: DialogLabels }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { ref.current?.showModal(); }, []);
   return <dialog ref={ref} aria-labelledby="readflow-dialog-title" aria-describedby="readflow-dialog-message"
@@ -13,13 +14,13 @@ function Dialog({ message, kind, finish }: { message: string; kind: DialogKind; 
     <h2 id="readflow-dialog-title" className="text-xl font-extrabold">{kind === "confirmation" ? "Please confirm" : kind === "error" ? "Something went wrong" : kind === "success" ? "Success" : "Please check"}</h2>
     <p id="readflow-dialog-message" className="my-5 whitespace-pre-wrap break-words">{message}</p>
     <div className="flex justify-end gap-3">
-      {kind === "confirmation" && <button autoFocus className="rounded-xl bg-[#dce8e7] px-5 py-3 font-bold" onClick={() => finish(false)}>Cancel</button>}
-      <button autoFocus={kind !== "confirmation"} className="rounded-xl bg-[#f7cf4a] px-5 py-3 font-bold" onClick={() => finish(true)}>{kind === "confirmation" ? "Confirm" : "OK"}</button>
+      {kind === "confirmation" && <button autoFocus className="rounded-xl bg-[#dce8e7] px-5 py-3 font-bold" onClick={() => finish(false)}>{labels?.cancel ?? "Cancel"}</button>}
+      <button autoFocus={kind !== "confirmation"} className="rounded-xl bg-[#f7cf4a] px-5 py-3 font-bold" onClick={() => finish(true)}>{labels?.confirm ?? (kind === "confirmation" ? "Confirm" : "OK")}</button>
     </div>
   </dialog>;
 }
 
-export function showReadFlowDialog(message: string, kind: DialogKind = "error"): Promise<boolean> {
+export function showReadFlowDialog(message: string, kind: DialogKind = "error", labels?: DialogLabels): Promise<boolean> {
   if (dialogOpen) return Promise.resolve(false);
   dialogOpen = true;
   const previousFocus = document.activeElement;
@@ -28,7 +29,7 @@ export function showReadFlowDialog(message: string, kind: DialogKind = "error"):
   const root = createRoot(host);
   return new Promise(resolve => {
     let finished = false;
-    root.render(<Dialog message={message} kind={kind} finish={value => {
+    root.render(<Dialog message={message} kind={kind} labels={labels} finish={value => {
       if (finished) return;
       finished = true;
       root.unmount();
@@ -40,4 +41,5 @@ export function showReadFlowDialog(message: string, kind: DialogKind = "error"):
   });
 }
 
-export const confirmReadFlow = (message: string) => showReadFlowDialog(message, "confirmation");
+export const confirmReadFlow = (message: string, labels?: DialogLabels) =>
+  showReadFlowDialog(message, "confirmation", labels);
