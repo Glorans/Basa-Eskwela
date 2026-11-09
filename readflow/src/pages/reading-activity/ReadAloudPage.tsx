@@ -492,19 +492,25 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
             )}
             </>}
           </div>
-          <section className="read-aloud-saved-results" aria-labelledby="saved-reading-results-title">
-            <h2 id="saved-reading-results-title">{t("Your Saved Oral Reading Results")}</h2>
-            {historyError && <p role="alert">{ui.message(historyError, "Unable to load your saved results. Please refresh to retry.")}</p>}
-            <div className="read-aloud-saved-grid">
-              {numberSavedAttempts(savedAttempts).map(saved => (
-                <button className="read-aloud-saved-card" type="button" key={saved.id}
-                  onClick={() => navigate(resultPathFor(saved.id), { state: activityState })}>
-                  <span>{saved.passageTitle}</span>
-                  <strong>{t("Result")} {saved.resultNumber}</strong>
-                </button>
-              ))}
-            </div>
-          </section>
+          {/* First-time readers have nothing saved yet: no heading or empty box until
+              there is a result (a load error is still shown so it is never hidden). */}
+          {(savedAttempts.length > 0 || historyError) && (
+            <section className="read-aloud-saved-results" aria-labelledby="saved-reading-results-title">
+              <h2 id="saved-reading-results-title">{t("Your Saved Oral Reading Results")}</h2>
+              {historyError && <p role="alert">{ui.message(historyError, "Unable to load your saved results. Please refresh to retry.")}</p>}
+              {savedAttempts.length > 0 && (
+                <div className="read-aloud-saved-grid">
+                  {numberSavedAttempts(savedAttempts).map(saved => (
+                    <button className="read-aloud-saved-card" type="button" key={saved.id}
+                      onClick={() => navigate(resultPathFor(saved.id), { state: activityState })}>
+                      <span>{saved.passageTitle}</span>
+                      <strong>{t("Result")} {saved.resultNumber}</strong>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       </div>
     </div>
