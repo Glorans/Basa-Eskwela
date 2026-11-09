@@ -9,8 +9,9 @@ import "@fontsource/nunito/latin-600.css";
 import "@fontsource/nunito/latin-700.css";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { getFeedbackSpeech } from "../../services/feedbackSpeech";
-import { markStory, markTranscript } from "../../modules/module5/services/resultWords";
+import { markStory, markTranscript, readingAccuracyMessage } from "../../modules/module5/services/resultWords";
 import { getOralReadingAttempt, peekOralReadingAttempt, getOralReadingAttemptNumber, peekOralReadingAttemptNumber } from "../../modules/module5/services/oralReadingService";
+import FilipinoReadingFeedback, { FilipinoReadingAccuracyPanel, FilipinoWordReviewPanel } from "../../modules/module5/components/FilipinoReadingFeedback";
 import RecordingPlayback from "../../modules/module5/components/RecordingPlayback";
 import {
   PronunciationAccuracyPanel,
@@ -44,18 +45,6 @@ function panelFromParams(params: URLSearchParams): ResultPanel | null {
   const view = params.get("view");
   return RESULT_PANELS.find((panel) => panel === view) ?? null;
 }
-
-// F6 Reading Accuracy: transcript-based, so it speaks about words heard, never pronunciation.
-// "Every scored word" only when every scored story word matched and nothing else was heard.
-function readingAccuracyMessage(accuracy: number, everyWordMatched: boolean) {
-  if (everyWordMatched) return "We heard every scored word of the story! Great reading!";
-  if (accuracy >= 90) return "We heard almost every word of the story. Great reading!";
-  if (accuracy >= 75) return "Most of the words we heard matched the story. Nice job!";
-  return "Good try! Some words we heard were different from the story.";
-}
-
-// Filipino readings have no pronunciation check; this is their F2 feedback.
-const FILIPINO_FEEDBACK = "Pronunciation feedback is available for English readings only. Listen to your recording, then read the story again slowly and clearly.";
 
 export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const { attemptId } = useParams<{ attemptId: string }>();
@@ -235,6 +224,14 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   // the button silently disappearing. Read-aloud-only activities and admin
   // self-practice never have questions, so they show nothing extra.
   const comprehensionUnavailable = !comprehensionTarget && role !== "admin" && attempt.readAloudOnly !== true;
+  // F2, F3 and F4 labels: a Filipino reading gets transcript-based results, not a pronunciation check.
+  const filipino = language === "fil";
+  const feedbackTitle = t(filipino ? "Reading Feedback" : "Pronunciation Feedback");
+  const feedbackCardText = t(filipino ? "Compare the story with the words the computer heard." : "Get tips about how clearly you said the words.");
+  const accuracyTitle = t(filipino ? "Reading Accuracy" : "Pronunciation Accuracy");
+  const accuracyCardText = t(filipino ? "How closely the words we heard matched the story." : "See your pronunciation accuracy score.");
+  const wordsTitle = t(filipino ? "Words to Review" : "Mispronounced Words");
+  const wordsCardText = t(filipino ? "See the story words and what the computer heard." : "Listen to words and practice saying them.");
   const accuracy = Math.round(attempt.pronunciationAccuracy);
   const correctWordCount = attempt.wordMetrics.filter((word) => word.type === "match").length;
   // Every scored story word matched and nothing was different or extra (F6 wording only).
@@ -290,19 +287,20 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
           <nav className="result-panel-cards" aria-label={t("Reading result sections")}>
             <button type="button" className="result-panel-card result-panel-card--feedback" aria-haspopup="dialog" onClick={() => openPanel("feedback")}>
               <MessageCircle size={28} aria-hidden="true" />
-              <span className="result-panel-card-title">{t("Pronunciation Feedback")}</span>
-              <span className="result-panel-card-text">{t("Get tips about how clearly you said the words.")}</span>
+              <span className="result-panel-card-title">{feedbackTitle}</span>
+              <span className="result-panel-card-text">{feedbackCardText}</span>
             </button>
             <button type="button" className="result-panel-card result-panel-card--accuracy" aria-haspopup="dialog" onClick={() => openPanel("accuracy")}>
               <Gauge size={28} aria-hidden="true" />
-              <span className="result-panel-card-title">{t("Pronunciation Accuracy")}</span>
-              <span className="result-panel-card-text">{t("See your pronunciation accuracy score.")}</span>
+              <span className="result-panel-card-title">{accuracyTitle}</span>
+              <span className="result-panel-card-text">{accuracyCardText}</span>
               {pronunciationScore !== null && <strong className="result-panel-card-value">{pronunciationScore}/100</strong>}
+              {filipino && <strong className="result-panel-card-value">{accuracy}%</strong>}
             </button>
             <button type="button" className="result-panel-card result-panel-card--words" aria-haspopup="dialog" onClick={() => openPanel("words")}>
               <ListChecks size={28} aria-hidden="true" />
-              <span className="result-panel-card-title">{t("Mispronounced Words")}</span>
-              <span className="result-panel-card-text">{t("Listen to words and practice saying them.")}</span>
+              <span className="result-panel-card-title">{wordsTitle}</span>
+              <span className="result-panel-card-text">{wordsCardText}</span>
             </button>
             <button type="button" className="result-panel-card result-panel-card--transcript" aria-haspopup="dialog" onClick={() => openPanel("transcript")}>
               <Headphones size={28} aria-hidden="true" />
@@ -317,10 +315,10 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             </button>
           </nav>
 
-          {/* F2 Receive Pronunciation Feedback: a short overall message and the learner's recording; no scores or word list. */}
+          {/* F2: a short overall message and the recording, with no scores or word list. Filipino builds it from the saved attempt. */}
           <M5Modal
             id="m5-panel-feedback"
-            title={t("Pronunciation Feedback")}
+            title={feedbackTitle}
             closeLabel={t("Close")}
             open={panel === "feedback"}
             onClose={closePanel}
@@ -328,18 +326,15 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             {language === "en" ? (
               <PronunciationFeedbackPanel check={pronunciation} autoStart={panel === "feedback"} />
             ) : (
-              <section className="result-feedback-card" aria-labelledby="pronunciation-unsupported-title">
-                <h3 id="pronunciation-unsupported-title"><Mic size={22} aria-hidden="true" />{t("Pronunciation Check")}</h3>
-                <p className="result-feedback-message">{t(FILIPINO_FEEDBACK)}</p>
-              </section>
+              <FilipinoReadingFeedback attempt={attempt} />
             )}
             {feedbackOpened && <RecordingPlayback key={attempt.id} attemptId={attempt.id} language={language} />}
           </M5Modal>
 
-          {/* F3 View Pronunciation Accuracy: Clear Words and Smooth Reading from the saved check; never Reading Accuracy. */}
+          {/* F3. English: Clear Words and Smooth Reading from the saved check, never Reading Accuracy. Filipino: the saved F6 Reading Accuracy, never a pronunciation score. */}
           <M5Modal
             id="m5-panel-accuracy"
-            title={t("Pronunciation Accuracy")}
+            title={accuracyTitle}
             closeLabel={t("Close")}
             open={panel === "accuracy"}
             onClose={closePanel}
@@ -347,17 +342,14 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             {language === "en" ? (
               <PronunciationAccuracyPanel check={pronunciation} story={pronunciationStory} />
             ) : (
-              <section className="result-feedback-card" aria-labelledby="pronunciation-accuracy-unsupported-title">
-                <h3 id="pronunciation-accuracy-unsupported-title"><Gauge size={22} aria-hidden="true" />{t("Pronunciation Check")}</h3>
-                <p className="result-feedback-note">{t("Pronunciation Accuracy is available for English readings only, so this reading has no pronunciation score. Your Reading Accuracy is in Oral Reading Result.")}</p>
-              </section>
+              <FilipinoReadingAccuracyPanel attempt={attempt} />
             )}
           </M5Modal>
 
-          {/* F4 View Mispronounced Words: only words the saved pronunciation check flagged. Transcript differences are in F5. */}
+          {/* F4. English: only words the saved pronunciation check flagged. Filipino: every saved difference, never called a mispronunciation. */}
           <M5Modal
             id="m5-panel-words"
-            title={t("Mispronounced Words")}
+            title={wordsTitle}
             closeLabel={t("Close")}
             open={panel === "words"}
             onClose={closePanel}
@@ -369,10 +361,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                 {wordsOpened && flaggedWords > 0 && <RecordingPlayback key={`words-${attempt.id}`} attemptId={attempt.id} language={language} />}
               </>
             ) : (
-              <section className="result-feedback-card" aria-labelledby="pronunciation-words-unsupported-title">
-                <h3 id="pronunciation-words-unsupported-title"><Mic size={22} aria-hidden="true" />{t("Pronunciation Check")}</h3>
-                <p className="result-feedback-note">{t("The pronunciation check is available for English readings only, so it has not marked any words in this reading.")}</p>
-              </section>
+              <FilipinoWordReviewPanel attempt={attempt} />
             )}
           </M5Modal>
 

@@ -148,6 +148,8 @@ function modal(attempt: unknown, check: ReturnType<typeof checkState>, summaryOv
     };
     if (id.endsWith("/RecordingPlayback")) return { default: "recording-playback" };
     if (id.endsWith("/SavedTranscript")) return { default: "saved-transcript" };
+    if (id.endsWith("/FilipinoReadingFeedback")) return { default: "filipino-reading-feedback", FilipinoWordReviewPanel: "filipino-word-review-panel",
+      READING_ACCURACY_EXPLANATION: "Reading Accuracy starts from all the story words and takes away each difference the computer found: different words, words not heard and extra words. So it can be a little lower than the share of words matched." };
     throw new Error(`Unexpected import ${id}`);
   });
   const summary = { id: "third", moduleId: "m", passageId: "help", moduleTitle: "Grade 5 Stories", passageTitle: "A Helping Hand",
@@ -191,6 +193,9 @@ test("the modal shows the selected reading's complete saved assessment without s
   assert.deepEqual(check.calls, [], "F7 never calls check() or autoCheck()");
   assert.deepEqual(m.hookCalls.at(-1), ["third", "ana"], "the saved check of this attempt and account only");
   assert.deepEqual(m.loads.map((call) => call[0]), ["third"]);
+  assert.equal(find(tree, (node) => node.type === "filipino-reading-feedback"), undefined, "English F7 has no Filipino feedback");
+  assert.equal(find(tree, (node) => node.type === "filipino-word-review-panel"), undefined);
+  assert.doesNotMatch(all, /Reading Accuracy starts from/);
 });
 
 test("missing results say Not assessed, and Filipino readings never get a pronunciation score", async () => {
@@ -218,6 +223,15 @@ test("missing results say Not assessed, and Filipino readings never get a pronun
   assert.doesNotMatch(all, /accuracy-panel|words-panel|out of 100/);
   assert.deepEqual(m.hookCalls.at(-1), [undefined, "ana"], "no pronunciation check is loaded or started for Filipino");
   assert.deepEqual(fil.calls, []);
+  // F7 shows the feedback of this exact saved attempt, in the reading's language.
+  const feedback = find(m.render(), (node) => node.type === "filipino-reading-feedback");
+  assert.equal(feedback.props.attempt.id, "third");
+  assert.equal(feedback.props.uiLanguage, "fil");
+  // The word list appears once, in its own section.
+  const wordLists = findAll(m.render(), (node) => node.type === "filipino-word-review-panel");
+  assert.equal(wordLists.length, 1);
+  assert.equal(wordLists[0].props.attempt.id, "third");
+  assert.equal(m.loads.length, 1, "opening F7 loads the saved attempt once and starts nothing");
 });
 
 test("a reply for a different attempt is never shown as the selected reading", async () => {

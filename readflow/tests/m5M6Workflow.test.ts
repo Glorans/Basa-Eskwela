@@ -80,6 +80,8 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
           if (mocks.linkedComprehensionError) throw Error("Unable to check your comprehension activity.");
           return typeof mocks.linkedComprehension === "function" ? mocks.linkedComprehension(readingId) : mocks.linkedComprehension ?? null;
         } };
+      if (id.includes("FilipinoReadingFeedback")) return { default: "filipino-reading-feedback",
+        FilipinoReadingAccuracyPanel: "filipino-accuracy-panel", FilipinoWordReviewPanel: "filipino-word-review-panel" };
       if (id.includes("PronunciationFeedback")) return {
         PronunciationFeedbackPanel: "pronunciation-feedback-panel", PronunciationAccuracyPanel: "pronunciation-accuracy-panel",
         PronunciationWordsPanel: "pronunciation-words-panel",
@@ -560,8 +562,7 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
   assert.equal(find(tree, node => node.props?.id === "m5-panel-feedback").props.open, true);
   assert.equal(find(tree, node => node.props?.id === "m5-panel-result").props.open, false);
   assert.equal(find(tree, node => node.type === "pronunciation-feedback"), undefined);
-  assert.match(text, /Pagsusuri ng Bigkas/);
-  assert.match(text, /Ang pagsusuri ng bigkas ay para lamang sa mga babasahing Ingles/);
+  assert.doesNotMatch(text, /Pagsusuri ng Bigkas|Ang pagsusuri ng bigkas ay para lamang sa mga babasahing Ingles/);
   // F4 lists no transcript differences; they are shown, in Filipino, in F5 only.
   assert.doesNotMatch(text, /Mga Salitang Iba ang Narinig Namin|Iba ang salitang naitala|hindi narinig"/);
   assert.match(text, /Ang Kuwento/);
@@ -576,13 +577,74 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
     assert.equal(find(tree, node => node.type === type), undefined, type);
   }
   assert.deepEqual([...new Set(pronunciationChecks)], [undefined]);
-  assert.match(text, /walang marka sa pagbigkas ang pagbasang ito/);
-  assert.match(text, /kaya wala itong minarkahang salita sa pagbasang ito/);
-  // F2 has no feedback text-to-speech button; the message and the learner's recording remain.
+  assert.doesNotMatch(text, /walang marka sa pagbigkas ang pagbasang ito|kaya wala itong minarkahang salita sa pagbasang ito/);
+  // F2 has no feedback text-to-speech button; feedback from this saved attempt and the learner's recording remain.
   const feedbackPanel = find(tree, node => node.props?.id === "m5-panel-feedback");
   assert.equal(find(feedbackPanel, node => node.type === "feedback-speech"), undefined);
-  assert.match(JSON.stringify(feedbackPanel), /Ang puna sa pagbigkas ay para lamang sa mga babasahing Ingles/);
+  assert.doesNotMatch(JSON.stringify(feedbackPanel), /Ang puna sa pagbigkas ay para lamang sa mga babasahing Ingles/);
+  assert.equal(find(feedbackPanel, node => node.type === "filipino-reading-feedback").props.attempt, attempt);
   assert.ok(find(feedbackPanel, node => node.type === "recording-playback"));
+  // The Filipino F2 card and modal describe reading feedback, not a pronunciation check.
+  assert.equal(find(tree, node => node.props?.id === "m5-panel-feedback").props.title, "Puna sa Pagbasa");
+  const card = find(tree, node => node.props?.className?.includes?.("result-panel-card--feedback"));
+  assert.equal(find(card, node => node.props?.className === "result-panel-card-title").props.children, "Puna sa Pagbasa");
+  assert.equal(find(card, node => node.props?.className === "result-panel-card-text").props.children, "Ihambing ang kuwento sa mga salitang narinig ng computer.");
+  assert.doesNotMatch(text, /Puna sa Pagbigkas|Alamin kung gaano kalinaw/);
+  // F3 and F4 keep their cards and modals, with truthful Filipino titles and this attempt's data.
+  const accuracyModal = find(tree, node => node.props?.id === "m5-panel-accuracy");
+  assert.equal(accuracyModal.props.title, "Katumpakan ng Pagbasa");
+  assert.equal(find(accuracyModal, node => node.type === "filipino-accuracy-panel").props.attempt, attempt);
+  const wordsModal = find(tree, node => node.props?.id === "m5-panel-words");
+  assert.equal(wordsModal.props.title, "Mga Salitang Dapat Balikan");
+  assert.equal(find(wordsModal, node => node.type === "filipino-word-review-panel").props.attempt, attempt);
+  const accuracyCard = find(tree, node => node.props?.className?.includes?.("result-panel-card--accuracy"));
+  assert.equal(find(accuracyCard, node => node.props?.className === "result-panel-card-title").props.children, "Katumpakan ng Pagbasa");
+  assert.equal(JSON.stringify(find(accuracyCard, node => node.props?.className === "result-panel-card-value").props.children), JSON.stringify([70, "%"]), "the same saved score as F6");
+  const wordsCard = find(tree, node => node.props?.className?.includes?.("result-panel-card--words"));
+  assert.equal(find(wordsCard, node => node.props?.className === "result-panel-card-title").props.children, "Mga Salitang Dapat Balikan");
+  assert.doesNotMatch(text, /Katumpakan ng Pagbigkas|Mali ang Bigkas/);
+  // F6 is unchanged and reads the same saved attempt.
+  assert.match(text, /"1 sa 2"/);
+  assert.match(text, /50 salita bawat minuto/);
+});
+
+test("English F2 keeps its pronunciation panel and never shows the Filipino feedback", async () => {
+  const attempt = { id: "oral", materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: null,
+    language: "en", moduleTitle: "Story", readAloudOnly: false, pronunciationAccuracy: 70, readingSpeedWpm: 50,
+    expectedWordCount: 2, transcript: "the cat", passageSnapshot: "the dog",
+    wordMetrics: [{ type: "match", expected: "the", actual: "the" }, { type: "substitution", expected: "dog", actual: "cat" }] };
+  const pronunciationChecks: (string | undefined)[] = [];
+  const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: "oral" }, {
+    searchParams: { view: "feedback" }, pronunciationChecks,
+    oralReadingService: { getOralReadingAttempt: async () => attempt },
+    oralReadingProcessing: { getWordsToPractice: () => [] }, diagnosticTts: {},
+    comprehensionNavigation: { comprehensionTargetForReading },
+    useAuthenticatedProfile: { default: () => ({ profile: { nickname: "Ana" } }) },
+  }, "general_user");
+  f.render(); await tick();
+  const tree = f.render();
+  assert.equal(find(tree, node => node.type === "filipino-reading-feedback"), undefined);
+  // English F2 keeps its card and modal wording.
+  assert.equal(find(tree, node => node.props?.id === "m5-panel-feedback").props.title, "Pronunciation Feedback");
+  const card = find(tree, node => node.props?.className?.includes?.("result-panel-card--feedback"));
+  assert.equal(find(card, node => node.props?.className === "result-panel-card-title").props.children, "Pronunciation Feedback");
+  assert.equal(find(card, node => node.props?.className === "result-panel-card-text").props.children, "Get tips about how clearly you said the words.");
+  assert.doesNotMatch(JSON.stringify(tree), /Reading Feedback|Compare the story with the words the computer heard/);
+  // English F3 and F4 keep their cards, modals and panels, with no Filipino panel.
+  assert.equal(find(tree, node => node.props?.id === "m5-panel-accuracy").props.title, "Pronunciation Accuracy");
+  assert.equal(find(tree, node => node.props?.id === "m5-panel-words").props.title, "Mispronounced Words");
+  const englishAccuracyCard = find(tree, node => node.props?.className?.includes?.("result-panel-card--accuracy"));
+  assert.equal(find(englishAccuracyCard, node => node.props?.className === "result-panel-card-text").props.children, "See your pronunciation accuracy score.");
+  assert.equal(find(englishAccuracyCard, node => node.props?.className === "result-panel-card-value"), undefined, "no Reading Accuracy on the English F3 card");
+  const englishWordsCard = find(tree, node => node.props?.className?.includes?.("result-panel-card--words"));
+  assert.equal(find(englishWordsCard, node => node.props?.className === "result-panel-card-text").props.children, "Listen to words and practice saying them.");
+  assert.equal(find(tree, node => node.type === "filipino-accuracy-panel"), undefined);
+  assert.equal(find(tree, node => node.type === "filipino-word-review-panel"), undefined);
+  const panel = find(tree, node => node.type === "pronunciation-feedback-panel");
+  assert.equal(panel.props.autoStart, true);
+  assert.equal(pronunciationChecks.at(-1), "oral");
+  assert.ok(find(tree, node => node.type === "pronunciation-accuracy-panel"));
+  assert.ok(find(tree, node => node.type === "pronunciation-words-panel"));
 });
 
 test("reading feedback comes before questions, in order, with gentle highlights and a link to the exact M6 activity", async () => {

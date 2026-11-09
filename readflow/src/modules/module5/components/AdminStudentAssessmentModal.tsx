@@ -6,6 +6,7 @@ import { getAdminPronunciationCheck } from "../services/oralReadingTranscription
 import { isPartialCheck, pronunciationOverview, type SavedPronunciationCheck } from "../services/pronunciationSummary";
 import { placePracticeWords, type TextPiece } from "../services/resultWords";
 import type { OralReadingAttempt } from "../types/oralReading";
+import FilipinoReadingFeedback, { FilipinoWordReviewPanel } from "./FilipinoReadingFeedback";
 import M5Modal from "./M5Modal";
 import RecordingPlayback from "./RecordingPlayback";
 import SavedTranscript from "./SavedTranscript";
@@ -117,6 +118,9 @@ export default function AdminStudentAssessmentModal({ studentName, summary, read
               <p className="result-feedback-note">Reading Accuracy compares the words the computer heard with the story. It is separate from Pronunciation Accuracy.</p>
             </section>
 
+            {/* The feedback a student sees for a Filipino reading, from the same saved attempt. */}
+            {loaded.language === "fil" && <FilipinoReadingFeedback attempt={loaded} uiLanguage="en" title="Feedback Shown to the Student" />}
+
             <section className="result-feedback-card" aria-labelledby="admin-pronunciation-title">
               <h3 id="admin-pronunciation-title"><Mic size={22} aria-hidden="true" />Pronunciation Accuracy</h3>
               {savedFailed ? (
@@ -185,6 +189,8 @@ export default function AdminStudentAssessmentModal({ studentName, summary, read
                 </section>
               </>
             )}
+
+            {loaded.language === "fil" && <FilipinoWordReviewPanel attempt={loaded} uiLanguage="en" />}
 
             <RecordingPlayback key={loaded.id} attemptId={loaded.id} admin language="en" />
             {/* Labels stay in English; the story and what was heard keep the reading's own language. */}

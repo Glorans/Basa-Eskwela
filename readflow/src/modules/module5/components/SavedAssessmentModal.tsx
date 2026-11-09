@@ -5,6 +5,7 @@ import "../../../pages/reading-activity/ReadingResultPage.css";
 import { getOralReadingAttempt, type OwnOralReadingSummary } from "../services/oralReadingService";
 import { pronunciationOverview } from "../services/pronunciationSummary";
 import type { LearnerM5Role, OralReadingAttempt } from "../types/oralReading";
+import FilipinoReadingFeedback, { FilipinoWordReviewPanel, READING_ACCURACY_EXPLANATION } from "./FilipinoReadingFeedback";
 import M5Modal from "./M5Modal";
 import { PronunciationAccuracyPanel, PronunciationWordsPanel, usePronunciationCheck } from "./PronunciationFeedback";
 import RecordingPlayback from "./RecordingPlayback";
@@ -96,7 +97,12 @@ export default function SavedAssessmentModal({ role, summary, readingNumber, onC
                   <dd className="result-feedback-summary-value">{t("{wpm} words per minute", { wpm: Math.round(loaded.readingSpeedWpm) })}</dd>
                 </div>
               </dl>
+              {/* Filipino F3: the same saved values, so only its explanation is added here. */}
+              {loaded.language === "fil" && loaded.scoringVersion === 2 && <p className="result-feedback-note">{t(READING_ACCURACY_EXPLANATION)}</p>}
             </section>
+
+            {/* Filipino F2 feedback: the same saved attempt and the same text as the result page. */}
+            {loaded.language === "fil" && <FilipinoReadingFeedback attempt={loaded} uiLanguage={language} />}
 
             {/* F2-F4: the saved English pronunciation check only. */}
             {loaded.language !== "en" ? (
@@ -132,6 +138,9 @@ export default function SavedAssessmentModal({ role, summary, readingNumber, onC
                 )}
               </section>
             )}
+
+            {/* Filipino F4: the word list appears once in F7, in this section. */}
+            {loaded.language === "fil" && <FilipinoWordReviewPanel attempt={loaded} uiLanguage={language} />}
 
             <RecordingPlayback key={loaded.id} attemptId={loaded.id} language={language} />
             <SavedTranscript attempt={loaded} />

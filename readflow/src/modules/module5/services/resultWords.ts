@@ -139,6 +139,31 @@ export function markStory(
 }
 
 /**
+ * Filipino F2 and F7: for each saved story word, in order, the story's own
+ * spelling and the sentence around that exact occurrence (with it marked). Uses
+ * the same exact check as markStory: null unless every story word lines up.
+ */
+export function placeStoryWords(
+  passage: string,
+  title: string,
+  language: DiagnosticLanguage,
+  metrics: readonly OralReadingWordMetric[],
+): { word: string; excerpt: TextPiece[] }[] | null {
+  if (!passage.trim()) return null;
+  const expected = metrics.filter((metric) => metric.type !== "insertion");
+  const { tokens } = layoutStory(passage, title, language);
+  const placed: { word: string; excerpt: TextPiece[] }[] = [];
+  for (const token of tokens) {
+    for (const word of token.words) {
+      const metric = expected[placed.length];
+      if (typeof metric?.expected !== "string" || canonical(metric.expected, language) !== word) return null;
+      placed.push({ word: token.core, excerpt: excerptPieces(tokens.filter((other) => other.sentence === token.sentence), new Set([token.index])) });
+    }
+  }
+  return placed.length === expected.length ? placed : null;
+}
+
+/**
  * F5 "What We Heard": transcript words that are different from the story.
  * When the saved metrics line up exactly with the transcript (reliable), each
  * different word also carries the story word(s) in its place; an extra word
@@ -284,6 +309,15 @@ export function practiceExcerpt(placed: readonly PracticeWordPlacement[], passag
   const sentences = [...new Set(tokens.filter((token) => marked.has(token.index)).map((token) => token.sentence))]
     .sort((a, b) => a - b).slice(0, maxSentences);
   return sentences.map((sentence) => excerptPieces(tokens.filter((token) => token.sentence === sentence), marked));
+}
+
+// F6 Reading Accuracy: transcript-based, so it speaks about words heard, never pronunciation.
+// "Every scored word" only when every scored story word matched and nothing else was heard.
+export function readingAccuracyMessage(accuracy: number, everyWordMatched: boolean) {
+  if (everyWordMatched) return "We heard every scored word of the story! Great reading!";
+  if (accuracy >= 90) return "We heard almost every word of the story. Great reading!";
+  if (accuracy >= 75) return "Most of the words we heard matched the story. Nice job!";
+  return "Good try! Some words we heard were different from the story.";
 }
 
 // Capitalized words that are not names, or are recognized well without help.

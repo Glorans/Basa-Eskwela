@@ -380,6 +380,16 @@
   background: var(--basa-navy);
 }
 
+/* Filipino F4: each row stacks its word, what was heard and its sentence. */
+.result-reading-words .result-practice-item {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.result-reading-heard {
+  margin: 0;
+  font-weight: 700;
+}
+
 .result-feedback-note {
   font-size: 1rem;
 }

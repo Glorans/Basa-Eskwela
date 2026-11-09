@@ -148,6 +148,7 @@ function modal(attempt: unknown, saved: () => Promise<unknown>, summaryOverrides
     if (id.endsWith("/M5Modal")) return { default: "m5-modal" };
     if (id.endsWith("/RecordingPlayback")) return { default: "recording-playback" };
     if (id.endsWith("/SavedTranscript")) return { default: "saved-transcript" };
+    if (id.endsWith("/FilipinoReadingFeedback")) return { default: "filipino-reading-feedback", FilipinoWordReviewPanel: "filipino-word-review-panel" };
     throw new Error(`Unexpected import ${id}`);
   });
   let closed = 0;
@@ -238,10 +239,17 @@ test("a Filipino reading or one with no saved language is not given a score, and
   fil.render(); await tick();
   assert.match(text(fil.render()), /"Filipino"/);
   assert.match(text(fil.render()), /"Not assessed"/);
+  const filipinoFeedback = find(fil.render(), (node) => node.type === "filipino-reading-feedback");
+  assert.equal(filipinoFeedback.props.attempt.id, "third");
+  assert.equal(filipinoFeedback.props.uiLanguage, "en");
+  assert.equal(filipinoFeedback.props.title, "Feedback Shown to the Student");
+  assert.equal(find(fil.render(), (node) => node.type === "filipino-word-review-panel").props.uiLanguage, "en");
   const unknown = modal(attemptFixture({ language: null }), async () => ({ status: "none", check: null }), { language: null });
   unknown.render(); await tick();
   const tree = unknown.render();
   assert.match(text(tree), /"Not recorded"/);
+  assert.equal(find(tree, (node) => node.type === "filipino-reading-feedback"), undefined, "only a Filipino reading gets it");
+  assert.equal(find(tree, (node) => node.type === "filipino-word-review-panel"), undefined);
   assert.equal(find(tree, (node) => node.type === "saved-transcript").props.uiLanguage, "en");
 });
 
