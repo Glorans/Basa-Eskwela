@@ -82,7 +82,7 @@ async function fixture(listFailsAfterSave = false, questionSets: any[] = [], exp
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   vm.runInNewContext(code, {
     module, exports: module.exports,
-    require: (id: string) => id === 'react' ? react : id === 'react-router-dom' ? { useParams: () => ({ roomId: 'room' }), Link: 'a' } : id.includes('ReadFlowDialog') ? { confirmReadFlow: async () => true, showReadFlowDialog: async () => true } : id.includes('classroomService') ? service : id.includes('materialService') ? { getMaterialQuestionSets: async () => questionSets, getMaterialServiceError: (_: unknown, fallback: string) => fallback } : id.includes('supabaseClient') ? {} : id.includes('RoomActionsMenu') ? { default: function RoomActionsMenu() { return null; } } : id.includes('LegacyRoomSubjectPanel') ? { default: function LegacyRoomSubjectPanel() { return null; } } : id.includes('EnrolledStudentsPanel') ? { default: function EnrolledStudentsPanel() { return null; }, EnrolledStudentsButton: function EnrolledStudentsButton() { return null; } } : require(id),
+    require: (id: string) => id === 'react' ? react : id === 'react-router-dom' ? { useParams: () => ({ roomId: 'room' }), Link: 'a' } : id.includes('ReadFlowDialog') ? { confirmReadFlow: async () => true, showReadFlowDialog: async () => true } : id.includes('classroomService') ? service : id.includes('materialService') ? { getMaterialQuestionSets: async () => questionSets, getMaterialServiceError: (_: unknown, fallback: string) => fallback } : id.includes('supabaseClient') ? {} : id.includes('DueDateTimeInput') ? { default: function DueDateTimeInput() { return null; } } : id.includes('RoomActionsMenu') ? { default: function RoomActionsMenu() { return null; } } : id.includes('LegacyRoomSubjectPanel') ? { default: function LegacyRoomSubjectPanel() { return null; } } : id.includes('EnrolledStudentsPanel') ? { default: function EnrolledStudentsPanel() { return null; }, EnrolledStudentsButton: function EnrolledStudentsButton() { return null; } } : require(id),
     console: { error() {} },
     window: {
       addEventListener(name: string, callback: () => void) { listeners.set(name, callback); },
@@ -418,7 +418,11 @@ test('a due date is saved with each new assignment and shown in the teacher list
   await f.service.assignReadingActivity(roomId, materialId, [studentId, secondStudentId], '2099-11-09T07:30:00.000Z');
   assert.deepEqual(f.rows.map((row: any) => row.due_at), ['2099-11-09T07:30:00.000Z', '2099-11-09T07:30:00.000Z']);
   await assert.rejects(f.service.assignReadingActivity(roomId, materialId, [studentId], 'soon'), /valid due date/);
-  assert.match(source, /type="datetime-local"/);
+  assert.match(source, /<DueDateTimeInput\s+id="activityDueAt"/);
+  const picker = readFileSync(new URL('../src/modules/module4/components/DueDateTimeInput.tsx', import.meta.url), 'utf8');
+  assert.match(picker, /type="date"/);
+  assert.match(picker, /type="time"/);
+  assert.doesNotMatch(picker, /type="datetime-local"/);
   assert.match(source, /Due date and time \(optional\)/);
   assert.match(source, /activity\.due_at && <p className="text-sm">Due /);
   // Deadlines never block late work: the student flow has no due-date gate.

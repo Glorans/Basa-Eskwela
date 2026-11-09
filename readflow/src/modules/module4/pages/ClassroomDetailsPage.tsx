@@ -14,7 +14,6 @@ import {
   assignReadingActivity,
   parseOptionalDueDate,
   formatDueDateTime,
-  currentDueDateMinimum,
   dueDateIssue,
   supportsOptionalColumn,
   setReadingActivityRemoved,
@@ -40,6 +39,7 @@ import {
 } from "../services/classroomService";
 import { getMaterialQuestionSets, getMaterialServiceError } from "../../module3/services/materialService";
 import type { MaterialQuestionSetSummary } from "../../module3/types/content";
+import DueDateTimeInput from "../components/DueDateTimeInput";
 import EnrolledStudentsPanel, { EnrolledStudentsButton } from "../components/EnrolledStudentsPanel";
 import LegacyRoomSubjectPanel from "../components/LegacyRoomSubjectPanel";
 import RoomActionsMenu from "../components/RoomActionsMenu";
@@ -449,22 +449,20 @@ function ModuleAssignmentSection({
 
           {deadlinesSupported && (
             <div className="mt-4">
-              <label
-                htmlFor="moduleDueAt"
+              <p
+                id="moduleDueAtLabel"
                 className="mb-2 block text-sm font-bold text-[#173f3b]"
               >
                 Due date and time (optional)
-              </label>
-              <input
+              </p>
+              <DueDateTimeInput
                 id="moduleDueAt"
-                type="datetime-local"
+                labelId="moduleDueAtLabel"
                 value={moduleDueAt}
-                min={currentDueDateMinimum()}
                 disabled={assigningModule}
-                onChange={(event) => onModuleDueAtChange(event.target.value)}
-                aria-invalid={Boolean(dueDateIssue(moduleDueAt))}
-                aria-describedby="moduleDueAtHelp moduleDueAtIssue"
-                className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-sm text-[#173f3b] outline-none transition focus:border-[#f7cf4a] sm:max-w-xs"
+                onValueChange={onModuleDueAtChange}
+                invalid={Boolean(dueDateIssue(moduleDueAt))}
+                describedBy="moduleDueAtHelp moduleDueAtIssue"
               />
               <p id="moduleDueAtHelp" className="mt-1 text-xs text-[#6d8582]">
                 Philippine time. Leave empty for no deadline. Students see the due date, and they can still finish after it.
@@ -1607,21 +1605,19 @@ export default function ClassroomDetailsPage() {
 
             {/* Optional deadline: shown to students, late work is still accepted. */}
             <div className="mt-6">
-              <label
-                htmlFor="activityDueAt"
+              <p
+                id="activityDueAtLabel"
                 className="mb-2 block text-sm font-bold text-[#173f3b]"
               >
                 Due date and time (optional)
-              </label>
-              <input
+              </p>
+              <DueDateTimeInput
                 id="activityDueAt"
-                type="datetime-local"
+                labelId="activityDueAtLabel"
                 value={activityDueAt}
-                min={currentDueDateMinimum()}
-                onChange={(event) => setActivityDueAt(event.target.value)}
-                aria-invalid={Boolean(dueDateIssue(activityDueAt))}
-                aria-describedby="activityDueAtHelp activityDueAtIssue"
-                className="w-full rounded-xl border-2 border-transparent bg-white px-4 py-3 text-sm text-[#173f3b] outline-none transition focus:border-[#f7cf4a] sm:max-w-xs"
+                onValueChange={setActivityDueAt}
+                invalid={Boolean(dueDateIssue(activityDueAt))}
+                describedBy="activityDueAtHelp activityDueAtIssue"
               />
               <p id="activityDueAtHelp" className="mt-1 text-xs text-[#6d8582]">
                 Philippine time. Leave empty for no deadline. Students see the due date, and they can still finish after it.

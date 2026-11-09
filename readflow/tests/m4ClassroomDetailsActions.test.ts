@@ -153,6 +153,7 @@ async function mount(options: Options = {}) {
     if (id.endsWith("/supabaseClient")) return { supabase };
     // The shared roster panel renders for real (it has no hooks of its own).
     if (id.endsWith("/components/EnrolledStudentsPanel")) return loadComponentModule(panelUrl, stub);
+    if (id.endsWith("/components/DueDateTimeInput")) return { default: function DueDateTimeInput(props: any) { return { type: "due-date-time", props }; } };
     if (id.endsWith("/components/LegacyRoomSubjectPanel")) return loadComponentModule(legacyPanelUrl, stub);
     // Exercise the page's real handlers here; portal, focus and pointer behavior
     // are exercised with real React/DOM in browser/m4Prototype3.mjs.
@@ -394,7 +395,8 @@ async function assignFables(page: Awaited<ReturnType<typeof mount>>, dueAt?: str
   page.click("Assign Module");
   page.change("moduleLanguage", "en");
   page.change("readingModule", "mod-1");
-  if (dueAt !== undefined) page.change("moduleDueAt", dueAt);
+  // Date and time are separate fields; the page still receives one "YYYY-MM-DDTHH:mm" value.
+  if (dueAt !== undefined) page.byId("moduleDueAt").props.onValueChange(dueAt);
   await page.submit("readingModule");
 }
 

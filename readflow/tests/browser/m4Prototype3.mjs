@@ -294,12 +294,14 @@ try {
   console.log('Legacy subject screenshots: '+shots);
 
   await navigate('/teacher/english');await click('Assign Module');
-  await select('#readingModule','en-module');await input('#moduleDueAt','2020-01-01T09:00');
-  await until('document.querySelector("#moduleDueAt").getAttribute("aria-invalid")==="true"');
+  await select('#readingModule','en-module');await input('#moduleDueAtDate','2020-01-01');
+  await until('document.querySelector("#moduleDueAtIssue").textContent.includes("Choose a due time")');
+  await input('#moduleDueAtTime','09:00');
+  await until('document.querySelector("#moduleDueAtDate").getAttribute("aria-invalid")==="true"');
   assert.ok(await evaluate('document.querySelector("#moduleDueAtIssue").textContent.includes("already passed")'));
   assert.deepEqual(await evaluate('window.calls'),[]);
-  await input('#moduleDueAt','2099-11-09T15:30');
-  await until('document.querySelector("#moduleDueAt").getAttribute("aria-invalid")==="false"');
+  await input('#moduleDueAtDate','2099-11-09');await input('#moduleDueAtTime','15:30');
+  await until('document.querySelector("#moduleDueAtDate").getAttribute("aria-invalid")==="false"');
   await click('Assign Module','form button');
   await until('window.calls.some(c=>c[0]==="assign")');
   assert.deepEqual(await evaluate('window.calls.find(c=>c[0]==="assign")'),['assign','english','en-module','teacher','2099-11-09T07:30:00.000Z']);

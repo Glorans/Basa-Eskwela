@@ -790,6 +790,13 @@ const LOCAL_DATE_TIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(:\d{2})?$/;
 export function parseOptionalDueDate(value: string, now: Date = new Date()): string | null {
   const text = value.trim();
   if (!text) return null;
+  // Separate date and time fields: name the missing half instead of a generic error.
+  if (/^\d{4}-\d{2}-\d{2}T$/.test(text)) {
+    throw new ReadingActivityValidationError("Choose a due time too, or clear the due date.");
+  }
+  if (/^T\d{2}:\d{2}(:\d{2})?$/.test(text)) {
+    throw new ReadingActivityValidationError("Choose a due date too, or clear the due time.");
+  }
   const local = LOCAL_DATE_TIME.exec(text);
   const due = new Date(local ? `${local[1]}T${local[2]}${local[3] ?? ":00"}+08:00` : text);
   if (Number.isNaN(due.getTime())) {
