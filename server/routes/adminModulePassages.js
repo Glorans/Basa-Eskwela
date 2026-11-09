@@ -156,7 +156,8 @@ function createAdminModulePassagesRouter(deps = {}) {
 
         if (error || !collection) {
           return res.status(403).json({
-            message: "Admin access to this module is required.",
+            // The database decides: Admin, or the approved Teacher who created the module.
+            message: "You do not have access to this module.",
           });
         }
 

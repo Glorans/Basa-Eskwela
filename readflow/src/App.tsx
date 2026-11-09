@@ -396,6 +396,27 @@ function App() {
               element={<ModuleDetailPage role="teacher" />}
             />
 
+            {/* M3 Teacher F1–F5: the Teacher's own reading modules (database-enforced ownership). */}
+            <Route
+              path="content"
+              element={<Module3Page workspace="teacher" />}
+            />
+
+            <Route
+              path="content/new"
+              element={<ModuleFormPage mode="create" workspace="teacher" />}
+            />
+
+            <Route
+              path="content/:moduleId"
+              element={<ModuleFormPage mode="detail" workspace="teacher" />}
+            />
+
+            <Route
+              path="content/:moduleId/edit"
+              element={<ModuleFormPage mode="edit" workspace="teacher" />}
+            />
+
             <Route
               path="materials"
               element={<MaterialLibraryPage role="teacher" />}

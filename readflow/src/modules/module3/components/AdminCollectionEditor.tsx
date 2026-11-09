@@ -50,6 +50,15 @@ import {
   type AdminPassage,
 } from "../services/adminCollectionService";
 
+export type M3EditorWorkspace = "admin" | "teacher";
+
+/** Where the shared editor links to. Admin paths are unchanged. */
+export function editorPaths(workspace: M3EditorWorkspace) {
+  return workspace === "teacher"
+    ? { list: "/m3/teacher/content", module: "/m3/teacher/content", backLabel: "Back to My Reading Modules", eyebrow: "Teacher Workspace" }
+    : { list: "/m3/admin", module: "/m3/admin/modules", backLabel: "Back to Content Management", eyebrow: "Admin Workspace" };
+}
+
 interface PassageUpload {
   fileName: string;
   status: "selected" | "extracting" | "done" | "error" | "cancelled";
@@ -65,9 +74,13 @@ function uploadErrorMessage(text: string) {
 
 export default function AdminCollectionEditor({
   mode,
+  workspace = "admin",
 }: {
   mode: "create" | "edit" | "detail";
+  /** "teacher": an approved Teacher's own modules (M3 Teacher F1–F5). Permissions are enforced by the database. */
+  workspace?: M3EditorWorkspace;
 }) {
+  const paths = editorPaths(workspace);
   const { moduleId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -137,11 +150,11 @@ export default function AdminCollectionEditor({
   }, []);
 
   useEffect(() => {
-    if (mode !== "detail" || !moduleId) { setRevisions(null); return; }
+    if (mode !== "detail" || !moduleId || workspace !== "admin") { setRevisions(null); return; }
     let live = true;
     void getModuleRevisions(moduleId).then((list) => { if (live) setRevisions(list); });
     return () => { live = false; };
-  }, [mode, moduleId]);
+  }, [mode, moduleId, workspace]);
 
   function startRevision() {
     if (!collection || busy) return;
@@ -473,7 +486,7 @@ export default function AdminCollectionEditor({
 
       await refreshModules();
 
-      navigate(`/m3/admin/modules/${collection.id}/edit`, {
+      navigate(`${paths.module}/${collection.id}/edit`, {
         replace: true,
         state: { draftSaved: true },
       });
@@ -722,10 +735,10 @@ export default function AdminCollectionEditor({
   return (
     <div className="m3-page-stack m3-page-stack--narrow m3-collection-editor">
       <header className="m3-editor-header">
-        <Link className="m3-editor-back" to="/m3/admin">
-          &larr; Back to Content Management
+        <Link className="m3-editor-back" to={paths.list}>
+          &larr; {paths.backLabel}
         </Link>
-        <p className="m3-eyebrow">Admin Workspace</p>
+        <p className="m3-eyebrow">{paths.eyebrow}</p>
         <h1>
           {mode === "create"
             ? "Create Reading Module"
@@ -841,7 +854,7 @@ export default function AdminCollectionEditor({
       )}
 
       {mode === "detail" && collection.status === "draft" && !collection.publishedAt && (
-        <Link to={`/m3/admin/modules/${collection.id}/edit`}>
+        <Link to={`${paths.module}/${collection.id}/edit`}>
           Edit passages and review questions
         </Link>
       )}

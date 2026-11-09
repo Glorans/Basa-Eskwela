@@ -65,6 +65,8 @@ function getNavItems(role: M3Role) {
   ];
 
   if (role === "teacher") {
+    // M3 Teacher F1–F5: create, organize, edit, delete and publish their own reading modules.
+    items.splice(1, 0, { label: "My Reading Modules", to: "/m3/teacher/content", icon: FilePlus2, end: false });
     items.push({ label: "Learning Rooms", to: "/m3/teacher/learning-rooms", icon: School, end: true });
     items.push({
       label: "Reading Results",

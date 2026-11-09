@@ -117,6 +117,7 @@ export function mapModuleRow(row: ModuleQueryRow): ReadingModule {
     difficultyTier: path.difficultyTier,
     status: requireModuleStatus(row.status),
     createdAt: row.created_at,
+    createdBy: row.created_by ?? undefined,
     publishedAt: row.published_at ?? undefined,
     passage: row.passage ?? "",
     questionCount: row.comprehension_questions[0]?.count ?? 0,

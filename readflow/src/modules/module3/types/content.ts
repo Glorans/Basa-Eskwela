@@ -36,6 +36,8 @@ export interface ReadingModule {
   difficultyTier: ModuleDifficulty;
   status: ModuleStatus;
   createdAt: string;
+  /** Profile id of the author (modules.created_by), set by the database. */
+  createdBy?: string;
   publishedAt?: string;
   passage: string;
   questionCount: number;

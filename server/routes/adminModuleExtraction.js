@@ -23,10 +23,14 @@ const {
   SupabaseServerConfigurationError,
 } = require("../services/supabaseAdmin");
 
-function requireAdmin(profile) {
-  if (profile?.role !== "admin") {
+// Reading-module authors: Admin, or an APPROVED Teacher (M3 Teacher F1/F3). Extraction only
+// returns text to the editor and saves nothing; which module the text goes into is
+// authorized by the database when the draft is saved.
+function requireModuleAuthor(profile) {
+  const approvedTeacher = profile?.role === "teacher" && profile?.teacher_status === "approved";
+  if (profile?.role !== "admin" && !approvedTeacher) {
     throw new MaterialAuthorizationError(
-      "Only Admin may extract a file for a reading module.",
+      "Only an Admin or an approved Teacher may extract a file for a reading module.",
     );
   }
 }
@@ -77,7 +81,7 @@ function createAdminModuleExtractionRouter(dependencies = {}) {
   router.post("/extract", async (req, res) => {
     try {
       const requester = await authorize(req, dependencies);
-      requireAdmin(requester.profile);
+      requireModuleAuthor(requester.profile);
     } catch (error) {
       return sendExtractionError(res, error);
     }

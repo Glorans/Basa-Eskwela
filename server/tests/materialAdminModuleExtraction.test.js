@@ -14,13 +14,13 @@ const { SupabaseAuthenticationError } = require("../services/supabaseAdmin");
 
 const TEST_USER_ID = "11111111-1111-4111-8111-111111111111";
 
-function createAppForRole(role, overrides = {}) {
+function createAppForRole(role, overrides = {}, teacherStatus = null) {
   const app = express();
   app.use(express.json());
   app.use("/api/admin/modules", createAdminModuleExtractionRouter({
     authorizeMaterialRequest: async () => {
       if (!role) throw new SupabaseAuthenticationError();
-      return { user: { id: TEST_USER_ID }, profile: { id: TEST_USER_ID, role } };
+      return { user: { id: TEST_USER_ID }, profile: { id: TEST_USER_ID, role, teacher_status: teacherStatus } };
     },
     ...overrides,
   }));
@@ -203,15 +203,18 @@ test("an extraction failure returns a safe retryable error and cleans up the upl
   assert.deepEqual(await fs.readdir(materialUploadDirectory), filesBefore);
 });
 
-for (const [role, expectedStatus] of [
+for (const [role, expectedStatus, teacherStatus = null] of [
   [undefined, 401],
   ["student", 403],
   ["teacher", 403],
+  ["teacher", 403, "pending"],
+  ["teacher", 403, "rejected"],
+  ["teacher", 400, "approved"],
   ["general_user", 403],
   ["admin", 400],
 ]) {
-  test(`${role ?? "unauthenticated"} Admin extraction authorization returns ${expectedStatus}`, async (context) => {
-    const { server, baseUrl } = await listen(createAppForRole(role));
+  test(`${role ?? "unauthenticated"}${teacherStatus ? ` (${teacherStatus})` : ""} module extraction authorization returns ${expectedStatus}`, async (context) => {
+    const { server, baseUrl } = await listen(createAppForRole(role, {}, teacherStatus));
     context.after(() => new Promise((resolve) => server.close(resolve)));
     const response = await fetch(`${baseUrl}/api/admin/modules/extract`, {
       method: "POST",
