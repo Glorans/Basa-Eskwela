@@ -99,7 +99,8 @@ test("Admin Content Management is unchanged: every module, Admin links, Trash lo
 });
 
 test("Teacher routes live inside the approved-Teacher route group and reuse the Admin editor", () => {
-  const app = read("App.tsx");
+  // A Windows checkout (core.autocrlf) writes CRLF; the route snippets below use LF.
+  const app = read("App.tsx").replace(/\r\n/g, "\n");
   const teacherBlock = app.slice(app.indexOf('<Route element={<RequireRole allowedRoles={["teacher"]} />}>'), app.indexOf('path="materials"', app.indexOf('allowedRoles={["teacher"]}')));
   for (const route of [
     'path="content"\n              element={<Module3Page workspace="teacher" />}',
