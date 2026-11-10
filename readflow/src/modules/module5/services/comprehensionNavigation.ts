@@ -15,6 +15,9 @@ export function comprehensionTargetForReading(role: LearnerM5Role, attempt: Pick
     })}`;
   }
   if (attempt.materialId && attempt.readAloudOnly === true) return null;
+  if (attempt.materialId && role === "general_user" && !attempt.roomId && !attempt.activityAssignmentId) {
+    return `/m3/general/materials/${encodeURIComponent(attempt.materialId)}/comprehension?${new URLSearchParams({ oralReadingAttemptId: attempt.id })}`;
+  }
   if (attempt.materialId) {
     if (role !== "student" || !attempt.roomId || !attempt.activityAssignmentId || attempt.moduleId) return null;
     return `/dashboard/reading-materials/${encodeURIComponent(attempt.materialId)}/comprehension?${new URLSearchParams({
@@ -57,11 +60,12 @@ export function comprehensionResultTarget(role: LearnerM5Role, comprehensionAtte
  */
 export function learningAreaTarget(role: LearnerM5Role, source?: {
   moduleId?: string | null; materialId?: string | null; passageId?: string | null; roomId?: string | null;
-} | null): { to: string; kind: "room" | "module" } {
+} | null): { to: string; kind: "room" | "module" | "material" } {
   const moduleRoot = role === "student" ? "/dashboard/materials" : "/m3/general/modules";
   // Admin and Teacher practice have no module-detail page; return to the practice passage list.
   if (isPracticeRole(role)) return { to: PRACTICE_PATHS[role].list, kind: "module" };
   if (source?.roomId && (source.materialId || role === "student")) return { to: `/dashboard/learning-rooms/${source.roomId}`, kind: "room" };
+  if (role === "general_user" && source?.materialId && !source.roomId) return { to: `/m3/general/materials/${encodeURIComponent(source.materialId)}`, kind: "material" };
   if (!source) return { to: moduleRoot, kind: "module" };
   return {
     to: `${moduleRoot}/${source.moduleId}?${new URLSearchParams(source.passageId ? { passageId: source.passageId } : {}).toString()}`,

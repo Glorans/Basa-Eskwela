@@ -153,20 +153,21 @@ export default function ComprehensionPage({ role, results = false }: Props) {
   currentSource.current = sourceKey;
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const hasSource = Boolean(materialId ? activityAssignmentId && roomId && oralReadingAttemptId : moduleId && passageId);
+  const personal = role === "general_user" && Boolean(materialId ?? attempt?.materialId) && !(roomId ?? attempt?.roomId);
+  const hasSource = Boolean(materialId ? (personal ? oralReadingAttemptId : activityAssignmentId && roomId && oralReadingAttemptId) : moduleId && passageId);
   // The introduction's button follows the server's saved state for this reading's learning activity
   // (one assessment per activity): none yet, unfinished, or completed. undefined while checking.
   const [linked, setLinked] = useState<{ key: string; state: LinkedComprehension | null | "error" }>();
   const [lookupRun, setLookupRun] = useState(0);
   const lookupKey = `${oralReadingAttemptId}:${lookupRun}`;
-  const introduction = !attemptId && !materialId && hasSource && Boolean(oralReadingAttemptId);
+  const introduction = !attemptId && (!materialId || personal) && hasSource && Boolean(oralReadingAttemptId);
 
   const resultBase =
     role === "student"
       ? "/dashboard/comprehension"
       : isPracticeRole(role) ? `${PRACTICE_PATHS[role].root}/comprehension` : "/m3/general/comprehension";
 
-  const home = (attempt?.materialId ?? materialId) && (attempt?.roomId ?? roomId)
+  const home = personal ? `/m3/general/materials/${attempt?.materialId ?? materialId}` : (attempt?.materialId ?? materialId) && (attempt?.roomId ?? roomId)
     ? `/dashboard/learning-rooms/${attempt?.roomId ?? roomId}`
     : role === "student" ? "/dashboard" : isPracticeRole(role) ? PRACTICE_PATHS[role].list : "/m3/general";
 
@@ -329,9 +330,9 @@ export default function ComprehensionPage({ role, results = false }: Props) {
   }
 
   useEffect(() => {
-    if (!attempt?.materialId) return;
+    if (!attempt?.materialId || attempt.materialDeleted) return;
     if (attempt.status === "completed") {
-      if (!results) navigate(`${resultBase}/${attempt.id}/results`, { replace: true, state: activityLanguageState(attempt.language) });
+      if (!results && role === "student") navigate(`${resultBase}/${attempt.id}/results`, { replace: true, state: activityLanguageState(attempt.language) });
       return;
     }
     if (attempt.summary.allResolved && !busy && !lock.current && !pending.current && completing.current !== attempt.id) {
@@ -364,13 +365,13 @@ export default function ComprehensionPage({ role, results = false }: Props) {
   const readingMaterialId = attempt?.materialId ?? materialId;
   const readingRoomId = attempt?.roomId ?? roomId;
   const readingAssignmentId = attempt?.activityAssignmentId ?? activityAssignmentId;
-  const readingTarget = readingMaterialId && readingRoomId && readingAssignmentId
+  const readingTarget = personal && readingMaterialId ? `/m3/general/materials/${readingMaterialId}/read-aloud?recordAgain=1` : readingMaterialId && readingRoomId && readingAssignmentId
     ? `/dashboard/reading-materials/${encodeURIComponent(readingMaterialId)}/read-aloud?${new URLSearchParams({
       roomId: readingRoomId, activityAssignmentId: readingAssignmentId, viewReading: "1",
     })}` : home;
   const reviewingQuestions = Boolean(readingMaterialId && attempt?.status !== "completed");
   // An unfinished assessment of an archived classroom: no question is offered (the server refuses answers too).
-  const archivedOpen = attempt?.roomArchived === true && attempt.status !== "completed";
+  const archivedOpen = (attempt?.roomArchived === true || attempt?.materialDeleted === true) && attempt.status !== "completed";
   const question = archivedOpen ? undefined : attempt?.questions[index];
   // F2 Receive Scaffolding Prompt: after an incorrect final answer the mascot shows this question's
   // own clue (also after a refresh). Without a valid clue it keeps the general encouragement.
@@ -403,7 +404,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         onClick={() => navigate(reviewingQuestions ? readingTarget : home, { state: activityState })}
       >
         <ArrowLeft size={18} aria-hidden="true" />
-        {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : role === "teacher" ? t("Back to Reading Practice") : t("Back to dashboard")}
+        {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t(personal ? "Back to Material" : "Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : role === "teacher" ? t("Back to Reading Practice") : t("Back to dashboard")}
       </button>
       {attempt && <StoryDrawer key={sourceKey} attempt={attempt} />}
       </div>}
@@ -414,10 +415,10 @@ export default function ComprehensionPage({ role, results = false }: Props) {
 
       {archivedOpen && (
         <div className="m6-card" role="note">
-          <p>{language === "fil"
+          <p>{attempt?.materialDeleted ? (language === "fil" ? "Inalis na ang babasahing ito sa iyong listahan. Naka-save ang mga sagot mo, pero hindi na maaaring ituloy ang pagsusulit na ito." : "This material was removed from your Reading Materials. Your saved answers are kept, but this unfinished assessment cannot continue.") : language === "fil"
             ? "Naka-archive na ang klaseng ito. Naka-save ang mga sagot mo, pero hindi na maipapasa ang mga bagong sagot."
             : "This classroom is archived. Your saved answers are kept, but new answers cannot be submitted."}</p>
-          <Link className="m6-button" to={readingTarget} state={activityState}>{t("Back to Reading Result")}</Link>
+          <Link className="m6-button" to={linkedReading ?? readingTarget} state={activityState}>{t("Back to Reading Result")}</Link>
         </div>
       )}
 
@@ -452,7 +453,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
           that it is working. The live region always exists so the announcement is reliable. */}
       <p className="m6-visually-hidden" role="status">{busy ? t("Please wait…") : ""}</p>
 
-      {!attempt && !attemptId && (!materialId || Boolean(error) || !hasSource) && (
+      {!attempt && !attemptId && (!materialId || personal || Boolean(error) || !hasSource) && (
         <section className="m6-card">
           <h2>{t("Ready to answer?")}</h2>
 
@@ -496,7 +497,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
                 onClick={() => void start()}
               >
                 {/* An old link without its reading cannot be checked first; the server still reopens an existing assessment. */}
-                {materialId ? t("Retry comprehension") : introduction ? t("Start Comprehension") : t("Open Comprehension")}
+                {materialId && !personal ? t("Retry comprehension") : introduction ? t("Start Comprehension") : t("Open Comprehension")}
               </button>
             </div>
           )}
@@ -612,7 +613,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
             )}
             {learningArea && (
               <Link className="m6-button" to={learningArea.to} state={activityState}>
-                {learningArea.kind === "room" ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : role === "teacher" ? t("Back to Reading Practice") : t("Back to Reading Module")}
+                {learningArea.kind === "material" ? t("Back to Material") : learningArea.kind === "room" ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : role === "teacher" ? t("Back to Reading Practice") : t("Back to Reading Module")}
               </Link>
             )}
           </nav>

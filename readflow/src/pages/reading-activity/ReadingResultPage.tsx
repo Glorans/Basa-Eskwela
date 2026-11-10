@@ -113,7 +113,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   // The reading's Learning Room, or its Reading Module (shared with the M6 results page).
   const backTarget = learningAreaTarget(role, attempt).to;
 
-  const backLabel = role === "admin" ? "Back to Oral Reading" : role === "teacher" ? "Back to Reading Practice" : attempt?.materialId ? "Back to Learning Room" :
+  const backLabel = role === "admin" ? "Back to Oral Reading" : role === "teacher" ? "Back to Reading Practice" : attempt?.materialId ? (role === "general_user" ? "Back to Material" : "Back to Learning Room") :
     role === "student" && attempt?.roomId
       ? "Back to Classroom"
       : "Back to Reading Module";
@@ -247,7 +247,9 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const selectedPiece = selectedWord === undefined ? undefined : heard.pieces[selectedWord];
   const pronunciationStory = { passage: attempt.passageSnapshot ?? "", title: storyTitle };
   const pronunciationScore = pronunciation.status === "done" ? pronunciation.summary?.accuracy ?? null : null;
-  const readAgainTarget = attempt.materialId && attempt.roomId && attempt.activityAssignmentId
+  const readAgainTarget = role === "general_user" && attempt.materialId && !attempt.roomId
+    ? `/m3/general/materials/${encodeURIComponent(attempt.materialId)}/read-aloud?recordAgain=1`
+    : attempt.materialId && attempt.roomId && attempt.activityAssignmentId
     ? `/dashboard/reading-materials/${encodeURIComponent(attempt.materialId)}/read-aloud?${new URLSearchParams({
       roomId: attempt.roomId, activityAssignmentId: attempt.activityAssignmentId, recordAgain: "1",
     })}`

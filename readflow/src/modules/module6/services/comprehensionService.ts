@@ -54,6 +54,7 @@ export interface ComprehensionAttempt {
   roomId?: string | null;
   /** Set by the server for an unfinished assessment of an archived classroom: read-only, no new answers. */
   roomArchived?: boolean;
+  materialDeleted?: boolean;
   passageTitle: string;
   passageText: string;
   language: "en" | "fil";

@@ -1,3 +1,4 @@
+import PersonalMaterialPractice from "../components/PersonalMaterialPractice";
 import { ArrowLeft, FileText, LoaderCircle } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import M3PageHeader from "../components/M3PageHeader";
@@ -138,6 +139,7 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
         </div>
       </section>
 
+      {role === "general_user" && <PersonalMaterialPractice key={`${material.id}:${material.languageCode}`} materialId={material.id} />}
       {role !== "general_user" && (
         <div className="m3-material-split__main">
           <MaterialQuestionSets

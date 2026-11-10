@@ -41,6 +41,7 @@ const filipino = {
   "Unable to open activity.": "Hindi mabuksan ang gawain. Pakisubukang muli.",
   "Opening your reading activity...": "Binubuksan ang iyong gawain sa pagbasa...",
   "Back to Learning Room": "Bumalik sa Silid-Aralan",
+  "Back to Material": "Bumalik sa Babasahin",
   "Back to Classroom": "Bumalik sa Klase",
   "Back to Reading Module": "Bumalik sa Modyul sa Pagbasa",
   "Reading module not found.": "Hindi nahanap ang modyul sa pagbasa.",

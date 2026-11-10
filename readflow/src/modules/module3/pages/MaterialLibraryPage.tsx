@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Eye, FilePlus2, FileQuestion, Files, LoaderCircle, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { confirmReadFlow } from "../../../components/ReadFlowDialog";
 import M3PageHeader from "../components/M3PageHeader";
 import M3StatusBadge from "../components/M3StatusBadge";
 import { useM3Content } from "../context/M3ContentContext";
@@ -28,19 +29,35 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string>();
 
+  // Independent Learners remove a material from their list; it is retained, not erased.
+  const personal = role === "general_user";
+
   async function deleteMaterial(material: UploadedMaterial) {
+    if (personal && !(await confirmReadFlow(
+      `Remove "${material.title}" from your Reading Materials?\n\n`
+      + "You will no longer see it in this list or start new reading, question or comprehension practice with it. "
+      + "An unfinished comprehension assessment for it becomes read-only.\n\n"
+      + "This is not a permanent deletion. Basa Eskwela keeps the uploaded file, its saved text, any private questions "
+      + "and your saved reading and comprehension results. Completed results stay in your history. "
+      + "Removal cannot be undone here.",
+      { confirm: "Remove", cancel: "Keep material" },
+    ))) return;
     setDeletingId(material.id);
     setNotice("");
     setError("");
 
     try {
       await removeMaterial(material.id);
-      setNotice(`${material.title} was deleted.`);
+      setNotice(personal
+        ? `${material.title} was removed from your Reading Materials. Its file, text and saved results are kept.`
+        : `${material.title} was deleted.`);
     } catch (deleteError) {
       setError(
         getMaterialServiceError(
           deleteError,
-          "Unable to delete the material. It remains in your library.",
+          personal
+            ? "Unable to remove the material. It remains in your library."
+            : "Unable to delete the material. It remains in your library.",
         ),
       );
     } finally {
@@ -125,7 +142,9 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
                   ) : (
                     <Trash2 size={16} />
                   )}
-                  {deletingId === material.id ? "Deleting..." : "Delete"}
+                  {deletingId === material.id
+                    ? (personal ? "Removing..." : "Deleting...")
+                    : (personal ? "Remove from Reading Materials" : "Delete")}
                 </button>
               </div>
             </article>

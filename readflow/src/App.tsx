@@ -579,6 +579,8 @@ function App() {
               path="materials/:materialId"
               element={<MaterialDetailPage role="general_user" />}
             />
+            <Route path="materials/:materialId/read-aloud" element={<ReadAloudPage role="general_user" />} />
+            <Route path="materials/:materialId/comprehension" element={<ComprehensionPage role="general_user" />} />
 
             <Route
               path="leaderboard"

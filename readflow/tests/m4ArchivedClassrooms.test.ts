@@ -197,7 +197,7 @@ test("direct read-aloud URL of an archived classroom: read-only story, no record
 
 test("an unfinished assessment of an archived classroom opens read-only (server flag)", () => {
   const page = read("modules/module6/pages/ComprehensionPage.tsx");
-  assert.match(page, /const archivedOpen = attempt\?\.roomArchived === true && attempt\.status !== "completed";/);
+  assert.match(page, /const archivedOpen = \(attempt\?\.roomArchived === true \|\| attempt\?\.materialDeleted === true\) && attempt\.status !== "completed";/);
   assert.match(page, /const question = archivedOpen \? undefined : attempt\?\.questions\[index\];/, "no question, so no answer buttons");
   assert.match(page, /This classroom is archived\. Your saved answers are kept, but new answers cannot be submitted\./);
 });

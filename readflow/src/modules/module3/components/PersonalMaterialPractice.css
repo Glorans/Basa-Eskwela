@@ -1,0 +1,13 @@
+.m3-personal-practice {
+  display: grid;
+  gap: 14px;
+  color: #244b42;
+}
+.m3-personal-practice h2 { margin: 0; font-size: 1.35rem; font-weight: 800; }
+.m3-personal-practice p { margin: 0; line-height: 1.6; }
+.m3-personal-review { display: grid; gap: 14px; }
+.m3-personal-review label { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
+.m3-personal-review input { margin-top: 6px; flex-shrink: 0; }
+.m3-personal-review button { justify-self: start; }
+.m3-personal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.m3-personal-actions > span, .m3-personal-actions > p { flex-basis: 100%; line-height: 1.6; }
