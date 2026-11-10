@@ -10,6 +10,7 @@ const { synthesizeSpeech } = require("../services/azureSpeechService");
 const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { SpeechConfigurationError, SAFE_SPEECH_ERRORS } = require("../services/speechErrors");
 const { createSpeechAccess } = require("../services/speechAccess");
+const { authorizeReadingPracticeRequest } = require("../services/oralReadingAttemptService");
 const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
 
 // Words and short passages; Azure neural TTS is also capped at 1,000 characters
@@ -76,9 +77,13 @@ function createSpeechUpload(uploadDirectory) {
 // Azure STT (M2 diagnostic fallback, M5 read-aloud) and Azure neural TTS. Both
 // require an authenticated student, independent learner or admin; access is
 // checked and throttled before any upload is written or provider is called.
+// M5 read-aloud transcription and TTS (used by M5 feedback) also admit APPROVED Teachers
+// for reading practice; the M2 diagnostic upload keeps the original roles.
 function createSpeechRouter({
   uploadDirectory = path.join(__dirname, "..", "uploads"),
   authorize,
+  // An injected `authorize` (tests) keeps applying to every endpoint unless this is given too.
+  authorizeReadAloud = authorize ?? ((req) => authorizeReadingPracticeRequest(req)),
   rateLimits,
   now,
   transcribe,
@@ -101,7 +106,7 @@ function createSpeechRouter({
     log,
   });
 
-  router.post("/api/tts", requireSpeechAccess("tts"), async (req, res) => {
+  router.post("/api/tts", requireSpeechAccess("tts", { authorize: authorizeReadAloud }), async (req, res) => {
     const { text, language, voiceProfile } = req.body || {};
 
     // M5 feedback asks for "philippine", M5 "Hear American English" for "american"
@@ -191,7 +196,7 @@ function createSpeechRouter({
   });
 
   // M5 read-aloud: one request per reading, for the whole continuous recording.
-  router.post("/api/read-aloud/audio", requireSpeechAccess("stt"), (req, res) => {
+  router.post("/api/read-aloud/audio", requireSpeechAccess("stt", { authorize: authorizeReadAloud }), (req, res) => {
     req.readAloudReceivedAt = Date.now();
     upload.single("audio")(req, res, (error) => readAloudAudioHandler(req, res, error));
   });

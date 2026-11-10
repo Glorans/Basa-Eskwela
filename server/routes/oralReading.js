@@ -13,7 +13,7 @@ const {
   OralReadingAuthorizationError,
   OralReadingPersistenceError,
   authorizeOralReadingRequest,
-  authorizeOralReadingPracticeRequest,
+  authorizeReadingPracticeRequest,
   authorizeTeacherOralReadingRequest,
   createOralReadingAttempt,
   getOralReadingAttempt,
@@ -83,10 +83,11 @@ function sendOralReadingError(res, error, fallbackMessage) {
 function createOralReadingRouter(dependencies = {}) {
   const router = express.Router();
   const authorize = dependencies.authorizeOralReadingRequest ?? authorizeOralReadingRequest;
-  // Self-practice routes (published modules, own results and recordings) also admit admins.
+  // Self-practice routes (published modules, own results and recordings) also admit Admins and
+  // APPROVED Teachers; each route is still scoped to the requester's own attempts.
   const authorizePractice = dependencies.authorizeOralReadingPracticeRequest
     ?? dependencies.authorizeOralReadingRequest
-    ?? authorizeOralReadingPracticeRequest;
+    ?? authorizeReadingPracticeRequest;
   const loadModule = dependencies.loadAccessiblePublishedModule ?? loadAccessiblePublishedModule;
   const createAttempt = dependencies.createOralReadingAttempt ?? createOralReadingAttempt;
   const getAttempt = dependencies.getOralReadingAttempt ?? getOralReadingAttempt;
@@ -136,6 +137,19 @@ function createOralReadingRouter(dependencies = {}) {
       const requester = await authorizePractice(req, dependencies);
       const { listAdminReadingPassages } = require("../services/adminOralReadingService");
       const passages = await listAdminReadingPassages(requester, dependencies);
+      res.set("Cache-Control", "no-store");
+      return res.json({ success: true, passages });
+    } catch (error) {
+      return sendOralReadingError(res, error, "Unable to load reading passages.");
+    }
+  });
+
+  // Reading practice passage list (approved Teachers: the shared published catalog; Admins: own modules).
+  router.get("/practice/passages", async (req, res) => {
+    try {
+      const requester = await authorizePractice(req, dependencies);
+      const { listPracticeReadingPassages } = require("../services/adminOralReadingService");
+      const passages = await listPracticeReadingPassages(requester, dependencies);
       res.set("Cache-Control", "no-store");
       return res.json({ success: true, passages });
     } catch (error) {

@@ -2,6 +2,7 @@ const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
   OralReadingAuthorizationError,
   OralReadingPersistenceError,
+  isApprovedTeacher,
   normalizeLanguage,
 } = require("./oralReadingAttemptService");
 
@@ -10,6 +11,24 @@ async function listAdminReadingPassages(requester, dependencies = {}) {
   if (requester.profile.role !== "admin") {
     throw new OralReadingAuthorizationError("Admin access is required.");
   }
+  return listPublishedPassages(dependencies, requester.user.id);
+}
+
+/**
+ * Reading practice list. Approved Teachers: every published, non-deleted module in the shared
+ * catalog (any author). Admins: unchanged, only the published modules they created.
+ * Content only: no attempt, result or learner data.
+ */
+async function listPracticeReadingPassages(requester, dependencies = {}) {
+  if (requester?.profile?.role === "admin") return listAdminReadingPassages(requester, dependencies);
+  if (!isApprovedTeacher(requester)) {
+    throw new OralReadingAuthorizationError("Approved Teacher access is required.");
+  }
+  return listPublishedPassages(dependencies, null);
+}
+
+/** createdBy null = every author (the shared published catalog). */
+async function listPublishedPassages(dependencies, createdBy) {
   const db = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
 
   async function all(table, columns, configure = (query) => query) {
@@ -25,8 +44,8 @@ async function listAdminReadingPassages(requester, dependencies = {}) {
   }
 
   const modules = (await all("modules", "id,path_id,title,status,deleted_at,passage,created_by",
-    (query) => query.eq("status", "published").eq("created_by", requester.user.id)))
-    .filter((row) => !row.deleted_at && row.created_by === requester.user.id);
+    (query) => (createdBy ? query.eq("status", "published").eq("created_by", createdBy) : query.eq("status", "published"))))
+    .filter((row) => row.status === "published" && !row.deleted_at && (!createdBy || row.created_by === createdBy));
   const paths = new Map((await all("learning_paths", "id,language")).map((row) => [row.id, row.language]));
   const passages = await all("module_passages", "id,module_id,title,passage_text,display_order");
 
@@ -56,4 +75,4 @@ async function listAdminReadingPassages(requester, dependencies = {}) {
   });
 }
 
-module.exports = { listAdminReadingPassages };
+module.exports = { listAdminReadingPassages, listPracticeReadingPassages };

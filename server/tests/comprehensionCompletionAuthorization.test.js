@@ -83,8 +83,9 @@ test('HTTP completion enforces identity, current access and real database comple
   const attempt = await completeAttempt(db, { user: USERS.student2, module: MODULE.enMedium,
     room: ROOM, assignment: ROOM_MODULE.enMedium, startOnly: true });
   await t.test('signed out, non-learner and another owner never reach the completion RPC', async () => {
-    // An Admin may use M6 for self-practice only, so another person's activity is not found (404).
-    for (const [user, expected] of [[null, 401], [USERS.admin, 404], [USERS.teacher, 403], [USERS.general, 404]]) {
+    // Admins and approved Teachers may use M6 for self-practice only, so another person's activity
+    // is not found (404); a pending Teacher is refused before any lookup (403).
+    for (const [user, expected] of [[null, 401], [USERS.admin, 404], [USERS.teacher, 404], [USERS.pendingTeacher, 403], [USERS.general, 404]]) {
       calls.length = 0;
       assert.equal((await post(attempt, user)).status, expected);
       assert.ok(!calls.includes('rpc'));

@@ -98,7 +98,9 @@ function createSpeechAccess({
     tts: createRequestLimiter({ ...rateLimits.tts, now }),
   };
 
-  function requireSpeechAccess(kind) {
+  // routeAuthorize: an endpoint-specific role check (M5 read-aloud practice also admits approved
+  // Teachers). It shares this instance's per-user limiters, so the budget is not doubled.
+  function requireSpeechAccess(kind, { authorize: routeAuthorize } = {}) {
     const limiter = limiters[kind];
 
     if (!limiter) {
@@ -109,7 +111,7 @@ function createSpeechAccess({
       let requester;
 
       try {
-        requester = await authorize(req);
+        requester = await (routeAuthorize ?? authorize)(req);
       } catch (error) {
         return sendAccessError(res, error, log);
       }

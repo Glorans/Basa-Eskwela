@@ -112,15 +112,17 @@ test("the route is a GET that reads only", () => {
   assert.match(source, /router\.get\("\/readings\/:oralReadingAttemptId", async \(req, res\) => \{\s*try \{\s*const requester = await authorizeComprehensionRequest\(req\);\s*const attempt = await findComprehensionForReading\(requester, req\.params\.oralReadingAttemptId\);/);
 });
 
-test("M6 roles: Students, Independent Learners and Admin self-practice pass; Teachers and roleless accounts are refused", async () => {
-  // An Admin passes only the role check; every Admin read is owner-scoped and a new Admin activity
-  // must be on the Admin's own published module (m6AdminPracticeBackend.test.js).
-  for (const [role, allowed] of [["student", true], ["general_user", true], ["admin", true], ["teacher", false], [null, false]]) {
-    rows = [{ id: ANA, role, full_name: "x", nickname: "x" }];
+test("M6 roles: Students, Independent Learners, Admin and approved-Teacher practice pass; other Teachers and roleless accounts are refused", async () => {
+  // An Admin or approved Teacher passes only the role check; every read is owner-scoped, and a new
+  // practice activity must be a published module outside any classroom (m6AdminPracticeBackend.test.js,
+  // m6TeacherPracticeBackend.test.js).
+  for (const [role, allowed, teacherStatus] of [["student", true], ["general_user", true], ["admin", true],
+    ["teacher", true, "approved"], ["teacher", false, "pending"], ["teacher", false, "rejected"], ["teacher", false, null], [null, false]]) {
+    rows = [{ id: ANA, role, full_name: "x", nickname: "x", teacher_status: teacherStatus ?? null }];
     signedIn = ANA;
     const attempt = authorizeComprehensionRequest({ headers: {} });
     if (allowed) assert.equal((await attempt).profile.role, role);
-    else await assert.rejects(attempt, (error) => error instanceof OralReadingAuthorizationError && error.statusCode === 403, role);
+    else await assert.rejects(attempt, (error) => error instanceof OralReadingAuthorizationError && error.statusCode === 403, `${role} ${teacherStatus}`);
   }
 });
 

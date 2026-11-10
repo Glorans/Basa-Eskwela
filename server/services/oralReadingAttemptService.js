@@ -12,6 +12,9 @@ const {
 
 const LEARNER_ROLES = Object.freeze(["student", "general_user"]);
 const SELF_PRACTICE_ROLES = Object.freeze([...LEARNER_ROLES, "admin"]);
+// M5/M6 reading practice also admits APPROVED Teachers (shared published catalog, own results only).
+// M2 diagnostic speech keeps SELF_PRACTICE_ROLES, so Teachers gain no diagnostic access.
+const READING_PRACTICE_ROLES = Object.freeze([...SELF_PRACTICE_ROLES, "teacher"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_RECORDING_SECONDS = 300;
 const MAX_TRANSCRIPT_LENGTH = 100000;
@@ -63,6 +66,15 @@ async function authorizeOralReadingPracticeRequest(req, dependencies = {}) {
   return authorizeRequesterRole(req, dependencies, SELF_PRACTICE_ROLES);
 }
 
+// M5 read-aloud and M6 comprehension practice: the self-practice roles plus APPROVED Teachers.
+// Pending, rejected or other Teachers are refused here, before any module, attempt or speech call.
+async function authorizeReadingPracticeRequest(req, dependencies = {}) {
+  return authorizeRequesterRole(req, dependencies, READING_PRACTICE_ROLES);
+}
+
+const isApprovedTeacher = (requester) =>
+  requester?.profile?.role === "teacher" && requester.profile.teacher_status === "approved";
+
 async function authorizeRequesterRole(req, dependencies, roles) {
   const authenticate = dependencies.getAuthenticatedSupabaseUser
     ?? getAuthenticatedSupabaseUser;
@@ -70,7 +82,7 @@ async function authorizeRequesterRole(req, dependencies, roles) {
   const user = await authenticate(req);
   const { data: profile, error } = await getAdmin()
     .from("profiles")
-    .select("id, full_name, nickname, role")
+    .select("id, full_name, nickname, role, teacher_status")
     .eq("id", user.id)
     .single();
 
@@ -88,6 +100,9 @@ async function authorizeRequesterRole(req, dependencies, roles) {
     );
   }
   if (!roles.includes(profile.role)) throw new OralReadingAuthorizationError();
+  if (profile.role === "teacher" && profile.teacher_status !== "approved") {
+    throw new OralReadingAuthorizationError("Approved Teacher access is required.");
+  }
   return { user, profile };
 }
 
@@ -186,9 +201,10 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
     roomId = assignments[0].room_id;
     assignmentId = assignments[0].id;
   } else if (
-    !["general_user", "admin"].includes(requester.profile.role) || context.roomId || context.assignmentId
+    !(["general_user", "admin"].includes(requester.profile.role) || isApprovedTeacher(requester))
+    || context.roomId || context.assignmentId
   ) {
-    // Admin self-practice, like general users, reads published modules outside any classroom.
+    // Admin and approved-Teacher practice, like general users, read published modules outside any classroom.
     throw new OralReadingAuthorizationError();
   } else if (requester.profile.role === "admin" && moduleRow.created_by !== requester.user.id) {
     // Admin practice (M5 and M6) is a test of the Admin's own published modules only.
@@ -736,7 +752,9 @@ module.exports = {
   OralReadingPersistenceError,
   authorizeOralReadingRequest,
   authorizeOralReadingPracticeRequest,
+  authorizeReadingPracticeRequest,
   authorizeTeacherOralReadingRequest,
+  isApprovedTeacher,
   buildAttemptInsert,
   normalizeLanguage,
   createOralReadingAttempt,

@@ -2,7 +2,8 @@ const { activityKey, chooseActivityAttempt } = require("./comprehensionActivity"
 const { loadAssignedReadingSource } = require("./assignedReadingSource");
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
-  authorizeOralReadingPracticeRequest,
+  authorizeReadingPracticeRequest,
+  isApprovedTeacher,
   loadAccessiblePublishedModule,
 } = require("./oralReadingAttemptService");
 const {
@@ -55,16 +56,18 @@ function normalizeEvidence(value) {
 }
 
 /**
- * M6 is open to Students, Independent Learners and, for self-practice only, Admins.
- * Teachers and accounts without a role are refused. Every read and action is scoped
- * to the requester's own attempts (loadOwnedAttempt); an Admin may start an activity
- * only under the narrow Admin-practice rules in assertAdminPracticeModule.
+ * M6 is open to Students, Independent Learners and, for self-practice only, Admins and
+ * APPROVED Teachers. Pending/rejected Teachers and accounts without a role are refused.
+ * Every read and action is scoped to the requester's own attempts (loadOwnedAttempt); an
+ * Admin may start an activity only under the narrow rules in assertAdminPracticeModule, and a
+ * Teacher only on a published catalog module outside any classroom (loadAccessiblePublishedModule).
  */
 async function authorizeComprehensionRequest(req) {
-  return authorizeOralReadingPracticeRequest(req);
+  return authorizeReadingPracticeRequest(req);
 }
 
 const isAdminRequester = (requester) => requester?.profile?.role === "admin";
+const isPracticeRequester = (requester) => isAdminRequester(requester) || isApprovedTeacher(requester);
 
 /**
  * Admin practice (Appendix N M6 for Admin): only a published, non-deleted module the
@@ -464,8 +467,10 @@ async function startComprehensionAttempt(requester, body = {}) {
     requireUuid(body.assignmentId, "Assignment ID");
   }
 
-  if (isAdminRequester(requester) && (materialId || body.roomId != null || body.assignmentId != null)) {
-    throw new ComprehensionError("Admin comprehension practice is available only for published modules you created.", 403);
+  if (isPracticeRequester(requester) && (materialId || body.roomId != null || body.assignmentId != null)) {
+    throw new ComprehensionError(isAdminRequester(requester)
+      ? "Admin comprehension practice is available only for published modules you created."
+      : "Teacher comprehension practice is available only for published reading modules.", 403);
   }
 
   const db = getSupabaseAdmin();
