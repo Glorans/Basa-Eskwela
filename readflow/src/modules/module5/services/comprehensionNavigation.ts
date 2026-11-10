@@ -1,12 +1,16 @@
 import type { LearnerM5Role, OralReadingAttempt } from "../types/oralReading.ts";
+import { PRACTICE_PATHS, isPracticeRole } from "./oralReadingNavigation.ts";
+
+// Re-exported so the shared M5/M6 pages reach the practice helpers through the module they already use.
+export { PRACTICE_PATHS, isPracticeRole };
 
 export function comprehensionTargetForReading(role: LearnerM5Role, attempt: Pick<OralReadingAttempt,
   "id" | "moduleId" | "materialId" | "passageId" | "roomId" | "assignmentId" | "activityAssignmentId" | "readAloudOnly">) {
-  // Admin self-practice (Appendix N M6 for Admin): module readings outside any classroom only.
-  // The server also requires the module to be published and created by this Admin.
-  if (role === "admin") {
+  // Admin and approved-Teacher self-practice: module readings outside any classroom only.
+  // The server also requires the module to be published (and, for an Admin, created by this Admin).
+  if (isPracticeRole(role)) {
     if (attempt.materialId || attempt.roomId || attempt.assignmentId || attempt.activityAssignmentId || !attempt.moduleId || !attempt.passageId) return null;
-    return `/admin/oral-reading/modules/${encodeURIComponent(attempt.moduleId)}/comprehension?${new URLSearchParams({
+    return `${PRACTICE_PATHS[role].modules}/${encodeURIComponent(attempt.moduleId)}/comprehension?${new URLSearchParams({
       passageId: attempt.passageId, oralReadingAttemptId: attempt.id,
     })}`;
   }
@@ -31,18 +35,18 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The saved M5 reading result. Null unless the saved link is a valid ID, so a broken link is never followed. */
 export function readingResultTarget(role: LearnerM5Role, oralReadingAttemptId: string | null | undefined) {
   if (!oralReadingAttemptId || !UUID.test(oralReadingAttemptId)) return null;
-  const root = role === "admin" ? "/admin" : role === "student" ? "/dashboard" : "/m3/general";
+  const root = isPracticeRole(role) ? PRACTICE_PATHS[role].root : role === "student" ? "/dashboard" : "/m3/general";
   return `${root}/read-aloud/results/${encodeURIComponent(oralReadingAttemptId)}`;
 }
 
 /**
- * A saved M6 activity: Students have a results route; Independent Learners and Admin
+ * A saved M6 activity: Students have a results route; Independent Learners and Admin/Teacher
  * practice see results on the activity page.
  */
 export function comprehensionResultTarget(role: LearnerM5Role, comprehensionAttemptId: string) {
   const id = encodeURIComponent(comprehensionAttemptId);
   return role === "student" ? `/dashboard/comprehension/${id}/results`
-    : role === "admin" ? `/admin/comprehension/${id}`
+    : isPracticeRole(role) ? `${PRACTICE_PATHS[role].root}/comprehension/${id}`
       : `/m3/general/comprehension/${id}`;
 }
 
@@ -54,9 +58,9 @@ export function comprehensionResultTarget(role: LearnerM5Role, comprehensionAtte
 export function learningAreaTarget(role: LearnerM5Role, source?: {
   moduleId?: string | null; materialId?: string | null; passageId?: string | null; roomId?: string | null;
 } | null): { to: string; kind: "room" | "module" } {
-  const moduleRoot = role === "admin" ? "/admin/oral-reading/modules" : role === "student" ? "/dashboard/materials" : "/m3/general/modules";
-  // Admin practice has no module-detail page; return to the passage list.
-  if (role === "admin") return { to: "/admin/oral-reading", kind: "module" };
+  const moduleRoot = role === "student" ? "/dashboard/materials" : "/m3/general/modules";
+  // Admin and Teacher practice have no module-detail page; return to the practice passage list.
+  if (isPracticeRole(role)) return { to: PRACTICE_PATHS[role].list, kind: "module" };
   if (source?.roomId && (source.materialId || role === "student")) return { to: `/dashboard/learning-rooms/${source.roomId}`, kind: "room" };
   if (!source) return { to: moduleRoot, kind: "module" };
   return {

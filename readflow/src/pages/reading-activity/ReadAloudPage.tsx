@@ -1,6 +1,7 @@
 import { numberSavedAttempts } from "../../modules/module5/services/savedAttemptOrder";
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "./activityLanguage";
 import { assignedReadingTarget } from "../../modules/module5/services/assignedReadingNavigation";
+import { PRACTICE_PATHS, isPracticeRole } from "../../modules/module5/services/comprehensionNavigation";
 import { updateReadingActivityStatus } from "../../modules/module4/services/classroomService";
 import { Mic, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -113,6 +114,10 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     storyTokens.flat().flatMap((token) => token.type === "word" ? [token.text] : []),
     module?.language === "fil" ? "fil" : "en",
   );
+  // Approved-Teacher practice has no voice-follow: it would need the M2 diagnostic speech stream,
+  // which stays closed to Teachers. The recorder is not given the follow callbacks, so no stream is
+  // opened and nothing scrolls automatically; Teachers scroll the story themselves.
+  const followVoice = role !== "teacher";
   const {
     audioSegments,
     audioURLs,
@@ -130,22 +135,22 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     // whole reading. That file is transcribed, saved and replayed.
     maxTotalDurationSeconds: ORAL_READING_MAX_RECORDING_SECONDS,
     // Shares the recorder's microphone stream; the recording itself is unchanged.
-    onStreamReady: storyFollow.onStreamReady,
-    onStreamStopped: storyFollow.onStreamStopped,
+    onStreamReady: followVoice ? storyFollow.onStreamReady : undefined,
+    onStreamStopped: followVoice ? storyFollow.onStreamStopped : undefined,
   });
 
-  const resultPathFor = (attemptId: string) => role === "admin"
-    ? `/admin/read-aloud/results/${attemptId}`
+  const resultPathFor = (attemptId: string) => isPracticeRole(role)
+    ? `${PRACTICE_PATHS[role].root}/read-aloud/results/${attemptId}`
     : role === "student" ? `/dashboard/read-aloud/results/${attemptId}` : `/m3/general/read-aloud/results/${attemptId}`;
-  const backTarget = role === "admin"
-    ? "/admin/oral-reading"
+  const backTarget = isPracticeRole(role)
+    ? PRACTICE_PATHS[role].list
     : materialId && roomId
     ? `/dashboard/learning-rooms/${roomId}`
     : role === "student" && (module?.roomId || roomId)
     ? `/dashboard/learning-rooms/${module?.roomId ?? roomId}`
     : moduleId ? `${role === "student" ? "/dashboard/materials" : "/m3/general/modules"}/${moduleId}?${searchParams}`
     : role === "student" ? "/dashboard/materials" : "/m3/general/modules";
-  const backLabel = role === "admin" ? "Back to Oral Reading" : materialId ? "Back to Learning Room" : role === "student" && (module?.roomId || roomId) ? "Back to Classroom" : "Back to Reading Module";
+  const backLabel = role === "admin" ? "Back to Oral Reading" : role === "teacher" ? "Back to Reading Practice" : materialId ? "Back to Learning Room" : role === "student" && (module?.roomId || roomId) ? "Back to Classroom" : "Back to Reading Module";
 
   useEffect(() => {
     let active = true;

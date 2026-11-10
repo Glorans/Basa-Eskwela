@@ -74,6 +74,8 @@ function getNavItems(role: M3Role) {
       icon: Mic2,
       end: false,
     });
+    // M5/M6 Teacher reading practice (own read-alouds and comprehension), separate from Reading Results.
+    items.push({ label: "Reading Practice", to: "/m3/teacher/practice", icon: Mic2, end: false });
 
     items.push({ label: "Student Support", to: "/m3/teacher/student-support", icon: ClipboardList, end: true });
     items.push({ label: "Analytics", to: "/m3/teacher/analytics", icon: ChartNoAxesCombined, end: true });

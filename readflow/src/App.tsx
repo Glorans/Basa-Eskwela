@@ -463,6 +463,30 @@ function App() {
               element={<TeacherOralReadingAttemptPage />}
             />
 
+            {/* M5/M6 - approved-Teacher reading practice on published catalog modules; own results only.
+                Kept apart from the Teacher's review of Students' saved assessments (oral-reading above). */}
+            <Route path="practice" element={<AdminOralReadingPage role="teacher" />} />
+            <Route
+              path="practice/modules/:moduleId/read-aloud"
+              element={<ReadAloudPage role="teacher" />}
+            />
+            <Route
+              path="practice/read-aloud/results/:attemptId"
+              element={<ReadingResultPage role="teacher" />}
+            />
+            <Route
+              path="practice/modules/:moduleId/comprehension"
+              element={<ComprehensionPage role="teacher" />}
+            />
+            <Route
+              path="practice/comprehension/:attemptId"
+              element={<ComprehensionPage role="teacher" />}
+            />
+            <Route
+              path="practice/history"
+              element={<ReadingHistoryPage role="teacher" />}
+            />
+
             <Route path="student-support" element={<TeacherSupportPage />} />
             <Route path="reports" element={<TeacherReportsPage />} />
             {/* M7 - Teacher Analytics */}

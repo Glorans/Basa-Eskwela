@@ -56,10 +56,16 @@ test("admin practice uses the learner pages with admin-only return paths", async
   // F7 opens saved assessments in a modal: no result-page routes, and the role is passed through.
   assert.doesNotMatch(history, /read-aloud\/results/);
   assert.match(history, /role=\{role\}/);
-  assert.match(readAloud, /role === "admin"\s*\? `\/admin\/read-aloud\/results\/\$\{attemptId\}`/);
+  // Practice roles (Admin, approved Teacher) save results under their own workspace root.
+  assert.match(readAloud, /isPracticeRole\(role\)\s*\? `\$\{PRACTICE_PATHS\[role\]\.root\}\/read-aloud\/results\/\$\{attemptId\}`/);
   assert.match(result, /const backTarget = learningAreaTarget\(role, attempt\)\.to;/);
-  const navigation = await read("../src/modules/module5/services/comprehensionNavigation.ts");
-  assert.match(navigation, /if \(role === "admin"\) return \{ to: "\/admin\/oral-reading", kind: "module" \};/);
+  const navigation = await import("../src/modules/module5/services/comprehensionNavigation.ts");
+  // Admin paths are unchanged.
+  assert.equal(navigation.PRACTICE_PATHS.admin.root, "/admin");
+  assert.deepEqual(navigation.learningAreaTarget("admin", { moduleId: "m", passageId: "p" }), { to: "/admin/oral-reading", kind: "module" });
+  assert.equal(navigation.readingResultTarget("admin", "11111111-1111-4111-8111-111111111111"),
+    "/admin/read-aloud/results/11111111-1111-4111-8111-111111111111");
+  assert.equal(navigation.comprehensionResultTarget("admin", "c"), "/admin/comprehension/c");
   // F7 is the Reading History page itself; the result page no longer embeds a copy.
   assert.doesNotMatch(result, /ReadingHistoryPage/);
   assert.doesNotMatch(result, /className="result-history-link"/);

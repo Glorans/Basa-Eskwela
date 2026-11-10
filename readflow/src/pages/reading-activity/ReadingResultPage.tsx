@@ -1,5 +1,5 @@
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "./activityLanguage";
-import { comprehensionResultTarget, comprehensionTargetForReading, learningAreaTarget } from "../../modules/module5/services/comprehensionNavigation";
+import { PRACTICE_PATHS, comprehensionResultTarget, comprehensionTargetForReading, isPracticeRole, learningAreaTarget } from "../../modules/module5/services/comprehensionNavigation";
 import { getComprehensionForReading, type LinkedComprehension } from "../../modules/module6/services/comprehensionService";
 import { BookOpen, Gauge, Headphones, ListChecks, MessageCircle, Mic, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -104,8 +104,8 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const pronunciation = usePronunciationCheck(attempt?.language === "en" ? attempt.id : undefined, attempt?.userId);
 
   const moduleRoot =
-    role === "admin"
-      ? "/admin/oral-reading/modules"
+    isPracticeRole(role)
+      ? PRACTICE_PATHS[role].modules
       : role === "student"
       ? "/dashboard/materials"
       : "/m3/general/modules";
@@ -113,7 +113,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   // The reading's Learning Room, or its Reading Module (shared with the M6 results page).
   const backTarget = learningAreaTarget(role, attempt).to;
 
-  const backLabel = role === "admin" ? "Back to Oral Reading" : attempt?.materialId ? "Back to Learning Room" :
+  const backLabel = role === "admin" ? "Back to Oral Reading" : role === "teacher" ? "Back to Reading Practice" : attempt?.materialId ? "Back to Learning Room" :
     role === "student" && attempt?.roomId
       ? "Back to Classroom"
       : "Back to Reading Module";
@@ -223,7 +223,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   // Learners are told when a reading has no comprehension activity, rather than
   // the button silently disappearing. Read-aloud-only activities and admin
   // self-practice never have questions, so they show nothing extra.
-  const comprehensionUnavailable = !comprehensionTarget && role !== "admin" && attempt.readAloudOnly !== true;
+  const comprehensionUnavailable = !comprehensionTarget && !isPracticeRole(role) && attempt.readAloudOnly !== true;
   // F2, F3 and F4 labels: a Filipino reading gets transcript-based results, not a pronunciation check.
   const filipino = language === "fil";
   const feedbackTitle = t(filipino ? "Reading Feedback" : "Pronunciation Feedback");

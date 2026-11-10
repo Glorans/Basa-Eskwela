@@ -258,6 +258,8 @@ const filipino = {
   "Speech processing is temporarily unavailable. Please try again later.": "Pansamantalang hindi magagamit ang pagproseso ng pagsasalita. Pakisubukang muli mamaya.",
   // M5 recording playback
   "Back to Oral Reading": "Bumalik sa Pagbasa nang Malakas",
+  // Teacher reading practice
+  "Back to Reading Practice": "Bumalik sa Pagsasanay sa Pagbasa",
   "Your recording is saved with your result so you can listen again. For classroom activities, your teacher can review it too.": "Nase-save ang iyong recording kasama ng iyong resulta upang mapakinggan mo itong muli. Sa mga gawain sa klase, maaari rin itong pakinggan ng iyong guro.",
   "Your recording is saved with your result so you can listen again.": "Nase-save ang iyong recording kasama ng iyong resulta upang mapakinggan mo itong muli.",
   "Your result is saved, but recording upload failed. Retry saving the recording before leaving this page.": "Naka-save ang iyong resulta, ngunit hindi na-upload ang recording. Subukang i-save muli ang recording bago umalis sa pahinang ito.",

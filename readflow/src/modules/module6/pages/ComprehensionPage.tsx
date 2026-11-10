@@ -21,11 +21,11 @@ import {
 import "./ComprehensionPage.css";
 import StoryDrawer from "../components/StoryDrawer";
 import ReadingMascot from "../../../components/reading-feedback/ReadingMascot";
-import { comprehensionResultTarget, learningAreaTarget, readingResultTarget } from "../../module5/services/comprehensionNavigation";
+import { PRACTICE_PATHS, comprehensionResultTarget, isPracticeRole, learningAreaTarget, readingResultTarget } from "../../module5/services/comprehensionNavigation";
 
 type Props = {
   /** "admin": Admin self-practice on the Admin's own published modules (enforced by the server). */
-  role: "student" | "general_user" | "admin";
+  role: "student" | "general_user" | "admin" | "teacher";
   results?: boolean;
 };
 
@@ -164,11 +164,11 @@ export default function ComprehensionPage({ role, results = false }: Props) {
   const resultBase =
     role === "student"
       ? "/dashboard/comprehension"
-      : role === "admin" ? "/admin/comprehension" : "/m3/general/comprehension";
+      : isPracticeRole(role) ? `${PRACTICE_PATHS[role].root}/comprehension` : "/m3/general/comprehension";
 
   const home = (attempt?.materialId ?? materialId) && (attempt?.roomId ?? roomId)
     ? `/dashboard/learning-rooms/${attempt?.roomId ?? roomId}`
-    : role === "student" ? "/dashboard" : role === "admin" ? "/admin/oral-reading" : "/m3/general";
+    : role === "student" ? "/dashboard" : isPracticeRole(role) ? PRACTICE_PATHS[role].list : "/m3/general";
 
   useEffect(() => {
     let active = true;
@@ -403,7 +403,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         onClick={() => navigate(reviewingQuestions ? readingTarget : home, { state: activityState })}
       >
         <ArrowLeft size={18} aria-hidden="true" />
-        {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : t("Back to dashboard")}
+        {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : role === "teacher" ? t("Back to Reading Practice") : t("Back to dashboard")}
       </button>
       {attempt && <StoryDrawer key={sourceKey} attempt={attempt} />}
       </div>}
@@ -612,7 +612,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
             )}
             {learningArea && (
               <Link className="m6-button" to={learningArea.to} state={activityState}>
-                {learningArea.kind === "room" ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : t("Back to Reading Module")}
+                {learningArea.kind === "room" ? t("Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : role === "teacher" ? t("Back to Reading Practice") : t("Back to Reading Module")}
               </Link>
             )}
           </nav>

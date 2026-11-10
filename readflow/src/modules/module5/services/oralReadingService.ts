@@ -351,6 +351,19 @@ export interface AdminReadingPassage {
   language: "en" | "fil";
 }
 
+/** Approved-Teacher reading practice: published modules in the shared catalog (titles only). */
+export async function getPracticeReadingPassages(): Promise<AdminReadingPassage[]> {
+  try {
+    const { data } = await api.get<{ success: boolean; passages: AdminReadingPassage[] }>(
+      "/api/oral-reading/practice/passages",
+      { headers: await getAuthHeaders() },
+    );
+    return data.passages;
+  } catch (error) {
+    throw toServiceError(error, "Unable to load reading passages.");
+  }
+}
+
 export async function getAdminReadingPassages(): Promise<AdminReadingPassage[]> {
   try {
     const { data } = await api.get<{ success: boolean; passages: AdminReadingPassage[] }>(

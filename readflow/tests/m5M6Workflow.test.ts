@@ -1580,11 +1580,14 @@ test("Admin M6 routes are Admin-only and reuse the existing comprehension page",
   for (const route of ['path="oral-reading/modules/:moduleId/comprehension"', 'path="comprehension/:attemptId"']) {
     assert.match(adminBlock, new RegExp(`${route.replace(/[/:]/g, "\\$&")}\\s*element=\\{<ComprehensionPage role="admin" \\/>\\}`), route);
   }
-  // No other role's block gains an Admin page, and Teachers still have no M6 route.
+  // No other role's block gains an Admin page. Teachers have M6 only as approved-Teacher practice routes.
   const roles = [...app.matchAll(/<ComprehensionPage role="(\w+)"/g)].map((match) => match[1]);
-  assert.deepEqual([...new Set(roles)].sort(), ["admin", "general_user", "student"]);
+  assert.deepEqual([...new Set(roles)].sort(), ["admin", "general_user", "student", "teacher"]);
   const teacherBlock = app.slice(app.indexOf("{/* Teacher routes */}"), app.indexOf("{/* Independent learner routes */}"));
-  assert.doesNotMatch(teacherBlock, /ComprehensionPage/);
+  assert.deepEqual([...teacherBlock.matchAll(/path="([^"]+)"\s*element=\{<ComprehensionPage role="(\w+)" \/>\}/g)].map((m) => `${m[1]}|${m[2]}`),
+    ["practice/modules/:moduleId/comprehension|teacher", "practice/comprehension/:attemptId|teacher"]);
+  assert.equal((teacherBlock.match(/<ComprehensionPage/g) ?? []).length, 2);
+  assert.doesNotMatch(adminBlock, /role="teacher"/);
   // Admin practice is never a classroom, assignment or uploaded-material activity.
   for (const reading of [savedReading(), savedReading({ materialId: null, moduleId: "module", passageId: "passage", roomId: "room" }),
     savedReading({ materialId: null, moduleId: "module", passageId: null, roomId: null, activityAssignmentId: null })]) {
