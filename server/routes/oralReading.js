@@ -1,4 +1,4 @@
-const { loadAssignedReadingSource } = require("../services/assignedReadingSource");
+const { loadMaterialReadingSource } = require("../services/personalMaterialService");
 const {
   getTeacherCompletionAnalytics,
 } = require("../services/teacherCompletionAnalytics");
@@ -68,7 +68,7 @@ function sendOralReadingError(res, error, fallbackMessage) {
   if (error instanceof SupabaseAuthenticationError) {
     return res.status(401).json({ success: false, message: error.message });
   }
-  if (error instanceof OralReadingAuthorizationError || error instanceof OralReadingPersistenceError) {
+  if (error instanceof OralReadingAuthorizationError || error instanceof require("../services/personalMaterialService").PersonalMaterialError || error instanceof OralReadingPersistenceError) {
     if (error.statusCode >= 500) console.error("M5 oral-reading operation failed:", error);
     return res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
   }
@@ -215,7 +215,7 @@ function createOralReadingRouter(dependencies = {}) {
   router.get("/materials/:materialId", async (req, res) => {
     try {
       const requester = await authorize(req, dependencies);
-      const module = await loadAssignedReadingSource(requester, req.params.materialId, req.query, dependencies);
+      const module = await loadMaterialReadingSource(requester, req.params.materialId, req.query, dependencies);
       // The page shows an archived classroom's story read-only (no recorder); saving is refused anyway.
       const roomArchived = await (dependencies.isRoomArchived ?? isRoomArchived)(getAdmin(), module.roomId);
       return res.json({ success: true, module: { ...module, roomArchived } });
@@ -409,7 +409,7 @@ function createOralReadingRouter(dependencies = {}) {
         outcome = await runCheck({ supabase, attempt, userId: requester.user.id, assessParts, now, persisted: installed });
       } catch (error) {
         finished();
-        if (error instanceof OralReadingPersistenceError) return sendOralReadingError(res, error, "Unable to check pronunciation.");
+        if (error instanceof require("../services/personalMaterialService").PersonalMaterialError || error instanceof OralReadingPersistenceError) return sendOralReadingError(res, error, "Unable to check pronunciation.");
         const safe = getSpeechErrorResponse(error);
         return res.status(safe.status).json({ success: false, code: safe.code, message: safe.message });
       }

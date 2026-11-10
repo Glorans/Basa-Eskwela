@@ -1,5 +1,5 @@
 const { reportRows } = require("./weeklyReportRows");
-const { loadAssignedReadingSource } = require("./assignedReadingSource");
+const { loadMaterialReadingSource } = require("./personalMaterialService");
 const { ARCHIVED_CLASSROOM_CODE, ARCHIVED_CLASSROOM_MESSAGE, isArchivedRoomDatabaseError, isRoomArchived } = require("./roomArchive");
 const { getReadingWords, scorePassage } = require("./oralReadingScoring");
 const { loadComprehensionForOralAttempts } = require("./teacherComprehensionReview");
@@ -404,7 +404,7 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
     throw new OralReadingPersistenceError("Material and module references cannot be combined.", 400);
   }
   function verifyRetry(existing) {
-    if (materialId && (existing.material_id !== materialId || existing.activity_assignment_id !== body.activityAssignmentId || existing.room_id !== body.roomId || body.moduleId || body.passageId || body.assignmentId)) {
+    if (materialId && (existing.material_id !== materialId || (existing.activity_assignment_id ?? null) !== (body.activityAssignmentId ?? null) || (existing.room_id ?? null) !== (body.roomId ?? null) || body.moduleId || body.passageId || body.assignmentId)) {
       throw new OralReadingPersistenceError("This submission ID belongs to another activity.", 409);
     }
     if (!materialId && (existing.material_id || existing.module_id !== moduleId
@@ -441,7 +441,7 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
   }
 
   const module = materialId
-    ? await loadAssignedReadingSource(requester, materialId, body, dependencies)
+    ? await loadMaterialReadingSource(requester, materialId, body, dependencies)
     : await loadAccessiblePublishedModule(requester, moduleId, dependencies, body);
   if (materialId && body.passageRevision !== module.passageRevision) {
     throw new OralReadingPersistenceError("This story changed. Reload it and record the current story before saving.", 409);

@@ -50,6 +50,8 @@ const { MAX_MATERIAL_TEXT_LENGTH } = require("../services/materialTextLimits");
 const materialStorageBucket = "reading-materials";
 const uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const materialIdPattern = new RegExp(`^${uuidPattern}$`, "i");
+// Independent Learner private generation: at most 10 requests per learner per hour.
+const PERSONAL_GENERATION_RATE_LIMIT = Object.freeze({ limit: 10, windowMs: 60 * 60 * 1000 });
 const storageExtensionsByFileType = Object.freeze({
   PDF: ["pdf"],
   DOCX: ["docx"],
@@ -72,6 +74,7 @@ function sendMaterialError(res, error, fallbackMessage) {
     error instanceof MaterialAuthorizationError
     || error instanceof MaterialPersistenceError
     || error instanceof QuestionGenerationError
+    || error instanceof require("../services/personalMaterialService").PersonalMaterialError
   ) {
     if (error.statusCode >= 500) console.error("M3 material operation failed:",
       error instanceof QuestionGenerationError
@@ -155,6 +158,10 @@ function createMaterialsRouter(dependencies = {}) {
   const adminDependencies = dependencies.getSupabaseAdmin
     ? { getSupabaseAdmin: dependencies.getSupabaseAdmin }
     : {};
+  // Failed private generations do not use the five-set quota, so every generation request
+  // (success, reuse or failure) is also bounded per learner. Per process; resets on restart.
+  const personalGenerationLimiter = dependencies.personalGenerationLimiter
+    ?? require("../services/speechAccess").createRequestLimiter({ ...PERSONAL_GENERATION_RATE_LIMIT });
 
   router.post("/upload", async (req, res) => {
     let requester;
@@ -306,6 +313,14 @@ function createMaterialsRouter(dependencies = {}) {
           "The material could not be added. Its uploaded file was cleaned up; please try again.",
         );
       }
+      if (requester.profile.role === "general_user") {
+        const { error: metadataError } = await supabaseAdmin.rpc("personal_material_access", {
+          actor: requester.user.id, material: persistedMaterial.id, operation: "metadata", missing_pages: material.pagesWithoutText ?? [],
+        });
+        if (metadataError && !["PGRST202", "42883"].includes(metadataError.code)) {
+          console.error("Personal extraction warning metadata unavailable", { code: metadataError.code });
+        }
+      }
       try {
         await deleteTemporaryMaterial(material.id);
       } catch (cleanupError) {
@@ -420,6 +435,35 @@ function createMaterialsRouter(dependencies = {}) {
     } catch (error) {
       return sendMaterialError(res, error, "Unable to change the material language.");
     }
+  });
+
+  router.get("/:materialId/personal-practice", async (req, res) => {
+    try {
+      const requester = await authorize(req);
+      const state = await require("../services/personalMaterialService").personalMaterialAccess(requester, requireMaterialId(req.params.materialId), "status", {}, adminDependencies);
+      res.json({ state });
+    } catch (error) { return sendMaterialError(res, error, "Unable to load personal practice."); }
+  });
+  router.post("/:materialId/personal-practice/:action", async (req, res) => {
+    try {
+      const requester = await authorize(req);
+      const id = requireMaterialId(req.params.materialId);
+      const service = require("../services/personalMaterialService");
+      if (req.params.action === "confirm" && req.body?.confirmed === true && typeof req.body?.revision === "string") {
+        const state = await service.personalMaterialAccess(requester, id, "confirm", { expected_revision: req.body.revision }, adminDependencies);
+        return res.json({ state });
+      }
+      if (req.params.action === "generate") {
+        const decision = personalGenerationLimiter.take(requester.user.id);
+        if (!decision.allowed) {
+          res.set("Retry-After", String(decision.retryAfterSeconds));
+          return res.status(429).json({ success: false, code: "PERSONAL_GENERATION_RATE_LIMITED",
+            message: "Too many question-generation requests. Please wait before trying again; saved questions are kept." });
+        }
+        return res.json({ set: await service.generatePersonalQuestions(requester, id, { ...adminDependencies, generate: generateWithGemini }) });
+      }
+      return res.status(400).json({ message: "Confirm the reviewed text or generate private questions." });
+    } catch (error) { return sendMaterialError(res, error, "Unable to update personal practice."); }
   });
 
   router.get("/:materialId", async (req, res) => {

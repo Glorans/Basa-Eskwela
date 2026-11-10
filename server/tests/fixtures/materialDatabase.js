@@ -114,6 +114,7 @@ function createDatabase(seed = {}) {
       uploaded_materials: [],
       comprehension_questions: [],
       material_question_sets: [],
+      personal_material_state: [],
       comprehension_question_answers: [],
       modules: [],
       reading_activity_assignments: [],

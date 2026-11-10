@@ -236,7 +236,9 @@ async function listPersistedMaterials(
     );
   }
 
-  const materials = data ?? [];
+  const deleted = requester.profile.role === "general_user"
+    ? await require("./personalMaterialService").deletedPersonalIds(supabase, (data ?? []).map(m => m.id)) : new Set();
+  const materials = (data ?? []).filter(m => !deleted.has(m.id));
   const profiles = await loadUploaderProfiles(
     supabase,
     materials,
@@ -352,6 +354,9 @@ async function getAuthorizedMaterialRow(
     );
   }
 
+  if (requester.profile.role === "general_user" && (await require("./personalMaterialService").deletedPersonalIds(dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin(), [materialId])).has(materialId)) {
+    throw new MaterialAuthorizationError("This material was removed from your Reading Materials.");
+  }
   return material;
 }
 
@@ -563,6 +568,25 @@ async function deletePersistedMaterial(
     materialId,
     dependencies,
   );
+
+  if (requester.profile.role === "general_user") {
+    try {
+      await require("./personalMaterialService").personalMaterialAccess(requester, materialId, "delete", {}, dependencies);
+      return;
+    } catch (error) {
+      // Before the proposals are installed no personal practice exists. Keep legacy deletion.
+      if (!["PGRST202", "42883"].includes(error.code)) throw error;
+    }
+  } else if (requester.profile.role === "admin") {
+    const { data: personal, error } = await supabase.from("personal_material_state").select("material_id").eq("material_id", materialId).maybeSingle();
+    if (error && !["42P01", "PGRST205"].includes(error.code)) throw new MaterialPersistenceError("Unable to verify personal history.");
+    if (personal) {
+      // Existing Admin material-management permission, with the same history-preserving deletion.
+      const { error: deletionError } = await supabase.rpc("personal_material_access", { actor: material.uploaded_by, material: materialId, operation: "delete" });
+      if (deletionError) throw new MaterialPersistenceError("Unable to remove this personal material safely.");
+      return;
+    }
+  }
 
   const { data: references, error: referenceError } =
     await supabase

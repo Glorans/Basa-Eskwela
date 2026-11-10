@@ -58,6 +58,7 @@ async function recordTranscriptReceipt(requester, { language, query }, text, dep
   const log = dependencies.log ?? console.error;
   try {
     if (!LEARNER_ROLES.has(requester?.profile?.role)) return false;
+    if (requester.profile.role === "general_user" && query?.materialId) return false; // Personal uploads earn no M8 awards.
     const context = parseReadingContext(query);
     if (!context) return false;
     const source = await (dependencies.loadReadingSource ?? loadReadingSource)(requester, context, dependencies);
@@ -84,6 +85,7 @@ async function recordTranscriptReceipt(requester, { language, query }, text, dep
 /** After a reading is saved, and again on a save retry (the database call is idempotent). Never throws. */
 async function verifySavedReading(requester, attempt, dependencies = {}) {
   const log = dependencies.log ?? console.error;
+  if (attempt.material_id && !attempt.activity_assignment_id && !attempt.room_id) return { verified: false, reason: "personal_practice" };
   try {
     if (!LEARNER_ROLES.has(requester?.profile?.role)) return { verified: false, reason: "not_learner" };
     const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();

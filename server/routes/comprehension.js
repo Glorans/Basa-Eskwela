@@ -42,7 +42,7 @@ function sendError(res, error) {
   if (
     error instanceof ComprehensionError ||
     error instanceof OralReadingAuthorizationError ||
-    error instanceof OralReadingPersistenceError
+    error instanceof require("../services/personalMaterialService").PersonalMaterialError || error instanceof OralReadingPersistenceError
   ) {
     const status = error.statusCode || 500;
 

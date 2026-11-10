@@ -112,6 +112,9 @@ async function applyComprehensionAction(
 
   // Checks ownership before calling the protected database function.
   const owned = await loadOwnedAttempt(requester, attemptId);
+  if (owned.material_id && !owned.activity_assignment_id && !owned.room_id && owned.status !== "completed") {
+    await require("./personalMaterialService").loadPersonalReadingSource(requester, owned.material_id);
+  }
   const db = getSupabaseAdmin();
 
   // Checked on every answer, so an assessment opened before the room was archived cannot continue.

@@ -1,5 +1,5 @@
 const { activityKey, chooseActivityAttempt } = require("./comprehensionActivity");
-const { loadAssignedReadingSource } = require("./assignedReadingSource");
+const { loadMaterialReadingSource } = require("./personalMaterialService");
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
   authorizeReadingPracticeRequest,
@@ -350,6 +350,8 @@ async function getComprehensionAttempt(requester, attemptId) {
   return {
     id: attempt.id,
     roomArchived,
+    materialDeleted: Boolean(attempt.material_id && !attempt.activity_assignment_id && !attempt.room_id
+      && (await require("./personalMaterialService").deletedPersonalIds(getSupabaseAdmin(), [attempt.material_id])).has(attempt.material_id)),
     moduleId: attempt.module_id,
     materialId: attempt.material_id ?? null,
     roomId: attempt.room_id ?? null,
@@ -444,9 +446,11 @@ async function startComprehensionAttempt(requester, body = {}) {
   }
 
   const materialId = body.materialId ?? null;
+  const personal = Boolean(materialId && requester.profile.role === "general_user");
+  if (personal) require("./personalMaterialService").personalContext(requester, body);
   if (materialId) {
     requireUuid(materialId, "Material ID");
-    requireUuid(body.activityAssignmentId, "Reading assignment ID");
+    if (!personal) requireUuid(body.activityAssignmentId, "Reading assignment ID");
     requireUuid(body.oralReadingAttemptId, "Oral reading result ID");
     if (body.moduleId || body.passageId || body.assignmentId) {
       throw new ComprehensionError("Material and module references cannot be combined.", 400);
@@ -532,7 +536,7 @@ async function startComprehensionAttempt(requester, body = {}) {
   if (isAdminRequester(requester)) await assertAdminPracticeModule(db, requester, body.moduleId);
 
   // Check publication, enrollment, assignment, and passage access.
-  const module = materialId ? await loadAssignedReadingSource(requester, materialId, body) : await loadAccessiblePublishedModule(
+  const module = materialId ? await loadMaterialReadingSource(requester, materialId, body) : await loadAccessiblePublishedModule(
     requester,
     body.moduleId,
     {},
@@ -559,7 +563,7 @@ async function startComprehensionAttempt(requester, body = {}) {
     .select("id,passage_snapshot,language_snapshot")
     .eq("user_id", requester.user.id);
   readingQuery = materialId
-    ? readingQuery.eq("material_id", materialId).eq("activity_assignment_id", module.activityAssignmentId)
+    ? (personal ? readingQuery.eq("material_id", materialId).is("activity_assignment_id", null) : readingQuery.eq("material_id", materialId).eq("activity_assignment_id", module.activityAssignmentId))
     : readingQuery.eq("module_id", module.id).eq("passage_id", module.passageId);
   if (body.oralReadingAttemptId) readingQuery = readingQuery.eq("id", body.oralReadingAttemptId);
 
@@ -611,7 +615,8 @@ async function startComprehensionAttempt(requester, body = {}) {
   // A saved assessment reopens above (read-only results); an archived room starts no new one.
   if (await isRoomArchived(db, module.roomId)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
 
-  const questions = await loadReviewedQuestions(
+  const privateBank = personal ? await require("./personalMaterialService").loadPersonalBank(requester, materialId) : null;
+  const questions = privateBank ? privateBank.questions : await loadReviewedQuestions(
     module.id,
     module.passageId,
     module.passage,
@@ -634,6 +639,7 @@ async function startComprehensionAttempt(requester, body = {}) {
       passage_text: module.passage,
       language: module.language,
       question_snapshot: questions,
+      ...(privateBank ? { personal_question_set_id: privateBank.id } : {}),
     })
     .select("id")
     .single();
