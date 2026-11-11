@@ -5,6 +5,7 @@ const { classifyRisk, compareCompletedQuizzes, NO_ASSESSMENT_DATA } = require('.
 const { splitCanonicalCompleted } = require('./comprehensionActivity');
 const { isRiskWorkerEnabled } = require('./m7RiskWorker');
 const { recipientRows } = require('./weeklyReportRows');
+const BATCH_CONCURRENCY = 3;
 function fail(message, statusCode = 500) { return Object.assign(new Error(message), { statusCode }); }
 async function rows(table, columns = '*', filters = {}, db = getSupabaseAdmin()) {
   // This table has a composite key and no id column to page by.
@@ -12,17 +13,20 @@ async function rows(table, columns = '*', filters = {}, db = getSupabaseAdmin())
   const all = [];
   const entries = Object.entries(filters);
   const arrayFilters = entries.filter(([, value]) => Array.isArray(value));
-  // Each IN list is bounded and deduplicated. Traverse combinations lazily
-  // rather than constructing a potentially large cross-product in memory.
-  async function readBatch(index, batches) {
-    if (index < arrayFilters.length) {
-      const [key, values] = arrayFilters[index];
-      const unique = [...new Set(values)];
-      for (let start = 0; start < unique.length; start += 50) {
-        await readBatch(index + 1, { ...batches, [key]: unique.slice(start, start + 50) });
-      }
-      return;
-    }
+  // Each IN list is bounded (50 values) and deduplicated. Every batch combination selects a disjoint
+  // set of rows (a row has one value per column) and the result is sorted by id below, so combinations
+  // are read a few at a time (BATCH_CONCURRENCY) instead of one after another; pages inside one
+  // combination stay sequential (keyset cursor). Any failure rejects the whole read: no partial rows.
+  const batchLists = arrayFilters.map(([key, values]) => {
+    const unique = [...new Set(values)];
+    const slices = [];
+    for (let start = 0; start < unique.length; start += 50) slices.push(unique.slice(start, start + 50));
+    return [key, slices];
+  });
+  if (batchLists.some(([, slices]) => !slices.length)) return all;
+  const combinations = batchLists.reduce((combos, [key, slices]) =>
+    combos.flatMap((combo) => slices.map((slice) => ({ ...combo, [key]: slice }))), [{}]);
+  async function readBatch(batches) {
     let cursor = null;
     for (;;) {
       let query = db.from(table).select(columns).order('id', { ascending: true }).limit(100);
@@ -42,7 +46,7 @@ async function rows(table, columns = '*', filters = {}, db = getSupabaseAdmin())
       }
     }
   }
-  await readBatch(0, {});
+  await mapInOrder(combinations, BATCH_CONCURRENCY, readBatch);
   return all.sort((a, b) => a.id.localeCompare(b.id));
 }
 
@@ -117,33 +121,33 @@ async function personal(userId) {
   return { summary: metrics(readings, quizResults), readings, quizzes: quizResults, historicalQuizzes: extraResults, activities };
 }
 /** Current progress on a learner's active assigned activities and modules, from saved work only. */
-async function activityProgress(userId, assignments, enrollments, readings, attempts) {
+async function activityProgress(userId, assignments, enrollments, readings, attempts, load = rows) {
   const activeAssignments = activeMaterialAssignments(assignments);
   const materialIds = [...new Set(activeAssignments.map(a => a.material_id))];
   // Material titles and module assignments are independent reads, so they load together.
   const loadMaterials = async () => {
     const materials = [];
-    for (let i=0;i<materialIds.length;i+=100) materials.push(...await rows('uploaded_materials', 'id,title', { id: materialIds.slice(i,i+100) }));
+    for (let i=0;i<materialIds.length;i+=100) materials.push(...await load('uploaded_materials', 'id,title', { id: materialIds.slice(i,i+100) }));
     return materials;
   };
-  const [materials, { assignments: moduleAssignments, titles }] = await Promise.all([loadMaterials(), learnerModuleAssignments(userId, enrollments)]);
+  const [materials, { assignments: moduleAssignments, titles }] = await Promise.all([loadMaterials(), learnerModuleAssignments(userId, enrollments, load)]);
   const materialActivities = activeAssignments.map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: materials.find(m => m.id === a.material_id)?.title || 'Assigned reading activity' }));
   const moduleActivities = moduleAssignments.map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: titles.get(a.module_id) || 'Assigned reading module' }));
   return [...materialActivities, ...moduleActivities];
 }
 /** The learner's active classroom module assignments, with their passages and titles. */
-async function learnerModuleAssignments(userId, enrollments) {
+async function learnerModuleAssignments(userId, enrollments, load = rows) {
   const roomIds = enrollments.map(e => e.room_id);
-  const assigned = roomIds.length ? await rows('room_modules', '*', { room_id: roomIds }) : [];
+  const assigned = roomIds.length ? await load('room_modules', '*', { room_id: roomIds }) : [];
   if (!assigned.length) return { assignments: [], titles: new Map() };
-  const modules = await rows('modules', 'id,title,status,deleted_at', { id: [...new Set(assigned.map(m => m.module_id))] });
+  const modules = await load('modules', 'id,title,status,deleted_at', { id: [...new Set(assigned.map(m => m.module_id))] });
   const roomModules = activeRoomModules(assigned, modules);
   if (!roomModules.length) return { assignments: [], titles: new Map() };
   const moduleIds = [...new Set(roomModules.map(m => m.module_id))];
   const [recipients, passages, questions] = await Promise.all([
-    rows('room_module_recipients', 'room_module_id,student_id', { room_module_id: roomModules.map(m => m.id) }),
-    rows('module_passages', 'id,module_id', { module_id: moduleIds }),
-    rows('comprehension_questions', 'id,passage_id', { review_status: 'reviewed', module_id: moduleIds }),
+    load('room_module_recipients', 'room_module_id,student_id', { room_module_id: roomModules.map(m => m.id) }),
+    load('module_passages', 'id,module_id', { module_id: moduleIds }),
+    load('comprehension_questions', 'id,passage_id', { review_status: 'reviewed', module_id: moduleIds }),
   ]);
   return { assignments: expandModuleAssignments(roomModules, recipients, withAssessmentRequirement(passages, questions), () => [userId]), titles: new Map(modules.map(m => [m.id, m.title])) };
 }
@@ -160,6 +164,78 @@ async function system() {
   return { ...metrics(readings, quizResults), students: profiles.filter(p => p.role === 'student').length,
     teachers: profiles.filter(p => p.role === 'teacher').length, classrooms: rooms.length, assignedActivities: assignments.length };
 }
+/**
+ * Performance: a read-only loader answering queries from rows loaded once for a whole class.
+ * `store` maps a table to { rows, columns, domain }: the rows were read live with every `domain` constraint
+ * (key -> allowed values) and with `columns`. A query is answered from memory only when every domain
+ * constraint appears in its filters with values inside the domain (so the loaded rows are a superset of
+ * its answer) and its columns were loaded; anything else is read live with `fallback`, unchanged.
+ * Rows keep the live order (rows() sorts by id; recipients keep their reportRows order) and are copies.
+ */
+function preloadedRows(store, fallback = rows) {
+  const asSet = (value) => new Set(Array.isArray(value) ? value : [value]);
+  return async (table, columns = '*', filters = {}) => {
+    const entry = store.get(table);
+    if (!entry) return fallback(table, columns, filters);
+    const wanted = columns === '*' ? null : columns.split(',').map((column) => column.trim());
+    const loaded = entry.columns === '*' ? null : new Set(entry.columns.split(',').map((column) => column.trim()));
+    if ((wanted === null && loaded !== null) || (wanted && loaded && wanted.some((column) => !loaded.has(column)))) return fallback(table, columns, filters);
+    const tests = [];
+    for (const [key, allowed] of Object.entries(entry.domain)) {
+      if (!(key in filters)) return fallback(table, columns, filters);
+      const values = asSet(filters[key]);
+      if ([...values].some((value) => !allowed.has(value))) return fallback(table, columns, filters);
+      if (values.size !== allowed.size) tests.push([key, values]);
+    }
+    for (const [key, value] of Object.entries(filters)) if (!(key in entry.domain)) tests.push([key, asSet(value)]);
+    if (tests.some(([key]) => entry.rows.length && !(key in entry.rows[0]))) return fallback(table, columns, filters);
+    const matched = entry.rows.filter((row) => tests.every(([key, values]) => values.has(row[key])));
+    return matched.map((row) => (wanted ? Object.fromEntries(wanted.map((column) => [column, row[column]])) : { ...row }));
+  };
+}
+
+const TEACHER_READING_COLUMNS = 'id,room_id,module_id,passage_id,assignment_id,material_id,activity_assignment_id,completed_at,pronunciation_accuracy,reading_speed_wpm';
+const TEACHER_ATTEMPT_COLUMNS = 'id,module_id,passage_id,assignment_id,room_id,material_id,activity_assignment_id,oral_reading_attempt_id,status,created_at,completed_at';
+
+/** Reads, once for the Teacher's whole class, every row the per-Student queries below can ask for. */
+async function preloadTeacherClass(scope) {
+  const studentIds = scope.students.map(s => s.id);
+  const roomIds = scope.rooms.map(r => r.id);
+  const entry = (rowsRead, columns, domain) => ({ rows: rowsRead, columns,
+    domain: Object.fromEntries(Object.entries(domain).map(([key, values]) => [key, new Set(values)])) });
+  const [attempts, readings, assignments, roomModules] = await Promise.all([
+    rows('m6_comprehension_attempts', '*', { user_id: studentIds }),
+    rows('oral_reading_attempts', `${TEACHER_READING_COLUMNS},user_id`, { user_id: studentIds }),
+    rows('reading_activity_assignments', '*', { student_id: studentIds, room_id: roomIds }),
+    rows('room_modules', '*', { room_id: roomIds }),
+  ]);
+  const completedIds = attempts.filter(a => a.status === 'completed').map(a => a.id);
+  const moduleIds = [...new Set(roomModules.map(m => m.module_id))];
+  const roomModuleIds = roomModules.map(m => m.id);
+  const materialIds = [...new Set(assignments.map(a => a.material_id))];
+  const none = Promise.resolve([]);
+  const [responses, modules, recipients, passages, questions, materials] = await Promise.all([
+    completedIds.length ? rows('m6_comprehension_responses', '*', { attempt_id: completedIds }) : none,
+    moduleIds.length ? rows('modules', 'id,title,status,deleted_at', { id: moduleIds }) : none,
+    roomModuleIds.length ? rows('room_module_recipients', 'room_module_id,student_id', { room_module_id: roomModuleIds }) : none,
+    moduleIds.length ? rows('module_passages', 'id,module_id', { module_id: moduleIds }) : none,
+    moduleIds.length ? rows('comprehension_questions', 'id,passage_id,module_id', { review_status: 'reviewed', module_id: moduleIds }) : none,
+    materialIds.length ? rows('uploaded_materials', 'id,title', { id: materialIds }) : none,
+  ]);
+  return new Map([
+    ['m6_comprehension_attempts', entry(attempts, '*', { user_id: studentIds })],
+    ['m6_comprehension_responses', entry(responses, '*', { attempt_id: completedIds })],
+    ['oral_reading_attempts', entry(readings, `${TEACHER_READING_COLUMNS},user_id`, { user_id: studentIds })],
+    ['reading_activity_assignments', entry(assignments, '*', { student_id: studentIds, room_id: roomIds })],
+    ['room_modules', entry(roomModules, '*', { room_id: roomIds })],
+    ['modules', entry(modules, 'id,title,status,deleted_at', { id: moduleIds })],
+    ['room_module_recipients', entry(recipients, 'room_module_id,student_id', { room_module_id: roomModuleIds })],
+    ['module_passages', entry(passages, 'id,module_id', { module_id: moduleIds })],
+    ['comprehension_questions', entry(questions, 'id,passage_id,module_id', { review_status: ['reviewed'], module_id: moduleIds })],
+    ['uploaded_materials', entry(materials, 'id,title', { id: materialIds })],
+  ]);
+}
+
 const TEACHER_STUDENT_CONCURRENCY = 6;
 /** Maps items with at most `limit` running at once; results keep the input order; the first failure rejects
  * the whole call (no partial result) and no further items are started. */
@@ -181,19 +257,23 @@ async function teacher(teacherId) {
   const scope = await teacherScope(teacherId);
   const notificationsActive = isRiskWorkerEnabled();
   if (!scope.students.length) return { students: [], notifications: [], notificationsActive };
-  const [history, interventions] = await Promise.all([
+  // Performance: the class's rows are read once (a few queries instead of several per Student); each
+  // Student's figures are then computed by the same code as before, from that Student's rows only.
+  const [history, interventions, store] = await Promise.all([
     rows('m7_risk_events', '*', { teacher_id: teacherId }), rows('m7_interventions', '*', { teacher_id: teacherId }),
+    preloadTeacherClass(scope),
   ]);
+  const load = preloadedRows(store);
   // Performance: each Student's records are read-only and independent, so a few Students load at once
   // (bounded, to respect the database pool) instead of one after another. Output order is unchanged.
   const students = await mapInOrder(scope.students, TEACHER_STUDENT_CONCURRENCY, async (student) => {
     const roomIds = scope.enrollments.filter(e => e.student_id === student.id).map(e => e.room_id);
     const inScope = { include: a => !a.room_id || roomIds.includes(a.room_id) };
     const [allQuizzes, extraResults, allReadings, activityRows, attemptRows] = await Promise.all([
-      quizzes({ user_id: student.id }, inScope), historicalQuizzes({ user_id: student.id }, inScope),
-      rows('oral_reading_attempts', 'id,room_id,module_id,passage_id,assignment_id,material_id,activity_assignment_id,completed_at,pronunciation_accuracy,reading_speed_wpm', { user_id: student.id }),
-      roomIds.length ? rows('reading_activity_assignments', '*', { student_id: student.id, room_id: roomIds }) : [],
-      rows('m6_comprehension_attempts', 'id,module_id,passage_id,assignment_id,room_id,material_id,activity_assignment_id,oral_reading_attempt_id,status,created_at,completed_at', { user_id: student.id }),
+      quizzes({ user_id: student.id }, { ...inScope, rows: load }), historicalQuizzes({ user_id: student.id }, { ...inScope, rows: load }),
+      load('oral_reading_attempts', TEACHER_READING_COLUMNS, { user_id: student.id }),
+      roomIds.length ? load('reading_activity_assignments', '*', { student_id: student.id, room_id: roomIds }) : [],
+      load('m6_comprehension_attempts', TEACHER_ATTEMPT_COLUMNS, { user_id: student.id }),
     ]);
     // Match M5 visibility: enrolled learners' independent work and own-classroom work.
     const quizResults = allQuizzes.filter(q => !q.roomId || roomIds.includes(q.roomId));
@@ -201,7 +281,7 @@ async function teacher(teacherId) {
     const unavailable = quizResults.some(q => q.dataQuality);
     const risk = !quizResults.length ? { classification: NO_ASSESSMENT_DATA }
       : unavailable ? { classification: 'Evaluation unavailable' } : classifyRisk(quizResults);
-    const activities = await activityProgress(student.id, activityRows, scope.enrollments.filter(e => e.student_id === student.id), readings, attemptRows);
+    const activities = await activityProgress(student.id, activityRows, scope.enrollments.filter(e => e.student_id === student.id), readings, attemptRows, load);
     const competency = {};
     for (const type of ['literal','inferential','critical']) {
       const groups = quizResults.filter(q => !q.dataQuality).map(q => q.byType[type]);
@@ -242,4 +322,4 @@ async function saveIntervention(teacherId, studentId, id, body, { authorize } = 
   if (!data) throw fail('Intervention not found.',404);
   return data;
 }
-module.exports = { mapInOrder, TEACHER_STUDENT_CONCURRENCY, rows, quizzes, historicalQuizzes, teacherScope, requireStudent, requireAdminStudent, personal, system, teacher, saveIntervention, fail };
+module.exports = { preloadedRows, mapInOrder, TEACHER_STUDENT_CONCURRENCY, rows, quizzes, historicalQuizzes, teacherScope, requireStudent, requireAdminStudent, personal, system, teacher, saveIntervention, fail };

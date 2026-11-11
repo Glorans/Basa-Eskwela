@@ -1,7 +1,7 @@
 import { formatAnalyticsDateTime as date } from './services/dateDisplay';
 import { matchesSupportFilter, recoveryNote, NOT_COUNTED_NOTE, RISK_RULES, RISK_RULES_INTRO } from './services/studentSupportClassification';
 import { formatScore, formatQuizScore, formatComprehension, passageProgressText } from './services/scoreDisplay';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { comprehensionResultTarget, readingResultTarget } from '../module5/services/comprehensionNavigation';
 import { m7Request, type Metrics, type PersonalData, type TeacherData, type Intervention, type Quiz, type Student } from './services/m7Service';
@@ -13,11 +13,36 @@ const percent = (value:number|null) => value === null ? 'No data' : formatScore(
 const wholePercent = (value:unknown) => typeof value === 'number' && Number.isFinite(value) ? formatScore(Math.round(value)) : 'No data';
 const wpm = (value:number|null) => value === null ? 'No data' : `${Math.round(value)} WPM`;
 type LearnerRole = 'student' | 'general_user';
+const POLL_MS = 30000;
+// A hidden browser tab skips polling (no visibility API: treated as visible).
+const pageVisible = () => typeof document === 'undefined' || typeof document.visibilityState !== 'string' || document.visibilityState === 'visible';
 function useData<T>(path:string, poll = false) {
   const [data,setData] = useState<T|null>(null), [error,setError] = useState(''), [loading,setLoading] = useState(true);
-  const refresh = useCallback(async () => { try { const value = await m7Request<T>(path); setData(value);setError(''); } catch(e) {setError((e as Error).message);} finally {setLoading(false);} },[path]);
-  useEffect(() => { void refresh(); if (poll) { const timer = setInterval(() => void refresh(),30000); return () => clearInterval(timer); } },[refresh,poll]);
-  return {data,error,loading,refresh};
+  // Performance: one request at a time. A refresh asked for while one is running (Retry, or after saving an
+  // intervention or marking a notification read) runs once it finishes, so the page never keeps data from
+  // before that change; a poll that finds a request running is simply skipped.
+  const inFlight = useRef(false), again = useRef(false), loadedAt = useRef(0);
+  const refresh = useCallback(async (fromPoll = false) => {
+    if (inFlight.current) { if (!fromPoll) again.current = true; return; }
+    inFlight.current = true;
+    try {
+      do {
+        again.current = false;
+        try { const value = await m7Request<T>(path); setData(value);setError(''); loadedAt.current = Date.now(); } catch(e) {setError((e as Error).message);}
+      } while (again.current);
+    } finally { inFlight.current = false; setLoading(false); }
+  },[path]);
+  useEffect(() => {
+    void refresh();
+    if (!poll) return;
+    const timer = setInterval(() => { if (pageVisible()) void refresh(true); }, POLL_MS);
+    // Returning to a hidden tab refreshes at once when the data is older than one poll interval.
+    const onVisible = () => { if (pageVisible() && Date.now() - loadedAt.current >= POLL_MS) void refresh(true); };
+    const canListen = typeof document !== 'undefined' && typeof document.addEventListener === 'function';
+    if (canListen) document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(timer); if (canListen) document.removeEventListener('visibilitychange', onVisible); };
+  },[refresh,poll]);
+  return {data,error,loading,refresh:() => refresh()};
 }
 function State({error,loading,retry}:{error:string;loading:boolean;retry:()=>void}) { return <>{loading && <p role="status">Loading analytics…</p>}{error && <div role="alert" className="m7-error">{error} <button onClick={retry}>Retry</button></div>}</>; }
 /** The thresholds, shown wherever Teachers and Admins see a classification. */

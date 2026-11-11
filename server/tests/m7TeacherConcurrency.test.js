@@ -121,10 +121,31 @@ test("Teacher analytics only covers the Teacher's own enrolled Students, even wh
 test("a database failure for one Student fails the whole request (no partial analytics)", async () => {
   const tables = classroom(30);
   const target = tables.profiles[17].id;
-  const { stats, db } = fakeDatabase(tables, { latency: 1, failWhen: (table, filters) => table === "oral_reading_attempts" && filters.some(([k, , v]) => k === "user_id" && v === target) });
+  const { stats, db } = fakeDatabase(tables, { latency: 1, failWhen: (table, filters) => table === "oral_reading_attempts" && filters.some(([k, , v]) => k === "user_id" && (Array.isArray(v) ? v.includes(target) : v === target)) });
   const analytics = freshAnalytics(db);
   await assert.rejects(analytics.teacher("teacher-1"), /Unable to load oral_reading_attempts/);
   const afterFailure = stats.queries;
   await sleep(50);
   assert.ok(stats.queries - afterFailure < 6 * 12, "in-flight Students finish, no new Students start");
+});
+
+test("the preloaded loader answers only queries its rows fully cover; anything else is read live", async () => {
+  const { preloadedRows } = freshAnalytics(fakeDatabase({}).db);
+  const live = [];
+  const fallback = async (table, columns, filters) => { live.push({ table, columns, filters }); return ["live"]; };
+  const store = new Map([["oral_reading_attempts", { columns: "id,user_id,room_id",
+    rows: [{ id: "a", user_id: "s1", room_id: "r1" }, { id: "b", user_id: "s2", room_id: "r1" }, { id: "c", user_id: "s1", room_id: "r2" }],
+    domain: { user_id: new Set(["s1", "s2"]) } }]]);
+  const load = preloadedRows(store, fallback);
+  assert.deepEqual(await load("oral_reading_attempts", "id,room_id", { user_id: "s1" }), [{ id: "a", room_id: "r1" }, { id: "c", room_id: "r2" }], "projected, live order kept");
+  assert.deepEqual(await load("oral_reading_attempts", "id", { user_id: "s1", room_id: ["r2"] }), [{ id: "c" }], "extra filters narrow the superset");
+  assert.equal(live.length, 0);
+  assert.deepEqual(await load("oral_reading_attempts", "id", { user_id: "s9" }), ["live"], "a Student outside the class is read live (never answered empty)");
+  assert.deepEqual(await load("oral_reading_attempts", "id", {}), ["live"], "a query without the class constraint is read live");
+  assert.deepEqual(await load("oral_reading_attempts", "id,transcript", { user_id: "s1" }), ["live"], "columns that were not loaded are read live");
+  assert.deepEqual(await load("oral_reading_attempts", "*", { user_id: "s1" }), ["live"], "* is never answered from a partial column set");
+  assert.deepEqual(await load("profiles", "id", { id: "s1" }), ["live"], "tables that were not preloaded are read live");
+  const copy = await load("oral_reading_attempts", "id,user_id,room_id", { user_id: "s2" });
+  copy[0].room_id = "changed";
+  assert.equal(store.get("oral_reading_attempts").rows[1].room_id, "r1", "returned rows are copies");
 });
