@@ -604,14 +604,49 @@ function toTeacherAttemptSummary(row, student, module) {
   };
 }
 
+// Performance: the Teacher list (and the weekly report built from it) shows summaries only. These are the
+// columns toTeacherAttemptSummary and the comprehension matching read; transcripts, passage snapshots and
+// per-word metrics (the bulk of each row) are loaded only when one reading is opened.
+const TEACHER_LIST_COLUMNS = [
+  "id", "user_id", "room_id", "module_id", "passage_id", "assignment_id", "material_id", "activity_assignment_id",
+  "completed_at", "module_title_snapshot", "passage_title_snapshot", "scoring_version",
+  "pronunciation_accuracy", "reading_speed_wpm", "detected_error_count",
+].join(",");
+
+// PostgREST/PostgreSQL "column does not exist" codes: the only reason to fall back to full rows.
+const MISSING_COLUMN_CODES = new Set(["42703", "PGRST204"]);
+let teacherListColumnsUnavailable = false;
+
+/**
+ * The Teacher list's reading rows: the summary columns, 1,000 per page (they are small; paging continues to
+ * an empty page, so a lower server row cap never truncates). Only a missing-column schema error falls back to
+ * full rows: it is logged once (code only) and the full read is used from then on, so a schema gap never
+ * causes two requests per page load. Any other failure is reported exactly as before.
+ */
+async function readTeacherListAttempts(supabase, strict, studentIds) {
+  const message = "Unable to load student oral-reading results.";
+  if (!teacherListColumnsUnavailable) {
+    try {
+      return await reportRows(supabase, "oral_reading_attempts", TEACHER_LIST_COLUMNS, {}, "user_id", studentIds, { pageSize: 1000 });
+    } catch (error) {
+      if (!MISSING_COLUMN_CODES.has(error?.code)) {
+        if (strict) throw error;
+        throw new OralReadingPersistenceError(message);
+      }
+      teacherListColumnsUnavailable = true;
+      console.warn("[Teacher reading list] summary columns unavailable; reading full rows", { code: error.code });
+    }
+  }
+  return selectReviewRows(supabase, strict, "oral_reading_attempts", "*", {}, "user_id", studentIds, message);
+}
+
 async function listTeacherOralReadingAttempts(requester, dependencies = {}) {
   const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
   const students = await loadTeacherStudentProfiles(supabase, requester.user.id, dependencies.weeklyReportStrict === true);
   const studentIds = [...students.keys()];
   if (studentIds.length === 0) return [];
 
-  const attempts = await selectReviewRows(supabase, dependencies.weeklyReportStrict === true,
-    "oral_reading_attempts", "*", {}, "user_id", studentIds, "Unable to load student oral-reading results.");
+  const attempts = await readTeacherListAttempts(supabase, dependencies.weeklyReportStrict === true, studentIds);
   attempts.sort((a, b) => Date.parse(b.completed_at) - Date.parse(a.completed_at) || a.id.localeCompare(b.id));
   const moduleIds = [...new Set((attempts ?? []).map((attempt) => attempt.module_id).filter(Boolean))];
   const modules = await loadModuleReviewMetadata(supabase, moduleIds, dependencies.weeklyReportStrict === true);

@@ -163,7 +163,8 @@ export async function getTeacherOralReadingAttempts() {
   try {
     const response = await api.get<TeacherAttemptsResponse>(
       "/api/oral-reading/teacher/attempts",
-      { headers: await getAuthHeaders() },
+      // A stalled connection ends in the page's error and Refresh state instead of loading indefinitely.
+      { headers: await getAuthHeaders(), timeout: REQUEST_TIMEOUT_MS },
     );
     return response.data.attempts.map((attempt): TeacherOralReadingAttemptSummary => ({
       ...attempt,
