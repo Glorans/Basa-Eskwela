@@ -58,6 +58,8 @@ app.use("/api/admin/weekly-reports", require("./routes/weeklyReports").createAdm
 app.use("/api/analytics", require("./routes/m7Analytics"));
 app.use("/api/comprehension", require("./routes/comprehension"));
 app.use("/api/m8", require("./routes/m8Rewards").createM8RewardsRouter());
+// M4 Student Learning Rooms: assigned Teacher names for the Student's own enrolled rooms.
+app.use("/api/classrooms", require("./routes/studentClassrooms").createStudentClassroomsRouter());
 // POST /api/tts, /api/diagnostic/audio (M2 parts) and /api/read-aloud/audio (M5
 // whole recordings): authenticated, throttled Azure Speech.
 app.use(createSpeechRouter({ receipts: diagnosticReceipts }));

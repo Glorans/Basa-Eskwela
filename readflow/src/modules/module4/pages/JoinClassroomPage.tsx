@@ -7,11 +7,14 @@ import {
   isRoomArchived,
   type Classroom,
 } from "../services/classroomService";
+import { getStudentRoomTeacherNames, type RoomTeacherNames } from "../services/studentRoomTeachers";
 
 export default function JoinClassroomPage() {
   const navigate = useNavigate();
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+  // Assigned Teacher names by room id; undefined while loading. A failed lookup shows the fallback.
+  const [teacherNames, setTeacherNames] = useState<RoomTeacherNames>();
   const [roomCode, setRoomCode] = useState("");
 
   const [loading, setLoading] = useState(true);
@@ -44,6 +47,7 @@ export default function JoinClassroomPage() {
 
         const joinedRooms = await getStudentClassrooms(user.id);
         setClassrooms(joinedRooms);
+        void loadTeacherNames(joinedRooms);
       } catch (err) {
         console.error(
           "Failed to load student classrooms:",
@@ -58,6 +62,19 @@ export default function JoinClassroomPage() {
 
     void loadStudentClassrooms();
   }, []);
+
+  async function loadTeacherNames(rooms: Classroom[]) {
+    if (!rooms.length) {
+      setTeacherNames({});
+      return;
+    }
+    try {
+      setTeacherNames(await getStudentRoomTeacherNames());
+    } catch (err) {
+      console.error("Failed to load classroom teacher names:", err);
+      setTeacherNames({});
+    }
+  }
 
   async function handleJoinClassroom(
     event: React.FormEvent<HTMLFormElement>
@@ -109,6 +126,7 @@ export default function JoinClassroomPage() {
         await getStudentClassrooms(user.id);
 
       setClassrooms(updatedRooms);
+      void loadTeacherNames(updatedRooms);
 
       setSuccess(
         "You successfully joined the learning room!"
@@ -298,6 +316,15 @@ export default function JoinClassroomPage() {
               <h3 className="text-xl font-extrabold text-[#173f3b]">
                 {room.room_name}
               </h3>
+
+              {/* Assigned Teacher (rooms.teacher_id), also for Admin-created rooms */}
+              <p className="mt-1 min-w-0 text-sm font-semibold text-[#2f5c57] [overflow-wrap:anywhere]">
+                {teacherNames === undefined
+                  ? "Teacher: Loading..."
+                  : teacherNames[room.id]
+                    ? `Teacher: ${teacherNames[room.id]}`
+                    : "Teacher name unavailable"}
+              </p>
 
               {room.description?.trim() && room.description.trim().toLowerCase() !== "none" && (
                 <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#5c7471]">

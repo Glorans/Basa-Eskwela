@@ -107,9 +107,11 @@ test("Student Learning Rooms lists active rooms only and points to Archived Read
   const page = await mount("modules/module4/pages/JoinClassroomPage.tsx", (id) => id === "react-router-dom" ? { useNavigate: () => (to: string) => navigations.push(to) }
     : id.includes("supabaseClient") ? auth
     : id.includes("classroomService") ? { getStudentClassrooms: async () => [ACTIVE, ARCHIVED], isRoomArchived, joinClassroomByCode: async () => ({}) }
+    : id.includes("studentRoomTeachers") ? { getStudentRoomTeacherNames: async () => ({ active: "Rosa Mendoza", old: "Archived Teacher" }) }
     : undefined);
   const text = page.text();
   assert.match(text, /Grade 5 - Sampaguita/);
+  assert.match(text, /Teacher: Rosa Mendoza/);
   assert.doesNotMatch(text, /Kamonggay|OLD123/, "the archived room is not an active Learning Room");
   assert.match(text, /1 classroom was archived by your teacher/);
   buttons(page.view(), /Archived Readings/)[0].props.onClick();
