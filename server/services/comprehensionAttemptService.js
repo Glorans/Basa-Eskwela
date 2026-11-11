@@ -3,6 +3,7 @@ const { loadMaterialReadingSource } = require("./personalMaterialService");
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
   authorizeReadingPracticeRequest,
+  claimedSubject,
   isApprovedTeacher,
   loadAccessiblePublishedModule,
 } = require("./oralReadingAttemptService");
@@ -283,15 +284,34 @@ async function loadReviewedQuestions(
   return QUESTION_TYPES.flatMap((type) => snapshot.filter((question) => question.type === type));
 }
 
-async function loadOwnedAttempt(requester, attemptId) {
+const ownedAttemptQuery = (attemptId, userId) => getSupabaseAdmin()
+  .from("m6_comprehension_attempts")
+  .select("*")
+  .eq("id", attemptId)
+  .eq("user_id", userId)
+  .maybeSingle();
+
+/**
+ * Performance: starts the owned-attempt read while the login is still being verified (the route calls this
+ * before authorizeComprehensionRequest). The read uses the same filters as loadOwnedAttempt, with the
+ * token's UNVERIFIED subject as the owner; loadOwnedAttempt uses it only when the verified user is that
+ * subject, so a forged token never reads another user's attempt. Null when there is nothing to start.
+ */
+function prefetchOwnedAttempt(req, attemptId) {
+  const claimed = claimedSubject(req);
+  if (!claimed || typeof attemptId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId)) return null;
+  const pending = Promise.resolve().then(() => ownedAttemptQuery(attemptId, claimed));
+  pending.catch(() => {}); // Used after authentication, or discarded.
+  return { attemptId, userId: claimed, pending };
+}
+
+async function loadOwnedAttempt(requester, attemptId, prefetched = null) {
   requireUuid(attemptId, "Activity ID");
 
-  const { data, error } = await getSupabaseAdmin()
-    .from("m6_comprehension_attempts")
-    .select("*")
-    .eq("id", attemptId)
-    .eq("user_id", requester.user.id)
-    .maybeSingle();
+  const usable = prefetched && prefetched.attemptId === attemptId && prefetched.userId === requester.user.id;
+  const { data, error } = usable
+    ? await prefetched.pending
+    : await ownedAttemptQuery(attemptId, requester.user.id);
 
   if (error) {
     throw databaseError(
@@ -313,7 +333,7 @@ async function loadOwnedAttempt(requester, attemptId) {
 // `verified` (optional): this attempt's row as loaded and ownership-checked earlier in the same request
 // (applyComprehensionAction). Only its fixed identity fields (id, user, material, room, activity) are used,
 // to start the read-only lookups while the attempt is reloaded; the reloaded row is always the one returned.
-async function getComprehensionAttempt(requester, attemptId, { verified = null } = {}) {
+async function getComprehensionAttempt(requester, attemptId, { verified = null, prefetched = null } = {}) {
   const db = getSupabaseAdmin();
   const lookups = (row) => {
     const personalSource = Boolean(row.material_id && !row.activity_assignment_id && !row.room_id);
@@ -340,7 +360,9 @@ async function getComprehensionAttempt(requester, attemptId, { verified = null }
   // so they also run alongside the reload; a row whose identity differs falls back to a fresh lookup.
   const early = verified && verified.id === attemptId && verified.user_id === requester.user.id ? lookups(verified) : null;
   early?.catch(() => {});
-  const attempt = await loadOwnedAttempt(requester, attemptId);
+  // `prefetched` is used only for a first read in a request (opening an attempt); a reload after an action
+  // passes `verified` instead and always reads the row again.
+  const attempt = await loadOwnedAttempt(requester, attemptId, verified ? null : prefetched);
   const sameIdentity = early && ["id", "user_id", "material_id", "activity_assignment_id", "module_id", "passage_id", "room_id", "assignment_id"]
     .every((key) => (attempt[key] ?? null) === (verified[key] ?? null));
   const [activityResult, responsesResult, archivedResult, deletedResult] = await (sameIdentity ? early : lookups(attempt));
@@ -754,6 +776,7 @@ module.exports = {
   authorizeComprehensionRequest,
   startComprehensionAttempt,
   getComprehensionAttempt,
+  prefetchOwnedAttempt,
   findComprehensionForReading,
   findActivityAttempt,
   activityKey,

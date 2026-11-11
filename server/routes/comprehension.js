@@ -16,6 +16,7 @@ const {
   startComprehensionAttempt,
   getComprehensionAttempt,
   findComprehensionForReading,
+  prefetchOwnedAttempt,
 } = require("../services/comprehensionAttemptService");
 
 const {
@@ -83,10 +84,13 @@ router.post("/attempts", async (req, res) => {
 
 router.get("/attempts/:attemptId", async (req, res) => {
   try {
+    // Performance: the owned-attempt read starts while the login is verified (see prefetchOwnedAttempt).
+    const prefetched = prefetchOwnedAttempt(req, req.params.attemptId);
     const requester = await authorizeComprehensionRequest(req);
     const attempt = await getComprehensionAttempt(
       requester,
       req.params.attemptId,
+      { prefetched },
     );
 
     return res.json({
@@ -111,11 +115,13 @@ router.get("/readings/:oralReadingAttemptId", async (req, res) => {
 
 router.post("/attempts/:attemptId/actions", async (req, res) => {
   try {
+    const prefetched = prefetchOwnedAttempt(req, req.params.attemptId);
     const requester = await authorizeComprehensionRequest(req);
     const result = await applyComprehensionAction(
       requester,
       req.params.attemptId,
       req.body,
+      { prefetched },
     );
 
     return res.json({

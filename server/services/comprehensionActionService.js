@@ -88,6 +88,7 @@ async function applyComprehensionAction(
   requester,
   attemptId,
   body = {},
+  { prefetched = null } = {},
 ) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new ComprehensionError("Invalid activity action.", 400);
@@ -111,7 +112,8 @@ async function applyComprehensionAction(
   }
 
   // Checks ownership before calling the protected database function.
-  const owned = await loadOwnedAttempt(requester, attemptId);
+  // `prefetched`: the same owned-attempt read, started while the login was verified (route).
+  const owned = await loadOwnedAttempt(requester, attemptId, prefetched);
   const db = getSupabaseAdmin();
 
   // Performance: the checks below only read data and depend only on the owned attempt, so they are

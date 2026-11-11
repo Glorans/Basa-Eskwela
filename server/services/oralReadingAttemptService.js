@@ -779,6 +779,7 @@ module.exports = {
   authorizeOralReadingRequest,
   authorizeOralReadingPracticeRequest,
   authorizeReadingPracticeRequest,
+  claimedSubject,
   authorizeTeacherOralReadingRequest,
   isApprovedTeacher,
   buildAttemptInsert,
