@@ -110,7 +110,7 @@ test("failed or unauthorized updates leave the profile incomplete and can be ret
 
 test("legacy users keep their destinations with null age, including before migration approval", async () => {
   for (const ageError of [null, { code: "PGRST202" }]) {
-    for (const [role, destination] of [["student", "/dashboard"], ["general_user", "/m3/general"], ["teacher", "/m3/teacher"], ["admin", "/m3/admin"]]) {
+    for (const [role, destination] of [["student", "/dashboard"], ["general_user", "/m3/general/dashboard"], ["teacher", "/m3/teacher/dashboard"], ["admin", "/m3/admin/dashboard"]]) {
       const f = fixture(role, ageError);
       Object.assign(f.row, { nickname: "Reader", full_name: "Existing User", teacher_status: role === "teacher" ? "approved" : null });
       f.completeDiagnostic();

@@ -47,7 +47,7 @@ test("canonical routing sends an incomplete Teacher to Profile Setup", () => {
 test("canonical routing sends a complete Teacher to the Teacher area", () => {
   assert.equal(
     resolveDestination("teacher", null, "Maria Santos"),
-    "/m3/teacher",
+    "/m3/teacher/dashboard",
   );
 });
 
@@ -77,12 +77,12 @@ test("canonical routing sends an Independent Learner with no diagnostic to the d
 test("canonical routing sends a diagnosed Independent Learner to the general area", () => {
   assert.equal(
     resolveDestination("general_user", "Kai", "", true),
-    "/m3/general",
+    "/m3/general/dashboard",
   );
 });
 
 test("canonical routing sends an Admin directly to the existing Admin area", () => {
-  assert.equal(resolveDestination("admin", null, "", false), "/m3/admin");
+  assert.equal(resolveDestination("admin", null, "", false), "/m3/admin/dashboard");
 });
 
 test("signup collects credentials without profile names or a role", async () => {
@@ -150,10 +150,10 @@ test("normalizes email and requires eight characters with lowercase and uppercas
 });
 
 test("maps each authoritative profile role to its own application area", () => {
-  assert.equal(getRoleHomePath("admin"), "/m3/admin");
-  assert.equal(getRoleHomePath("teacher"), "/m3/teacher");
+  assert.equal(getRoleHomePath("admin"), "/m3/admin/dashboard");
+  assert.equal(getRoleHomePath("teacher"), "/m3/teacher/dashboard");
   assert.equal(getRoleHomePath("student"), "/dashboard");
-  assert.equal(getRoleHomePath("general_user"), "/m3/general");
+  assert.equal(getRoleHomePath("general_user"), "/m3/general/dashboard");
 });
 
 test("routes both learner roles through the initial diagnostic only when needed", () => {
@@ -166,9 +166,9 @@ test("routes both learner roles through the initial diagnostic only when needed"
   assert.equal(getPostLoginPathForRole("student", false), "/diagnostic");
   assert.equal(getPostLoginPathForRole("student", true), "/dashboard");
   assert.equal(getPostLoginPathForRole("general_user", false), "/diagnostic");
-  assert.equal(getPostLoginPathForRole("general_user", true), "/m3/general");
-  assert.equal(getPostLoginPathForRole("teacher", false), "/m3/teacher");
-  assert.equal(getPostLoginPathForRole("admin", false), "/m3/admin");
+  assert.equal(getPostLoginPathForRole("general_user", true), "/m3/general/dashboard");
+  assert.equal(getPostLoginPathForRole("teacher", false), "/m3/teacher/dashboard");
+  assert.equal(getPostLoginPathForRole("admin", false), "/m3/admin/dashboard");
 });
 
 test("normal role assignment excludes Admin while preserving learner labels", () => {

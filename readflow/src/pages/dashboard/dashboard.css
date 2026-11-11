@@ -1,0 +1,250 @@
+/* Role dashboards. Built from the existing theme: tokens in styles/basa-theme.css, the pastel
+   card (#dce8e7 / #173f3b) and yellow icon tile (#f7cf4a) of the Learning Room cards, the coral
+   button of .m3-button--coral and the translucent white panel of .m3-panel. */
+.rd-page {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: #173f3b;
+}
+
+.rd-hero {
+  padding: clamp(20px, 3vw, 30px);
+  border-radius: 24px;
+  background: var(--basa-bg);
+  color: #ffffff;
+}
+
+.rd-hero-eyebrow {
+  margin: 0 0 6px;
+  color: var(--basa-yellow);
+  font-size: 0.75rem;
+  font-weight: 850;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.rd-hero h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.6rem, 3.4vw, 2.3rem);
+  font-weight: 800;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.rd-hero p {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.6;
+}
+
+.rd-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 14px;
+}
+
+.rd-stat {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  background: #dce8e7;
+  color: #173f3b;
+  text-decoration: none;
+}
+
+a.rd-stat:hover {
+  background: #d1e1df;
+}
+
+.rd-stat-icon {
+  flex: 0 0 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #f7cf4a;
+  color: #173f3b;
+}
+
+.rd-stat-body {
+  min-width: 0;
+}
+
+.rd-stat-value {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.rd-stat-label {
+  display: block;
+  margin-top: 2px;
+  color: #4f6764;
+  font-size: 0.85rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.rd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.rd-section {
+  min-width: 0;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid rgba(17, 67, 54, 0.1);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.rd-section h2 {
+  margin: 0 0 14px;
+  color: #143b32;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.rd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rd-action {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: var(--basa-btn-radius);
+  background: var(--basa-sidebar-item);
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+
+.rd-action:hover {
+  filter: brightness(0.96);
+}
+
+.rd-action--secondary {
+  border: 1px solid #b9c6bf;
+  background: #ffffff;
+  color: #245f53;
+}
+
+.rd-action:focus-visible,
+a.rd-stat:focus-visible,
+.rd-list a:focus-visible {
+  outline: 3px solid #173f3b;
+  outline-offset: 2px;
+}
+
+.rd-list {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+}
+
+.rd-list li {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.rd-list strong,
+.rd-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rd-muted {
+  color: #5c7471;
+  font-size: 0.85rem;
+}
+
+.rd-note {
+  margin: 12px 0 0;
+  color: #5c7471;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.rd-list a {
+  color: #245f53;
+  font-weight: 800;
+}
+
+.rd-empty {
+  margin: 0;
+  padding: 18px;
+  border: 2px dashed #aec0b5;
+  border-radius: 18px;
+  color: #4f6764;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.rd-empty .rd-actions {
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.rd-error {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff0ee;
+  color: #8c3029;
+  font-size: 0.9rem;
+}
+
+/* Phones: two compact cards per row, icon above the value. */
+@media (max-width: 560px) {
+  .rd-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .rd-stat {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 14px;
+  }
+
+  .rd-stat-icon {
+    flex-basis: auto;
+    width: 38px;
+    height: 38px;
+  }
+
+  .rd-stat-value {
+    font-size: 1.35rem;
+  }
+}

@@ -46,14 +46,14 @@ test("5. Returning user with an incomplete role-specific profile returns to Prof
 });
 
 test("6. Existing completed Teacher goes directly to the existing teacher destination", () => {
-  assert.equal(destination("teacher", null, "Teacher Name", false, "approved"), "/m3/teacher");
+  assert.equal(destination("teacher", null, "Teacher Name", false, "approved"), "/m3/teacher/dashboard");
 });
 
 test("7. Existing completed learners retain the diagnostic/dashboard decision", () => {
   assert.equal(destination("student", "Student", "", false), "/diagnostic");
   assert.equal(destination("student", "Student", "", true), "/dashboard");
   assert.equal(destination("general_user", "Reader", "", false), "/diagnostic");
-  assert.equal(destination("general_user", "Reader", "", true), "/m3/general");
+  assert.equal(destination("general_user", "Reader", "", true), "/m3/general/dashboard");
 });
 
 test("8. Existing role holders are redirected away from Role Selection", async () => {

@@ -70,14 +70,16 @@ export function isAssignableUserRole(value: unknown): value is AssignableUserRol
   );
 }
 
+// Each role lands on its dashboard. The workspace roots (/m3/admin, /m3/teacher, /m3/general)
+// keep their existing pages and stay usable as deep links.
 export function getRoleHomePath(role: AppRole) {
   switch (role) {
     case "admin":
-      return "/m3/admin";
+      return "/m3/admin/dashboard";
     case "teacher":
-      return "/m3/teacher";
+      return "/m3/teacher/dashboard";
     case "general_user":
-      return "/m3/general";
+      return "/m3/general/dashboard";
     case "student":
       return "/dashboard";
   }

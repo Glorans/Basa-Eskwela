@@ -64,13 +64,13 @@ async function resolveLogin(
 }
 
 test("valid Admin login resolves to the Admin destination", async () => {
-  assert.equal(await resolveLogin(profile({ role: "admin" })), "/m3/admin");
+  assert.equal(await resolveLogin(profile({ role: "admin" })), "/m3/admin/dashboard");
 });
 
 test("valid Teacher login resolves to the Teacher destination", async () => {
   assert.equal(
     await resolveLogin(profile({ role: "teacher", full_name: "Teacher Name", teacher_status: "approved" })),
-    "/m3/teacher",
+    "/m3/teacher/dashboard",
   );
 });
 
@@ -106,7 +106,7 @@ test("completed Student resolves to the student dashboard", async () => {
 test("completed Independent Learner resolves to the general learner area", async () => {
   assert.equal(
     await resolveLogin(profile({ role: "general_user", nickname: "Reader" }), true),
-    "/m3/general",
+    "/m3/general/dashboard",
   );
 });
 

@@ -6,6 +6,7 @@ import {
   ClipboardList,
   FilePlus2,
   Files,
+  House,
   LogOut,
   Menu,
   Mic2,
@@ -18,11 +19,11 @@ import {
   X,
   Archive,
 } from "lucide-react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import mascot from "../../../assets/mascot.png";
 import useAuthenticatedProfile from "../../../hooks/useAuthenticatedProfile";
 import { logout } from "../../../services/authService";
-import { isAppRole, ROLE_LABELS } from "../../module1/utils/authOnboarding";
+import { getRoleHomePath, isAppRole, ROLE_LABELS } from "../../module1/utils/authOnboarding";
 import { getProfileDisplayName, getProfileInitials } from "../../module1/utils/profileFields";
 import type { M3Role } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
@@ -32,7 +33,12 @@ interface M3LayoutProps {
   role: M3Role;
 }
 
+// Dashboard is every role's first item and landing page (the same path as the post-login redirect).
 function getNavItems(role: M3Role) {
+  return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
+}
+
+function getWorkspaceNavItems(role: M3Role) {
   if (role === "admin") {
     return [
       { label: "Content Management", to: "/m3/admin", icon: Files, end: true },
@@ -148,12 +154,14 @@ export default function M3Layout({ role }: M3LayoutProps) {
       <aside className={`m3-sidebar ${sidebarOpen ? "m3-sidebar--open" : ""}`}>
         <div>
           <div className="m3-sidebar-brand">
-            <span className="m3-brand-logo">
-              <img src={mascot} alt="Basa Eskwela mascot" />
-            </span>
-            <span>
-              <strong>Basa Eskwela</strong>
-            </span>
+            <Link className="m3-sidebar-home" to={getRoleHomePath(role)} aria-label="Basa Eskwela, go to Dashboard" onClick={() => setSidebarOpen(false)}>
+              <span className="m3-brand-logo">
+                <img src={mascot} alt="" />
+              </span>
+              <span>
+                <strong>Basa Eskwela</strong>
+              </span>
+            </Link>
             <button
               className="m3-sidebar-close"
               type="button"

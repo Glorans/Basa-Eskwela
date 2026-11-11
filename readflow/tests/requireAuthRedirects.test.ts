@@ -115,6 +115,8 @@ test("a teacher with the legacy placeholder name is sent to /setup-profile", () 
 
 test("a pending teacher is sent to /teacher-verification", () => {
   assertRedirect(render({ profile: teacher("pending") }, "/m3/teacher", { allowedRoles: ["teacher"] }), "/teacher-verification");
+  // The Teacher Dashboard is inside the same guard: a pending Teacher cannot open it directly.
+  assertRedirect(render({ profile: teacher("pending") }, "/m3/teacher/dashboard", { allowedRoles: ["teacher"] }), "/teacher-verification");
 });
 
 test("rejected and unset teacher statuses are also sent to /teacher-verification", () => {
@@ -139,7 +141,7 @@ test("an unrecognized role shows the profile alert", () => {
 
 test("a role outside allowedRoles is sent to its home page", () => {
   assertRedirect(render({ profile: student() }, "/m3/teacher", { allowedRoles: ["teacher"] }), "/dashboard");
-  assertRedirect(render({ profile: teacher("approved") }, "/dashboard", { allowedRoles: ["student"] }), "/m3/teacher");
+  assertRedirect(render({ profile: teacher("approved") }, "/dashboard", { allowedRoles: ["student"] }), "/m3/teacher/dashboard");
 });
 
 test("an approved teacher on an allowed route renders the route", () => {

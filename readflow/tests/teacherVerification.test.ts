@@ -11,7 +11,7 @@ test("Teacher approval fails closed; other roles retain their destinations", () 
       hasCompletedDiagnostic: false, teacherStatus: status }), "/teacher-verification");
   }
   assert.equal(resolveUserDestination({ role: "teacher", fullName: "Maria Santos", nickname: null,
-    hasCompletedDiagnostic: false, teacherStatus: "approved" }), "/m3/teacher");
+    hasCompletedDiagnostic: false, teacherStatus: "approved" }), "/m3/teacher/dashboard");
   for (const role of ["student", "general_user", "admin"]) assert.equal(isUnapprovedTeacher(role, null), false);
   assert.equal(resolveUserDestination({ role: "teacher", fullName: "", nickname: null,
     hasCompletedDiagnostic: false, teacherStatus: "pending" }), "/setup-profile");

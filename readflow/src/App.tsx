@@ -25,6 +25,9 @@ import BasaLayout from "./components/basa/BasaLayout";
 import RequireAuth, { RequireRole } from "./components/auth/RequireAuth";
 
 import StudentDashboard from "./pages/StudentDashboard";
+import AdminDashboard from "./pages/dashboard/AdminDashboard";
+import TeacherDashboard from "./pages/dashboard/TeacherDashboard";
+import IndependentLearnerDashboard from "./pages/dashboard/IndependentLearnerDashboard";
 import MyMaterials from "./pages/MyMaterials";
 import StudentModuleViewPage from "./pages/StudentModuleViewPage";
 import Leaderboard from "./pages/Leaderboard";
@@ -267,6 +270,7 @@ function App() {
             element={<M3Layout role="admin" />}
           >
             <Route index element={<Module3Page />} />
+            <Route path="dashboard" element={<AdminDashboard />} />
 
             <Route
               path="modules/new"
@@ -391,6 +395,7 @@ function App() {
               index
               element={<Navigate to="materials" replace />}
             />
+            <Route path="dashboard" element={<TeacherDashboard />} />
 
             <Route
               path="modules"
@@ -529,6 +534,7 @@ function App() {
               index
               element={<Navigate to="materials" replace />}
             />
+            <Route path="dashboard" element={<IndependentLearnerDashboard />} />
 
             <Route
               path="modules"

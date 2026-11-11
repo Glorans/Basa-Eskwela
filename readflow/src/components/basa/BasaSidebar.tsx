@@ -1,6 +1,6 @@
 import { School, Home, BookOpen, Trophy, Award, Settings, LogOut } from "lucide-react";
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import mascot from "../../assets/mascot.png";
 import { logout } from "../../services/authService";
 import "./BasaSidebar.css";
@@ -45,12 +45,12 @@ export default function BasaSidebar({ open, onClose }: BasaSidebarProps) {
 
       <aside className={`basa-sidebar ${open ? "basa-sidebar--open" : ""}`}>
         <div className="basa-sidebar-top">
-          <div className="basa-sidebar-brand">
+          <Link className="basa-sidebar-brand" to="/dashboard" aria-label="Basa Eskwela, go to Dashboard" onClick={onClose}>
             <span className="basa-sidebar-logo-frame">
-              <img className="basa-sidebar-logo" src={mascot} alt="Basa Eskwela mascot" />
+              <img className="basa-sidebar-logo" src={mascot} alt="" />
             </span>
             <span className="basa-sidebar-title">Basa Eskwela</span>
-          </div>
+          </Link>
 
           <nav className="basa-sidebar-nav">
             {NAV_ITEMS.map(({ label, to, icon: Icon }) => (
