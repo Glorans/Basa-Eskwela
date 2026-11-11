@@ -57,7 +57,15 @@ function getBearerToken(req) {
 
 async function getAuthenticatedSupabaseUser(req) {
   const accessToken = getBearerToken(req);
-  const { data, error } = await getSupabaseAdmin().auth.getUser(accessToken);
+  const startedAt = performance.now();
+  let result;
+  try {
+    result = await getSupabaseAdmin().auth.getUser(accessToken);
+  } finally {
+    // Server-Timing "auth" (services/requestTiming.js); a duration only.
+    require("./requestTiming").recordAuthMs(performance.now() - startedAt);
+  }
+  const { data, error } = result;
 
   if (error || !data.user) {
     console.error("[M5 token verification failed]", {

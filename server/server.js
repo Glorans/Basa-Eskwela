@@ -51,6 +51,8 @@ app.use("/api/admin/diagnostic-results", adminDiagnosticResultsRouter);
 app.use("/api/admin/users", adminUsersRouter);
 app.use("/api/admin/teacher-invitations", require("./routes/teacherInvitations").createTeacherInvitationsRouter());
 // Admin review of students' saved assessments; other /admin paths continue to oralReadingRouter.
+// Server-Timing (auth and total server time) for the M6, M7 and Teacher reading requests; durations only.
+app.use(["/api/comprehension", "/api/analytics", "/api/oral-reading"], require("./services/requestTiming").requestTiming);
 app.use("/api/oral-reading/admin", adminStudentReadingRouter);
 app.use("/api/oral-reading", oralReadingRouter);
 app.use("/api/weekly-reports", weeklyReportsRouter);
