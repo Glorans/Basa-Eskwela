@@ -45,16 +45,30 @@ async function loadRecording(supabase, attemptId) {
 }
 
 async function saveOralReadingRecording(requester, attemptId, files, dependencies = {}) {
-  // Check ownership before accessing recording storage.
-  const attempt = await (dependencies.getOralReadingAttempt ?? getOralReadingAttempt)(requester, attemptId, dependencies);
+  // Check ownership before accessing recording storage. The upload route has already loaded and
+  // ownership-checked this attempt in the same request (verifiedAttempt); it is reused only when it is
+  // that attempt of this requester, otherwise the attempt is loaded and checked here as before.
+  const verified = dependencies.verifiedAttempt;
+  const attempt = verified && verified.id === attemptId && verified.userId === requester?.user?.id
+    ? verified
+    : await (dependencies.getOralReadingAttempt ?? getOralReadingAttempt)(requester, attemptId, dependencies);
   validateRecordingFiles(files);
   const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  // Performance: both checks only read, so they run together; they are evaluated in the original order.
+  const [archived, existing] = await Promise.allSettled([
+    (dependencies.isRoomArchived ?? isRoomArchived)(supabase, attempt?.roomId),
+    loadRecording(supabase, attemptId),
+  ]);
+  const settled = (result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  };
   // An archived room accepts no new recording, also from a page opened before it was archived.
-  if (await (dependencies.isRoomArchived ?? isRoomArchived)(supabase, attempt?.roomId)) {
+  if (settled(archived)) {
     throw new OralReadingPersistenceError(ARCHIVED_CLASSROOM_MESSAGE, 409, ARCHIVED_CLASSROOM_CODE);
   }
   // A retry must not replace an existing recording.
-  if (await loadRecording(supabase, attemptId)) return;
+  if (settled(existing)) return;
 
   const prefix = `${requester.user.id}/${attemptId}/${randomUUID()}`;
   const uploaded = [];

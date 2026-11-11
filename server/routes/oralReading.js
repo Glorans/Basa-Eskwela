@@ -269,13 +269,14 @@ function createOralReadingRouter(dependencies = {}) {
     try {
       const requester = await authorizePractice(req, dependencies);
       // Ownership is verified before the upload body is read.
-      await getAttempt(requester, req.params.attemptId, dependencies);
+      const attempt = await getAttempt(requester, req.params.attemptId, dependencies);
       uploadRecording(req, res, async (uploadError) => {
         if (uploadError) {
           return res.status(400).json({ success: false, message: "Recording upload is invalid or exceeds the size limit." });
         }
         try {
-          await saveRecording(requester, req.params.attemptId, req.files, dependencies);
+          // The save reuses this verified attempt instead of loading it a second time.
+          await saveRecording(requester, req.params.attemptId, req.files, { ...dependencies, verifiedAttempt: attempt });
           return res.json({ success: true });
         } catch (error) {
           return sendOralReadingError(res, error, "Unable to save recording.");

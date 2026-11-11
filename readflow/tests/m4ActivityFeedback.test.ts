@@ -191,8 +191,13 @@ function serviceFixture(mode = '') {
   const rows: any[] = [];
   let inserts = 0;
   let userId = teacherId;
+  let authRequests = 0;
+  let signedIn = true;
   const supabase = {
-    auth: { getUser: async () => ({ data: { user: { id: userId } }, error: null }) },
+    auth: {
+      getUser: async () => { authRequests++; return { data: { user: { id: userId } }, error: null }; },
+      getSession: async () => ({ data: { session: signedIn ? { user: { id: userId } } : null }, error: null }),
+    },
     from(table: string) {
       const filters: ((row: any) => boolean)[] = [];
       let single = false;
@@ -226,7 +231,8 @@ function serviceFixture(mode = '') {
       return query;
     },
   };
-  return { service: loadService(supabase), rows, inserts: () => inserts, asStudent: () => { userId = studentId; } };
+  return { service: loadService(supabase), rows, inserts: () => inserts, asStudent: () => { userId = studentId; },
+    authRequests: () => authRequests, signOut: () => { signedIn = false; } };
 }
 
 test('one-student save, teacher list, student list, and duplicate preflight preserve assignment identity', async () => {
@@ -312,6 +318,19 @@ test('existing student status function updates only the signed-in student assign
   await f.service.updateReadingActivityStatus(f.rows[1].id, 'completed');
   assert.equal(f.rows[1].status, 'assigned');
   assert.equal(f.rows[0].read_aloud_only, true);
+});
+
+test('the read-aloud completion status uses the local session, with no extra Auth request', async () => {
+  const f = serviceFixture();
+  await f.service.assignReadingActivity(roomId, materialId, [studentId]);
+  f.asStudent();
+  const before = f.authRequests();
+  await f.service.updateReadingActivityStatus(f.rows[0].id, 'completed');
+  assert.equal(f.rows[0].status, 'completed');
+  assert.equal(f.authRequests(), before, 'no network getUser() call');
+  f.signOut();
+  await assert.rejects(f.service.updateReadingActivityStatus(f.rows[0].id, 'in_progress'), /User not authenticated/);
+  assert.equal(f.rows[0].status, 'completed', 'nothing changes without a session');
 });
 
 test('legacy false/null student activity card data stays identical to the pre-column response', async () => {

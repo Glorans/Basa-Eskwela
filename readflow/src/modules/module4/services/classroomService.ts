@@ -1120,14 +1120,17 @@ export async function updateReadingActivityStatus(
   assignmentId: string,
   status: "in_progress" | "completed"
 ): Promise<void> {
-  const { data: userData, error: userError } =
-    await supabase.auth.getUser();
+  // The signed-in session's user, read locally (no extra Auth request after a read-aloud save). It is only
+  // a filter: the database's update policy allows the change only when student_id = auth.uid() of the
+  // verified access token, so a stale or altered local session cannot change anyone else's activity.
+  const { data: sessionData, error: sessionError } =
+    await supabase.auth.getSession();
 
-  if (userError) {
-    throw userError;
+  if (sessionError) {
+    throw sessionError;
   }
 
-  const user = userData.user;
+  const user = sessionData.session?.user;
 
   if (!user) {
     throw new Error("User not authenticated.");
