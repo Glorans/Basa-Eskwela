@@ -112,27 +112,39 @@ async function applyComprehensionAction(
 
   // Checks ownership before calling the protected database function.
   const owned = await loadOwnedAttempt(requester, attemptId);
-  if (owned.material_id && !owned.activity_assignment_id && !owned.room_id && owned.status !== "completed") {
-    await require("./personalMaterialService").loadPersonalReadingSource(requester, owned.material_id);
-  }
   const db = getSupabaseAdmin();
 
-  // Checked on every answer, so an assessment opened before the room was archived cannot continue.
-  // Its saved answers stay as they are and can still be viewed; it continues after a Restore.
-  if (await isRoomArchived(db, owned.room_id)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
-
-  // One assessment per learning activity: an extra attempt saved for the same activity before
-  // that rule (from a repeated reading) is kept as it is, but it cannot be answered or finished.
-  const current = await findActivityAttempt(db, requester.user.id, activityKey(owned));
+  // Performance: the checks below only read data and depend only on the owned attempt, so they are
+  // fetched together (one round trip instead of up to four). They are still evaluated in the original
+  // order, so the same error wins as before, and nothing is written until every check has passed.
+  const personalCheck = owned.material_id && !owned.activity_assignment_id && !owned.room_id && owned.status !== "completed";
+  const [personal, archived, activity, responses] = await Promise.allSettled([
+    personalCheck ? require("./personalMaterialService").loadPersonalReadingSource(requester, owned.material_id) : null,
+    // Checked on every answer, so an assessment opened before the room was archived cannot continue.
+    // Its saved answers stay as they are and can still be viewed; it continues after a Restore.
+    isRoomArchived(db, owned.room_id),
+    // One assessment per learning activity: an extra attempt saved for the same activity before
+    // that rule (from a repeated reading) is kept as it is, but it cannot be answered or finished.
+    findActivityAttempt(db, requester.user.id, activityKey(owned)),
+    body.action === "answer" ? loadResponses(db, attemptId, body.questionId) : loadResponses(db, attemptId),
+  ]);
+  const settled = (result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  };
+  settled(personal);
+  if (settled(archived)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
+  const current = settled(activity);
   if (current && current.id !== owned.id) {
     throw new ComprehensionError(
       "This reading activity already has a comprehension assessment. Open its saved result instead.",
       409,
     );
   }
+  const loadedResponses = settled(responses);
 
   if (body.action === "answer") {
-    const [saved] = await loadResponses(db, attemptId, body.questionId);
+    const [saved] = loadedResponses;
     if (saved && Number.isInteger(saved.first_option_index)) {
       const history = Array.isArray(saved.answer_history) ? saved.answer_history : [];
       const retry = history.find((entry) => entry?.requestId === body.requestId);
@@ -154,7 +166,7 @@ async function applyComprehensionAction(
 
   if (body.action === "complete") {
     // Questions answered before this rule (or before the proposed SQL) may still be open.
-    await finishQuestions(db, await loadResponses(db, attemptId));
+    await finishQuestions(db, loadedResponses);
   }
 
   const { data, error } = await db.rpc(
@@ -176,8 +188,9 @@ async function applyComprehensionAction(
 
   let outcome = data;
   if (body.action === "answer") {
-    // The first answer is final whether or not it was correct.
-    await finishQuestions(db, await loadResponses(db, attemptId, body.questionId));
+    // The first answer is final whether or not it was correct. The installed single-attempt function
+    // already closes the question and reports resolved: true; only an older definition needs the fix-up.
+    if (data?.resolved !== true) await finishQuestions(db, await loadResponses(db, attemptId, body.questionId));
     outcome = { correct: data?.correct === true, resolved: true, final: true };
   }
 
@@ -189,7 +202,7 @@ async function applyComprehensionAction(
 
   return {
     outcome,
-    attempt: await getComprehensionAttempt(requester, attemptId),
+    attempt: await getComprehensionAttempt(requester, attemptId, { verified: owned }),
   };
 }
 

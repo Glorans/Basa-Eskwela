@@ -54,14 +54,32 @@ function reportFailure(log, action, error) {
  * After a successful M5 transcription, before the reply. Never throws. No receipt without a valid
  * context the learner may access, so an older page or a crafted upload earns no XP but still reads.
  */
+// The receipt's reading context, or null when this upload earns no receipt.
+function receiptContext(requester, query) {
+  if (!LEARNER_ROLES.has(requester?.profile?.role)) return null;
+  if (requester.profile.role === "general_user" && query?.materialId) return null; // Personal uploads earn no M8 awards.
+  return parseReadingContext(query);
+}
+
+// Performance: the server's reading source does not depend on the transcript, so the read-aloud route
+// starts loading it while Azure recognizes the speech, and hands the pending load to recordTranscriptReceipt.
+// Read-only; its result (or error) is evaluated there exactly as an inline load would be.
+function prepareTranscriptReceipt(requester, { query } = {}, dependencies = {}) {
+  let context;
+  try { context = receiptContext(requester, query); } catch { return null; }
+  if (!context) return null;
+  const pending = Promise.resolve().then(() => (dependencies.loadReadingSource ?? loadReadingSource)(requester, context, dependencies));
+  pending.catch(() => {}); // Evaluated (and logged) by recordTranscriptReceipt, or discarded without a transcript.
+  return pending;
+}
+
 async function recordTranscriptReceipt(requester, { language, query }, text, dependencies = {}) {
   const log = dependencies.log ?? console.error;
   try {
-    if (!LEARNER_ROLES.has(requester?.profile?.role)) return false;
-    if (requester.profile.role === "general_user" && query?.materialId) return false; // Personal uploads earn no M8 awards.
-    const context = parseReadingContext(query);
+    const context = receiptContext(requester, query);
     if (!context) return false;
-    const source = await (dependencies.loadReadingSource ?? loadReadingSource)(requester, context, dependencies);
+    const source = await (dependencies.preparedSource
+      ?? (dependencies.loadReadingSource ?? loadReadingSource)(requester, context, dependencies));
     if (source.language !== language) return false;
     const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
     const { error } = await supabase.rpc("m5_record_transcript_receipt", {
@@ -101,4 +119,4 @@ async function verifySavedReading(requester, attempt, dependencies = {}) {
   }
 }
 
-module.exports = { parseReadingContext, recordTranscriptReceipt, transcriptSha256, verifySavedReading };
+module.exports = { parseReadingContext, prepareTranscriptReceipt, recordTranscriptReceipt, transcriptSha256, verifySavedReading };

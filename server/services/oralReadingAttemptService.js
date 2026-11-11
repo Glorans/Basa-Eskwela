@@ -72,6 +72,23 @@ async function authorizeReadingPracticeRequest(req, dependencies = {}) {
   return authorizeRequesterRole(req, dependencies, READING_PRACTICE_ROLES);
 }
 
+// The UNVERIFIED "sub" claim of a bearer JWT, or null. Used only to start a profile read early;
+// authorization always uses the user returned by Supabase Auth.
+function claimedSubject(req) {
+  try {
+    const header = typeof req?.get === "function" ? req.get("authorization") : null;
+    const token = typeof header === "string" ? header.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() : null;
+    const payload = token?.split(".")?.[1];
+    if (!payload) return null;
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    // An expired token is refused by Supabase Auth anyway: start no lookup for it.
+    if (typeof claims?.exp !== "number" || claims.exp * 1000 <= Date.now()) return null;
+    return typeof claims.sub === "string" && UUID_PATTERN.test(claims.sub) ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 const isApprovedTeacher = (requester) =>
   requester?.profile?.role === "teacher" && requester.profile.teacher_status === "approved";
 
@@ -79,12 +96,21 @@ async function authorizeRequesterRole(req, dependencies, roles) {
   const authenticate = dependencies.getAuthenticatedSupabaseUser
     ?? getAuthenticatedSupabaseUser;
   const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
-  const user = await authenticate(req);
-  const { data: profile, error } = await getAdmin()
+  const loadProfile = (id) => getAdmin()
     .from("profiles")
     .select("id, full_name, nickname, role, teacher_status")
-    .eq("id", user.id)
+    .eq("id", id)
     .single();
+  // Speed: read the profile of the token's claimed subject while Supabase Auth verifies the token.
+  // The claim is never trusted: the prefetch is used only when the VERIFIED user id matches it;
+  // otherwise it is discarded unread and the profile is loaded for the verified user.
+  const claimed = dependencies.prefetchProfile === false ? null : claimedSubject(req);
+  const prefetch = claimed ? Promise.resolve().then(() => loadProfile(claimed)) : null;
+  prefetch?.catch(() => {}); // Used later or discarded; never an unhandled rejection.
+  const user = await authenticate(req);
+  const { data: profile, error } = prefetch && user.id === claimed
+    ? await prefetch
+    : await loadProfile(user.id);
 
   if (error || !profile) {
     console.error("[M5 profile lookup failed]", {

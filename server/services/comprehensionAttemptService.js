@@ -310,22 +310,54 @@ async function loadOwnedAttempt(requester, attemptId) {
   return data;
 }
 
-async function getComprehensionAttempt(requester, attemptId) {
+// `verified` (optional): this attempt's row as loaded and ownership-checked earlier in the same request
+// (applyComprehensionAction). Only its fixed identity fields (id, user, material, room, activity) are used,
+// to start the read-only lookups while the attempt is reloaded; the reloaded row is always the one returned.
+async function getComprehensionAttempt(requester, attemptId, { verified = null } = {}) {
+  const db = getSupabaseAdmin();
+  const lookups = (row) => {
+    const personalSource = Boolean(row.material_id && !row.activity_assignment_id && !row.room_id);
+    return Promise.allSettled([
+      // The learning activity's assessment: this attempt, or (for an extra attempt saved before the
+      // one-per-activity rule) the activity's assessment, which the page opens instead.
+      findActivityAttempt(db, requester.user.id, activityKey(row)),
+      db
+        .from("m6_comprehension_responses")
+        .select(
+          "question_id,first_option_index,first_answer_correct,answer_history,hint_used,resolved",
+        )
+        .eq("attempt_id", row.id),
+      // Display only: an unfinished assessment of an archived classroom opens read-only. Answers are refused on
+      // the server either way (applyComprehensionAction and the database), so a failed check shows it as open.
+      row.room_id ? isRoomArchived(db, row.room_id).catch(() => false) : false,
+      personalSource
+        ? require("./personalMaterialService").deletedPersonalIds(db, [row.material_id])
+        : new Set(),
+    ]);
+  };
+  // Performance: the read-only lookups depend only on the owned attempt, so they run together (one database
+  // round trip instead of four in a row). After an action, the attempt was already verified in this request,
+  // so they also run alongside the reload; a row whose identity differs falls back to a fresh lookup.
+  const early = verified && verified.id === attemptId && verified.user_id === requester.user.id ? lookups(verified) : null;
+  early?.catch(() => {});
   const attempt = await loadOwnedAttempt(requester, attemptId);
-  // The learning activity's assessment: this attempt, or (for an extra attempt saved before the
-  // one-per-activity rule) the activity's assessment, which the page opens instead.
-  const activityAttempt = await findActivityAttempt(getSupabaseAdmin(), requester.user.id, activityKey(attempt));
-
-  const { data: responses, error } = await getSupabaseAdmin()
-    .from("m6_comprehension_responses")
-    .select(
-      "question_id,first_option_index,first_answer_correct,answer_history,hint_used,resolved",
-    )
-    .eq("attempt_id", attempt.id);
+  const sameIdentity = early && ["id", "user_id", "material_id", "activity_assignment_id", "module_id", "passage_id", "room_id", "assignment_id"]
+    .every((key) => (attempt[key] ?? null) === (verified[key] ?? null));
+  const [activityResult, responsesResult, archivedResult, deletedResult] = await (sameIdentity ? early : lookups(attempt));
+  // Evaluated in the original order, so the same error wins whichever lookup finished first.
+  const settled = (result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  };
+  const activityAttempt = settled(activityResult);
+  const { data: responses, error } = settled(responsesResult);
 
   if (error) {
     throw databaseError(error, "Unable to load your answers.");
   }
+  const roomArchived = attempt.status !== "completed" && Boolean(settled(archivedResult));
+  const personalSource = Boolean(attempt.material_id && !attempt.activity_assignment_id && !attempt.room_id);
+  const deletedPersonal = settled(deletedResult);
 
   // Single attempt: a saved answer is final, so an answered question counts as
   // finished even if it was saved before the answer rule closed it in the database.
@@ -340,18 +372,10 @@ async function getComprehensionAttempt(requester, attemptId) {
     ]),
   );
 
-  // Display only: an unfinished assessment of an archived classroom opens read-only. Answers are refused on
-  // the server either way (applyComprehensionAction and the database), so a failed check shows it as open.
-  let roomArchived = false;
-  if (attempt.status !== "completed" && attempt.room_id) {
-    roomArchived = await isRoomArchived(getSupabaseAdmin(), attempt.room_id).catch(() => false);
-  }
-
   return {
     id: attempt.id,
     roomArchived,
-    materialDeleted: Boolean(attempt.material_id && !attempt.activity_assignment_id && !attempt.room_id
-      && (await require("./personalMaterialService").deletedPersonalIds(getSupabaseAdmin(), [attempt.material_id])).has(attempt.material_id)),
+    materialDeleted: Boolean(personalSource && deletedPersonal.has(attempt.material_id)),
     moduleId: attempt.module_id,
     materialId: attempt.material_id ?? null,
     roomId: attempt.room_id ?? null,
@@ -575,10 +599,35 @@ async function startComprehensionAttempt(requester, body = {}) {
     ? readingQuery.eq("assignment_id", module.assignmentId)
     : readingQuery.is("assignment_id", null);
 
+  // Performance: the reading check, the activity's existing assessment, the archive state and the question
+  // bank are read-only and depend only on the activity, so they are fetched together (one round trip instead
+  // of four in a row). They are evaluated below in the original order, so the same outcome and error win,
+  // and nothing is written until every check has passed. Questions (with keys) stay on the server.
+  const activity = activityKey({
+    module_id: module.id ?? null,
+    passage_id: module.passageId ?? null,
+    room_id: module.roomId ?? null,
+    assignment_id: module.assignmentId ?? null,
+    material_id: materialId,
+    activity_assignment_id: module.activityAssignmentId ?? null,
+  });
+  const [readingResult, currentResult, archivedResult, bankResult] = await Promise.allSettled([
+    readingQuery.order("completed_at", { ascending: false }).limit(1),
+    findActivityAttempt(db, requester.user.id, activity),
+    isRoomArchived(db, module.roomId),
+    (personal ? require("./personalMaterialService").loadPersonalBank(requester, materialId) : Promise.resolve(null))
+      .then(async (bank) => bank
+        ? { bank, questions: bank.questions }
+        : { bank: null, questions: await loadReviewedQuestions(module.id, module.passageId, module.passage, materialId, module.questionSetId ?? null) }),
+  ]);
+  const settled = (result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  };
   const {
     data: completedReadings,
     error: readingError,
-  } = await readingQuery.order("completed_at", { ascending: false }).limit(1);
+  } = settled(readingResult);
 
   if (readingError) {
     throw databaseError(
@@ -590,7 +639,7 @@ async function startComprehensionAttempt(requester, body = {}) {
   if (!completedReadings?.length || completedReadings[0].passage_snapshot !== module.passage
     || (completedReadings[0].language_snapshot && completedReadings[0].language_snapshot !== module.language)) {
     // In an archived classroom no reading can be saved any more: say why, instead of asking for one.
-    if (await isRoomArchived(db, module.roomId)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
+    if (settled(archivedResult)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
     throw new ComprehensionError(
       "Complete and save oral reading for the current story first. If the story changed, please read it aloud again.",
       403,
@@ -601,28 +650,13 @@ async function startComprehensionAttempt(requester, body = {}) {
   // oral-reading ID) reopens the activity's existing assessment, in progress or completed,
   // with its original answers, score and reading. Nothing new is created.
   const oralReadingAttemptId = body.oralReadingAttemptId ?? completedReadings[0].id;
-  const activity = activityKey({
-    module_id: module.id ?? null,
-    passage_id: module.passageId ?? null,
-    room_id: module.roomId ?? null,
-    assignment_id: module.assignmentId ?? null,
-    material_id: materialId,
-    activity_assignment_id: module.activityAssignmentId ?? null,
-  });
-  const current = await findActivityAttempt(db, requester.user.id, activity);
+  const current = settled(currentResult);
   if (current) return getComprehensionAttempt(requester, current.id);
 
   // A saved assessment reopens above (read-only results); an archived room starts no new one.
-  if (await isRoomArchived(db, module.roomId)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
+  if (settled(archivedResult)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
 
-  const privateBank = personal ? await require("./personalMaterialService").loadPersonalBank(requester, materialId) : null;
-  const questions = privateBank ? privateBank.questions : await loadReviewedQuestions(
-    module.id,
-    module.passageId,
-    module.passage,
-    materialId,
-    module.questionSetId ?? null,
-  );
+  const { bank: privateBank, questions } = settled(bankResult);
 
   const { data: saved, error: saveError } = await db
     .from("m6_comprehension_attempts")

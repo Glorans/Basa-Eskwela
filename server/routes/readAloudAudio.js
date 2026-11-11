@@ -2,7 +2,7 @@ const { unlink } = require("node:fs/promises");
 const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { transcribeWav } = require("../services/azureSpeechService");
 const { getSpeechErrorResponse } = require("../services/speechErrors");
-const { recordTranscriptReceipt } = require("../services/readingVerification");
+const { prepareTranscriptReceipt, recordTranscriptReceipt } = require("../services/readingVerification");
 const { ARCHIVED_CLASSROOM_CODE, ARCHIVED_CLASSROOM_MESSAGE, isArchivedReadingContext } = require("../services/roomArchive");
 
 // An archived classroom accepts no new reading: refuse before the paid speech-to-text call.
@@ -53,6 +53,8 @@ function developmentTiming(details) {
 function createReadAloudAudioHandler({
   transcribe = transcribeWav, remove = unlink, log = console.error, timing = developmentTiming, now = Date.now,
   recordReceipt = recordTranscriptReceipt, contextArchived = readingContextArchived,
+  // Pairs with the default receipt only; a substituted recordReceipt gets no early source load.
+  prepareReceipt = recordReceipt === recordTranscriptReceipt ? prepareTranscriptReceipt : null,
 } = {}) {
   return async function readAloudAudio(req, res, uploadError) {
     // Set by the route before the upload is read (routes/speech.js).
@@ -86,6 +88,8 @@ function createReadAloudAudioHandler({
       if (await contextArchived(req.query)) {
         return res.status(409).json({ success: false, code: ARCHIVED_CLASSROOM_CODE, message: ARCHIVED_CLASSROOM_MESSAGE });
       }
+      // Starts the receipt's read-only source lookup while Azure recognizes the speech (see readingVerification.js).
+      const preparedSource = prepareReceipt?.(res.locals?.speechRequester, { language: req.body.language, query: req.query }) ?? null;
       const recognitionStartedAt = now();
       let transcription;
       try {
@@ -101,7 +105,8 @@ function createReadAloudAudioHandler({
       if (!transcription.text) return res.status(422).json({ success: false, code: "NO_SPEECH", message: "No speech could be recognized from the recording." });
       // Awaited so the save that follows can find it. M5 continues if this fails: the reading
       // is saved and simply earns no M8 XP (services/readingVerification.js).
-      await recordReceipt(res.locals?.speechRequester, { language: req.body.language, query: req.query }, transcription.text);
+      await recordReceipt(res.locals?.speechRequester, { language: req.body.language, query: req.query }, transcription.text,
+        ...(preparedSource ? [{ preparedSource }] : []));
       res.set("Cache-Control", "no-store");
       return res.json({ success: true, message: "Audio transcribed successfully.", transcription });
     } catch (error) {

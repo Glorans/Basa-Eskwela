@@ -120,10 +120,14 @@ async function personal(userId) {
 async function activityProgress(userId, assignments, enrollments, readings, attempts) {
   const activeAssignments = activeMaterialAssignments(assignments);
   const materialIds = [...new Set(activeAssignments.map(a => a.material_id))];
-  const materials = [];
-  for (let i=0;i<materialIds.length;i+=100) materials.push(...await rows('uploaded_materials', 'id,title', { id: materialIds.slice(i,i+100) }));
+  // Material titles and module assignments are independent reads, so they load together.
+  const loadMaterials = async () => {
+    const materials = [];
+    for (let i=0;i<materialIds.length;i+=100) materials.push(...await rows('uploaded_materials', 'id,title', { id: materialIds.slice(i,i+100) }));
+    return materials;
+  };
+  const [materials, { assignments: moduleAssignments, titles }] = await Promise.all([loadMaterials(), learnerModuleAssignments(userId, enrollments)]);
   const materialActivities = activeAssignments.map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: materials.find(m => m.id === a.material_id)?.title || 'Assigned reading activity' }));
-  const { assignments: moduleAssignments, titles } = await learnerModuleAssignments(userId, enrollments);
   const moduleActivities = moduleAssignments.map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: titles.get(a.module_id) || 'Assigned reading module' }));
   return [...materialActivities, ...moduleActivities];
 }
@@ -156,6 +160,23 @@ async function system() {
   return { ...metrics(readings, quizResults), students: profiles.filter(p => p.role === 'student').length,
     teachers: profiles.filter(p => p.role === 'teacher').length, classrooms: rooms.length, assignedActivities: assignments.length };
 }
+const TEACHER_STUDENT_CONCURRENCY = 6;
+/** Maps items with at most `limit` running at once; results keep the input order; the first failure rejects
+ * the whole call (no partial result) and no further items are started. */
+async function mapInOrder(items, limit, work) {
+  const results = new Array(items.length);
+  let next = 0;
+  let failed = false;
+  const runner = async () => {
+    while (!failed && next < items.length) {
+      const index = next++;
+      try { results[index] = await work(items[index], index); }
+      catch (error) { failed = true; throw error; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner));
+  return results;
+}
 async function teacher(teacherId) {
   const scope = await teacherScope(teacherId);
   const notificationsActive = isRiskWorkerEnabled();
@@ -163,8 +184,9 @@ async function teacher(teacherId) {
   const [history, interventions] = await Promise.all([
     rows('m7_risk_events', '*', { teacher_id: teacherId }), rows('m7_interventions', '*', { teacher_id: teacherId }),
   ]);
-  const students = [];
-  for (const student of scope.students) {
+  // Performance: each Student's records are read-only and independent, so a few Students load at once
+  // (bounded, to respect the database pool) instead of one after another. Output order is unchanged.
+  const students = await mapInOrder(scope.students, TEACHER_STUDENT_CONCURRENCY, async (student) => {
     const roomIds = scope.enrollments.filter(e => e.student_id === student.id).map(e => e.room_id);
     const inScope = { include: a => !a.room_id || roomIds.includes(a.room_id) };
     const [allQuizzes, extraResults, allReadings, activityRows, attemptRows] = await Promise.all([
@@ -186,9 +208,9 @@ async function teacher(teacherId) {
       const total = groups.reduce((sum,g) => sum + g.total, 0);
       competency[type] = { total, score: !unavailable && total ? Math.round(groups.reduce((sum,g) => sum + g.firstCorrect,0) / total * 100) : null };
     }
-    students.push({ ...student, ...metrics(readings,quizResults), classification: risk.classification, recoveryCount: risk.recoveryCount ?? 0,
-      quizzes: quizResults, historicalQuizzes: extraResults, activities, competency, history: history.filter(e => e.student_id === student.id), interventions: interventions.filter(i => i.student_id === student.id) });
-  }
+    return { ...student, ...metrics(readings,quizResults), classification: risk.classification, recoveryCount: risk.recoveryCount ?? 0,
+      quizzes: quizResults, historicalQuizzes: extraResults, activities, competency, history: history.filter(e => e.student_id === student.id), interventions: interventions.filter(i => i.student_id === student.id) };
+  });
   return { students, notifications: history.filter(e => !e.superseded_at && !e.read_at && students.some(s => s.id === e.student_id)).sort((a,b) => b.occurred_at.localeCompare(a.occurred_at)), notificationsActive };
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -220,4 +242,4 @@ async function saveIntervention(teacherId, studentId, id, body, { authorize } = 
   if (!data) throw fail('Intervention not found.',404);
   return data;
 }
-module.exports = { rows, quizzes, historicalQuizzes, teacherScope, requireStudent, requireAdminStudent, personal, system, teacher, saveIntervention, fail };
+module.exports = { mapInOrder, TEACHER_STUDENT_CONCURRENCY, rows, quizzes, historicalQuizzes, teacherScope, requireStudent, requireAdminStudent, personal, system, teacher, saveIntervention, fail };
