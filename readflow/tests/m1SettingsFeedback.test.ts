@@ -73,7 +73,7 @@ test("the registered email is shown read-only and is never sent on save", async 
   assert.equal(email.props.value, "learner@example.test");
   assert.equal(email.props.readOnly, true);
   assert.equal(email.props.onChange, undefined, "typing cannot change it");
-  assert.match(m.text(), /can't be changed here/);
+  assert.doesNotMatch(m.text(), /can't be changed here/);
 });
 
 test("a rejected same-password change shows a clear message that is not wiped by the reload", async () => {

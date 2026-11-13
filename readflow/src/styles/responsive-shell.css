@@ -1,0 +1,131 @@
+/* Shell mechanics only. Existing role palettes, navigation and page components remain. */
+.rf-shell .rf-workspace { min-width: 0; }
+.rf-shell :is(.basa-header,.m3-topbar) { flex: 0 0 auto; }
+.rf-shell :is(.basa-menu-button,.m3-menu-button) {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+}
+/* One sidebar structure for every role: the brand (with the drawer's close button) and Logout stay in place,
+   and only the navigation scrolls. Its native scrollbar (the shared yellow thumb and dark track) sits on the
+   sidebar's right edge: the scroller extends over the sidebar's right padding and adds it back inside. */
+.rf-shell aside.rf-sidebar {
+  --rf-sidebar-pad-x: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  /* Fallback for very short screens only, when even the navigation's minimum height does not fit. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.rf-shell aside.basa-sidebar { --rf-sidebar-pad-x: 16px; }
+.rf-shell .rf-sidebar-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.rf-shell .rf-sidebar-main > :not(.rf-sidebar-scroll),
+.rf-shell .rf-sidebar-footer { flex: 0 0 auto; }
+.rf-shell .rf-sidebar-scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 6.5rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-right: calc(-1 * var(--rf-sidebar-pad-x));
+  padding-right: var(--rf-sidebar-pad-x);
+}
+/* Links keep their full height inside the scroller instead of shrinking to fit. */
+.rf-shell .rf-sidebar-scroll > * { flex-shrink: 0; }
+.rf-shell .rf-sidebar :is(a,button) { min-height: 44px; }
+.rf-shell .rf-sidebar svg { flex-shrink: 0; }
+.rf-shell :is(.rf-sidebar,.basa-header,.m3-topbar) :is(a,button):focus-visible,
+.rf-shell .rf-content-scroll:focus-visible { outline: 3px solid #10231f; outline-offset: -3px; }
+.rf-shell .rf-backdrop { border: 0; padding: 0; touch-action: none; background: rgb(5 24 20 / 55%); }
+.rf-shell .rf-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: flex-end;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 35%);
+  color: #10231f;
+  cursor: pointer;
+}
+/* One vertical content scroller, outside the rounded green panel. No RTL hack. */
+.rf-shell .rf-content-scroll {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 18px;
+  overflow-y: auto;
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+  padding-right: 10px;
+}
+.rf-shell .rf-content-scroll > :is(.basa-content,.m3-content) {
+  margin-top: 0;
+  min-height: 100%;
+  overflow: visible;
+  flex: none;
+}
+.rf-shell--drawer-open .rf-content-scroll { overflow: hidden; }
+@media (min-width: 1000px) {
+  .rf-shell .rf-sidebar {
+    position: relative;
+    inset: auto;
+    flex: 0 0 265px;
+    width: 265px;
+    height: 100dvh;
+    transform: none;
+    visibility: visible;
+  }
+  .rf-shell .rf-drawer-close, .rf-shell .rf-backdrop { display: none; }
+  .rf-shell--collapsed aside.rf-sidebar { --rf-sidebar-pad-x: 10px; }
+  .rf-shell--collapsed .rf-sidebar {
+    width: 80px;
+    flex-basis: 80px;
+    padding: 18px 10px;
+  }
+  .rf-shell--collapsed .rf-nav-label { display: none; }
+  .rf-shell--collapsed :is(.basa-sidebar-brand,.m3-sidebar-brand) { padding: 0 0 16px; }
+  .rf-shell--collapsed :is(.basa-sidebar-brand,.m3-sidebar-home) { justify-content: center; }
+  .rf-shell--collapsed :is(.basa-sidebar-item,.m3-nav-item,.m3-sidebar-quiet-link) {
+    justify-content: center;
+    padding: 12px;
+    gap: 0;
+  }
+}
+@media (max-width: 999px) {
+  .rf-shell .rf-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: min(84vw, 310px);
+    height: 100dvh;
+    padding: 16px 14px;
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition: transform 220ms ease, visibility 220ms;
+  }
+  .rf-shell aside.rf-sidebar { --rf-sidebar-pad-x: 14px; }
+  .rf-shell--drawer-open .rf-sidebar { transform: translateX(0); visibility: visible; }
+  .rf-shell .rf-backdrop { display: block; position: fixed; inset: 0; z-index: 40; }
+  .rf-shell .rf-workspace { width: 100%; padding: 12px; }
+  .rf-shell :is(.basa-sidebar-nav,.m3-sidebar-nav) { gap: 8px; }
+  .rf-shell :is(.basa-sidebar-footer,.m3-sidebar-footer) { margin-top: 20px; flex-shrink: 0; }
+  .rf-shell .m3-sidebar-brand { flex-wrap: wrap; }
+  .rf-shell .m3-sidebar-home { flex-basis: calc(100% - 55px); }
+  .rf-shell .rf-content-scroll { padding-right: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rf-shell .rf-sidebar { transition: none; }
+}
