@@ -39,9 +39,10 @@ export default function ForgotPasswordPage() {
       );
       setSubmitted(true);
     } catch (recoveryError) {
+      // authService words each provider failure without revealing whether an account exists.
       setError(
         recoveryError instanceof AuthServiceError
-          ? "We couldn't send password reset instructions. Please try again."
+          ? recoveryError.message
           : "We couldn't reach the password recovery service. Please try again.",
       );
     } finally {

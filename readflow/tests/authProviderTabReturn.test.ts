@@ -46,6 +46,12 @@ function mount(profileFor: (userId: string, call: number) => Profile | Error = (
     if (id.endsWith("/services/api")) return { default: { post: async () => ({}) } };
     if (id.endsWith("/authHeaders")) return { getSessionAuthHeaders: async () => ({}) };
     if (id.endsWith("/dailyLoginClaim")) return { createDailyLoginClaimer: () => async () => {}, isDailyLoginRole: () => false };
+    if (id.endsWith("/recoverySession")) {
+      return {
+        blocksDailyLogin: () => false, clearPasswordRecovery() {}, confirmPasswordRecovery() {}, isPasswordRecoveryMarked: () => false,
+        isPasswordRecoveryPending: () => false, isResetPasswordPath: () => false, onPasswordRecoveryChange: () => () => {},
+      };
+    }
     return require(id);
   }, { window: { setTimeout } });
 

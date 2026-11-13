@@ -1,16 +1,36 @@
 import { supabase } from "../lib/supabaseClient.ts";
 import { normalizeAuthEmail } from "../modules/module1/utils/authOnboarding.ts";
 import { clearAllModuleDrafts } from "../modules/module3/utils/moduleDraftStorage.ts";
+import { clearPasswordRecovery } from "../auth/recoverySession.ts";
 
 /** account_help: the page should offer Log In and Forgot Password as next steps. */
 export type AuthServiceErrorKind = "account_help";
 
+/**
+ * What the auth provider reported, from its stable error codes and statuses (never its text).
+ * Pages can word the same failure differently for their context.
+ */
+export type AuthServiceErrorReason =
+  | "same_password"
+  | "weak_password"
+  | "reauthentication"
+  | "rate_limited"
+  | "session_expired"
+  | "invalid_email"
+  | "network"
+  | "unavailable";
+
 export class AuthServiceError extends Error {
-  constructor(message: string, readonly kind?: AuthServiceErrorKind) {
+  constructor(message: string, readonly kind?: AuthServiceErrorKind, readonly reason?: AuthServiceErrorReason) {
     super(message);
     this.name = "AuthServiceError";
   }
 }
+
+type ProviderError = { message: string; code?: string; status?: number; name?: string };
+
+/** No HTTP status at all, or supabase-js's retryable fetch failure: the service wasn't reached. */
+const isNetworkFailure = (error: ProviderError) => !error.status || error.name === "AuthRetryableFetchError";
 
 // Sign-up failures get clear next steps instead of Supabase's internal text. The wording never
 // confirms that an account exists; with email confirmation on, Supabase may hide that anyway.
@@ -87,11 +107,14 @@ export async function hasConfirmedEmailSession() {
   return !error && Boolean(data.session?.user?.email_confirmed_at);
 }
 
-export function login(email: string, password: string) {
-  return supabase.auth.signInWithPassword({
+export async function login(email: string, password: string) {
+  const result = await supabase.auth.signInWithPassword({
     email: normalizeAuthEmail(email),
     password,
   });
+  // A genuine password sign-in replaces any session that came from a password-reset link.
+  if (!result.error && result.data.session) clearPasswordRecovery();
+  return result;
 }
 
 export async function logout() {
@@ -107,29 +130,72 @@ export async function requestPasswordReset(email: string, redirectTo: string) {
     { redirectTo },
   );
 
-  throwIfAuthError(error);
+  if (error) throw passwordResetRequestError(error);
+}
+
+// Supabase answers success whether or not the address has an account, so none of these messages
+// can reveal one. Delivery problems (for example, a recipient the email sender won't accept) and
+// unknown failures share one message; provider wording is never shown.
+export function passwordResetRequestError(error: ProviderError) {
+  const code = error.code ?? "";
+  if (code.startsWith("over_") || error.status === 429) {
+    return new AuthServiceError(
+      "Too many password reset requests have been made. Please wait a while before trying again. If a reset email already arrived, use the newest link.",
+      undefined,
+      "rate_limited",
+    );
+  }
+  if (code === "email_address_invalid") {
+    return new AuthServiceError("Please enter a valid email address.", undefined, "invalid_email");
+  }
+  if (isNetworkFailure(error)) {
+    return new AuthServiceError(
+      "We couldn't reach the password recovery service. Check your internet connection and try again.",
+      undefined,
+      "network",
+    );
+  }
+  return new AuthServiceError(
+    "We couldn't send the password reset email right now. Please try again later. If this keeps happening, contact your teacher or school administrator.",
+    undefined,
+    "unavailable",
+  );
+}
+
+function passwordChangeReason(error: ProviderError): AuthServiceErrorReason {
+  const code = error.code ?? "";
+  if (code === "same_password") return "same_password";
+  if (code === "weak_password") return "weak_password";
+  if (code === "reauthentication_needed" || code === "reauthentication_not_valid") return "reauthentication";
+  if (code.startsWith("over_") || error.status === 429) return "rate_limited";
+  if (code === "session_not_found" || code === "session_expired" || error.status === 401
+    || error.name === "AuthSessionMissingError") return "session_expired";
+  if (isNetworkFailure(error)) return "network";
+  return "unavailable";
 }
 
 // Messages only describe what the auth provider actually reported. "same_password" means the
 // provider compared the new password with the current one; there is no password history.
-export function passwordChangeError(error: { message: string; code?: string; status?: number }) {
+// Settings shows these messages unchanged; the reset-password page words the reasons for its context.
+export function passwordChangeError(error: ProviderError) {
   const code = error.code ?? "";
+  const reason = passwordChangeReason(error);
   if (code === "same_password") {
-    return new AuthServiceError("Your new password must be different from your current password. Your password was not changed.");
+    return new AuthServiceError("Your new password must be different from your current password. Your password was not changed.", undefined, reason);
   }
   if (code === "weak_password") {
-    return new AuthServiceError("Choose a stronger password. Your password was not changed.");
+    return new AuthServiceError("Choose a stronger password. Your password was not changed.", undefined, reason);
   }
   if (code === "reauthentication_needed" || code === "reauthentication_not_valid") {
-    return new AuthServiceError("For your security, sign out and sign in again, then change your password. Your password was not changed.");
+    return new AuthServiceError("For your security, sign out and sign in again, then change your password. Your password was not changed.", undefined, reason);
   }
   if (code.startsWith("over_") || error.status === 429) {
-    return new AuthServiceError("Too many attempts. Please wait a few minutes before changing your password again.");
+    return new AuthServiceError("Too many attempts. Please wait a few minutes before changing your password again.", undefined, reason);
   }
   if (code === "session_not_found" || code === "session_expired" || error.status === 401) {
-    return new AuthServiceError("Your session has ended. Sign in again to change your password.");
+    return new AuthServiceError("Your session has ended. Sign in again to change your password.", undefined, reason);
   }
-  return new AuthServiceError("We couldn't change your password right now. Please try again. Your password was not changed.");
+  return new AuthServiceError("We couldn't change your password right now. Please try again. Your password was not changed.", undefined, reason);
 }
 
 export async function updatePassword(password: string) {
