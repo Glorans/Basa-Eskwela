@@ -10,11 +10,16 @@ export interface TeacherData { students: Student[]; notifications: RiskEvent[]; 
 export interface ActivityProgress { id: string; status: string; roomId: string; materialId?: string; title: string; kind?: 'module'; passagesCompleted?: number; passagesTotal?: number }
 export interface PersonalData { summary: Metrics; quizzes: Quiz[]; historicalQuizzes?: Quiz[]; readings: {id:string;completed_at:string;pronunciation_accuracy:number;reading_speed_wpm:number;detected_error_count:number}[]; activities: ActivityProgress[] }
 export interface SystemData extends Metrics { students:number;teachers:number;classrooms:number;assignedActivities:number }
-export async function m7Request<T>(path:string, method = 'GET', data?:unknown):Promise<T> {
+/** A learner's progress request ends after this, so a stalled connection shows an error with Retry instead of loading forever. */
+export const PERSONAL_PROGRESS_TIMEOUT_MS = 60_000;
+export const ANALYTICS_TIMEOUT_MESSAGE = 'Loading is taking too long. Check your internet connection, then select Retry.';
+/** `timeoutMs` is opt-in: requests without it behave exactly as before (no time limit). */
+export async function m7Request<T>(path:string, method = 'GET', data?:unknown, { timeoutMs }: { timeoutMs?: number } = {}):Promise<T> {
   try {
-    const response = await api.request({ url:`/api/analytics${path}`, method, data, headers: await getSessionAuthHeaders('Please sign in again.') });
+    const response = await api.request({ url:`/api/analytics${path}`, method, data, headers: await getSessionAuthHeaders('Please sign in again.'), ...(timeoutMs ? { timeout: timeoutMs } : {}) });
     return response.data.data as T;
   } catch(error) {
+    if (timeoutMs && axios.isAxiosError(error) && !error.response && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')) throw new Error(ANALYTICS_TIMEOUT_MESSAGE);
     throw new Error(axios.isAxiosError(error) ? error.response?.data?.message || 'Unable to connect to analytics. Please retry.' : error instanceof Error ? error.message : 'Unable to load analytics.');
   }
 }
