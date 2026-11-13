@@ -31,6 +31,10 @@ app.use(
   cors({
     origin: (process.env.FRONTEND_ORIGIN || "http://localhost:5173,http://127.0.0.1:5173")
       .split(",").map((origin) => origin.trim()).filter(Boolean),
+    // Performance: browsers may reuse an allowed preflight for 10 minutes instead of repeating it before
+    // almost every API call (without this header Chrome keeps it 5 seconds). Origins, methods, headers and
+    // credentials are unchanged; a disallowed origin still gets no Access-Control-Allow-Origin.
+    maxAge: 600,
   })
 );
 

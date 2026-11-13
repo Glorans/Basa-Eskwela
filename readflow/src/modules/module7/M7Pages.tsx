@@ -4,7 +4,7 @@ import { formatScore, formatQuizScore, formatComprehension, passageProgressText 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { comprehensionResultTarget, readingResultTarget } from '../module5/services/comprehensionNavigation';
-import { m7Request, type Metrics, type PersonalData, type TeacherData, type Intervention, type Quiz, type Student } from './services/m7Service';
+import { m7Request, PERSONAL_PROGRESS_TIMEOUT_MS, type Metrics, type PersonalData, type TeacherData, type Intervention, type Quiz, type Student } from './services/m7Service';
 import './m7.css';
 import './m7Dashboard.css';
 import './teacherSupport.css';
@@ -16,7 +16,7 @@ type LearnerRole = 'student' | 'general_user';
 const POLL_MS = 30000;
 // A hidden browser tab skips polling (no visibility API: treated as visible).
 const pageVisible = () => typeof document === 'undefined' || typeof document.visibilityState !== 'string' || document.visibilityState === 'visible';
-function useData<T>(path:string, poll = false) {
+function useData<T>(path:string, poll = false, timeoutMs?: number) {
   const [data,setData] = useState<T|null>(null), [error,setError] = useState(''), [loading,setLoading] = useState(true);
   // Performance: one request at a time. A refresh asked for while one is running (Retry, or after saving an
   // intervention or marking a notification read) runs once it finishes, so the page never keeps data from
@@ -25,13 +25,16 @@ function useData<T>(path:string, poll = false) {
   const refresh = useCallback(async (fromPoll = false) => {
     if (inFlight.current) { if (!fromPoll) again.current = true; return; }
     inFlight.current = true;
+    // Retry after a failed first load shows the loading state again instead of the earlier error. Nothing was
+    // loaded yet, so no result is shown until this request succeeds.
+    if (!fromPoll && !loadedAt.current) { setError(''); setLoading(true); }
     try {
       do {
         again.current = false;
-        try { const value = await m7Request<T>(path); setData(value);setError(''); loadedAt.current = Date.now(); } catch(e) {setError((e as Error).message);}
+        try { const value = await m7Request<T>(path, 'GET', undefined, { timeoutMs }); setData(value);setError(''); loadedAt.current = Date.now(); } catch(e) {setError((e as Error).message);}
       } while (again.current);
     } finally { inFlight.current = false; setLoading(false); }
-  },[path]);
+  },[path, timeoutMs]);
   useEffect(() => {
     void refresh();
     if (!poll) return;
@@ -61,7 +64,7 @@ function QuizTable({quizzes,own}:{quizzes:Quiz[];own?:LearnerRole}) {return !qui
  * no classroom assignments, so the assigned-activity section is not shown to them.
  */
 export function StudentProgressPage({ role = 'student' }: { role?: LearnerRole } = {}) {
-  const {data,error,loading,refresh} = useData<PersonalData>('/personal');
+  const {data,error,loading,refresh} = useData<PersonalData>('/personal', false, PERSONAL_PROGRESS_TIMEOUT_MS);
   const empty = data && !data.readings.length && !data.quizzes.length;
   return <main className="m7-page"><h1>Progress & Result</h1><p>Your saved reading accuracy and comprehension results.</p><State {...{error,loading}} retry={() => void refresh()}/>{data && <><MetricsCards data={data.summary}/>{empty && <p role="status">{role === 'student' ? 'No results yet. Complete a reading activity to see your progress here.' : 'No results yet. Read a story from Reading Modules, then answer its questions, to see your progress here.'}</p>}{role === 'student' && <section><h2>Activity progress</h2><p>{data.activities.filter(a => a.status === 'Completed').length} of {data.activities.length} assigned reading activities completed.</p>{!data.activities.length ? <p>No assigned reading activities yet.</p> : <ul>{data.activities.map((a) => <li key={a.id}><Link to={a.kind === 'module' ? `/dashboard/learning-rooms/${a.roomId}` : `/dashboard/learning-rooms/${a.roomId}/reading-activities/${a.materialId}`}>{a.title}</Link> — {a.status}{passageProgressText(a) && ` (${passageProgressText(a)})`}</li>)}</ul>}</section>}<section><h2>Completed quizzes</h2><QuizTable quizzes={data.quizzes} own={role}/><NotCountedQuizzes quizzes={data.historicalQuizzes} own={role}/></section><section><h2>Reading results</h2>{!data.readings.length ? <p>No saved readings yet. Complete a reading activity to see your results.</p> : <div className="m7-scroll"><table><thead><tr><th>Result</th><th>Reading accuracy</th><th>Speed</th><th>Words different from the story</th></tr></thead><tbody>{[...data.readings].sort((a,b) => b.completed_at.localeCompare(a.completed_at)).map(r => { const target = readingResultTarget(role, r.id); return <tr key={r.id}><td>{target ? <Link to={target}>{date(r.completed_at)}</Link> : date(r.completed_at)}</td><td>{wholePercent(r.pronunciation_accuracy)}</td><td>{wpm(r.reading_speed_wpm)}</td><td>{r.detected_error_count}</td></tr>; })}</tbody></table></div>}</section></>}</main>;
 }

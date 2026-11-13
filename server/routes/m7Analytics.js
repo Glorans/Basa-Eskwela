@@ -16,8 +16,9 @@ const wrap = handler => async (req,res) => {
 router.get('/personal',wrap(async req => {
   const requester = await authorizeOralReadingRequest(req);
   if (!['student','general_user'].includes(requester.profile.role)) throw analytics.fail('Learner access is required.',403);
-  const data = await analytics.personal(requester.user.id);
-  // Independent Learners have no classroom assignments to report.
+  // Independent Learners have no classroom assignments to report, so their classroom reads are skipped. The role
+  // comes from the verified profile above, never from the request.
+  const data = await analytics.personal(requester.user.id, { includeActivities: requester.profile.role === 'student' });
   return requester.profile.role === 'general_user' ? { ...data, activities: [] } : data;
 }));
 router.get('/system',wrap(async req => {

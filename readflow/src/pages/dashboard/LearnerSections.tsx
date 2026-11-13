@@ -1,6 +1,6 @@
 import { Award, Flame, Star } from "lucide-react";
 import { Link } from "react-router-dom";
-import { m7Request, type PersonalData } from "../../modules/module7/services/m7Service";
+import { m7Request, PERSONAL_PROGRESS_TIMEOUT_MS, type PersonalData } from "../../modules/module7/services/m7Service";
 import { formatScore } from "../../modules/module7/services/scoreDisplay";
 import { getMyGamification } from "../../modules/module8/gamificationService";
 import { comprehensionResultTarget } from "../../modules/module5/services/comprehensionNavigation";
@@ -9,7 +9,8 @@ import { DashboardSection, EmptyState, StatCard, formatDate, valueOf, type Load 
 type LearnerRole = "student" | "general_user";
 
 /** The signed-in learner's own records (GET /api/analytics/personal: own readings and counted assessments). */
-export const loadPersonal = () => m7Request<PersonalData>("/personal");
+// A stalled request ends after the shared progress timeout and shows the dashboard's error state.
+export const loadPersonal = () => m7Request<PersonalData>("/personal", "GET", undefined, { timeoutMs: PERSONAL_PROGRESS_TIMEOUT_MS });
 /** Existing M8 summary (m8_learner_progress and badges). Personal-upload practice earns none by design. */
 export const loadGamification = () => getMyGamification();
 export type Gamification = Awaited<ReturnType<typeof getMyGamification>>;

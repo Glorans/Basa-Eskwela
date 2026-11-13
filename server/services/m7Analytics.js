@@ -110,28 +110,55 @@ async function requireStudent(teacherId, studentId) {
   if (!scope.students.some(s => s.id === studentId)) throw fail('Student not found in your classrooms.', 403);
   return scope;
 }
-async function personal(userId) {
-  const [readings, quizResults, extraResults, assignments, attempts, enrollments] = await Promise.all([
-    rows('oral_reading_attempts', 'id,user_id,module_id,passage_id,assignment_id,room_id,material_id,activity_assignment_id,completed_at,pronunciation_accuracy,reading_speed_wpm,detected_error_count', { user_id: userId }),
-    quizzes({ user_id: userId }), historicalQuizzes({ user_id: userId }), rows('reading_activity_assignments', '*', { student_id: userId }),
-    rows('m6_comprehension_attempts', 'id,module_id,passage_id,assignment_id,room_id,material_id,activity_assignment_id,oral_reading_attempt_id,status,created_at,completed_at', { user_id: userId }),
-    rows('enrollments', 'id,room_id', { student_id: userId }),
+const PERSONAL_READING_COLUMNS = 'id,user_id,module_id,passage_id,assignment_id,room_id,material_id,activity_assignment_id,completed_at,pronunciation_accuracy,reading_speed_wpm,detected_error_count';
+// The attempt columns activity progress uses (unchanged from before).
+const ACTIVITY_ATTEMPT_FIELDS = ['id', 'module_id', 'passage_id', 'assignment_id', 'room_id', 'material_id', 'activity_assignment_id', 'oral_reading_attempt_id', 'status', 'created_at', 'completed_at'];
+// Performance: one read of the learner's attempts serves the counted quizzes, the extra (not counted) ones and
+// activity progress. These are every column those use: the one-assessment-per-activity rule (user_id and the
+// activity columns, status, created_at, completed_at) and scoring (passage_title, question_snapshot). The story
+// text (passage_text) and other columns were read twice before and never used.
+const PERSONAL_ATTEMPT_COLUMNS = [...ACTIVITY_ATTEMPT_FIELDS, 'user_id', 'passage_title', 'question_snapshot'].join(',');
+
+/**
+ * A learner's own progress. `includeActivities: false` (Independent Learners, decided from the server-side
+ * profile) skips the classroom reads, whose result is not shown to them; activities is then [].
+ */
+async function personal(userId, { includeActivities = true } = {}) {
+  const attemptsRead = rows('m6_comprehension_attempts', PERSONAL_ATTEMPT_COLUMNS, { user_id: userId });
+  // quizzes() and historicalQuizzes() ask for this learner's completed attempts: they get them from the one read
+  // (the same rows, in the same id order, as their own query). Every other read is unchanged.
+  const load = (table, columns, filters) => table === 'm6_comprehension_attempts'
+    && Object.keys(filters).length === 2 && filters.user_id === userId && filters.status === 'completed'
+    ? attemptsRead.then(all => all.filter(a => a.status === 'completed'))
+    : rows(table, columns, filters);
+  // Classroom work needs only the learner's assignments and enrollments, so it starts now, alongside the
+  // comprehension reads, instead of after them.
+  const assignmentsRead = includeActivities ? rows('reading_activity_assignments', '*', { student_id: userId }) : null;
+  const enrollmentsRead = includeActivities ? rows('enrollments', 'id,room_id', { student_id: userId }) : null;
+  const [readings, quizResults, extraResults, attempts, assignments, materials, modules] = await Promise.all([
+    rows('oral_reading_attempts', PERSONAL_READING_COLUMNS, { user_id: userId }),
+    quizzes({ user_id: userId }, { rows: load }), historicalQuizzes({ user_id: userId }, { rows: load }), attemptsRead,
+    assignmentsRead, assignmentsRead?.then(a => materialTitles(a)), enrollmentsRead?.then(e => learnerModuleAssignments(userId, e)),
   ]);
-  const activities = await activityProgress(userId, assignments, enrollments, readings, attempts);
+  const activityAttempts = attempts.map(a => Object.fromEntries(ACTIVITY_ATTEMPT_FIELDS.map(key => [key, a[key]])));
+  const activities = includeActivities ? activityList(assignments, materials, modules, readings, activityAttempts) : [];
   return { summary: metrics(readings, quizResults), readings, quizzes: quizResults, historicalQuizzes: extraResults, activities };
 }
 /** Current progress on a learner's active assigned activities and modules, from saved work only. */
 async function activityProgress(userId, assignments, enrollments, readings, attempts, load = rows) {
-  const activeAssignments = activeMaterialAssignments(assignments);
-  const materialIds = [...new Set(activeAssignments.map(a => a.material_id))];
   // Material titles and module assignments are independent reads, so they load together.
-  const loadMaterials = async () => {
-    const materials = [];
-    for (let i=0;i<materialIds.length;i+=100) materials.push(...await load('uploaded_materials', 'id,title', { id: materialIds.slice(i,i+100) }));
-    return materials;
-  };
-  const [materials, { assignments: moduleAssignments, titles }] = await Promise.all([loadMaterials(), learnerModuleAssignments(userId, enrollments, load)]);
-  const materialActivities = activeAssignments.map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: materials.find(m => m.id === a.material_id)?.title || 'Assigned reading activity' }));
+  const [materials, modules] = await Promise.all([materialTitles(assignments, load), learnerModuleAssignments(userId, enrollments, load)]);
+  return activityList(assignments, materials, modules, readings, attempts);
+}
+/** Titles of the learner's active assigned materials. */
+async function materialTitles(assignments, load = rows) {
+  const materialIds = [...new Set(activeMaterialAssignments(assignments).map(a => a.material_id))];
+  const materials = [];
+  for (let i=0;i<materialIds.length;i+=100) materials.push(...await load('uploaded_materials', 'id,title', { id: materialIds.slice(i,i+100) }));
+  return materials;
+}
+function activityList(assignments, materials, { assignments: moduleAssignments, titles }, readings, attempts) {
+  const materialActivities = activeMaterialAssignments(assignments).map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: materials.find(m => m.id === a.material_id)?.title || 'Assigned reading activity' }));
   const moduleActivities = moduleAssignments.map(a => ({ ...deriveActivityProgress(a, readings, attempts), id: a.id, title: titles.get(a.module_id) || 'Assigned reading module' }));
   return [...materialActivities, ...moduleActivities];
 }
