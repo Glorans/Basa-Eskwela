@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import { Menu, User } from "lucide-react";
 import { Link } from "react-router-dom";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
@@ -10,9 +11,12 @@ import "./BasaHeader.css";
 interface BasaHeaderProps {
   onMenuClick: () => void;
   xp?: number;
+  menuExpanded: boolean;
+  menuLabel: string;
+  menuRef: RefObject<HTMLButtonElement>;
 }
 
-export default function BasaHeader({ onMenuClick, xp }: BasaHeaderProps) {
+export default function BasaHeader({ onMenuClick, xp, menuExpanded, menuLabel, menuRef }: BasaHeaderProps) {
   const { profile, loading } = useAuthenticatedProfile();
   const showIdentity = !loading && !!profile;
   const shouldShowRole = profile?.role === "teacher" || profile?.role === "admin";
@@ -23,7 +27,11 @@ export default function BasaHeader({ onMenuClick, xp }: BasaHeaderProps) {
         <button
           className="basa-icon-button basa-menu-button"
           type="button"
-          aria-label="Open menu"
+          aria-label={menuLabel}
+          title={menuLabel}
+          aria-controls="basa-navigation"
+          aria-expanded={menuExpanded}
+          ref={menuRef}
           onClick={onMenuClick}
         >
           <Menu size={22} />

@@ -86,18 +86,38 @@ test("the comprehension page has no visible Please wait message; saving is annou
   assert.doesNotMatch(hidden, /display: none|visibility: hidden/, "still read by screen readers");
 });
 
-test("Admin sidebar: scrollbar hidden in Firefox, Chrome and Edge, vertical scrolling kept, no horizontal scrolling", () => {
+test("Admin sidebar: vertical scrolling kept, no horizontal scrolling, and the same visible scrollbar as every role", () => {
   const css = readFileSync(new URL("../src/modules/module3/styles/module3.css", import.meta.url), "utf8");
   const start = css.indexOf(".m3-shell--admin .m3-sidebar {");
   assert.ok(start > 0);
   const rule = css.slice(start, css.indexOf("}", start));
-  for (const declaration of ["overflow-y: auto;", "overflow-x: hidden;", "scrollbar-width: none;", "-ms-overflow-style: none;"]) {
+  for (const declaration of ["overflow-y: auto;", "overflow-x: hidden;"]) {
     assert.ok(rule.includes(declaration), declaration);
   }
-  assert.match(css, /\.m3-shell--admin \.m3-sidebar::-webkit-scrollbar \{[^}]*display: none;/);
-  // Scoped to the Admin navigation: not a global rule, and scrolling is never disabled.
+  // The Admin scrollbar is no longer hidden: every role shows the shared yellow navigation scrollbar.
+  assert.doesNotMatch(css, /scrollbar-width: none|-ms-overflow-style: none/);
+  assert.doesNotMatch(css, /\.m3-shell--admin \.m3-sidebar::-webkit-scrollbar/);
+  // Not a global rule, and scrolling is never disabled.
   assert.doesNotMatch(css, /(^|\n)\s*(\*|html|body)\s*(::-webkit-scrollbar)?\s*\{[^}]*scrollbar-width: none/);
   assert.doesNotMatch(css, /\.m3-shell--admin \.m3-sidebar \{[^}]*overflow(-y)?: hidden/);
   // The base sidebar still scrolls for every role.
   assert.match(css, /\.m3-sidebar \{[^}]*overflow-y: auto;/);
+});
+
+test("every role's sidebar uses one shared navigation scroller with the brand and Logout outside it", () => {
+  const shell = readFileSync(new URL("../src/styles/responsive-shell.css", import.meta.url), "utf8");
+  const scroller = shell.slice(shell.indexOf(".rf-shell .rf-sidebar-scroll {"), shell.indexOf("}", shell.indexOf(".rf-shell .rf-sidebar-scroll {")));
+  for (const declaration of ["overflow-y: auto;", "overflow-x: hidden;", "min-height:", "margin-right: calc(-1 * var(--rf-sidebar-pad-x));"]) {
+    assert.ok(scroller.includes(declaration), declaration);
+  }
+  assert.doesNotMatch(shell, /scrollbar-width: none|::-webkit-scrollbar/, "no custom or hidden sidebar scrollbar");
+  // Students (BasaSidebar) and Teachers, Admins and Independent Learners (M3Layout) share the same classes.
+  for (const file of ["../src/components/basa/BasaSidebar.tsx", "../src/modules/module3/components/M3Layout.tsx"]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(source, /<nav className="[^"]*\brf-sidebar-scroll\b/, file);
+    assert.match(source, /className="[^"]*\brf-sidebar-main\b/, file);
+    assert.match(source, /className="[^"]*\brf-sidebar-footer\b/, file);
+    // The brand stays outside the scroller: it comes before the <nav> inside the fixed part of the sidebar.
+    assert.ok(source.indexOf("Basa Eskwela, go to Dashboard") < source.indexOf("rf-sidebar-scroll"), file);
+  }
 });

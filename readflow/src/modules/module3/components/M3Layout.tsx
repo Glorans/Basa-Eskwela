@@ -1,4 +1,6 @@
 import { useState } from "react";
+import useResponsiveSidebar from "../../../hooks/useResponsiveSidebar";
+import "../../../styles/responsive-shell.css";
 import {
   Award,
   BookOpenCheck,
@@ -107,7 +109,8 @@ function getProfileRoute(role: M3Role) {
 }
 
 export default function M3Layout({ role }: M3LayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebar = useResponsiveSidebar();
+  const sidebarOpen = sidebar.drawerOpen;
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
   const { profile, loading } = useAuthenticatedProfile();
@@ -130,12 +133,13 @@ export default function M3Layout({ role }: M3LayoutProps) {
       return;
     }
 
-    setSidebarOpen(false);
+    sidebar.close();
     navigate("/login", { replace: true });
   }
 
   const shellClassName = [
     "m3-shell",
+    sidebar.shellClasses,
     role === "admin" ? "m3-shell--admin" : "",
     role === "general_user" ? "m3-shell--general" : "",
   ].filter(Boolean).join(" ");
@@ -144,71 +148,83 @@ export default function M3Layout({ role }: M3LayoutProps) {
     <div className={shellClassName}>
       {sidebarOpen && (
         <button
-          className="m3-sidebar-overlay"
+          className="m3-sidebar-overlay rf-backdrop"
+          tabIndex={-1}
           type="button"
           aria-label="Close navigation"
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => sidebar.close()}
         />
       )}
 
-      <aside className={`m3-sidebar ${sidebarOpen ? "m3-sidebar--open" : ""}`}>
-        <div>
+      <aside id="m3-navigation" ref={sidebar.sidebarRef} className={`m3-sidebar rf-sidebar ${sidebarOpen ? "m3-sidebar--open" : ""}`}
+        role={sidebarOpen ? "dialog" : undefined} aria-modal={sidebarOpen ? true : undefined} aria-label={`${ROLE_LABELS[role]} navigation`}
+        aria-hidden={sidebar.mobile && !sidebarOpen ? true : undefined}>
+        <div className="rf-sidebar-main">
           <div className="m3-sidebar-brand">
-            <Link className="m3-sidebar-home" to={getRoleHomePath(role)} aria-label="Basa Eskwela, go to Dashboard" onClick={() => setSidebarOpen(false)}>
+            <Link className="m3-sidebar-home" to={getRoleHomePath(role)} aria-label="Basa Eskwela, go to Dashboard" onClick={() => sidebar.close()}>
               <span className="m3-brand-logo">
                 <img src={mascot} alt="" />
               </span>
-              <span>
+              <span className="rf-nav-label">
                 <strong>Basa Eskwela</strong>
               </span>
             </Link>
             <button
-              className="m3-sidebar-close"
+              className="m3-sidebar-close rf-drawer-close"
+              ref={sidebar.closeRef}
               type="button"
               aria-label="Close navigation"
-              onClick={() => setSidebarOpen(false)}
+              onClick={() => sidebar.close()}
             >
               <X size={20} />
             </button>
           </div>
 
-          <nav className="m3-sidebar-nav" aria-label={`${ROLE_LABELS[role]} navigation`}>
+          <nav className="m3-sidebar-nav rf-sidebar-scroll" aria-label={`${ROLE_LABELS[role]} navigation`}>
             {navItems.map(({ label, to, icon: Icon, end }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
-                onClick={() => setSidebarOpen(false)}
+                aria-label={label}
+                title={label}
+                onClick={() => sidebar.close()}
                 className={({ isActive }) => `m3-nav-item${isActive ? " m3-nav-item--active" : ""}`}
               >
                 <Icon size={19} />
-                {label}
+                <span className="rf-nav-label">{label}</span>
               </NavLink>
             ))}
           </nav>
         </div>
 
-        <div className="m3-sidebar-footer">
+        <div className="m3-sidebar-footer rf-sidebar-footer">
           <button
             className="m3-sidebar-quiet-link"
             type="button"
             disabled={loggingOut}
+            aria-label={loggingOut ? "Signing out..." : "Logout"}
+            title="Logout"
             onClick={() => void handleLogout()}
           >
             <LogOut size={18} />
-            {loggingOut ? "Signing out..." : "Logout"}
+            <span className="rf-nav-label">{loggingOut ? "Signing out..." : "Logout"}</span>
           </button>
         </div>
       </aside>
 
-      <div className="m3-workspace">
+      <div className="m3-workspace rf-workspace" ref={sidebar.workspaceRef}>
         <header className="m3-topbar">
           <div className="m3-topbar-title">
             <button
               className="m3-menu-button"
               type="button"
-              aria-label="Open navigation"
-              onClick={() => setSidebarOpen(true)}
+              aria-label={sidebar.toggleLabel}
+              title={sidebar.toggleLabel}
+              aria-expanded={sidebar.expanded}
+              aria-controls="m3-navigation"
+              ref={sidebar.triggerRef}
+              onClick={sidebar.toggle}
             >
               <Menu size={22} />
             </button>
@@ -227,9 +243,9 @@ export default function M3Layout({ role }: M3LayoutProps) {
           </NavLink>
         </header>
 
-        <main className="m3-content">
+        <div className="rf-content-scroll" tabIndex={0} role="region" aria-label="Main content"><main className="m3-content">
           <Outlet />
-        </main>
+        </main></div>
       </div>
     </div>
   );

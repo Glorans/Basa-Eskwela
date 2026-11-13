@@ -246,11 +246,7 @@ export default function Settings() {
                   value={account?.email ?? ""}
                   readOnly
                   aria-readonly="true"
-                  aria-describedby="emailHelp"
                 />
-                <p id="emailHelp" className="basa-settings-help">
-                  Your registered email address can't be changed here.
-                </p>
 
                 <label htmlFor="password">Change Password</label>
                 <div className="basa-password-field">

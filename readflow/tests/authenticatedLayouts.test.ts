@@ -58,9 +58,9 @@ test("sidebars retain logout, settings and mobile handlers without identity card
     assert.match(s, /navigate\("\/login", \{ replace: true \}\)/);
   }
   assert.match(basa, /onClick=\{onClose\}/);
-  assert.match(await source("components/basa/BasaLayout.tsx"), /onMenuClick=\{\(\) => setSidebarOpen\(true\)\}/);
-  assert.match(m3, /onClick=\{\(\) => setSidebarOpen\(true\)\}/);
-  assert.match(m3, /onClick=\{\(\) => setSidebarOpen\(false\)\}/);
+  assert.match(await source("components/basa/BasaLayout.tsx"), /onMenuClick=\{sidebar.toggle\}/);
+  assert.match(m3, /onClick=\{sidebar.toggle\}/);
+  assert.match(m3, /onClick=\{\(\) => sidebar.close\(\)\}/);
 });
 test("mobile styles retain names with truncation and hide role first", async () => {
   const basa = await source("components/basa/BasaHeader.css");
