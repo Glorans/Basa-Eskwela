@@ -16,6 +16,15 @@ import {
 import api from "../services/api";
 import { getSessionAuthHeaders } from "../services/authHeaders";
 import { createDailyLoginClaimer, isDailyLoginRole } from "../services/dailyLoginClaim";
+import {
+  blocksDailyLogin,
+  clearPasswordRecovery,
+  confirmPasswordRecovery,
+  isPasswordRecoveryMarked,
+  isPasswordRecoveryPending,
+  isResetPasswordPath,
+  onPasswordRecoveryChange,
+} from "./recoverySession";
 
 const claimDailyLogin = createDailyLoginClaimer(async () =>
   api.post("/api/m8/daily-login", undefined, {
@@ -47,6 +56,8 @@ const INITIAL_STATE: AuthState = {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(INITIAL_STATE);
+  // True while the session came from a password-reset link (see recoverySession.ts).
+  const [recoverySession, setRecoverySession] = useState(isPasswordRecoveryMarked);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
   const userRef = useRef<User | null>(null);
@@ -125,6 +136,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearAuthState]);
 
   useEffect(() => {
+    const stop = onPasswordRecoveryChange(() => setRecoverySession(isPasswordRecoveryMarked()));
+    setRecoverySession(isPasswordRecoveryMarked());
+    // A reset link was in this page's address. Supabase's own start-up result says whether it
+    // accepted the link: on failure it keeps any existing (genuine) session, which must still
+    // follow the normal M8 rule. Until then, and if this check itself fails, nothing is claimed.
+    if (isPasswordRecoveryPending()) {
+      void supabase.auth.initialize()
+        .then(({ error }) => {
+          if (!isPasswordRecoveryPending()) return;
+          if (error) clearPasswordRecovery();
+          else confirmPasswordRecovery();
+        })
+        .catch(() => {
+          // Stays pending for this page load only (it is never stored).
+        });
+    }
+    return stop;
+  }, []);
+
+  useEffect(() => {
     mountedRef.current = true;
     let active = true;
     let authChangeHandled = false;
@@ -132,10 +163,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       setState((current) => ({ ...current, authEvent: event }));
+      // Also covers a reset link the address capture could not see (for example, the PKCE flow).
+      // Supabase copies every auth event to the app's other tabs; those are not on the reset page
+      // and saw no link, so they stay ordinary sessions.
+      if (
+        event === "PASSWORD_RECOVERY"
+        && session?.user
+        && (isPasswordRecoveryPending() || isResetPasswordPath(window.location.pathname))
+      ) {
+        confirmPasswordRecovery();
+      }
       if (event === "INITIAL_SESSION") return;
 
       authChangeHandled = true;
       if (!session?.user || event === "SIGNED_OUT") {
+        clearPasswordRecovery();
         clearAuthState(event);
         return;
       }
@@ -187,6 +229,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // A different user signing in (for example, in another tab) replaces the reset session.
+      if (event === "SIGNED_IN" && userRef.current && userRef.current.id !== session.user.id) {
+        clearPasswordRecovery();
+      }
+
       const requestId = ++requestIdRef.current;
       userRef.current = session.user;
       setState({
@@ -207,6 +254,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ data, error }) => {
         if (!active || !mountedRef.current || authChangeHandled) return;
         if (error || !data.user) {
+          // Only a definite "no session" ends a recovery; a network failure keeps the flag.
+          if (!error || error.name === "AuthSessionMissingError") clearPasswordRecovery();
           clearAuthState(null);
           return;
         }
@@ -228,17 +277,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearAuthState, loadAuthenticatedUser]);
 
   // M8 daily login. Returning to a tab left open overnight counts as the next day's first use.
+  // A password-reset visit is not a sign-in: no claim in the tab that opened the link, or on the
+  // reset page. It ends with sign-out, a password login or closing that tab, so the next genuine
+  // use follows the normal rules.
   const signedInUserId = state.user?.id;
   const signedInRole = state.profile?.role;
   useEffect(() => {
-    if (!signedInUserId || !isDailyLoginRole(signedInRole)) return;
+    if (!signedInUserId || !isDailyLoginRole(signedInRole) || recoverySession) return;
     const claim = () => {
-      if (document.visibilityState === "visible") void claimDailyLogin(signedInUserId);
+      if (document.visibilityState === "visible" && !blocksDailyLogin(window.location.pathname)) {
+        void claimDailyLogin(signedInUserId);
+      }
     };
     claim();
     document.addEventListener("visibilitychange", claim);
     return () => document.removeEventListener("visibilitychange", claim);
-  }, [signedInRole, signedInUserId]);
+  }, [recoverySession, signedInRole, signedInUserId]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

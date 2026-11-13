@@ -27,10 +27,15 @@ test("password-reset links, other callbacks and ordinary pages are left untouche
   for (const href of [
     `${SITE}/reset-password#error=access_denied&error_code=otp_expired&error_description=x`,
     `${SITE}/reset-password#access_token=x&type=recovery`,
-    `${SITE}/#access_token=x&type=recovery`,
     `${SITE}/admin/teacher-invitations?tab=pending`,
     `${SITE}/login`,
   ]) assert.deepEqual(parseAuthRedirect(href), { result: null, cleanUrl: null }, href);
+});
+
+test("a password-reset link that lands on another page is moved to /reset-password", () => {
+  // Previously left untouched, which signed the user in on the home page with no reset form.
+  assert.deepEqual(parseAuthRedirect(`${SITE}/#access_token=x&type=recovery`),
+    { result: null, cleanUrl: "/reset-password#access_token=x&type=recovery" });
 });
 
 test("the capture module stays the first import so it runs before the Supabase client and router", () => {

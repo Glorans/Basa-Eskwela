@@ -6,7 +6,6 @@ import AuthLayout from "../components/AuthLayout";
 import AuthSubmitButton from "../components/AuthSubmitButton";
 import TextField from "../components/TextField";
 import {
-  AuthServiceError,
   logout,
   updatePassword,
 } from "../../../services/authService";
@@ -14,6 +13,7 @@ import {
   getPasswordValidationError,
   PASSWORD_REQUIREMENTS,
 } from "../utils/authOnboarding";
+import { recoveryPasswordUpdateFailure } from "../utils/passwordRecoveryMessages";
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -21,6 +21,7 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [linkExpired, setLinkExpired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [recoveryEventReceived, setRecoveryEventReceived] = useState(
     authEvent === "PASSWORD_RECOVERY",
@@ -55,6 +56,7 @@ export default function ResetPasswordPage() {
     }
 
     setError("");
+    setLinkExpired(false);
     setSubmitting(true);
 
     try {
@@ -65,11 +67,10 @@ export default function ResetPasswordPage() {
         state: { passwordReset: true },
       });
     } catch (updateError) {
-      setError(
-        updateError instanceof AuthServiceError
-          ? "We couldn't update your password. The reset link may have expired."
-          : "We couldn't reach the password service. Please try again.",
-      );
+      // Only an ended recovery session is reported as an expired link; a rejected password says why.
+      const failure = recoveryPasswordUpdateFailure(updateError);
+      setError(failure.message);
+      setLinkExpired(failure.linkExpired);
     } finally {
       setSubmitting(false);
     }
@@ -134,6 +135,13 @@ export default function ResetPasswordPage() {
         />
 
         <AuthFormError message={error} />
+        {linkExpired && (
+          <p className="auth-footer-link">
+            <Link to="/forgot-password" className="auth-text-link">
+              Request a new reset link
+            </Link>
+          </p>
+        )}
 
         <AuthSubmitButton
           label="Save New Password"
