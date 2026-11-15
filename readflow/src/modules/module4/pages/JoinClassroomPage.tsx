@@ -8,6 +8,9 @@ import {
   type Classroom,
 } from "../services/classroomService";
 import { getStudentRoomTeacherNames, type RoomTeacherNames } from "../services/studentRoomTeachers";
+import { getMyArchivedRooms, setMyRoomArchived, type StudentRoomArchives } from "../services/studentRoomArchive";
+import RoomActionsMenu from "../components/RoomActionsMenu";
+import { confirmReadFlow } from "../../../components/ReadFlowDialog";
 
 export default function JoinClassroomPage() {
   const navigate = useNavigate();
@@ -22,9 +25,16 @@ export default function JoinClassroomPage() {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Rooms this Student archived for themselves only (proposed m4_student_room_archive). Not loaded yet,
+  // or not installed: nothing is hidden and no Archive action is offered.
+  const [personal, setPersonal] = useState<StudentRoomArchives>({ supported: false, roomIds: new Set() });
+  const [archiving, setArchiving] = useState<string | null>(null);
+  // Hidden only while the personal archive is available, so nothing can disappear without a way back.
+  const personallyArchived = (room: Classroom) => personal.supported && personal.roomIds.has(room.id);
   // Archived rooms are not active Learning Rooms; their readings stay read-only in Reading History.
-  const activeRooms = classrooms.filter((room) => !isRoomArchived(room));
-  const archivedCount = classrooms.length - activeRooms.length;
+  const activeRooms = classrooms.filter((room) => !isRoomArchived(room) && !personallyArchived(room));
+  const archivedCount = classrooms.filter((room) => isRoomArchived(room)).length;
+  const personalCount = classrooms.filter((room) => !isRoomArchived(room) && personallyArchived(room)).length;
 
   useEffect(() => {
     async function loadStudentClassrooms() {
@@ -48,6 +58,8 @@ export default function JoinClassroomPage() {
         const joinedRooms = await getStudentClassrooms(user.id);
         setClassrooms(joinedRooms);
         void loadTeacherNames(joinedRooms);
+        // Before the list appears, so a personally archived room never flashes into it.
+        await loadPersonalArchive();
       } catch (err) {
         console.error(
           "Failed to load student classrooms:",
@@ -73,6 +85,35 @@ export default function JoinClassroomPage() {
     } catch (err) {
       console.error("Failed to load classroom teacher names:", err);
       setTeacherNames({});
+    }
+  }
+
+  async function loadPersonalArchive() {
+    try {
+      setPersonal(await getMyArchivedRooms());
+    } catch (err) {
+      // The rooms stay usable; only the personal Archive action is unavailable.
+      console.error("Failed to load archived learning rooms:", err);
+      setPersonal({ supported: false, roomIds: new Set() });
+    }
+  }
+
+  async function handleArchive(room: Classroom) {
+    if (archiving) return;
+    if (!(await confirmReadFlow(
+      `Archive "${room.room_name}"? It moves to Archived Rooms. Only your list changes: your teacher, classmates, activities and results stay the same, and you can restore it later.`,
+    ))) return;
+    setArchiving(room.id);
+    setError("");
+    setSuccess("");
+    try {
+      await setMyRoomArchived(room.id, true);
+      setPersonal((current) => ({ ...current, roomIds: new Set(current.roomIds).add(room.id) }));
+      setSuccess(`"${room.room_name}" was moved to Archived Rooms.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to archive this Learning Room. Nothing was changed.");
+    } finally {
+      setArchiving(null);
     }
   }
 
@@ -281,7 +322,7 @@ export default function JoinClassroomPage() {
           </h3>
 
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#5c7471]">
-            {archivedCount > 0
+            {archivedCount > 0 || personalCount > 0
               ? "You have no active classrooms right now. Ask your teacher for a room code and enter it above."
               : "You haven't joined a classroom yet. Ask your teacher for a room code and enter it above."}
           </p>
@@ -300,7 +341,7 @@ export default function JoinClassroomPage() {
                   📖
                 </div>
 
-                <div className="flex flex-wrap justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {isRoomArchived(room) && (
                     <span className="rounded-full bg-[#5c7471] px-3 py-1 text-xs font-bold text-white">Archived</span>
                   )}
@@ -308,6 +349,15 @@ export default function JoinClassroomPage() {
                     <span className="rounded-full bg-[#ef7468] px-3 py-1 text-xs font-bold text-white">
                       {room.section}
                     </span>
+                  )}
+                  {personal.supported && (
+                    <RoomActionsMenu
+                      archiveSupported
+                      archived={false}
+                      archiveBusy={archiving === room.id}
+                      onToggleArchive={() => void handleArchive(room)}
+                      label={`Actions for ${room.room_name}`}
+                    />
                   )}
                 </div>
               </div>
@@ -362,20 +412,20 @@ export default function JoinClassroomPage() {
         </div>
       )}
 
-      {!loading && archivedCount > 0 && (
+      {!loading && personalCount > 0 && (
         <p className="mt-6 text-sm text-white/80">
-          {archivedCount === 1 ? "1 classroom was archived by your teacher." : `${archivedCount} classrooms were archived by your teacher.`}{" "}
-          You can still read their stories and see your saved results in{" "}
+          {personalCount === 1 ? "You archived 1 learning room." : `You archived ${personalCount} learning rooms.`}{" "}
           <button
             type="button"
-            onClick={() => navigate("/dashboard/reading-history#archived-readings")}
+            onClick={() => navigate("/dashboard/archived-learning-rooms")}
             className="font-bold text-white underline"
           >
-            Reading History → Archived Readings
+            View Archived Rooms
           </button>
-          .
         </p>
       )}
+      {/* Teacher-archived classrooms are listed under Archived Rooms and Reading History →
+          Archived Readings; this page no longer shows a notice about them. */}
     </section>
   );
 }

@@ -102,20 +102,26 @@ test("Teacher results can be limited to one classroom", () => {
   assert.equal(filterTeacherOralReadingAttempts(all, { searchQuery: "", learnerId: "", moduleId: "" }).length, 3, "no room filter: all results");
 });
 
-test("Student Learning Rooms lists active rooms only and points to Archived Readings", async () => {
+test("Student Learning Rooms lists active rooms only, without an archived classroom notice", async () => {
   const navigations: string[] = [];
   const page = await mount("modules/module4/pages/JoinClassroomPage.tsx", (id) => id === "react-router-dom" ? { useNavigate: () => (to: string) => navigations.push(to) }
     : id.includes("supabaseClient") ? auth
     : id.includes("classroomService") ? { getStudentClassrooms: async () => [ACTIVE, ARCHIVED], isRoomArchived, joinClassroomByCode: async () => ({}) }
     : id.includes("studentRoomTeachers") ? { getStudentRoomTeacherNames: async () => ({ active: "Rosa Mendoza", old: "Archived Teacher" }) }
+    // Student personal archive (proposed migration): not installed here, so this test sees the original page.
+    : id.includes("studentRoomArchive") ? { getMyArchivedRooms: async () => ({ supported: false, roomIds: new Set() }), setMyRoomArchived: async () => true }
+    : id.includes("RoomActionsMenu") ? { default: "room-actions-menu" }
+    : id.includes("ReadFlowDialog") ? { confirmReadFlow: async () => true }
     : undefined);
   const text = page.text();
   assert.match(text, /Grade 5 - Sampaguita/);
   assert.match(text, /Teacher: Rosa Mendoza/);
   assert.doesNotMatch(text, /Kamonggay|OLD123/, "the archived room is not an active Learning Room");
-  assert.match(text, /1 classroom was archived by your teacher/);
-  buttons(page.view(), /Archived Readings/)[0].props.onClick();
-  assert.deepEqual(navigations, ["/dashboard/reading-history#archived-readings"]);
+  // The notice about Teacher-archived classrooms was removed (they are listed under Archived Learning
+  // Rooms and Reading History -> Archived Readings instead).
+  assert.doesNotMatch(text, /archived by your teacher|Archived Readings/);
+  assert.equal(buttons(page.view(), /Archived Readings/).length, 0);
+  assert.deepEqual(navigations, []);
 });
 
 test("Reading History: Archived Readings lists archived classrooms and opens them read-only", async () => {

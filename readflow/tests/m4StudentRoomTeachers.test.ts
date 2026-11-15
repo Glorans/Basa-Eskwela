@@ -26,6 +26,10 @@ async function mount(names: () => Promise<Record<string, string | null>>, rooms 
       joinClassroomByCode: async (_: string, code: string) => { joined.push(code); },
     };
     if (id.includes("studentRoomTeachers")) return { getStudentRoomTeacherNames: () => { nameCalls++; return names(); } };
+    // Student personal archive (proposed migration): not installed here, so these tests see the original page.
+    if (id.includes("studentRoomArchive")) return { getMyArchivedRooms: async () => ({ supported: false, roomIds: new Set() }), setMyRoomArchived: async () => true };
+    if (id.includes("RoomActionsMenu")) return { default: "room-actions-menu" };
+    if (id.includes("ReadFlowDialog")) return { confirmReadFlow: async () => true };
     if (id.endsWith(".css")) return {};
     throw new Error(`Unexpected import ${id}`);
   }, { Error, console: { error() {} }, document: { getElementById: () => null } });

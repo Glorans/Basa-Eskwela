@@ -198,6 +198,14 @@ export type Database = {
         }
         Relationships: []
       }
+      // Proposed m4_student_room_archive (not applied until approved): a Student's own archived rooms.
+      m4_student_room_archives: {
+        Row: { archived_at: string; room_id: string; student_id: string }
+        // No client writes are granted; changes go through m4_set_my_room_archived.
+        Insert: { archived_at?: string; room_id: string; student_id: string }
+        Update: { archived_at?: string; room_id?: string; student_id?: string }
+        Relationships: []
+      }
       enrollments: {
         Row: {
           enrolled_at: string
@@ -926,6 +934,7 @@ export type Database = {
         Returns: boolean
       }
       m4_current_role: { Args: never; Returns: string }
+      m4_set_my_room_archived: { Args: { p_room_id: string; p_archive: boolean }; Returns: boolean }
       m6_is_enrolled_in_room: {
         Args: { target_room_id: string }
         Returns: boolean

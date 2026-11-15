@@ -1,4 +1,6 @@
 /* Shell mechanics only. Existing role palettes, navigation and page components remain. */
+/* The in-sidebar toggle exists for desktop only (enabled in the min-width: 1000px block below). */
+.rf-shell .rf-rail-toggle { display: none; }
 .rf-shell .rf-workspace { min-width: 0; }
 .rf-shell :is(.basa-header,.m3-topbar) { flex: 0 0 auto; }
 .rf-shell :is(.basa-menu-button,.m3-menu-button) {
@@ -96,7 +98,28 @@
     padding: 18px 10px;
   }
   .rf-shell--collapsed .rf-nav-label { display: none; }
-  .rf-shell--collapsed :is(.basa-sidebar-brand,.m3-sidebar-brand) { padding: 0 0 16px; }
+  .rf-shell--collapsed :is(.basa-sidebar-head,.m3-sidebar-brand) { padding: 0 0 16px; }
+  /* The sidebar toggle lives in the yellow sidebar on desktop; the green header keeps no toggle there.
+     Phones and tablets keep the header button (it opens the drawer) and never show this one. */
+  .rf-shell :is(.basa-menu-button,.m3-menu-button) { display: none; }
+  .rf-shell .rf-rail-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    border: 0;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 35%);
+    color: #10231f;
+    cursor: pointer;
+  }
+  .rf-shell .rf-rail-toggle:hover { background: rgb(255 255 255 / 60%); }
+  /* Collapsed rail (80 px): the logo and the toggle stack, so the toggle stays reachable. */
+  .rf-shell--collapsed :is(.basa-sidebar-head,.m3-sidebar-brand) { flex-direction: column; gap: 10px; }
+  .rf-shell--collapsed .rf-rail-toggle { margin-left: 0; }
   .rf-shell--collapsed :is(.basa-sidebar-brand,.m3-sidebar-home) { justify-content: center; }
   .rf-shell--collapsed :is(.basa-sidebar-item,.m3-nav-item,.m3-sidebar-quiet-link) {
     justify-content: center;

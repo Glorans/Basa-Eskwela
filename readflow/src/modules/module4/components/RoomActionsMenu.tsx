@@ -9,10 +9,12 @@ type RoomActionsMenuProps = {
   /** Omitted when the signed-in user may not edit this room (e.g. an Admin before the M4 Admin migration). */
   onEdit?: () => void;
   onToggleArchive: () => void;
+  /** Accessible name of the menu button; defaults to the original generic label. */
+  label?: string;
 };
 
 export default function RoomActionsMenu({
-  archiveSupported, archived, archiveBusy, onEdit, onToggleArchive,
+  archiveSupported, archived, archiveBusy, onEdit, onToggleArchive, label = "Learning Room actions",
 }: RoomActionsMenuProps) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -108,7 +110,7 @@ export default function RoomActionsMenu({
       ref={trigger}
       id={`${id}-trigger`}
       type="button"
-      aria-label="Learning Room actions"
+      aria-label={label}
       aria-haspopup="menu"
       aria-expanded={open}
       aria-controls={open ? `${id}-menu` : undefined}

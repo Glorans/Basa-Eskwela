@@ -169,6 +169,19 @@ export default function M3Layout({ role }: M3LayoutProps) {
                 <strong>Basa Eskwela</strong>
               </span>
             </Link>
+            {/* Desktop only (CSS): collapse/expand the rail from inside the sidebar. Phones and tablets keep
+                the header button, which opens the drawer. */}
+            <button
+              className="rf-rail-toggle"
+              type="button"
+              aria-label={sidebar.toggleLabel}
+              title={sidebar.toggleLabel}
+              aria-expanded={sidebar.expanded}
+              aria-controls="m3-navigation"
+              onClick={sidebar.toggle}
+            >
+              <Menu size={22} aria-hidden="true" />
+            </button>
             <button
               className="m3-sidebar-close rf-drawer-close"
               ref={sidebar.closeRef}

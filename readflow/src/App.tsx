@@ -51,6 +51,7 @@ import ClassroomDetailsPage from "./modules/module4/pages/ClassroomDetailsPage";
 import ArchivedClassroomsPage from "./modules/module4/pages/ArchivedClassroomsPage";
 import ArchivedReadingsSection from "./modules/module4/components/ArchivedReadingsSection";
 import JoinClassroomPage from "./modules/module4/pages/JoinClassroomPage";
+import StudentArchivedRoomsPage from "./modules/module4/pages/StudentArchivedRoomsPage";
 import StudentClassroomPage from "./modules/module4/pages/StudentClassroomPage";
 import StudentReadingActivityPage from "./modules/module4/pages/StudentReadingActivityPage";
 import AdminLearningRoomsPage from "./modules/module4/pages/AdminLearningRoomsPage";
@@ -184,6 +185,11 @@ function App() {
             <Route
               path="join-classroom"
               element={<JoinClassroomPage />}
+            />
+
+            <Route
+              path="archived-learning-rooms"
+              element={<StudentArchivedRoomsPage />}
             />
 
             <Route

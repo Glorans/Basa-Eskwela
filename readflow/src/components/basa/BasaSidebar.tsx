@@ -1,4 +1,4 @@
-import { School, Home, BookOpen, Trophy, Award, Settings, LogOut, X } from "lucide-react";
+import { Archive, School, Home, BookOpen, Trophy, Award, Settings, LogOut, Menu, X } from "lucide-react";
 import type useResponsiveSidebar from "../../hooks/useResponsiveSidebar";
 import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { label: "Badges", to: "/dashboard/badges", icon: Award },
   { label: "Progress & Result", to: "/dashboard/progress", icon: BookOpen },
   { label: "Reading History", to: "/dashboard/reading-history", icon: BookOpen },
+  { label: "Archived Rooms", to: "/dashboard/archived-learning-rooms", icon: Archive },
   { label: "Settings", to: "/dashboard/settings", icon: Settings },
 ];
 
@@ -50,12 +51,20 @@ export default function BasaSidebar({ open, onClose, controller }: BasaSidebarPr
         aria-hidden={controller.mobile && !open ? true : undefined}>
         <div className="basa-sidebar-top rf-sidebar-main">
           <button type="button" className="rf-drawer-close" ref={controller.closeRef} onClick={onClose} aria-label="Close navigation"><X size={22} /></button>
-          <Link className="basa-sidebar-brand" to="/dashboard" aria-label="Basa Eskwela, go to Dashboard" onClick={onClose}>
-            <span className="basa-sidebar-logo-frame">
-              <img className="basa-sidebar-logo" src={mascot} alt="" />
-            </span>
-            <span className="basa-sidebar-title rf-nav-label">Basa Eskwela</span>
-          </Link>
+          <div className="basa-sidebar-head">
+            <Link className="basa-sidebar-brand" to="/dashboard" aria-label="Basa Eskwela, go to Dashboard" onClick={onClose}>
+              <span className="basa-sidebar-logo-frame">
+                <img className="basa-sidebar-logo" src={mascot} alt="" />
+              </span>
+              <span className="basa-sidebar-title rf-nav-label">Basa Eskwela</span>
+            </Link>
+            {/* Desktop only (CSS): collapse/expand the rail from inside the sidebar. Phones and tablets keep
+                the header button, which opens the drawer. */}
+            <button type="button" className="rf-rail-toggle" aria-controls="basa-navigation" aria-expanded={controller.expanded}
+              aria-label={controller.toggleLabel} title={controller.toggleLabel} onClick={controller.toggle}>
+              <Menu size={22} aria-hidden="true" />
+            </button>
+          </div>
 
           <nav className="basa-sidebar-nav rf-sidebar-scroll" aria-label="Student navigation">
             {NAV_ITEMS.map(({ label, to, icon: Icon }) => (
