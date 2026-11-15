@@ -84,7 +84,7 @@ test("Admin can view the safe diagnostic result response", async () => {
   );
 });
 
-test("service returns only Student and Independent Learner diagnostics", async () => {
+test("service returns Student diagnostics only: a School Admin never receives Independent Learner results", async () => {
   const users = [
     { id: "student-id", fullName: "Student", email: "student@test", role: "student" },
     { id: "learner-id", fullName: "Learner", email: "learner@test", role: "general_user" },
@@ -107,11 +107,17 @@ test("service returns only Student and Independent Learner diagnostics", async (
     getSupabaseAdmin: () => ({}),
     listManagedUsers: async () => users,
     listDiagnosticResultRows: async () => users.map((user) => row(user.id)),
-  });
+  }, "admin");
 
-  assert.deepEqual(results.map((result) => result.role), ["student", "general_user"]);
+  // Even though the injected account list includes an Independent Learner, the result excludes them.
+  assert.deepEqual(results.map((result) => result.role), ["student"]);
   assert.equal(results[0].email, "student@test");
-  assert.deepEqual(results.map(result => result.language), ["en", "fil"]);
+  assert.equal(/learner-id|learner@test|"Learner"/.test(JSON.stringify(results)), false, "no Independent Learner id, name or email");
+  assert.deepEqual(results.map(result => result.language), ["en"]);
+  for (const role of [undefined, "system_admin", "teacher", "student", "general_user"]) {
+    await assert.rejects(listAdminDiagnosticResults({ listManagedUsers: async () => users, listDiagnosticResultRows: async () => [] }, role),
+      (error) => error.statusCode === 403, String(role));
+  }
   assert.equal("transcript" in results[0], false);
   assert.equal("oralReadingMetrics" in results[0], false);
 });
@@ -143,7 +149,7 @@ test("profile loading resolves learner nicknames for both languages without muta
       };
     },
   };
-  const users = await listManagedUsers({ getSupabaseAdmin: () => supabase });
+  const users = await listManagedUsers({ getSupabaseAdmin: () => supabase }, "system_admin");
   assert.equal(users.find(user => user.id === "student").fullName, "");
   const results = await listAdminDiagnosticResults({
     getSupabaseAdmin: () => supabase,
@@ -151,9 +157,10 @@ test("profile loading resolves learner nicknames for both languages without muta
     listDiagnosticResultRows: async () => profiles.flatMap(profile => ["en", "fil"].map(language => ({
       id: `${profile.id}-${language}`, user_id: profile.id, language,
     }))),
-  });
+  }, "admin");
+  // Students only (Independent Learners are outside the School Admin's scope).
   assert.deepEqual(results.map(result => result.learnerName), [
-    "Mariel", "Mariel", "Kai", "Kai", "Legacy Reader", "Legacy Reader", "Fallback", "Fallback", "", "", "", "", "Real Name", "Real Name",
+    "Mariel", "Mariel", "Legacy Reader", "Legacy Reader", "", "", "", "",
   ]);
   assert.ok(results.every(result => !("fullName" in result)));
   assert.deepEqual(profiles, original);

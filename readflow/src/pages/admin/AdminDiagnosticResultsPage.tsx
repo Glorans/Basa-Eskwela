@@ -82,7 +82,7 @@ export default function AdminDiagnosticResultsPage() {
       <header className="admin-users-header">
         <div>
           <h1>Diagnostic Results</h1>
-          <p>View completed learner reading diagnostics.</p>
+          <p>View completed Student reading diagnostics.</p>
         </div>
         <button type="button" onClick={() => void loadResults()} disabled={loading}>
           Refresh

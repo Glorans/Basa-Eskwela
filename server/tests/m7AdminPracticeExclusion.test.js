@@ -26,14 +26,18 @@ function data({ withPractice }) {
 test('Admin practice readings and comprehension never change Admin System Performance', async () => {
   const learnersOnly = await getAdminSystemAnalytics(ADMIN, {}, data({ withPractice: false }));
   const withPractice = await getAdminSystemAnalytics(ADMIN, {}, data({ withPractice: true }));
-  assert.equal(withPractice.readingAttempts, 2, 'only learner readings are counted');
-  assert.equal(withPractice.completedQuizzes, 2, 'only learner comprehension is counted');
+  // Students only: the Independent Learner's reading (r2) and quiz (q2, score 60) are outside the School Admin's scope.
+  assert.equal(withPractice.readingAttempts, 1, 'only Student readings are counted');
+  assert.equal(withPractice.completedQuizzes, 1, 'only Student comprehension is counted');
   assert.equal(withPractice.pronunciationAccuracy, 90);
-  assert.equal(withPractice.comprehensionScore, 70);
+  assert.equal(withPractice.comprehensionScore, 80);
   // Every figure, trend and the independent (no classroom) totals are identical to learners only.
   assert.deepEqual(withPractice.details.performance, learnersOnly.details.performance);
   assert.deepEqual(withPractice.details.trends, learnersOnly.details.trends);
   assert.deepEqual(withPractice.details.independentPerformance, learnersOnly.details.independentPerformance);
   assert.deepEqual(withPractice.details.participation, learnersOnly.details.participation);
   assert.ok(!JSON.stringify(withPractice).includes('"admin"'), 'no Admin row appears anywhere');
+  assert.equal(withPractice.details.independentPerformance.readingAttempts, 1, 'unassigned practice is the Student practice only');
+  assert.equal(withPractice.details.independentPerformance.completedQuizzes, 1);
+  assert.ok(!JSON.stringify(withPractice).includes('"g"'), 'no Independent Learner row appears anywhere');
 });

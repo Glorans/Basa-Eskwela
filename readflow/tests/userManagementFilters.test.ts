@@ -89,7 +89,8 @@ test("Admin user roles use the required read-only labels", async () => {
   );
 
   assert.deepEqual(ROLE_LABELS, {
-    admin: "Admin",
+    system_admin: "System Admin",
+    admin: "School Admin",
     teacher: "Teacher",
     student: "Student",
     general_user: "Independent Learner",

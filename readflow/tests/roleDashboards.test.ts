@@ -70,10 +70,10 @@ function adminStubs(overrides: Stubs = {}) {
   };
 }
 
-test("Admin dashboard counts real accounts, published modules and active rooms", async () => {
+test("School Admin dashboard counts Teachers, Students, published modules and active rooms (no Independent Learners)", async () => {
   const page = await mount("pages/dashboard/AdminDashboard.tsx", adminStubs());
   assert.deepEqual(page.stats(), {
-    Students: "2", "Approved Teachers": "1", "Independent Learners": "1", "Pending Teacher approvals": "1",
+    Students: "2", "Approved Teachers": "1", "Pending Teacher approvals": "1",
     "Published reading modules": "2", "Active Learning Rooms": "2",
   });
   const pending = page.lists()[0];
@@ -86,7 +86,7 @@ test("Admin dashboard counts real accounts, published modules and active rooms",
 test("Admin dashboard: a failed account request shows an error, never invented totals, and the other cards still load", async () => {
   const page = await mount("pages/dashboard/AdminDashboard.tsx", adminStubs({ "/services/adminUsers": { getManagedUsers: fail } }));
   const stats = page.stats();
-  for (const label of ["Students", "Approved Teachers", "Independent Learners", "Pending Teacher approvals"]) assert.equal(stats[label], "—", label);
+  for (const label of ["Students", "Approved Teachers", "Pending Teacher approvals"]) assert.equal(stats[label], "—", label);
   assert.equal(stats["Published reading modules"], "2");
   assert.equal(stats["Active Learning Rooms"], "2");
   assert.match(page.text(), /Account totals could not be loaded/);

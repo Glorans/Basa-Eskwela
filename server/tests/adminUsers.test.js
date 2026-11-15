@@ -23,7 +23,7 @@ test("account mapping preserves real status and email and never invents a missin
     ] }, error: null }) } },
     from: () => ({ select() { return this; }, order: async () => ({ data: profiles, error: null }) }),
   };
-  const users = await listManagedUsers({ getSupabaseAdmin: () => supabase });
+  const users = await listManagedUsers({ getSupabaseAdmin: () => supabase }, "system_admin");
   assert.equal(users[0].email, "real@example.test");
   assert.equal(users[0].status, "inactive");
   assert.equal(users[1].role, "");
@@ -54,7 +54,7 @@ async function withTestServer(dependencies, callback) {
 
 test("Admin user endpoint rejects a missing or invalid session with 401", async () => {
   await withTestServer(
-    { authorizeAdminRequest: async () => { throw new SupabaseAuthenticationError(); } },
+    { authorizeAccountManager: async () => { throw new SupabaseAuthenticationError(); } },
     async (url) => {
       const response = await fetch(url);
       assert.equal(response.status, 401);
@@ -64,7 +64,7 @@ test("Admin user endpoint rejects a missing or invalid session with 401", async 
 
 test("Admin user endpoint rejects an authenticated non-Admin with 403", async () => {
   await withTestServer(
-    { authorizeAdminRequest: async () => { throw new AdminAuthorizationError(); } },
+    { authorizeAccountManager: async () => { throw new AdminAuthorizationError(); } },
     async (url) => {
       const response = await fetch(url, { headers: { Authorization: "Bearer learner" } });
       assert.equal(response.status, 403);
@@ -86,7 +86,7 @@ test("Admin can list safe user-management fields", async () => {
 
   await withTestServer(
     {
-      authorizeAdminRequest: async () => ({ user: { id: adminId } }),
+      authorizeAccountManager: async () => ({ user: { id: adminId }, profile: { role: "admin" } }),
       listManagedUsers: async () => managedUsers,
     },
     async (url) => {
@@ -101,9 +101,9 @@ test("Admin role-update endpoint no longer exists", async () => {
   let authorizeCalled = false;
   await withTestServer(
     {
-      authorizeAdminRequest: async () => {
+      authorizeAccountManager: async () => {
         authorizeCalled = true;
-        return { user: { id: adminId } };
+        return { user: { id: adminId }, profile: { role: "admin" } };
       },
     },
     async (url) => {
@@ -122,7 +122,7 @@ test("delete requires Admin authorization and calls the protected delete service
   let deleted;
   await withTestServer(
     {
-      authorizeAdminRequest: async () => ({ user: { id: adminId } }),
+      authorizeAccountManager: async () => ({ user: { id: adminId }, profile: { role: "admin" } }),
       deleteManagedUser: async (...args) => { deleted = args; },
     },
     async (url) => {
@@ -131,19 +131,19 @@ test("delete requires Admin authorization and calls the protected delete service
         headers: { Authorization: "Bearer admin" },
       });
       assert.equal(response.status, 200);
-      assert.deepEqual(deleted, [adminId, userId]);
+      assert.deepEqual(deleted, [adminId, userId, undefined, "admin"], "the caller's database role is passed to the scope check");
     },
   );
 });
 
 test("service prevents an Admin from deleting the current account", async () => {
   await assert.rejects(
-    () => deleteManagedUser(adminId, adminId),
+    () => deleteManagedUser(adminId, adminId, {}, "admin"),
     (error) => error instanceof AdminUserOperationError && error.statusCode === 409,
   );
 });
 
-test("service prevents deleting any existing Admin account", async () => {
+test("service prevents a School Admin from deleting any Admin account, with the generic out-of-scope answer", async () => {
   let deleteCalled = false;
   const profileQuery = {
     select() { return this; },
@@ -165,8 +165,9 @@ test("service prevents deleting any existing Admin account", async () => {
   };
 
   await assert.rejects(
-    () => deleteManagedUser(adminId, userId, { getSupabaseAdmin: () => supabase }),
-    (error) => error instanceof AdminUserOperationError && error.statusCode === 409,
+    () => deleteManagedUser(adminId, userId, { getSupabaseAdmin: () => supabase }, "admin"),
+    (error) => error instanceof AdminUserOperationError && error.statusCode === 403
+      && error.message === "This account is outside the accounts you can manage.",
   );
   assert.equal(deleteCalled, false);
 });

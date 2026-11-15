@@ -18,6 +18,7 @@ import {
   Trophy,
   Users,
   UserRound,
+  UserPlus,
   X,
   Archive,
 } from "lucide-react";
@@ -31,12 +32,23 @@ import type { M3Role } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
 import "../styles/module3.css";
 
+// The System Admin (platform level, M1 account management only) shares this shell but has no M3 workspace.
+type ShellRole = M3Role | "system_admin";
+
 interface M3LayoutProps {
-  role: M3Role;
+  role: ShellRole;
 }
 
 // Dashboard is every role's first item and landing page (the same path as the post-login redirect).
-function getNavItems(role: M3Role) {
+function getNavItems(role: ShellRole) {
+  if (role === "system_admin") {
+    // Appendix N M1 for the System Admin: F6/F7 (User Management), F8 (Create School Admin), F4/F5 (profile).
+    return [
+      { label: "User Management", to: "/system-admin/users", icon: Users, end: true },
+      { label: "Create School Admin", to: "/system-admin/school-admins/new", icon: UserPlus, end: true },
+      { label: "Profile Settings", to: "/system-admin/settings", icon: Settings, end: true },
+    ];
+  }
   return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
 }
 
@@ -102,7 +114,8 @@ function getWorkspaceNavItems(role: M3Role) {
   return items;
 }
 
-function getProfileRoute(role: M3Role) {
+function getProfileRoute(role: ShellRole) {
+  if (role === "system_admin") return "/system-admin/settings";
   if (role === "admin") return "/m3/admin/settings";
   if (role === "teacher") return "/m3/teacher/settings";
   return "/m3/general/settings";
@@ -116,7 +129,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
   const { profile, loading } = useAuthenticatedProfile();
   const navItems = getNavItems(role);
   const showIdentity = !loading && !!profile;
-  const shouldShowRole = profile?.role === "teacher" || profile?.role === "admin";
+  const shouldShowRole = profile?.role === "teacher" || profile?.role === "admin" || profile?.role === "system_admin";
   const displayName = getProfileDisplayName(profile);
   const roleLabel = profile && isAppRole(profile.role)
     ? ROLE_LABELS[profile.role]
@@ -140,7 +153,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
   const shellClassName = [
     "m3-shell",
     sidebar.shellClasses,
-    role === "admin" ? "m3-shell--admin" : "",
+    role === "admin" || role === "system_admin" ? "m3-shell--admin" : "",
     role === "general_user" ? "m3-shell--general" : "",
   ].filter(Boolean).join(" ");
 

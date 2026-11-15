@@ -1,6 +1,8 @@
 import { isLegacyProfileName } from "./profileFields.ts";
 
-export const APP_ROLES = ["admin", "teacher", "student", "general_user"] as const;
+// "admin" is the School Admin (the original Admin role). "system_admin" is platform level and is provisioned only
+// by the database owner; it is never offered at registration (see docs/M1_SYSTEM_ADMIN_PROVISIONING.md).
+export const APP_ROLES = ["system_admin", "admin", "teacher", "student", "general_user"] as const;
 export type AppRole = (typeof APP_ROLES)[number];
 
 export const DIAGNOSTIC_LEARNER_ROLES = ["student", "general_user"] as const;
@@ -22,7 +24,8 @@ export function isUnapprovedTeacher(role: unknown, teacherStatus: unknown) {
 }
 
 export const ROLE_LABELS: Record<AppRole, string> = {
-  admin: "Admin",
+  system_admin: "System Admin",
+  admin: "School Admin",
   teacher: "Teacher",
   student: "Student",
   general_user: "Independent Learner",
@@ -70,10 +73,14 @@ export function isAssignableUserRole(value: unknown): value is AssignableUserRol
   );
 }
 
+export const SYSTEM_ADMIN_HOME_PATH = "/system-admin/users";
+
 // Each role lands on its dashboard. The workspace roots (/m3/admin, /m3/teacher, /m3/general)
 // keep their existing pages and stay usable as deep links.
 export function getRoleHomePath(role: AppRole) {
   switch (role) {
+    case "system_admin":
+      return SYSTEM_ADMIN_HOME_PATH;
     case "admin":
       return "/m3/admin/dashboard";
     case "teacher":

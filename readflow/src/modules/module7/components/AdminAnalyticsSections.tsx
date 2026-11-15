@@ -22,7 +22,7 @@ export function PerformanceSections({ data, labels = [] }: { data: Details; labe
   return <>
     <section><h2>Performance in the selected period</h2><AdminMetrics data={data.performance} />
       {!data.performance.readingAttempts && !data.performance.completedQuizzes && <p>No saved results match these filters.</p>}
-      {!data.filters.roomId && <p>Includes {data.independentPerformance.readingAttempts} independent readings and {data.independentPerformance.completedQuizzes} independent quizzes. These are not assigned to classrooms.</p>}
+      {!data.filters.roomId && <p>Includes {data.independentPerformance.readingAttempts} Student readings and {data.independentPerformance.completedQuizzes} Student quizzes completed outside a classroom assignment.</p>}
       {data.unassignedClassroomReadings > 0 && <p>{data.unassignedClassroomReadings} readings reference classrooms that are no longer available. They remain included in system totals.</p>}
     </section>
     <section><h2>Weekly performance trends</h2><p>Weeks start Monday in Philippine time. Averages use saved attempts, with sample counts shown. Weeks without results are omitted; no scores are inferred.</p>

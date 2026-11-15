@@ -1,10 +1,14 @@
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 const { getProfileDisplayName } = require("./profileNames");
 const {
+  AdminAuthorizationError,
   AdminUserOperationError,
   listManagedUsers,
 } = require("./adminUserService");
+const { canViewAccount } = require("./m1AccountScope");
 
+// Diagnostics belong to learners. Which learners a viewer sees follows the M1 account scope: a School Admin sees
+// Students only, never Independent Learners (Appendix N; the School Admin manages only Teachers and Students).
 const DIAGNOSTIC_LEARNER_ROLES = new Set(["student", "general_user"]);
 
 async function listDiagnosticResultRows(supabase) {
@@ -23,13 +27,14 @@ async function listDiagnosticResultRows(supabase) {
   return data ?? [];
 }
 
-async function listAdminDiagnosticResults(dependencies = {}) {
+async function listAdminDiagnosticResults(dependencies = {}, viewerRole) {
+  if (viewerRole !== "admin") throw new AdminAuthorizationError();
   const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
   const listUsers = dependencies.listManagedUsers ?? listManagedUsers;
   const listRows = dependencies.listDiagnosticResultRows ?? listDiagnosticResultRows;
   const supabase = getAdmin();
   const [users, rows] = await Promise.all([
-    listUsers(),
+    listUsers({ getSupabaseAdmin: getAdmin }, viewerRole),
     listRows(supabase),
   ]);
   const userById = new Map(users.map((user) => [user.id, user]));
@@ -37,7 +42,8 @@ async function listAdminDiagnosticResults(dependencies = {}) {
   return rows.flatMap((row) => {
     const user = userById.get(row.user_id);
 
-    if (!user || !DIAGNOSTIC_LEARNER_ROLES.has(user.role)) {
+    // Checked again here, so an Independent Learner never appears even if the account list were wider.
+    if (!user || !DIAGNOSTIC_LEARNER_ROLES.has(user.role) || !canViewAccount(viewerRole, user.role)) {
       return [];
     }
 

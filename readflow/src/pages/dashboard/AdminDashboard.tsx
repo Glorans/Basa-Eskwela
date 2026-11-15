@@ -1,4 +1,4 @@
-import { BookOpenCheck, ClipboardList, Files, GraduationCap, School, UserCheck, UserRound, Users } from "lucide-react";
+import { BookOpenCheck, ClipboardList, Files, GraduationCap, School, UserCheck, Users } from "lucide-react";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { supabase } from "../../lib/supabaseClient";
 import { getManagedUsers, type ManagedUser } from "../../modules/module1/services/adminUsers";
@@ -32,13 +32,12 @@ export default function AdminDashboard() {
   return (
     <div className="rd-page">
       <DashboardHero eyebrow="System Overview" title={name ? `Welcome, ${name}` : "Welcome, Administrator"}>
-        A summary of accounts, content and Learning Rooms across Basa Eskwela.
+        A summary of Teacher and Student accounts, content and Learning Rooms.
       </DashboardHero>
 
       <div className="rd-stats" aria-label="System summary">
         <StatCard icon={GraduationCap} value={count((u) => u.role === "student")} label="Students" to="/admin/users" />
         <StatCard icon={UserCheck} value={count((u) => u.role === "teacher" && u.teacherStatus === "approved")} label="Approved Teachers" to="/admin/users" />
-        <StatCard icon={UserRound} value={count((u) => u.role === "general_user")} label="Independent Learners" to="/admin/users" />
         <StatCard icon={ClipboardList} value={count(isPendingTeacher)} label="Pending Teacher approvals" to="/admin/teacher-invitations?tab=pending" />
         <StatCard icon={BookOpenCheck} value={valueOf(published, (n) => n)} label="Published reading modules" to="/m3/admin" />
         <StatCard icon={School} value={valueOf(rooms, (list) => list.filter((room) => !isRoomArchived(room)).length)} label="Active Learning Rooms" to="/admin/learning-rooms" />

@@ -5,15 +5,17 @@ import { useAuth } from "../../../../auth/useAuth";
 import {
   deleteManagedUser,
   getAdminUserError,
-  getManagedUsers,
+  getManagedAccounts,
+  type AccountPermissions,
   type ManagedUser,
 } from "../../services/adminUsers";
 import {
-  ASSIGNABLE_USER_ROLES,
+  APP_ROLES,
   isAppRole,
   ROLE_LABELS,
 } from "../../utils/authOnboarding";
 import {
+  canDeleteManagedUser,
   filterManagedUsers,
   getManagedUserDisplayName,
   isPendingTeacher,
@@ -22,9 +24,16 @@ import {
 } from "./userManagementFilters";
 import "../../../../pages/admin/UserManagementPage.css";
 
+const NO_PERMISSIONS: AccountPermissions = {
+  role: "", visibleRoles: [], deletableRoles: [], canCreateSchoolAdmin: false,
+};
+
+// M1 F6 (view user roles) and F7 (delete user account) for the System Admin and the School Admin.
+// The server decides which accounts are listed and which may be deleted; this page only reflects it.
 export default function UserManagementPage() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [permissions, setPermissions] = useState<AccountPermissions>(NO_PERMISSIONS);
   const [loading, setLoading] = useState(true);
   const [pendingUserId, setPendingUserId] = useState("");
   const [error, setError] = useState("");
@@ -41,13 +50,22 @@ export default function UserManagementPage() {
     [users, searchQuery, roleFilter, statusFilter],
   );
   const hasActiveFilters = Boolean(searchQuery.trim() || roleFilter || statusFilter);
+  const filterRoles = APP_ROLES.filter((role) => permissions.visibleRoles === "all" || permissions.visibleRoles.includes(role));
+  const isSchoolAdmin = permissions.role === "admin";
+  const scopeNote = permissions.role === "system_admin"
+    ? "You can view every account. You can delete Independent Learner and School Admin accounts."
+    : isSchoolAdmin
+      ? "You can view and delete Teacher and Student accounts."
+      : "";
 
   async function loadUsers() {
     setLoading(true);
     setError("");
 
     try {
-      setUsers(await getManagedUsers());
+      const result = await getManagedAccounts();
+      setUsers(result.users);
+      setPermissions(result.permissions);
     } catch (loadError) {
       setError(getAdminUserError(loadError));
     } finally {
@@ -60,9 +78,11 @@ export default function UserManagementPage() {
   }, []);
 
   async function handleDelete(user: ManagedUser) {
-    if (pendingUserId || user.id === currentUser?.id || user.role === "admin") return;
+    if (pendingUserId || !canDeleteManagedUser(permissions, user, currentUser?.id)) return;
     const confirmed = await confirmReadFlow(
-      "Are you sure you want to delete this user account? This action cannot be undone.",
+      user.role === "admin"
+        ? "Are you sure you want to delete this School Admin account? They will lose all administrator access. This action cannot be undone."
+        : "Are you sure you want to delete this user account? This action cannot be undone.",
     );
     if (!confirmed) return;
 
@@ -92,6 +112,7 @@ export default function UserManagementPage() {
       <header className="admin-users-header">
         <div>
           <h1>User Management</h1>
+          {scopeNote && <p className="admin-users-scope">{scopeNote}</p>}
         </div>
         <button type="button" onClick={() => void loadUsers()} disabled={loading || Boolean(pendingUserId)}>
           Refresh
@@ -125,7 +146,7 @@ export default function UserManagementPage() {
                 onChange={(event) => setRoleFilter(event.target.value as UserRoleFilter)}
               >
                 <option value="">All Roles</option>
-                {ASSIGNABLE_USER_ROLES.map((role) => (
+                {filterRoles.map((role) => (
                   <option key={role} value={role}>{ROLE_LABELS[role]}</option>
                 ))}
               </select>
@@ -176,7 +197,7 @@ export default function UserManagementPage() {
             <tbody>
               {filteredUsers.map((user) => {
                 const isSelf = user.id === currentUser?.id;
-                const isAdmin = user.role === "admin";
+                const canDelete = canDeleteManagedUser(permissions, user, currentUser?.id);
                 const isPending = user.id === pendingUserId;
                 const roleLabel = isAppRole(user.role)
                   ? ROLE_LABELS[user.role]
@@ -193,13 +214,14 @@ export default function UserManagementPage() {
                     <td>{new Date(user.createdAt).toLocaleDateString()}</td>
                     <td>{user.role === "teacher" ? user.teacherStatus ?? "Unavailable" : "Not required"}</td>
                     <td>
-                      {isPendingTeacher(user) && (
+                      {isSchoolAdmin && isPendingTeacher(user) && (
                         <Link to="/admin/teacher-invitations?tab=pending">Review in Teacher Invitations</Link>
                       )}
                       <button
                         type="button"
                         className="admin-users-delete"
-                        disabled={isSelf || isAdmin || isPending}
+                        disabled={!canDelete || isPending}
+                        title={canDelete ? undefined : "This account is outside the accounts you can delete."}
                         onClick={() => void handleDelete(user)}
                       >
                         {isPending ? "Working…" : "Delete"}
