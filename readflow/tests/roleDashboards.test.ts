@@ -149,6 +149,8 @@ function learnerStubs(role: string, overrides: Stubs = {}) {
     "/components/LearnerReading": { PlacementSummary: "placement", ReadingLanguageSelector: "selector", RecommendedStories: "stories" },
     "/context/M3ContentContext": { useM3Content: () => ({ modules, modulesLoading: false, modulesError: "", materials: [{ id: "m1" }, { id: "m2" }], materialsLoading: false, materialsError: "" }) },
     "/services/classroomService": { getStudentClassrooms: async (id: string) => (id === "student-1" ? rooms : []), isRoomArchived },
+    // Student personal archive (M4): not installed by default, so these tests see the original counts.
+    "/services/studentRoomArchive": { getMyArchivedRooms: async () => ({ supported: false, roomIds: new Set<string>() }) },
     "/services/comprehensionService": { getComprehensionForReading: async (readingId: string) => (readingId === "rd-new" ? { id: "att-9", status: "in_progress" } : null) },
     ...overrides,
   };
@@ -159,6 +161,20 @@ async function rewards(page: Awaited<ReturnType<typeof mount>>) {
   const cards = page.element(learner.RewardCards)[0];
   return Object.fromEntries(findAll(learner.RewardCards(cards.props), (n) => n.type === page.kit.StatCard).map((n) => [n.props.label, n.props.value]));
 }
+
+test("Student dashboard: My Learning Rooms counts active rooms only (not Teacher-archived, not personally archived)", async () => {
+  const own = (roomIds: string[], supported = true) => ({ "/services/studentRoomArchive": { getMyArchivedRooms: async () => ({ supported, roomIds: new Set(roomIds) }) } });
+  let stats = (await mount("pages/StudentDashboard.tsx", learnerStubs("student", own(["r1"])))).stats();
+  assert.equal(stats["My Learning Rooms"], "1", "r1 archived by the Student, r3 by the Teacher: only r2 is active");
+  assert.equal(stats["Assigned activities to do"], "2", "personal archiving hides the room from the list, never its assigned work");
+  stats = (await mount("pages/StudentDashboard.tsx", learnerStubs("student", own(["r3"])))).stats();
+  assert.equal(stats["My Learning Rooms"], "2", "a room archived by both counts once as archived");
+  stats = (await mount("pages/StudentDashboard.tsx", learnerStubs("student", own(["r1", "r2"], false)))).stats();
+  assert.equal(stats["My Learning Rooms"], "2", "before the migration (not installed) nothing is hidden");
+  const failing = { "/services/studentRoomArchive": { getMyArchivedRooms: async () => { throw new Error("network down"); } } };
+  stats = (await mount("pages/StudentDashboard.tsx", learnerStubs("student", failing))).stats();
+  assert.equal(stats["My Learning Rooms"], "2", "a failed lookup hides nothing and does not break the dashboard");
+});
 
 test("Student dashboard: rooms, activities to do, M8 rewards and latest results come from existing sources", async () => {
   const page = await mount("pages/StudentDashboard.tsx", learnerStubs("student"));

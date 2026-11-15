@@ -6,10 +6,18 @@ import useAuthenticatedProfile from "../hooks/useAuthenticatedProfile";
 import { useM3Content } from "../modules/module3/context/M3ContentContext";
 import { getProfileDisplayName } from "../modules/module1/utils/profileFields";
 import { getStudentClassrooms, isRoomArchived } from "../modules/module4/services/classroomService";
+import { getMyArchivedRooms, type StudentRoomArchives } from "../modules/module4/services/studentRoomArchive";
 import { DashboardHero, DashboardSection, EmptyState, LoadedList, QuickActions, StatCard, useLoad, valueOf, type Load } from "./dashboard/DashboardKit";
 import { RecentResults, RewardCards, loadGamification, loadPersonal } from "./dashboard/LearnerSections";
 import type { ActivityProgress } from "../modules/module7/services/m7Service";
 import "./StudentDashboard.css";
+
+// Rooms the Student archived for themselves (M4). A failed lookup or a database without the migration hides
+// nothing, exactly like the Learning Rooms page.
+const NO_OWN_ARCHIVE: StudentRoomArchives = { supported: false, roomIds: new Set() };
+function loadOwnArchive() {
+  return getMyArchivedRooms().catch(() => NO_OWN_ARCHIVE);
+}
 
 export default function StudentDashboard() {
   const { modulesError, modulesLoading } = useM3Content();
@@ -21,7 +29,13 @@ export default function StudentDashboard() {
   const rooms = useLoad(studentId ? () => getStudentClassrooms(studentId) : null, [studentId]);
   const personal = useLoad(loadPersonal, []);
   const gamification = useLoad(loadGamification, []);
-  const activeRooms: Load<number> = rooms.status === "ready" ? { status: "ready", data: rooms.data.filter((room) => !isRoomArchived(room)).length } : rooms;
+  const ownArchive = useLoad(loadOwnArchive, []);
+  // Active rooms only: not archived by the Teacher and not archived by the Student for themselves (the same rule
+  // as the Learning Rooms list). Enrollments are unchanged; this is only what the count shows.
+  const activeRooms: Load<number> = rooms.status !== "ready" ? rooms
+    : ownArchive.status !== "ready" ? { status: "loading" }
+    : { status: "ready", data: rooms.data.filter((room) => !isRoomArchived(room)
+        && !(ownArchive.data.supported && ownArchive.data.roomIds.has(room.id))).length };
   // Unfinished assigned activities in the Student's active rooms; archived rooms are read-only.
   const toDo: Load<ActivityProgress[]> = personal.status !== "ready" ? personal : rooms.status !== "ready" ? rooms
     : { status: "ready", data: (personal.data.activities ?? []).filter((activity) => activity.status !== "Completed"
