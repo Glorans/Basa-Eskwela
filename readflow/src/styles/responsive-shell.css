@@ -10,8 +10,8 @@
   height: 44px;
 }
 /* One sidebar structure for every role: the brand (with the drawer's close button) and Logout stay in place,
-   and only the navigation scrolls. Its native scrollbar (the shared yellow thumb and dark track) sits on the
-   sidebar's right edge: the scroller extends over the sidebar's right padding and adds it back inside. */
+   and only the navigation scrolls. The scroller extends over the sidebar's right padding and adds it back
+   inside, so the links keep the same width whether or not a scrollbar is drawn. */
 .rf-shell aside.rf-sidebar {
   --rf-sidebar-pad-x: 18px;
   display: flex;
@@ -40,6 +40,12 @@
   margin-right: calc(-1 * var(--rf-sidebar-pad-x));
   padding-right: var(--rf-sidebar-pad-x);
 }
+/* Sidebar only (every role, desktop rail and phone/tablet drawer): no visible scrollbar. Scrolling is unchanged
+   (overflow-y: auto above): wheel, touch and keyboard focus still reach every link. Page content keeps the
+   shared yellow scrollbar from index.css. scrollbar-width: Firefox, Chrome/Edge 121+, Safari 18.2+;
+   ::-webkit-scrollbar: older Safari and Chromium. */
+.rf-shell :is(aside.rf-sidebar, .rf-sidebar-scroll) { scrollbar-width: none; }
+.rf-shell :is(aside.rf-sidebar, .rf-sidebar-scroll)::-webkit-scrollbar { display: none; width: 0; height: 0; }
 /* Links keep their full height inside the scroller instead of shrinking to fit. */
 .rf-shell .rf-sidebar-scroll > * { flex-shrink: 0; }
 .rf-shell .rf-sidebar :is(a,button) { min-height: 44px; }

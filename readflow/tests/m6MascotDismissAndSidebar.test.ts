@@ -86,7 +86,7 @@ test("the comprehension page has no visible Please wait message; saving is annou
   assert.doesNotMatch(hidden, /display: none|visibility: hidden/, "still read by screen readers");
 });
 
-test("Admin sidebar: vertical scrolling kept, no horizontal scrolling, and the same visible scrollbar as every role", () => {
+test("Admin sidebar: vertical scrolling kept, no horizontal scrolling, and no Admin-only scrollbar rule", () => {
   const css = readFileSync(new URL("../src/modules/module3/styles/module3.css", import.meta.url), "utf8");
   const start = css.indexOf(".m3-shell--admin .m3-sidebar {");
   assert.ok(start > 0);
@@ -94,7 +94,7 @@ test("Admin sidebar: vertical scrolling kept, no horizontal scrolling, and the s
   for (const declaration of ["overflow-y: auto;", "overflow-x: hidden;"]) {
     assert.ok(rule.includes(declaration), declaration);
   }
-  // The Admin scrollbar is no longer hidden: every role shows the shared yellow navigation scrollbar.
+  // No Admin-only scrollbar rule: sidebar scrollbar visibility is decided once, for every role, in responsive-shell.css.
   assert.doesNotMatch(css, /scrollbar-width: none|-ms-overflow-style: none/);
   assert.doesNotMatch(css, /\.m3-shell--admin \.m3-sidebar::-webkit-scrollbar/);
   // Not a global rule, and scrolling is never disabled.
@@ -110,7 +110,15 @@ test("every role's sidebar uses one shared navigation scroller with the brand an
   for (const declaration of ["overflow-y: auto;", "overflow-x: hidden;", "min-height:", "margin-right: calc(-1 * var(--rf-sidebar-pad-x));"]) {
     assert.ok(scroller.includes(declaration), declaration);
   }
-  assert.doesNotMatch(shell, /scrollbar-width: none|::-webkit-scrollbar/, "no custom or hidden sidebar scrollbar");
+  // Every role's sidebar (rail and drawer) hides its scrollbar but keeps scrolling; nothing else is affected.
+  assert.match(shell, /\.rf-shell :is\(aside\.rf-sidebar, \.rf-sidebar-scroll\) \{ scrollbar-width: none; \}/);
+  assert.match(shell, /\.rf-shell :is\(aside\.rf-sidebar, \.rf-sidebar-scroll\)::-webkit-scrollbar \{ display: none; width: 0; height: 0; \}/);
+  const hiding = [...shell.matchAll(/([^{}]+)\{[^}]*(scrollbar-width: none|display: none; width: 0)/g)].map((m) => m[1].trim());
+  assert.equal(hiding.length, 2, "exactly the two sidebar rules hide a scrollbar");
+  for (const selector of hiding) assert.doesNotMatch(selector, /rf-content-scroll|basa-content|m3-content|(^|[\s,])(\*|html|body)([\s,{]|$)/, selector);
+  const aside = shell.slice(shell.indexOf(".rf-shell aside.rf-sidebar {"), shell.indexOf("}", shell.indexOf(".rf-shell aside.rf-sidebar {")));
+  assert.ok(aside.includes("overflow-y: auto;"), "the sidebar itself can still scroll on very short screens");
+  assert.doesNotMatch(shell, /rf-content-scroll[^{]*\{[^}]*scrollbar-width/, "the page content keeps its scrollbar");
   // Students (BasaSidebar) and Teachers, Admins and Independent Learners (M3Layout) share the same classes.
   for (const file of ["../src/components/basa/BasaSidebar.tsx", "../src/modules/module3/components/M3Layout.tsx"]) {
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
