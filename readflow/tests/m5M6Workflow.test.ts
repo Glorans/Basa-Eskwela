@@ -566,7 +566,7 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
   // F4 lists no transcript differences; they are shown, in Filipino, in F5 only.
   assert.doesNotMatch(text, /Mga Salitang Iba ang Narinig Namin|Iba ang salitang naitala|hindi narinig"/);
   assert.match(text, /Ang Kuwento/);
-  assert.match(text, /Ang Narinig Namin/);
+  assert.match(text, /Ang Narinig ng Computer/);
   const different = find(tree, node => node.type === "button" && node.props.className?.includes("result-heard-word"));
   assert.equal(different.props.children[0], "aso");
   different.props.onClick();

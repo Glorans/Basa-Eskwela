@@ -149,7 +149,7 @@ function modal(attempt: unknown, check: ReturnType<typeof checkState>, summaryOv
     if (id.endsWith("/RecordingPlayback")) return { default: "recording-playback" };
     if (id.endsWith("/SavedTranscript")) return { default: "saved-transcript" };
     if (id.endsWith("/FilipinoReadingFeedback")) return { default: "filipino-reading-feedback", FilipinoWordReviewPanel: "filipino-word-review-panel",
-      READING_ACCURACY_EXPLANATION: "Reading Accuracy starts from all the story words and takes away each difference the computer found: different words, words not heard and extra words. So it can be a little lower than the share of words matched." };
+      FilipinoReadingAccuracyPanel: "filipino-reading-accuracy", READING_ACCURACY_EXPLANATION: "Reading Accuracy starts from all the story words and takes away each difference the computer found: different words, words not heard and extra words. So it can be a little lower than the share of words matched." };
     throw new Error(`Unexpected import ${id}`);
   });
   const summary = { id: "third", moduleId: "m", passageId: "help", moduleTitle: "Grade 5 Stories", passageTitle: "A Helping Hand",
@@ -218,9 +218,15 @@ test("missing results say Not assessed, and Filipino readings never get a pronun
   m.render(); await tick();
   const all = text(m.render());
   assert.match(all, /"Naka-save na Pagtatasa ng Pagbasa nang Malakas"/);
-  assert.match(all, /"Hindi nasuri"/);
-  assert.match(all, /Ang pagsusuri ng bigkas ay para lamang sa mga babasahing Ingles\./);
-  assert.doesNotMatch(all, /accuracy-panel|words-panel|out of 100/);
+  // Filipino gets its own transcript-based F3 card, like the result page, instead of a "Not assessed" pronunciation card.
+  assert.doesNotMatch(all, /"Hindi nasuri"|Ang pagsusuri ng bigkas ay para lamang sa mga babasahing Ingles/);
+  assert.doesNotMatch(all, /pronunciation-accuracy|accuracy-panel|words-panel|out of 100/);
+  const accuracy = find(m.render(), (node) => node.type === "filipino-reading-accuracy");
+  assert.equal(accuracy.props.attempt.id, "third");
+  assert.equal(accuracy.props.uiLanguage, "fil");
+  // The English order: feedback, accuracy, then the word list.
+  const order = findAll(m.render(), (node) => typeof node.type === "string" && node.type.startsWith("filipino-")).map((node) => node.type);
+  assert.deepEqual(order, ["filipino-reading-feedback", "filipino-reading-accuracy", "filipino-word-review-panel"]);
   assert.deepEqual(m.hookCalls.at(-1), [undefined, "ana"], "no pronunciation check is loaded or started for Filipino");
   assert.deepEqual(fil.calls, []);
   // F7 shows the feedback of this exact saved attempt, in the reading's language.

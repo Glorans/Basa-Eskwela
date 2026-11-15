@@ -1,0 +1,889 @@
+{
+ "about": "CURRENT outputs of the M5 save path (buildAttemptInsert) and the M2 oral-reading scorer for synthetic Filipino readings, recorded 2026-11-14 on f2c6eee. A characterization baseline, not a target: rows labelled LIMITATION are known problems that must not be read as correct behaviour. Values are rounded to 2 decimals.",
+ "rows": [
+  {
+   "name": "correct reading",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 0,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 100,
+    "expected": 25,
+    "match": 25,
+    "wpm": 125,
+    "wcpm": 125
+   }
+  },
+  {
+   "name": "capitalisation and punctuation only",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "Si Aling Rosa, ay nagtitinda ng kakanin sa palengke! araw araw. Gumigising siya nang maaga; isang araw dumating ang kanyang apo na si Ben ben.",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 0,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 100,
+    "expected": 25,
+    "match": 25,
+    "wpm": 125,
+    "wcpm": 125
+   }
+  },
+  {
+   "name": "one substitution (nagtitinda -> nagbebenta)",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagbebenta ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 96,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 1,
+    "match": 24,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 96,
+    "expected": 25,
+    "match": 24,
+    "wpm": 125,
+    "wcpm": 120
+   }
+  },
+  {
+   "name": "one omission (ng)",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 96,
+    "wpm": 120,
+    "expected": 25,
+    "errors": 1,
+    "match": 24,
+    "substitution": 0,
+    "omission": 1,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 96,
+    "expected": 25,
+    "match": 24,
+    "wpm": 120,
+    "wcpm": 120
+   }
+  },
+  {
+   "name": "one extra word (po)",
+   "label": "LIMITATION: an extra word lowers accuracy although every story word matched",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa po ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 96,
+    "wpm": 130,
+    "expected": 25,
+    "errors": 1,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 1
+   },
+   "m2": {
+    "score": 96,
+    "expected": 25,
+    "match": 25,
+    "wpm": 130,
+    "wcpm": 125
+   }
+  },
+  {
+   "name": "repeated word (si si)",
+   "label": "LIMITATION: a repetition counts as an error (Phil-IRI does not count repetitions)",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si si aling rosa ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 96,
+    "wpm": 130,
+    "expected": 25,
+    "errors": 1,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 1
+   },
+   "m2": {
+    "score": 96,
+    "expected": 25,
+    "match": 25,
+    "wpm": 130,
+    "wcpm": 125
+   }
+  },
+  {
+   "name": "self-correction (nagtinda nagtitinda)",
+   "label": "LIMITATION: a self-correction counts as an error (Phil-IRI does not count self-corrections)",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtinda nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 96,
+    "wpm": 130,
+    "expected": 25,
+    "errors": 1,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 1
+   },
+   "m2": {
+    "score": 96,
+    "expected": 25,
+    "match": 25,
+    "wpm": 130,
+    "wcpm": 125
+   }
+  },
+  {
+   "name": "filler words (ah, ahm)",
+   "label": "LIMITATION: fillers count as errors",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ah ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang ahm kanyang apo na si ben ben",
+    "durationSeconds": 13,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 92,
+    "wpm": 124.62,
+    "expected": 25,
+    "errors": 2,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 2
+   },
+   "m2": {
+    "score": 92,
+    "expected": 25,
+    "match": 25,
+    "wpm": 124.62,
+    "wcpm": 115.38
+   }
+  },
+  {
+   "name": "recognizer confusion ng -> nang",
+   "label": "LIMITATION: a likely recognition error counts as a reading error",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda nang kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 96,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 1,
+    "match": 24,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 96,
+    "expected": 25,
+    "match": 24,
+    "wpm": 125,
+    "wcpm": 120
+   }
+  },
+  {
+   "name": "hyphenated words written joined (arawaraw, benben)",
+   "label": "M2 and M5 differ: M5 splits joined words, M2 does not",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda ng kakanin sa palengke arawaraw gumigising siya nang maaga isang araw dumating ang kanyang apo na si benben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 0,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 84,
+    "expected": 25,
+    "match": 21,
+    "wpm": 115,
+    "wcpm": 105
+   }
+  },
+  {
+   "name": "hyphenated words kept (Araw-araw, Ben-ben)",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda ng kakanin sa palengke Araw-araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si Ben-ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 0,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 100,
+    "expected": 25,
+    "match": 25,
+    "wpm": 125,
+    "wcpm": 125
+   }
+  },
+  {
+   "name": "number word as digit (isang -> 1)",
+   "label": "M2 and M5 differ: M5 accepts Filipino 1-10 as digits, M2 does not",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga 1 araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 0,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 96,
+    "expected": 25,
+    "match": 24,
+    "wpm": 125,
+    "wcpm": 120
+   }
+  },
+  {
+   "name": "different digit (isang -> 2)",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga 2 araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 12,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 96,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 1,
+    "match": 24,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 96,
+    "expected": 25,
+    "match": 24,
+    "wpm": 125,
+    "wcpm": 120
+   }
+  },
+  {
+   "name": "contraction (Ito'y read as ito ay)",
+   "label": "LIMITATION: an expanded contraction counts as two errors",
+   "input": {
+    "passage": "Ang bata ay masaya. Ito'y totoo.",
+    "transcript": "ang bata ay masaya ito ay totoo",
+    "durationSeconds": 4,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 66.67,
+    "wpm": 105,
+    "expected": 6,
+    "errors": 2,
+    "match": 5,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 1
+   },
+   "m2": {
+    "score": 66.67,
+    "expected": 6,
+    "match": 5,
+    "wpm": 105,
+    "wcpm": 75
+   }
+  },
+  {
+   "name": "enclitic contraction ('di read as hindi)",
+   "label": "LIMITATION: expanded contractions score 0%",
+   "input": {
+    "passage": "Ako'y 'di pupunta.",
+    "transcript": "ako ay hindi pupunta",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 0,
+    "wpm": 80,
+    "expected": 3,
+    "errors": 3,
+    "match": 1,
+    "substitution": 2,
+    "omission": 0,
+    "insertion": 1
+   },
+   "m2": {
+    "score": 0,
+    "expected": 3,
+    "match": 1,
+    "wpm": 80,
+    "wcpm": 20
+   }
+  },
+  {
+   "name": "accent marks (batà vs bata)",
+   "label": "LIMITATION: accent marks in the story make plain recognizer text mismatch",
+   "input": {
+    "passage": "Ang bátà ay masayá.",
+    "transcript": "ang bata ay masaya",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 50,
+    "wpm": 80,
+    "expected": 4,
+    "errors": 2,
+    "match": 2,
+    "substitution": 2,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 50,
+    "expected": 4,
+    "match": 2,
+    "wpm": 80,
+    "wcpm": 40
+   }
+  },
+  {
+   "name": "spelling variant (kompyuter vs computer)",
+   "label": "LIMITATION: an English spelling of a Filipino loanword is a mismatch",
+   "input": {
+    "passage": "Gumamit siya ng kompyuter sa paaralan.",
+    "transcript": "gumamit siya ng computer sa paaralan",
+    "durationSeconds": 4,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 83.33,
+    "wpm": 90,
+    "expected": 6,
+    "errors": 1,
+    "match": 5,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 83.33,
+    "expected": 6,
+    "match": 5,
+    "wpm": 90,
+    "wcpm": 75
+   }
+  },
+  {
+   "name": "abbreviation Gng. read as ginang",
+   "label": "LIMITATION: Filipino abbreviations are not expanded",
+   "input": {
+    "passage": "Dumating si Gng. Cruz.",
+    "transcript": "dumating si ginang cruz",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 75,
+    "wpm": 80,
+    "expected": 4,
+    "errors": 1,
+    "match": 3,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 75,
+    "expected": 4,
+    "match": 3,
+    "wpm": 80,
+    "wcpm": 60
+   }
+  },
+  {
+   "name": "abbreviation Bb. read as binibini",
+   "label": "LIMITATION: Filipino abbreviations are not expanded",
+   "input": {
+    "passage": "Si Bb. Reyes ay guro.",
+    "transcript": "si binibini reyes ay guro",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 80,
+    "wpm": 100,
+    "expected": 5,
+    "errors": 1,
+    "match": 4,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 80,
+    "expected": 5,
+    "match": 4,
+    "wpm": 100,
+    "wcpm": 80
+   }
+  },
+  {
+   "name": "abbreviation Dr. read as doktor",
+   "label": "LIMITATION: Dr. is expanded for English only",
+   "input": {
+    "passage": "Pumunta si Dr. Santos.",
+    "transcript": "pumunta si doktor santos",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 75,
+    "wpm": 80,
+    "expected": 4,
+    "errors": 1,
+    "match": 3,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 75,
+    "expected": 4,
+    "match": 3,
+    "wpm": 80,
+    "wcpm": 60
+   }
+  },
+  {
+   "name": "number above 10 as digit (labing-isang -> 11)",
+   "label": "LIMITATION: Filipino numbers above 10 are not matched to digits",
+   "input": {
+    "passage": "May labing-isang mag-aaral.",
+    "transcript": "may 11 mag aaral",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 60,
+    "wpm": 80,
+    "expected": 5,
+    "errors": 2,
+    "match": 3,
+    "substitution": 1,
+    "omission": 1,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 60,
+    "expected": 5,
+    "match": 3,
+    "wpm": 80,
+    "wcpm": 60
+   }
+  },
+  {
+   "name": "number above 10 as digit (dalawampung -> 20)",
+   "label": "LIMITATION: Filipino numbers above 10 are not matched to digits",
+   "input": {
+    "passage": "May dalawampung aklat.",
+    "transcript": "may 20 aklat",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 66.67,
+    "wpm": 60,
+    "expected": 3,
+    "errors": 1,
+    "match": 2,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 66.67,
+    "expected": 3,
+    "match": 2,
+    "wpm": 60,
+    "wcpm": 40
+   }
+  },
+  {
+   "name": "year as digits (2026)",
+   "label": "LIMITATION: a spoken year written as digits fails almost every word",
+   "input": {
+    "passage": "Noong dalawang libo't dalawampu't anim.",
+    "transcript": "noong 2026",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 20,
+    "wpm": 40,
+    "expected": 5,
+    "errors": 4,
+    "match": 1,
+    "substitution": 1,
+    "omission": 3,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 20,
+    "expected": 5,
+    "match": 1,
+    "wpm": 40,
+    "wcpm": 20
+   }
+  },
+  {
+   "name": "ordinal (ikalima -> ika 5)",
+   "label": "LIMITATION: ordinals written with digits are not matched",
+   "input": {
+    "passage": "Siya ang ikalima sa pila.",
+    "transcript": "siya ang ika 5 sa pila",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 60,
+    "wpm": 120,
+    "expected": 5,
+    "errors": 2,
+    "match": 4,
+    "substitution": 1,
+    "omission": 0,
+    "insertion": 1
+   },
+   "m2": {
+    "score": 60,
+    "expected": 5,
+    "match": 4,
+    "wpm": 120,
+    "wcpm": 80
+   }
+  },
+  {
+   "name": "hyphenated prefix with English word (Nag-Facebook)",
+   "label": "baseline",
+   "input": {
+    "passage": "Nag-Facebook siya kagabi.",
+    "transcript": "nag facebook siya kagabi",
+    "durationSeconds": 3,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 80,
+    "expected": 4,
+    "errors": 0,
+    "match": 4,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 100,
+    "expected": 4,
+    "match": 4,
+    "wpm": 80,
+    "wcpm": 80
+   }
+  },
+  {
+   "name": "partial recording (first third)",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda ng kakanin sa palengke",
+    "durationSeconds": 5,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 36,
+    "wpm": 108,
+    "expected": 25,
+    "errors": 16,
+    "match": 9,
+    "substitution": 0,
+    "omission": 16,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 36,
+    "expected": 25,
+    "match": 9,
+    "wpm": 108,
+    "wcpm": 108
+   }
+  },
+  {
+   "name": "very short recording (one word)",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si",
+    "durationSeconds": 2,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 4,
+    "wpm": 30,
+    "expected": 25,
+    "errors": 24,
+    "match": 1,
+    "substitution": 0,
+    "omission": 24,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 4,
+    "expected": 25,
+    "match": 1,
+    "wpm": 30,
+    "wcpm": 30
+   }
+  },
+  {
+   "name": "whole passage read twice",
+   "label": "LIMITATION: reading the story twice scores 0%",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben si aling rosa ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 24,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 0,
+    "wpm": 125,
+    "expected": 25,
+    "errors": 25,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 25
+   },
+   "m2": {
+    "score": 0,
+    "expected": 25,
+    "match": 25,
+    "wpm": 125,
+    "wcpm": 62.5
+   }
+  },
+  {
+   "name": "unrelated transcript",
+   "label": "baseline",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "ang mga ibon ay lumilipad sa langit tuwing hapon",
+    "durationSeconds": 6,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 8,
+    "wpm": 90,
+    "expected": 25,
+    "errors": 23,
+    "match": 2,
+    "substitution": 7,
+    "omission": 16,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 8,
+    "expected": 25,
+    "match": 2,
+    "wpm": 90,
+    "wcpm": 20
+   }
+  },
+  {
+   "name": "empty or punctuation-only transcript",
+   "label": "M2 and M5 differ: M5 refuses to save, M2 scores 0",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": " ... ",
+    "durationSeconds": 5,
+    "title": ""
+   },
+   "m5": {
+    "rejected": "INVALID_TRANSCRIPT"
+   },
+   "m2": {
+    "score": 0,
+    "expected": 25,
+    "match": 0,
+    "wpm": 0,
+    "wcpm": 0
+   }
+  },
+  {
+   "name": "correct reading after a long pause (30 s)",
+   "label": "LIMITATION: WPM uses wall-clock recording time, so silence lowers it",
+   "input": {
+    "passage": "Si Aling Rosa ay nagtitinda ng kakanin sa palengke. Araw-araw, gumigising siya nang maaga. Isang araw, dumating ang kanyang apo na si Ben-ben.",
+    "transcript": "si aling rosa ay nagtitinda ng kakanin sa palengke araw araw gumigising siya nang maaga isang araw dumating ang kanyang apo na si ben ben",
+    "durationSeconds": 30,
+    "title": ""
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 50,
+    "expected": 25,
+    "errors": 0,
+    "match": 25,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 100,
+    "expected": 25,
+    "match": 25,
+    "wpm": 50,
+    "wcpm": 50
+   }
+  },
+  {
+   "name": "title line read aloud",
+   "label": "M2 and M5 differ: M5 leaves the shown title out of the expected words",
+   "input": {
+    "passage": "Ang Mabait na Apo\nSi Ben ay mabait na apo.",
+    "transcript": "ang mabait na apo si ben ay mabait na apo",
+    "durationSeconds": 4,
+    "title": "Ang Mabait na Apo"
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 150,
+    "expected": 6,
+    "errors": 0,
+    "match": 6,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 100,
+    "expected": 10,
+    "match": 10,
+    "wpm": 150,
+    "wcpm": 150
+   }
+  },
+  {
+   "name": "title line not read",
+   "label": "M2 and M5 differ: M2 counts the unread title as omissions",
+   "input": {
+    "passage": "Ang Mabait na Apo\nSi Ben ay mabait na apo.",
+    "transcript": "si ben ay mabait na apo",
+    "durationSeconds": 3,
+    "title": "Ang Mabait na Apo"
+   },
+   "m5": {
+    "accuracy": 100,
+    "wpm": 120,
+    "expected": 6,
+    "errors": 0,
+    "match": 6,
+    "substitution": 0,
+    "omission": 0,
+    "insertion": 0
+   },
+   "m2": {
+    "score": 60,
+    "expected": 10,
+    "match": 6,
+    "wpm": 120,
+    "wcpm": 120
+   }
+  }
+ ]
+}

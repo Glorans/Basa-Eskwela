@@ -1,6 +1,7 @@
 import { ArrowLeft, BookOpen, CheckCircle2, Gauge, ListChecks, Mic2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import FeedbackSpeechControls from "../../../components/reading-feedback/FeedbackSpeechControls";
 import M3PageHeader from "../../module3/components/M3PageHeader";
 import RecordingPlayback from "../components/RecordingPlayback";
 import { getWordsToPractice } from "../services/oralReadingProcessing";
@@ -367,7 +368,16 @@ export default function TeacherOralReadingAttemptPage() {
           <p>These words may have been skipped or recognized differently during the read-aloud. A recognized difference is not always a pronunciation mistake.</p>
           {wordsToPractice.length > 0 ? (
             <ul className="m5-review-word-list">
-              {wordsToPractice.map((word) => <li key={word}>{word}</li>)}
+              {wordsToPractice.map((word) => (
+                <li key={word}>
+                  {word}
+                  {/* Filipino only: the passage word in a Philippine Filipino voice. English keeps its own checks. */}
+                  {attempt.language === "fil" && (
+                    <FeedbackSpeechControls text={word} language="fil" voice="philippine" uiLanguage="en"
+                      listenLabel="Listen to {word}" listenAgainLabel="Listen to {word} again" listenValues={{ word }} />
+                  )}
+                </li>
+              ))}
             </ul>
           ) : (
             <p className="m5-review-muted">No expected words were identified for practice.</p>

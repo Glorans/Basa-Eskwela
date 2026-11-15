@@ -164,6 +164,38 @@ export function placeStoryWords(
 }
 
 /**
+ * Filipino F3: like the English practiceExcerpt, a short story excerpt (at most
+ * `maxSentences` sentences) with the story words that were different or not heard
+ * marked. Display only, from the saved metrics, with the same exact check as
+ * markStory: null unless every story word lines up, so nothing is guessed.
+ */
+export function reviewExcerpt(
+  passage: string,
+  title: string,
+  language: DiagnosticLanguage,
+  metrics: readonly OralReadingWordMetric[],
+  maxSentences = 2,
+): TextPiece[][] | null {
+  if (!passage.trim()) return null;
+  const expected = metrics.filter((metric) => metric.type !== "insertion");
+  if (expected.some((metric) => typeof metric.expected !== "string")) return null;
+  const { tokens } = layoutStory(passage, title, language);
+  let cursor = 0;
+  const marked = new Set<number>();
+  for (const token of tokens) {
+    for (const word of token.words) {
+      const metric = expected[cursor++];
+      if (!metric || canonical(metric.expected as string, language) !== word) return null;
+      if (metric.type === "substitution" || metric.type === "omission") marked.add(token.index);
+    }
+  }
+  if (cursor !== expected.length) return null;
+  const sentences = [...new Set(tokens.filter((token) => marked.has(token.index)).map((token) => token.sentence))]
+    .sort((a, b) => a - b).slice(0, maxSentences);
+  return sentences.map((sentence) => excerptPieces(tokens.filter((token) => token.sentence === sentence), marked));
+}
+
+/**
  * F5 "What We Heard": transcript words that are different from the story.
  * When the saved metrics line up exactly with the transcript (reliable), each
  * different word also carries the story word(s) in its place; an extra word
