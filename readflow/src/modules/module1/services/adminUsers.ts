@@ -14,19 +14,55 @@ export interface ManagedUser {
   teacherStatus?: "pending" | "approved" | "rejected" | null;
 }
 
+// What the signed-in manager may do, decided by the server from the role stored in the database (M1 F6/F7/F8).
+// The UI only reflects it; every request is re-checked on the server.
+export interface AccountPermissions {
+  role: string;
+  visibleRoles: string[] | "all";
+  deletableRoles: string[];
+  canCreateSchoolAdmin: boolean;
+}
+
 interface ManagedUsersResponse {
   success: true;
   users: ManagedUser[];
+  permissions?: AccountPermissions;
 }
+
+export interface CreatedSchoolAdmin {
+  id: string;
+  email: string;
+  fullName: string;
+  role: "admin";
+  setupEmailSent: boolean;
+}
+
+const NO_PERMISSIONS: AccountPermissions = {
+  role: "", visibleRoles: [], deletableRoles: [], canCreateSchoolAdmin: false,
+};
 
 const getAdminRequestHeaders = () =>
   getSessionAuthHeaders("Your session could not be verified. Please sign in again.");
 
 export async function getManagedUsers() {
+  return (await getManagedAccounts()).users;
+}
+
+export async function getManagedAccounts() {
   const response = await api.get<ManagedUsersResponse>("/api/admin/users", {
     headers: await getAdminRequestHeaders(),
   });
-  return response.data.users;
+  return { users: response.data.users, permissions: response.data.permissions ?? NO_PERMISSIONS };
+}
+
+// M1 F8 (System Admin only). The server sets the role; the request carries only the email and name.
+export async function createSchoolAdmin(input: { email: string; fullName: string }) {
+  const response = await api.post<{ success: true; account: CreatedSchoolAdmin; message: string }>(
+    "/api/admin/users/school-admins",
+    { email: input.email, fullName: input.fullName },
+    { headers: await getAdminRequestHeaders() },
+  );
+  return response.data;
 }
 
 export async function deleteManagedUser(userId: string) {

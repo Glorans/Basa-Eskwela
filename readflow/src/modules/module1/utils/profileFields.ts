@@ -15,6 +15,7 @@ export function getEditableProfileField(
       return "nickname";
     case "teacher":
     case "admin":
+    case "system_admin":
       return "full_name";
     default:
       return null;

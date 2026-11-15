@@ -12,6 +12,7 @@ import TeacherVerificationPage from "./modules/module1/pages/TeacherVerification
 import Settings from "./modules/module1/pages/Settings";
 import UserManagementPage from "./modules/module1/pages/admin/UserManagementPage";
 import TeacherInvitationsPage from "./modules/module1/pages/admin/TeacherInvitationsPage";
+import CreateSchoolAdminPage from "./modules/module1/pages/admin/CreateSchoolAdminPage";
 import { DIAGNOSTIC_LEARNER_ROLES } from "./modules/module1/utils/authOnboarding";
 
 import {
@@ -269,7 +270,17 @@ function App() {
           </Route>
         </Route>
 
-        {/* Admin routes */}
+        {/* System Admin routes (M1 F4-F8 only: account management and own profile) */}
+        <Route element={<RequireRole allowedRoles={["system_admin"]} />}>
+          <Route path="/system-admin" element={<M3Layout role="system_admin" />}>
+            <Route index element={<Navigate to="users" replace />} />
+            <Route path="users" element={<UserManagementPage />} />
+            <Route path="school-admins/new" element={<CreateSchoolAdminPage />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+        </Route>
+
+        {/* Admin (School Admin) routes */}
         <Route element={<RequireRole allowedRoles={["admin"]} />}>
           <Route
             path="/m3/admin"

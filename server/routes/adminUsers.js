@@ -2,10 +2,12 @@ const express = require("express");
 const {
   AdminAuthorizationError,
   AdminUserOperationError,
-  authorizeAdminRequest,
+  authorizeAccountManager,
+  createSchoolAdmin,
   deleteManagedUser,
   listManagedUsers,
 } = require("../services/adminUserService");
+const { describePermissions } = require("../services/m1AccountScope");
 const {
   SupabaseAuthenticationError,
   SupabaseServerConfigurationError,
@@ -33,16 +35,23 @@ function sendAdminError(res, error) {
   });
 }
 
+// M1 F6 (view user roles), F7 (delete user account) and F8 (create School Admin account).
+// System Admin and School Admin only; every scope rule is enforced here, on the server.
 function createAdminUsersRouter(dependencies = {}) {
   const router = express.Router();
-  const authorize = dependencies.authorizeAdminRequest ?? authorizeAdminRequest;
+  const authorize = dependencies.authorizeAccountManager ?? authorizeAccountManager;
   const listUsers = dependencies.listManagedUsers ?? listManagedUsers;
   const deleteUser = dependencies.deleteManagedUser ?? deleteManagedUser;
+  const createAdmin = dependencies.createSchoolAdmin ?? createSchoolAdmin;
 
   router.get("/", async (req, res) => {
     try {
-      await authorize(req);
-      return res.json({ success: true, users: await listUsers() });
+      const { profile } = await authorize(req);
+      return res.json({
+        success: true,
+        users: await listUsers(undefined, profile.role),
+        permissions: describePermissions(profile.role),
+      });
     } catch (error) {
       return sendAdminError(res, error);
     }
@@ -50,13 +59,32 @@ function createAdminUsersRouter(dependencies = {}) {
 
   router.delete("/:userId", async (req, res) => {
     try {
-      const { user } = await authorize(req);
+      const { user, profile } = await authorize(req);
       if (!uuidPattern.test(req.params.userId)) {
         return res.status(400).json({ success: false, message: "Invalid user ID." });
       }
 
-      await deleteUser(user.id, req.params.userId);
+      await deleteUser(user.id, req.params.userId, undefined, profile.role);
       return res.json({ success: true, message: "User account deleted." });
+    } catch (error) {
+      return sendAdminError(res, error);
+    }
+  });
+
+  router.post("/school-admins", async (req, res) => {
+    try {
+      const { profile } = await authorize(req);
+      if (!describePermissions(profile.role)?.canCreateSchoolAdmin) {
+        throw new AdminAuthorizationError("Only a System Admin can create School Admin accounts.");
+      }
+      const account = await createAdmin({ email: req.body?.email, fullName: req.body?.fullName });
+      return res.status(201).json({
+        success: true,
+        account,
+        message: account.setupEmailSent
+          ? "School Admin account created. A password-setup email was sent."
+          : "School Admin account created, but the setup email could not be sent. Ask them to use Forgot password on the login page.",
+      });
     } catch (error) {
       return sendAdminError(res, error);
     }

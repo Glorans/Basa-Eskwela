@@ -63,7 +63,9 @@ test("real material lists are server-filtered and include safe uploader labels",
   const teacherRows = await listPersistedMaterials(requester(TEACHER_A, "teacher"), dependencies(database));
   const generalRows = await listPersistedMaterials(requester(GENERAL, "general_user"), dependencies(database));
 
-  assert.deepEqual(adminRows.map((row) => row.id).sort(), [MATERIAL_A, MATERIAL_B].sort());
+  // M1 scope: the School Admin never sees an Independent Learner's personal upload.
+  assert.deepEqual(adminRows.map((row) => row.id), [MATERIAL_A]);
+  assert.equal(JSON.stringify(adminRows).includes("Reader"), false, "no Independent Learner name");
   assert.deepEqual(teacherRows.map((row) => row.id), [MATERIAL_A]);
   assert.deepEqual(generalRows.map((row) => row.id), [MATERIAL_B]);
   assert.equal(teacherRows[0].questionSetCount, 2);
@@ -88,6 +90,22 @@ test("material detail enforces Teacher and General User ownership while Admin ma
     getPersistedMaterial(requester(GENERAL, "general_user"), MATERIAL_A, deps),
     MaterialAuthorizationError,
   );
+});
+
+test("School Admin gets 'not found' for an Independent Learner's material: no detail, no deletion", async () => {
+  const database = createDatabase({
+    profiles: [{ id: TEACHER_A, full_name: "Teacher A", role: "teacher" }, { id: GENERAL, full_name: "Reader", role: "general_user" }],
+    uploaded_materials: [material(MATERIAL_A, TEACHER_A), material(MATERIAL_B, GENERAL)],
+  });
+  const deps = dependencies(database);
+  for (const action of [() => getPersistedMaterial(requester(ADMIN, "admin"), MATERIAL_B, deps),
+    () => deletePersistedMaterial(requester(ADMIN, "admin"), MATERIAL_B, deps)]) {
+    await assert.rejects(action, (error) => error instanceof MaterialPersistenceError && error.statusCode === 404);
+  }
+  assert.equal(database.tables.uploaded_materials.length, 2, "nothing deleted");
+  assert.equal(database.removedStoragePaths.length, 0);
+  assert.equal((await getPersistedMaterial(requester(ADMIN, "admin"), MATERIAL_A, deps)).id, MATERIAL_A, "Teacher material still visible");
+  assert.equal((await getPersistedMaterial(requester(GENERAL, "general_user"), MATERIAL_B, deps)).id, MATERIAL_B, "the owner still sees it");
 });
 
 test("referenced material deletion returns 409 without removing Storage or metadata", async () => {

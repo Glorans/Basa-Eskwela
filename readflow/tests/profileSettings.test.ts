@@ -15,16 +15,16 @@ import {
 const source = (path: string) =>
   readFile(new URL(`../src/${path}`, import.meta.url), "utf8");
 
-test("Student, Independent Learner, Teacher, and Admin can view Settings", async () => {
+test("Student, Independent Learner, Teacher, School Admin and System Admin can view Settings", async () => {
   const app = await source("App.tsx");
 
-  for (const role of ["student", "general_user", "teacher", "admin"]) {
+  for (const role of ["student", "general_user", "teacher", "admin", "system_admin"]) {
     assert.match(app, new RegExp(`allowedRoles=\\{\\["${role}"\\]\\}`));
   }
 
   assert.equal(
     app.match(/<Route\s+path="settings"\s+element=\{<Settings\s*\/>\}\s*\/>/g)?.length,
-    4,
+    5,
   );
 });
 
@@ -35,6 +35,7 @@ test("each role receives only its supported editable profile field", async () =>
   assert.equal(getEditableProfileField("general_user"), "nickname");
   assert.equal(getEditableProfileField("teacher"), "full_name");
   assert.equal(getEditableProfileField("admin"), "full_name");
+  assert.equal(getEditableProfileField("system_admin"), "full_name");
   assert.equal(getEditableProfileField("unsupported"), null);
   assert.equal(
     getEditableProfileValue({

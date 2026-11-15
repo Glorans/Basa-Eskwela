@@ -40,7 +40,7 @@ test('Admin listing includes real Teacher status, full name, email and registrat
   const users = await listManagedUsers({ getSupabaseAdmin: () => ({
     auth: { admin: { listUsers: async () => ({ data: { users: [{ id: 'teacher', email: 'teacher@example.test' }] } }) } },
     from: () => ({ select() { return this; }, order: async () => ({ data: [profile] }) }),
-  }) });
+  }) }, 'admin');
   assert.equal(users[0].teacherStatus, 'pending');
   assert.equal(users[0].fullName, 'Maria Santos');
   assert.equal(users[0].email, 'teacher@example.test');

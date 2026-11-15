@@ -3,6 +3,7 @@ const {
   getAuthenticatedSupabaseUser,
   getSupabaseAdmin,
 } = require("./supabaseAdmin");
+const { canDeleteAccount, canViewAccount, isAccountManager } = require("./m1AccountScope");
 
 class AdminAuthorizationError extends Error {
   constructor(message = "Admin access is required.") {
@@ -42,6 +43,21 @@ async function authorizeAdminRequest(req, dependencies = {}) {
   return { user, profile };
 }
 
+/**
+ * M1 account management (F6 view roles, F7 delete, F8 create School Admin): a System Admin or a School Admin.
+ * The role is always read from the database profile, never from the browser or JWT metadata. Every other
+ * Admin feature keeps using authorizeAdminRequest (School Admin only), so a System Admin gains nothing else.
+ */
+async function authorizeAccountManager(req, dependencies = {}) {
+  const authenticate = dependencies.getAuthenticatedSupabaseUser ?? getAuthenticatedSupabaseUser;
+  const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
+  const user = await authenticate(req);
+  const { data: profile, error } = await getAdmin().from("profiles").select("id, role").eq("id", user.id).single();
+  if (error || !profile) throw new SupabaseAuthenticationError();
+  if (!isAccountManager(profile.role)) throw new AdminAuthorizationError("Administrator access is required.");
+  return { user, profile };
+}
+
 async function listAllAuthUsers(supabase) {
   const users = [];
   const perPage = 1000;
@@ -63,7 +79,17 @@ async function listAllAuthUsers(supabase) {
   return users;
 }
 
-async function listManagedUsers(dependencies = {}) {
+/**
+ * F6: the accounts a manager may see (System Admin: all; School Admin: Teachers and Students only).
+ * Fails closed: without a manager role read from the database, nothing is returned.
+ */
+async function listManagedUsers(dependencies = {}, managerRole) {
+  if (!isAccountManager(managerRole)) throw new AdminAuthorizationError("Administrator access is required.");
+  return (await loadAccountDirectory(dependencies)).filter((user) => canViewAccount(managerRole, user.role));
+}
+
+// Every Auth account joined to its profile. Internal: callers must apply a manager scope before returning it.
+async function loadAccountDirectory(dependencies = {}) {
   const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
   const supabase = getAdmin();
   const [authUsers, profileResult] = await Promise.all([
@@ -113,7 +139,10 @@ async function listManagedUsers(dependencies = {}) {
   return users.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-async function deleteManagedUser(requesterId, userId, dependencies = {}) {
+const ADMINISTRATOR_ROLES = new Set(["admin", "system_admin"]);
+
+async function deleteManagedUser(requesterId, userId, dependencies = {}, managerRole) {
+  if (!isAccountManager(managerRole)) throw new AdminAuthorizationError("Administrator access is required.");
   if (requesterId === userId) {
     throw new AdminUserOperationError(
       "You cannot delete your currently signed-in Admin account.",
@@ -133,11 +162,20 @@ async function deleteManagedUser(requesterId, userId, dependencies = {}) {
     throw new AdminUserOperationError("Unable to verify the selected user's role.");
   }
 
-  if (profile?.role === "admin") {
-    throw new AdminUserOperationError(
-      "Admin accounts cannot be deleted through User Management.",
-      409,
-    );
+  // F7 scope, checked on the server against the database role (never the browser's list).
+  const targetRole = profile?.role ?? null;
+  if (!canDeleteAccount({ managerRole, managerId: requesterId, targetRole, targetId: userId })) {
+    // A School Admin gets one answer for every out-of-scope ID (Independent Learner, administrator, unassigned or
+    // missing), so a guessed ID never reveals what kind of account it is.
+    if (managerRole === "system_admin" && ADMINISTRATOR_ROLES.has(targetRole)) {
+      throw new AdminUserOperationError(
+        targetRole === "system_admin"
+          ? "System Admin accounts cannot be deleted through User Management."
+          : "School Admin accounts can be deleted only by a System Admin.",
+        409,
+      );
+    }
+    throw new AdminUserOperationError("This account is outside the accounts you can manage.", 403);
   }
 
   const { error } = await supabase.auth.admin.deleteUser(userId);
@@ -149,10 +187,70 @@ async function deleteManagedUser(requesterId, userId, dependencies = {}) {
   }
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const FULL_NAME_MAX_LENGTH = 100;
+
+/** The password-setup link opens the existing Reset Password page on the configured frontend. */
+function passwordSetupRedirect(env = process.env) {
+  const origin = String(env.FRONTEND_ORIGIN || "").split(",").map((value) => value.trim()).find(Boolean);
+  if (!origin || !/^https?:\/\/[^\s/]+$/i.test(origin.replace(/\/$/, ""))) return null;
+  return `${origin.replace(/\/$/, "")}/reset-password`;
+}
+
+/**
+ * F8: a System Admin creates a School Admin (profiles.role = 'admin'). The account is created WITHOUT a password
+ * and with a confirmed email; the person then sets their own password through the existing password-reset email
+ * (the same Supabase recovery flow as Forgot password). No password is ever generated, stored or shown.
+ * If the role cannot be set, the new Auth account is removed again so no half-created account remains.
+ */
+async function createSchoolAdmin(input, dependencies = {}) {
+  const email = String(input?.email ?? "").trim().toLowerCase();
+  const fullName = String(input?.fullName ?? "").replace(/\s+/g, " ").trim();
+  if (!EMAIL_PATTERN.test(email)) throw new AdminUserOperationError("Enter a valid email address.", 400);
+  if (!fullName || fullName.length > FULL_NAME_MAX_LENGTH) {
+    throw new AdminUserOperationError(`Enter the School Admin's full name (up to ${FULL_NAME_MAX_LENGTH} characters).`, 400);
+  }
+  const redirectTo = (dependencies.passwordSetupRedirect ?? passwordSetupRedirect)();
+  if (!redirectTo) throw new AdminUserOperationError("The password-setup link is not configured on the server.", 503);
+
+  const supabase = (dependencies.getSupabaseAdmin ?? getSupabaseAdmin)();
+  const existing = await listAllAuthUsers(supabase);
+  if (existing.some((user) => String(user.email ?? "").toLowerCase() === email)) {
+    // Only a System Admin reaches this, so saying the address is taken reveals nothing to the public.
+    throw new AdminUserOperationError("An account with this email address already exists.", 409);
+  }
+
+  const { data: created, error: createError } = await supabase.auth.admin.createUser({ email, email_confirm: true });
+  const newId = created?.user?.id;
+  if (createError || !newId) {
+    throw new AdminUserOperationError(createError?.status === 422
+      ? "An account with this email address already exists."
+      : "Unable to create the School Admin account.", createError?.status === 422 ? 409 : 500);
+  }
+
+  // The signup trigger created the profile with no role. Only this server (service role) may set a role.
+  const { data: updated, error: roleError } = await supabase
+    .from("profiles")
+    .update({ role: "admin", full_name: fullName, status: "active" })
+    .eq("id", newId)
+    .is("role", null)
+    .select("id, role");
+  if (roleError || !updated || updated.length !== 1 || updated[0].role !== "admin") {
+    await supabase.auth.admin.deleteUser(newId).catch(() => {});
+    throw new AdminUserOperationError("Unable to assign the School Admin role. No account was created.", 500);
+  }
+
+  const { error: emailError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  return { id: newId, email, fullName, role: "admin", setupEmailSent: !emailError };
+}
+
 module.exports = {
   AdminAuthorizationError,
   AdminUserOperationError,
+  authorizeAccountManager,
   authorizeAdminRequest,
+  createSchoolAdmin,
   deleteManagedUser,
   listManagedUsers,
+  passwordSetupRedirect,
 };

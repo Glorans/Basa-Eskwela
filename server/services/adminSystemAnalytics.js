@@ -165,9 +165,10 @@ async function loadAdminData(dependencies = {}) {
     ...expandModuleAssignments(activeRoomModules(roomModules, modules), recipients, withAssessmentRequirement(passages, questions), enrolledIn)
       .map((a) => ({ ...a, title: titleOf(modules, a.module_id) })),
   ];
-  // Learner performance only: Admin self-practice (M5 readings, M6 comprehension) and any other
-  // non-learner account's rows never enter system totals, trends, comparisons or participation.
-  const learners = new Set(profiles.filter(p => p.role === 'student' || p.role === 'general_user').map(p => p.id));
+  // Student performance only (M1 scope: the School Admin manages Teachers and Students, never Independent
+  // Learners). Independent Learner practice, Admin self-practice (M5 readings, M6 comprehension) and any other
+  // non-Student account's rows never enter system totals, trends, comparisons, participation or reports.
+  const learners = new Set(profiles.filter(p => p.role === 'student').map(p => p.id));
   return { profiles, rooms, enrollments, readings: readings.filter(r => learners.has(r.user_id)),
     quizzes: quizResults.filter(q => learners.has(q.userId)), assignments,
     attempts: attempts.filter(a => learners.has(a.user_id)), interventions };

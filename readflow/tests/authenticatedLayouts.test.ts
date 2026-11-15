@@ -9,7 +9,8 @@ for (const [role, nickname, full_name, name, label] of [
   ["general_user", " Pan ", "", "Pan", "Independent Learner"],
   ["general_user", "Pan", "Legal Name", "Pan", "Independent Learner"],
   ["teacher", "Ana", " Ana Cruz ", "Ana Cruz", "Teacher"],
-  ["admin", "Admin", " Admin User ", "Admin User", "Admin"],
+  ["admin", "Admin", " Admin User ", "Admin User", "School Admin"],
+  ["system_admin", "", " Sys Admin ", "Sys Admin", "System Admin"],
 ] as const) test(`${role} resolves ${name} and ${label}`, () => {
   assert.equal(getProfileDisplayName({ role, nickname, full_name }), name);
   assert.equal(ROLE_LABELS[role], label);
@@ -40,8 +41,9 @@ test("headers share loaded identity, settings links, and contain no duplicate br
   assert.match(basa, /<Link[^>]*to="\/dashboard\/settings"/);
   assert.match(m3, /<NavLink[^>]*to=\{getProfileRoute\(role\)\}/);
   for (const role of ["admin", "teacher", "general"]) assert.ok(m3.includes(`/m3/${role}/settings`));
+  assert.ok(m3.includes("/system-admin/settings"));
   const app = await source("App.tsx");
-  assert.equal(app.match(/<Route\s+path="settings"\s+element=\{<Settings\s*\/>\}\s*\/>/g)?.length, 4);
+  assert.equal(app.match(/<Route\s+path="settings"\s+element=\{<Settings\s*\/>\}\s*\/>/g)?.length, 5);
   assert.match(await source("modules/module1/pages/Settings.tsx"), /Profile and Account/);
   assert.match(await source("pages/StudentDashboard.tsx"), /!loading && profile \? getProfileDisplayName\(profile\)/);
 });

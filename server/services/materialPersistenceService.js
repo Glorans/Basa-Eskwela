@@ -238,11 +238,15 @@ async function listPersistedMaterials(
 
   const deleted = requester.profile.role === "general_user"
     ? await require("./personalMaterialService").deletedPersonalIds(supabase, (data ?? []).map(m => m.id)) : new Set();
-  const materials = (data ?? []).filter(m => !deleted.has(m.id));
+  let materials = (data ?? []).filter(m => !deleted.has(m.id));
   const profiles = await loadUploaderProfiles(
     supabase,
     materials,
   );
+  if (requester.profile.role === "admin") {
+    // School Admin: never an Independent Learner's personal upload (see isIndependentLearnerUpload).
+    materials = materials.filter((material) => profiles.get(material.uploaded_by)?.role !== "general_user");
+  }
 
   const materialIds = materials.map(
     (material) => material.id,
@@ -338,6 +342,15 @@ async function loadMaterialRow(
   return data;
 }
 
+// M1 scope: a School Admin manages Teacher and Student accounts only, so an Independent Learner's personal uploads
+// (and the learner behind them) are outside the School Admin's reach. The uploader's role is read from the database.
+async function isIndependentLearnerUpload(supabase, uploaderId) {
+  if (!uploaderId) return false;
+  const { data, error } = await supabase.from("profiles").select("id, role").eq("id", uploaderId).maybeSingle();
+  if (error) throw new MaterialPersistenceError("Unable to verify the material owner.");
+  return data?.role === "general_user";
+}
+
 async function getAuthorizedMaterialRow(
   requester,
   materialId,
@@ -352,6 +365,15 @@ async function getAuthorizedMaterialRow(
     throw new MaterialAuthorizationError(
       "This uploaded material is not available to your account.",
     );
+  }
+
+  if (
+    requester.profile.role === "admin"
+    && material.uploaded_by !== requester.user.id
+    && await isIndependentLearnerUpload(dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin(), material.uploaded_by)
+  ) {
+    // The same answer as a missing material, so the ID reveals nothing about the Independent Learner.
+    throw new MaterialPersistenceError("Uploaded material not found.", 404, "MATERIAL_NOT_FOUND");
   }
 
   if (requester.profile.role === "general_user" && (await require("./personalMaterialService").deletedPersonalIds(dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin(), [materialId])).has(materialId)) {
