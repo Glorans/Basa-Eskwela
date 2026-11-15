@@ -380,12 +380,9 @@
   background: var(--basa-navy);
 }
 
-/* Filipino F4: each row stacks its word, what was heard and its sentence. */
-.result-reading-words .result-practice-item {
-  grid-template-columns: minmax(0, 1fr);
-}
-
+/* Filipino F4: the English word card (word, then its Pakinggan button); what was heard spans the row. */
 .result-reading-heard {
+  grid-column: 1 / -1;
   margin: 0;
   font-weight: 700;
 }
@@ -929,6 +926,30 @@
   background: color-mix(in srgb, var(--basa-yellow) 35%, var(--basa-card));
   color: var(--basa-navy);
   font-weight: 700;
+}
+
+/* Filipino F2 only: the reading facts in one cream panel (the English tile colour and radius),
+   and the longer practice tip in the shared instruction box with its body text at normal weight. */
+.result-feedback-facts {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--basa-btn-radius);
+  background: var(--basa-cream);
+}
+
+.result-feedback-facts p {
+  margin: 0;
+}
+
+.result-feedback-tip {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.result-feedback-tip strong {
+  font-weight: 800;
 }
 
 /* F3: "How was my pronunciation scored?" (closed by default). */

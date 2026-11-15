@@ -27,6 +27,8 @@ export type FilipinoReadingStats =
     differenceCount: number | null;
     /** Only attempts saved under the current scoring rule get its explanation. */
     currentScoringRule: boolean;
+    /** The F6 rule for its short message: every scored story word matched and nothing else was heard. */
+    everyWordMatched: boolean;
   };
 
 export function filipinoReadingStats(attempt: FilipinoFeedbackAttempt): FilipinoReadingStats {
@@ -39,6 +41,8 @@ export function filipinoReadingStats(attempt: FilipinoFeedbackAttempt): Filipino
     matched: metrics.length ? metrics.filter((metric) => metric.type === "match").length : null,
     differenceCount: metrics.length ? metrics.filter((metric) => metric.type !== "match").length : null,
     currentScoringRule: attempt.scoringVersion === 2,
+    everyWordMatched: metrics.length > 0 && metrics.every((metric) => metric.type === "match")
+      && metrics.filter((metric) => metric.type === "match").length === attempt.expectedWordCount,
   };
 }
 

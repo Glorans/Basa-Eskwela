@@ -231,13 +231,15 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const accuracyTitle = t(filipino ? "Reading Accuracy" : "Pronunciation Accuracy");
   const accuracyCardText = t(filipino ? "How closely the words we heard matched the story." : "See your pronunciation accuracy score.");
   const wordsTitle = t(filipino ? "Words to Review" : "Mispronounced Words");
-  const wordsCardText = t(filipino ? "See the story words and what the computer heard." : "Listen to words and practice saying them.");
+  const wordsCardText = t(filipino ? "Listen to the story words and compare them with what the computer heard." : "Listen to words and practice saying them.");
   const accuracy = Math.round(attempt.pronunciationAccuracy);
   const correctWordCount = attempt.wordMetrics.filter((word) => word.type === "match").length;
   // Every scored story word matched and nothing was different or extra (F6 wording only).
   const everyWordMatched = attempt.wordMetrics.length > 0 && attempt.wordMetrics.every((word) => word.type === "match")
     && correctWordCount === attempt.expectedWordCount;
   const flaggedWords = pronunciation.status === "done" ? pronunciation.summary?.wordsToPractice.length ?? 0 : 0;
+  // Filipino F4 shows the full recording below its word list, as English does below flagged words.
+  const reviewedWords = filipino && attempt.transcript?.trim() ? attempt.wordMetrics.filter((word) => word.type !== "match").length : 0;
   const storyTitle = attempt.passageTitle || attempt.moduleTitle;
   // F5: marks appear only where the saved word metrics line up exactly with the text.
   const heard = markTranscript(attempt.transcript ?? "", attempt.wordMetrics, attempt.language);
@@ -363,7 +365,11 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                 {wordsOpened && flaggedWords > 0 && <RecordingPlayback key={`words-${attempt.id}`} attemptId={attempt.id} language={language} />}
               </>
             ) : (
-              <FilipinoWordReviewPanel attempt={attempt} />
+              <>
+                <FilipinoWordReviewPanel attempt={attempt} />
+                {/* The learner's own recording, as in F2 and in English F4: the same component and access. */}
+                {wordsOpened && reviewedWords > 0 && <RecordingPlayback key={`words-${attempt.id}`} attemptId={attempt.id} language={language} />}
+              </>
             )}
           </M5Modal>
 

@@ -16,6 +16,12 @@ interface FeedbackSpeechControlsProps {
   showMute?: boolean;
   /** "philippine" for M5 feedback; other pages keep the default voice. */
   voice?: FeedbackSpeechVoice;
+  /** After the first play; default "Listen again". */
+  listenAgainLabel?: ActivityText;
+  /** Values for both listen labels, e.g. { word } for "Listen to {word}". */
+  listenValues?: Record<string, string | number>;
+  /** Language of the button labels when it differs from the spoken text (English Teacher and Admin views). */
+  uiLanguage?: ActivityLanguage;
 }
 
 /** Re-renders when the shared player changes. */
@@ -28,9 +34,9 @@ export function useFeedbackSpeechState() {
 
 /** Listen / Stop / sound on-off for one piece of feedback. Never plays on its own. */
 export default function FeedbackSpeechControls({
-  text, language, listenLabel = "Listen", disabled = false, showMute = false, voice = "default",
+  text, language, listenLabel = "Listen", disabled = false, showMute = false, voice = "default", listenAgainLabel = "Listen again", listenValues, uiLanguage,
 }: FeedbackSpeechControlsProps) {
-  const { t } = getActivityText(language);
+  const { t } = getActivityText(uiLanguage ?? language);
   const player = getFeedbackSpeech();
   const state = useFeedbackSpeechState();
   const [played, setPlayed] = useState(false);
@@ -56,7 +62,7 @@ export default function FeedbackSpeechControls({
         </button>
       ) : (
         <button type="button" className="feedback-speech-button" disabled={disabled}
-          aria-label={played ? t("Listen again") : t(listenLabel)}
+          aria-label={played ? t(listenAgainLabel, listenValues) : t(listenLabel, listenValues)}
           onClick={() => { setPlayed(true); void player.play(text, language, key, voice); }}>
           <Volume2 size={18} aria-hidden="true" />
         </button>

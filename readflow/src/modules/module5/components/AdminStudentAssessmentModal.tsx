@@ -6,7 +6,7 @@ import { getAdminPronunciationCheck } from "../services/oralReadingTranscription
 import { isPartialCheck, pronunciationOverview, type SavedPronunciationCheck } from "../services/pronunciationSummary";
 import { placePracticeWords, type TextPiece } from "../services/resultWords";
 import type { OralReadingAttempt } from "../types/oralReading";
-import FilipinoReadingFeedback, { FilipinoWordReviewPanel } from "./FilipinoReadingFeedback";
+import FilipinoReadingFeedback, { FilipinoReadingAccuracyPanel, FilipinoWordReviewPanel } from "./FilipinoReadingFeedback";
 import M5Modal from "./M5Modal";
 import RecordingPlayback from "./RecordingPlayback";
 import SavedTranscript from "./SavedTranscript";
@@ -118,44 +118,50 @@ export default function AdminStudentAssessmentModal({ studentName, summary, read
               <p className="result-feedback-note">Reading Accuracy compares the words the computer heard with the story. It is separate from Pronunciation Accuracy.</p>
             </section>
 
-            {/* The feedback a student sees for a Filipino reading, from the same saved attempt. */}
-            {loaded.language === "fil" && <FilipinoReadingFeedback attempt={loaded} uiLanguage="en" title="Feedback Shown to the Student" />}
-
-            <section className="result-feedback-card" aria-labelledby="admin-pronunciation-title">
-              <h3 id="admin-pronunciation-title"><Mic size={22} aria-hidden="true" />Pronunciation Accuracy</h3>
-              {savedFailed ? (
-                <div role="alert">
-                  <p className="result-feedback-note">The saved pronunciation check could not be loaded.</p>
-                  <button type="button" className="result-feedback-button" onClick={() => setSavedRevision((value) => value + 1)}>Retry</button>
-                </div>
-              ) : !saved ? (
-                <p className="result-feedback-note" role="status">Loading the saved pronunciation check…</p>
-              ) : saved.status === "running" ? (
-                <p className="result-feedback-note" role="status">The student's pronunciation check is still running. Reopen this reading later to see it.</p>
-              ) : !results || results.accuracy === null ? (
-                <>
-                  <p className="result-feedback-message">Not assessed</p>
-                  <p className="result-feedback-note">
-                    {saved.status === "unsupported" ? "Pronunciation checks are available for English readings only."
-                      : results ? "This check could not score any speech in the reading."
-                        : "This reading has no saved pronunciation check."}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="result-pronunciation-value"><strong>{results.accuracy}</strong> out of 100</p>
-                  <progress className="result-feedback-progress" value={results.accuracy} max={100} aria-label={`Pronunciation Accuracy: ${results.accuracy} out of 100`}>{results.accuracy} out of 100</progress>
-                  <p className="result-feedback-note">A 0-100 score, not the percent of words said correctly.</p>
-                  {isPartialCheck(results) && (
-                    <p className="result-feedback-note" role="note">
-                      Only part of this reading was checked
-                      {typeof results.storyWords === "number" && typeof results.assessedStoryWords === "number"
-                        ? ` (${results.assessedStoryWords} of ${results.storyWords} story words were scored)` : ""}, so these results cover that part only.
+            {/* Filipino: the same F3 card as the student's result page (transcript-based, never a
+                pronunciation score), then the feedback the student sees, in the English order. */}
+            {loaded.language === "fil" ? (
+              <>
+                <FilipinoReadingAccuracyPanel attempt={loaded} uiLanguage="en" />
+                <FilipinoReadingFeedback attempt={loaded} uiLanguage="en" title="Feedback Shown to the Student" />
+              </>
+            ) : (
+              <section className="result-feedback-card" aria-labelledby="admin-pronunciation-title">
+                <h3 id="admin-pronunciation-title"><Mic size={22} aria-hidden="true" />Pronunciation Accuracy</h3>
+                {savedFailed ? (
+                  <div role="alert">
+                    <p className="result-feedback-note">The saved pronunciation check could not be loaded.</p>
+                    <button type="button" className="result-feedback-button" onClick={() => setSavedRevision((value) => value + 1)}>Retry</button>
+                  </div>
+                ) : !saved ? (
+                  <p className="result-feedback-note" role="status">Loading the saved pronunciation check…</p>
+                ) : saved.status === "running" ? (
+                  <p className="result-feedback-note" role="status">The student's pronunciation check is still running. Reopen this reading later to see it.</p>
+                ) : !results || results.accuracy === null ? (
+                  <>
+                    <p className="result-feedback-message">Not assessed</p>
+                    <p className="result-feedback-note">
+                      {saved.status === "unsupported" ? "Pronunciation checks are available for English readings only."
+                        : results ? "This check could not score any speech in the reading."
+                          : "This reading has no saved pronunciation check."}
                     </p>
-                  )}
-                </>
-              )}
-            </section>
+                  </>
+                ) : (
+                  <>
+                    <p className="result-pronunciation-value"><strong>{results.accuracy}</strong> out of 100</p>
+                    <progress className="result-feedback-progress" value={results.accuracy} max={100} aria-label={`Pronunciation Accuracy: ${results.accuracy} out of 100`}>{results.accuracy} out of 100</progress>
+                    <p className="result-feedback-note">A 0-100 score, not the percent of words said correctly.</p>
+                    {isPartialCheck(results) && (
+                      <p className="result-feedback-note" role="note">
+                        Only part of this reading was checked
+                        {typeof results.storyWords === "number" && typeof results.assessedStoryWords === "number"
+                          ? ` (${results.assessedStoryWords} of ${results.storyWords} story words were scored)` : ""}, so these results cover that part only.
+                      </p>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
 
             {results && (
               <>

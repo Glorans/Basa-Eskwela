@@ -5,7 +5,7 @@ import "../../../pages/reading-activity/ReadingResultPage.css";
 import { getOralReadingAttempt, type OwnOralReadingSummary } from "../services/oralReadingService";
 import { pronunciationOverview } from "../services/pronunciationSummary";
 import type { LearnerM5Role, OralReadingAttempt } from "../types/oralReading";
-import FilipinoReadingFeedback, { FilipinoWordReviewPanel, READING_ACCURACY_EXPLANATION } from "./FilipinoReadingFeedback";
+import FilipinoReadingFeedback, { FilipinoReadingAccuracyPanel, FilipinoWordReviewPanel } from "./FilipinoReadingFeedback";
 import M5Modal from "./M5Modal";
 import { PronunciationAccuracyPanel, PronunciationWordsPanel, usePronunciationCheck } from "./PronunciationFeedback";
 import RecordingPlayback from "./RecordingPlayback";
@@ -97,15 +97,16 @@ export default function SavedAssessmentModal({ role, summary, readingNumber, onC
                   <dd className="result-feedback-summary-value">{t("{wpm} words per minute", { wpm: Math.round(loaded.readingSpeedWpm) })}</dd>
                 </div>
               </dl>
-              {/* Filipino F3: the same saved values, so only its explanation is added here. */}
-              {loaded.language === "fil" && loaded.scoringVersion === 2 && <p className="result-feedback-note">{t(READING_ACCURACY_EXPLANATION)}</p>}
             </section>
 
             {/* Filipino F2 feedback: the same saved attempt and the same text as the result page. */}
             {loaded.language === "fil" && <FilipinoReadingFeedback attempt={loaded} uiLanguage={language} />}
 
-            {/* F2-F4: the saved English pronunciation check only. */}
-            {loaded.language !== "en" ? (
+            {/* F2-F4. Filipino: the same F3 card as the result page (transcript-based, never pronunciation).
+                English: the saved pronunciation check only. */}
+            {loaded.language === "fil" ? (
+              <FilipinoReadingAccuracyPanel attempt={loaded} uiLanguage={language} />
+            ) : loaded.language !== "en" ? (
               <section className="result-feedback-card" aria-labelledby="saved-pronunciation-title">
                 <h3 id="saved-pronunciation-title"><Gauge size={22} aria-hidden="true" />{t("Pronunciation Accuracy")}</h3>
                 <p className="result-feedback-message">{t("Not assessed")}</p>

@@ -6,11 +6,12 @@ import { createRequire } from "node:module";
 import test from "node:test";
 import { getReadingWords } from "../src/modules/module2/services/diagnosticScoring.ts";
 import * as feedbackService from "../src/modules/module5/services/filipinoReadingFeedback.ts";
-import { markStory, markTranscript, placeStoryWords, readingAccuracyMessage } from "../src/modules/module5/services/resultWords.ts";
+import * as resultWords from "../src/modules/module5/services/resultWords.ts";
 import * as activityLanguage from "../src/pages/reading-activity/activityLanguage.ts";
 import { loadComponentModule } from "./helpers/hookRuntime.ts";
 
 const { buildFilipinoFeedback, filipinoReadingStats, MAX_START_WORDS } = feedbackService;
+const { markStory, markTranscript, placeStoryWords, readingAccuracyMessage } = resultWords;
 const require = createRequire(import.meta.url);
 const react = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
@@ -51,9 +52,14 @@ function gripoAttempt() {
 
 const panels = loadComponentModule(new URL("../src/modules/module5/components/FilipinoReadingFeedback.tsx", import.meta.url), (id) => {
   if (id === "react/jsx-runtime") return require("react/jsx-runtime");
-  if (id === "lucide-react") return { MessageCircle: "svg", Gauge: "svg", ListChecks: "svg" };
+  if (id === "react") return react;
+  if (id === "lucide-react") return new Proxy({}, { get: () => "svg" });
   if (id.endsWith("/activityLanguage")) return activityLanguage;
   if (id.endsWith("/filipinoReadingFeedback")) return feedbackService;
+  if (id.endsWith("/resultWords")) return resultWords;
+  // The real player is covered in m5FilipinoWordSpeech.test.ts; here it is idle.
+  if (id.endsWith("/FeedbackSpeechControls")) return { useFeedbackSpeechState: () => ({ status: "idle", key: null, muted: false }) };
+  if (id.endsWith("/feedbackSpeech")) return { getFeedbackSpeech: () => ({ play: async () => true, stop() {}, stopIf() {} }) };
   throw new Error(`Unexpected import ${id}`);
 });
 const render = (panel: unknown, input: unknown, props: Record<string, unknown> = {}) =>
@@ -84,7 +90,7 @@ test("F3 for that reading shows the saved Reading Accuracy, labelled as reading,
   assert.match(shown, />89%</);
   assert.match(shown, /Mga Salitang Tumugma/);
   assert.match(shown, /67 sa 74/);
-  assert.match(shown, /Mga Pagkakaibang Binilang/);
+  assert.match(shown, /Mga Pagkakaibang Natukoy/);
   assert.match(shown, />8</, "(74 - 8) / 74 is the saved 89%; the extra word is why it is below 67 of 74");
   assert.match(shown, /ibinabawas ang bawat pagkakaibang/);
   assert.match(shown, /Hindi ito marka sa pagbigkas/);
@@ -108,7 +114,7 @@ test("F4 for that reading lists all eight saved differences, including the digit
   assert.match(shown, /Ang narinig ng computer: “grasya”/);
   assert.match(shown, /Ang narinig ng computer: “1”/);
   assert.match(shown, /Maaaring isulat ng computer bilang numero/);
-  assert.match(shown, /<mark[^>]*>plasa<\/mark>/);
+  assert.match(shown, /<mark[^>]*>plasa<span class="result-visually-hidden"> \(salitang dapat balikan\)<\/span><\/mark>/);
   assert.match(shown, /Hindi ito mga tiyak na mali sa pagbigkas/);
   assert.doesNotMatch(shown, /Mali ang Bigkas|out of 100|%/);
   // The extra word is shown beside the sentence it was heard near, with nothing in the story marked.
@@ -278,7 +284,7 @@ test("no usable saved score: F3 says Not assessed and never shows a broken value
   }
 });
 
-test("a missing recording is safe: these panels never load audio, and tips do not assume a recording", () => {
+test("a missing recording is safe: these panels never load the recording, and tips do not assume a recording", () => {
   const source = readFileSync(new URL("../src/modules/module5/components/FilipinoReadingFeedback.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /<audio|<RecordingPlayback|fetch\(|oralReadingService|oralReadingTranscription|usePronunciationCheck|"\.\/PronunciationFeedback"/);
   const service = readFileSync(new URL("../src/modules/module5/services/filipinoReadingFeedback.ts", import.meta.url), "utf8");
