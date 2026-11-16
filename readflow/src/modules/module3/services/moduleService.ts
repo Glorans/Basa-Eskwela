@@ -278,7 +278,7 @@ export async function getTrashedModules(): Promise<TrashedModule[] | null> {
   }
 }
 
-async function trashAction(name: "m3_trash_module" | "m3_restore_module" | "m3_purge_module", moduleId: string, operation: string) {
+async function trashAction(name: "m3_trash_module" | "m3_restore_module" | "m3_purge_module" | "m3_republish_module", moduleId: string, operation: string) {
   if (!isUuid(moduleId)) throw new ModuleServiceError("This module is unavailable. Reload the module list.");
   const { data, error } = await trashClient().rpc(name, { target_id: moduleId });
   if (error) {
@@ -291,6 +291,9 @@ async function trashAction(name: "m3_trash_module" | "m3_restore_module" | "m3_p
     }
     // Refusals written for Admins (history, not in Trash) are shown as they are.
     if (error.code === "23503" || error.code === "22023") throw new ModuleServiceError(error.message || `Unable to ${operation}.`, error);
+    // Publish Again refusals are written for Teachers (e.g. "archived by the School Admin") and publish-validation
+    // failures list what to fix: show them as they are.
+    if (name === "m3_republish_module" && error.message) throw new ModuleServiceError(error.message, error);
     throw deletionDatabaseFailure(operation, error);
   }
   return String(data);
@@ -300,6 +303,9 @@ export const trashModule = (moduleId: string) => trashAction("m3_trash_module", 
 /** Returns "draft" or "archived" (ever-published modules come back hidden and need a normal Publish). */
 export const restoreTrashedModule = (moduleId: string) => trashAction("m3_restore_module", moduleId, "restoring this module");
 export const purgeTrashedModule = (moduleId: string) => trashAction("m3_purge_module", moduleId, "permanently deleting this module");
+/** Teacher Publish Again: the owner republishes a module they restored from their own Trash. Validated by the
+ * database exactly like a first publication; never called automatically by Restore. Returns "published". */
+export const republishModule = (moduleId: string) => trashAction("m3_republish_module", moduleId, "publishing this module again");
 
 export function getModuleErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;

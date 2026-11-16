@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Eye, LoaderCircle, Search } from "lucide-react";
+import { BookOpen, Eye, FilePlus2, LoaderCircle, PlusCircle, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import M3PageHeader from "../components/M3PageHeader";
 import M3StatusBadge from "../components/M3StatusBadge";
@@ -38,6 +38,11 @@ export default function ModuleCatalogPage({ role }: ModuleCatalogPageProps) {
         eyebrow={`${role === "teacher" ? "Teacher" : "General User"} library`}
         title="Reading Modules"
         description="Browse published Basa Eskwela modules."
+        actions={role === "teacher" ? <>
+          {/* Teachers author modules in their own workspace (same editor as the School Admin). */}
+          <Link className="m3-button m3-button--secondary" to="/m3/teacher/content"><FilePlus2 size={18} aria-hidden="true" /> My Reading Modules</Link>
+          <Link className="m3-button m3-button--coral" to="/m3/teacher/content/new"><PlusCircle size={18} aria-hidden="true" /> Create Module</Link>
+        </> : undefined}
       />
 
       <section className="m3-panel">

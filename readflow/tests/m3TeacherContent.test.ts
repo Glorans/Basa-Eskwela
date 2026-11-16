@@ -19,7 +19,8 @@ const MODULES = [
   { ...base, id: "other-pub", title: "Someone Else", status: "published", language: "en", readingLevel: "Instructional", difficulty: "Medium", createdBy: "t2", publishedAt: "2026-11-09T01:00:00Z" },
 ];
 
-function mountList(workspace?: "admin" | "teacher") {
+type TrashRow = { id: string; title: string; statusBefore: string; trashedAt: string; trashedByName: string; everPublished: boolean; hasHistory: boolean };
+function mountList(workspace?: "admin" | "teacher", options: { trash?: TrashRow[] | null; restored?: string; modules?: typeof MODULES } = {}) {
   const runtime = createHookRuntime(require("react"));
   const calls: string[] = [];
   const page = loadComponentModule(pageUrl, (id) => {
@@ -27,14 +28,17 @@ function mountList(workspace?: "admin" | "teacher") {
     if (id === "lucide-react") return new Proxy({}, { get: () => "svg" });
     if (id === "react-router-dom") return { Link: "a" };
     if (id.endsWith("/M3ContentContext")) {
-      return { useM3Content: () => ({ modules: MODULES, modulesLoading: false, modulesError: null, refreshModules: async () => {},
-        feedback: null, clearFeedback: () => {}, deleteModule: async () => ({ ok: true }), archiveModule: async () => ({ ok: true }),
+      return { useM3Content: () => ({ modules: options.modules ?? MODULES, modulesLoading: false, modulesError: null, refreshModules: async () => {},
+        feedback: null, clearFeedback: () => {}, deleteModule: async (id: string) => { calls.push(`delete:${id}`); return { ok: true }; }, archiveModule: async () => ({ ok: true }),
         restoreModule: async () => ({ ok: true }) }) };
     }
     if (id.endsWith("/auth/useAuth")) return { useAuth: () => ({ user: { id: "t1" } }) };
     if (id.endsWith("/services/moduleService")) {
-      return { getTrashedModules: async () => { calls.push("trash"); return []; }, purgeTrashedModule: async () => {},
-        restoreTrashedModule: async () => {}, trashModule: async () => {} };
+      return { getTrashedModules: async () => { calls.push("trash"); return options.trash === undefined ? [] : options.trash; },
+        purgeTrashedModule: async (id: string) => { calls.push(`purge:${id}`); },
+        restoreTrashedModule: async (id: string) => { calls.push(`restore:${id}`); return options.restored ?? "draft"; },
+        trashModule: async (id: string) => { calls.push(`trashModule:${id}`); return "trashed"; },
+        republishModule: async (id: string) => { calls.push(`republish:${id}`); return "published"; } };
     }
     if (id.endsWith("/components/AdminCollectionEditor")) {
       return { editorPaths: (w: string) => w === "teacher"
@@ -64,10 +68,10 @@ test("Teacher list shows only the Teacher's own modules and links into the Teach
   assert.ok(hrefs.includes("/m3/teacher/content/mine-pub"));
   assert.ok(hrefs.every((href: string) => !href.startsWith("/m3/admin")));
   assert.equal(findAll(tree, (n) => n.props?.actions)[0].props.title, "My Reading Modules");
-  assert.deepEqual(m.calls, [], "Trash is never loaded for Teachers");
+  assert.deepEqual(m.calls, ["trash"], "Teachers load their own Trash (the database returns only their modules)");
   const buttons = findAll(m.render(), (node) => node.type === "button").map((node) => node.props["aria-label"] ?? textOf(node));
-  assert.ok(buttons.every((label: string) => !/^(Archive|Restore)/.test(label)), "no Archive/Restore actions for Teachers");
-  assert.equal(findAll(m.render(), (node) => node.props?.className === "m3-panel m3-trash").length, 0, "no Trash section");
+  assert.ok(buttons.every((label: string) => !/^(Archive|Restore)/.test(label)), "no Archive/Restore actions for Teachers' live modules");
+  assert.equal(findAll(m.render(), (node) => node.props?.className === "m3-panel m3-trash").length, 1, "Teacher Trash section");
   assert.deepEqual(buttons.filter((label: string) => label.startsWith("Delete")), ["Delete My Easy Draft", "Delete My Hard Story"]);
 });
 
@@ -157,4 +161,114 @@ test("the shared editor uses Teacher paths and never requests Admin-only Revisio
 
   assert.deepEqual(teacher.editor.editorPaths("teacher").module, "/m3/teacher/content");
   assert.deepEqual(teacher.editor.editorPaths("admin").module, "/m3/admin/modules");
+});
+
+test("Teachers can find module authoring from every usual entry point, like the School Admin", () => {
+  // Root cause of "Teachers cannot create modules": the feature existed but was reachable only through
+  // "My Reading Modules". These are the same entry points the School Admin has.
+  const layout = read("modules/module3/components/M3Layout.tsx");
+  assert.match(layout, /\{ label: "My Reading Modules", to: "\/m3\/teacher\/content", icon: FilePlus2, end: true \}/);
+  assert.match(layout, /\{ label: "Create Module", to: "\/m3\/teacher\/content\/new", icon: PlusCircle, end: true \}/);
+  assert.match(layout, /\{ label: "Create Module", to: "\/m3\/admin\/modules\/new", icon: PlusCircle, end: true \}/, "Admin item unchanged");
+
+  const dashboard = read("pages/dashboard/TeacherDashboard.tsx");
+  assert.match(dashboard, /\{ label: "Create Reading Module", to: "\/m3\/teacher\/content\/new", icon: PlusCircle \}/);
+  assert.match(dashboard, /\{ label: "My Reading Modules", to: "\/m3\/teacher\/content", icon: BookOpenCheck, secondary: true \}/);
+
+  const catalog = read("modules/module3/pages/ModuleCatalogPage.tsx");
+  assert.match(catalog, /actions=\{role === "teacher" \? <>/, "Create is offered to Teachers only, not Independent Learners");
+  assert.match(catalog, /className="m3-button m3-button--coral" to="\/m3\/teacher\/content\/new"><PlusCircle[^>]*\/> Create Module<\/Link>/,
+    "same coral Create Module button as the School Admin page");
+});
+
+const TRASHED: TrashRow[] = [
+  { id: "gone-draft", title: "Gone Draft", statusBefore: "draft", trashedAt: "2026-11-17T01:00:00Z", trashedByName: "Tess Teacher", everPublished: false, hasHistory: false },
+  { id: "gone-pub", title: "Gone Story", statusBefore: "published", trashedAt: "2026-11-17T02:00:00Z", trashedByName: "Tess Teacher", everPublished: true, hasHistory: true },
+];
+const settle = async (m: ReturnType<typeof mountList>) => { for (let i = 0; i < 6; i++) { await tick(); m.render(); } };
+const labels = (m: ReturnType<typeof mountList>) => findAll(m.render(), (n) => n.type === "button").map((n) => n.props["aria-label"] ?? textOf(n));
+
+test("Teacher Trash: own trashed modules can be restored, never deleted permanently", async () => {
+  const m = mountList("teacher", { trash: TRASHED, restored: "archived" });
+  await settle(m);
+  const trash = findAll(m.render(), (n) => n.props?.className === "m3-panel m3-trash")[0];
+  assert.ok(trash, "Trash section shown on My Reading Modules");
+  assert.match(textOf(trash), /Modules you deleted stay here/);
+  assert.match(textOf(trash), /until you choose Publish Again/);
+  assert.doesNotMatch(textOf(trash), / by Tess Teacher/, "no 'deleted by' name for the Teacher's own Trash");
+  assert.ok(labels(m).includes("Restore Gone Draft from the Trash") && labels(m).includes("Restore Gone Story from the Trash"));
+  assert.ok(!labels(m).some((l: string) => /permanently/i.test(l)), "no permanent deletion for Teachers");
+  const restore = findAll(m.render(), (n) => n.type === "button" && n.props["aria-label"] === "Restore Gone Story from the Trash")[0];
+  restore.props.onClick();
+  await settle(m);
+  assert.ok(m.calls.includes("restore:gone-pub"));
+  assert.match(m.text(), /Gone Story was restored as archived\. It stays hidden from learners until you choose Publish Again on the module\./);
+  assert.ok(!m.calls.some((c) => c.startsWith("purge:")));
+});
+
+test("Teacher Delete moves the module to the Trash (no hard delete) once the Trash is installed", async () => {
+  const m = mountList("teacher", { trash: [] });
+  await settle(m);
+  findAll(m.render(), (n) => n.type === "button" && n.props["aria-label"] === "Delete My Hard Story")[0].props.onClick();
+  await settle(m);
+  assert.ok(m.calls.includes("trashModule:mine-pub"), "uses m3_trash_module");
+  assert.ok(!m.calls.some((c) => c.startsWith("delete:")), "never the hard-delete path");
+  assert.match(m.text(), /My Hard Story was moved to the Trash\./);
+});
+
+test("Before the migration (Teacher Trash unavailable) the existing Delete is kept and no Trash is shown", async () => {
+  const m = mountList("teacher", { trash: null });
+  await settle(m);
+  assert.equal(findAll(m.render(), (n) => n.props?.className === "m3-panel m3-trash").length, 0);
+  findAll(m.render(), (n) => n.type === "button" && n.props["aria-label"] === "Delete My Easy Draft")[0].props.onClick();
+  await settle(m);
+  assert.ok(m.calls.includes("delete:mine-draft"));
+});
+
+test("Admin Trash unchanged: Restore and Delete Permanently, with the remover's name", async () => {
+  const m = mountList(undefined, { trash: TRASHED });
+  await settle(m);
+  const trash = findAll(m.render(), (n) => n.props?.className === "m3-panel m3-trash")[0];
+  assert.match(textOf(trash), / by Tess Teacher/);
+  assert.ok(labels(m).includes("Delete Gone Draft permanently"), "Admin keeps permanent deletion for modules without history");
+  assert.ok(!labels(m).includes("Delete Gone Story permanently"), "never for modules with history");
+});
+
+test("Teacher confirmation describes the Teacher's own Publish Again", async () => {
+  const { moduleTrashMessage } = await import("../src/modules/module3/utils/moduleDeletionMessage.ts");
+  const published = { title: "Story", status: "published" as const, publishedAt: "2026-11-01T00:00:00Z" };
+  assert.match(moduleTrashMessage(published, "teacher"), /comes back archived \(hidden from learners\) until you choose Publish Again/);
+  assert.match(moduleTrashMessage(published), /must be published again before learners see it/, "Admin wording unchanged");
+  assert.match(moduleTrashMessage({ title: "D", status: "draft" as const, publishedAt: undefined }, "teacher"), /restore it from the Trash as a draft/);
+});
+
+const ARCHIVED = [...MODULES, { ...MODULES[1], id: "mine-arch", title: "My Restored Story", status: "archived" as const }];
+
+test("Teacher Publish Again: explicit button on own archived modules, confirmed, then the validated database call", async () => {
+  const m = mountList("teacher", { trash: [], modules: ARCHIVED });
+  await settle(m);
+  assert.ok(labels(m).includes("Publish My Restored Story again"));
+  assert.ok(!labels(m).some((l: string) => /^Publish (My Easy Draft|My Hard Story) again$/.test(l)), "only archived modules offer it");
+  assert.ok(!m.calls.some((c) => c.startsWith("republish:")), "nothing is republished automatically");
+  findAll(m.render(), (n) => n.type === "button" && n.props["aria-label"] === "Publish My Restored Story again")[0].props.onClick();
+  await settle(m);
+  assert.deepEqual(m.calls.filter((c) => c.startsWith("republish:")), ["republish:mine-arch"]);
+  assert.match(m.text(), /My Restored Story was published again\./);
+});
+
+test("Publish Again is hidden until the Teacher Trash is installed, and never shown to the School Admin", async () => {
+  const before = mountList("teacher", { trash: null, modules: ARCHIVED });
+  await settle(before);
+  assert.ok(!labels(before).some((l: string) => /again$/.test(l)));
+  const admin = mountList(undefined, { trash: [], modules: ARCHIVED });
+  await settle(admin);
+  assert.ok(!labels(admin).some((l: string) => /Publish .* again$/.test(l)), "Admins keep their existing Restore");
+  assert.ok(labels(admin).includes("Restore My Restored Story"));
+});
+
+test("Publish Again confirmation explains learners will see it and that it is validated again", async () => {
+  const { moduleRepublishMessage } = await import("../src/modules/module3/utils/moduleDeletionMessage.ts");
+  const text = moduleRepublishMessage({ title: "Story" });
+  assert.match(text, /^Publish "Story" again\?/);
+  assert.match(text, /checked again before it is published/);
 });

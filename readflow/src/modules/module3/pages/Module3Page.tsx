@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Archive, BookOpen, Eye, LoaderCircle, Pencil, PlusCircle, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Archive, BookOpen, Eye, LoaderCircle, Pencil, PlusCircle, RotateCcw, Search, Send, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import M3PageHeader from "../components/M3PageHeader";
 import M3StatusBadge from "../components/M3StatusBadge";
@@ -8,8 +8,8 @@ import type { MaterialLanguageCode, ModuleDifficulty, ModuleStatus, ReadingModul
 import { editorPaths, type M3EditorWorkspace } from "../components/AdminCollectionEditor";
 import { useAuth } from "../../../auth/useAuth";
 import { confirmReadFlow } from "../../../components/ReadFlowDialog";
-import { moduleDeletionMessage, modulePurgeMessage, moduleTrashMessage } from "../utils/moduleDeletionMessage";
-import { getTrashedModules, purgeTrashedModule, restoreTrashedModule, trashModule, type TrashedModule } from "../services/moduleService";
+import { moduleDeletionMessage, modulePurgeMessage, moduleRepublishMessage, moduleTrashMessage } from "../utils/moduleDeletionMessage";
+import { getTrashedModules, purgeTrashedModule, republishModule, restoreTrashedModule, trashModule, type TrashedModule } from "../services/moduleService";
 import "./Module3Page.css";
 
 const statusLabels = { draft: "Draft", published: "Published", archived: "Archived" } as const;
@@ -32,10 +32,11 @@ export default function Module3Page({ workspace = "admin" }: { workspace?: M3Edi
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const mutationPending = useRef(false);
-  // null = Trash not installed: Delete keeps the existing m3_delete_module behaviour.
+  // null = Trash not installed (for Teachers: m3_teacher_trash not applied yet): Delete keeps the existing
+  // m3_delete_module behaviour. Teachers get only the modules they moved to the Trash (decided by the database).
   const [trash, setTrash] = useState<TrashedModule[] | null>(null);
   const [trashMessage, setTrashMessage] = useState("");
-  const loadTrash = useCallback(async () => setTrash(teacher ? null : await getTrashedModules()), [teacher]);
+  const loadTrash = useCallback(async () => setTrash(await getTrashedModules()), []);
   useEffect(() => { void loadTrash(); }, [loadTrash]);
 
   async function runTrashAction(work: () => Promise<string>) {
@@ -53,11 +54,17 @@ export default function Module3Page({ workspace = "admin" }: { workspace?: M3Edi
     } finally { mutationPending.current = false; setBusy(false); }
   }
 
+  // Teacher Publish Again: explicit and confirmed; the database validates it like a first publication.
+  async function publishAgain(target: ReadingModule) {
+    if (mutationPending.current || !(await confirmReadFlow(moduleRepublishMessage(target)))) return;
+    await runTrashAction(async () => { await republishModule(target.id); return `${target.title} was published again.`; });
+  }
+
   async function manageModule(action: "delete" | "archive" | "restore", moduleId: string) {
     if (mutationPending.current) return;
     const target = modules.find(module => module.id === moduleId);
     if (action === "delete" && trash && target) {
-      if (!(await confirmReadFlow(moduleTrashMessage(target)))) return;
+      if (!(await confirmReadFlow(moduleTrashMessage(target, teacher ? "teacher" : "admin")))) return;
       await runTrashAction(async () => { await trashModule(moduleId); return `${target.title} was moved to the Trash.`; });
       return;
     }
@@ -166,6 +173,8 @@ export default function Module3Page({ workspace = "admin" }: { workspace?: M3Edi
                   {module.status === "draft" && !module.publishedAt && <Link className="m3-button m3-button--secondary" to={`${paths.module}/${module.id}/edit`} aria-label={`Edit ${module.title}`}><Pencil size={17} aria-hidden="true" /> Edit Draft</Link>}
                   <button type="button" className="m3-button m3-module-delete-button" disabled={busy} aria-label={`Delete ${module.title}`} onClick={() => void manageModule("delete", module.id)}><Trash2 size={17} aria-hidden="true" /> Delete</button>
                   {!teacher && module.status === "published" && <button type="button" className="m3-button m3-button--secondary" disabled={busy} onClick={() => void manageModule("archive", module.id)} aria-label={`Archive ${module.title}`}><Archive size={17} aria-hidden="true" /> Archive</button>}
+                  {/* Only once the Teacher Trash is installed (m3_republish_module exists); the database decides. */}
+                  {teacher && trash && module.status === "archived" && <button type="button" className="m3-button m3-button--secondary" disabled={busy} onClick={() => void publishAgain(module)} aria-label={`Publish ${module.title} again`}><Send size={17} aria-hidden="true" /> Publish Again</button>}
                   {!teacher && module.status === "archived" && <button type="button" className="m3-button m3-button--secondary" disabled={busy} onClick={() => void manageModule("restore", module.id)} aria-label={`Restore ${module.title}`}><RotateCcw size={17} aria-hidden="true" /> Restore</button>}
                 </div>
               </article>)}
@@ -175,23 +184,28 @@ export default function Module3Page({ workspace = "admin" }: { workspace?: M3Edi
 
       {trash && <section className="m3-panel m3-trash" aria-labelledby="m3TrashHeading">
         <h2 id="m3TrashHeading">Trash</h2>
-        <p className="m3-editor-help">Deleted modules stay here, hidden from every catalog. Restore brings back a draft as a draft and a published module as archived. Modules with learner or classroom history can be restored but not deleted permanently.</p>
+        <p className="m3-editor-help">{teacher
+          ? "Modules you deleted stay here, hidden from every catalog, with their passages, questions and learner history. Restore brings back a draft as a draft and a published module as archived (hidden from learners) until you choose Publish Again."
+          : "Deleted modules stay here, hidden from every catalog. Restore brings back a draft as a draft and a published module as archived. Modules with learner or classroom history can be restored but not deleted permanently."}</p>
         {trash.length === 0 ? <p>The Trash is empty.</p> : <div className="m3-card-list">
           {trash.map(item => <article className="m3-record-card" key={item.id}>
             <span className="m3-record-icon"><Trash2 size={22} aria-hidden="true" /></span>
             <div className="m3-record-main">
               <div className="m3-record-heading"><h3>{item.title}</h3></div>
-              <p className="m3-editor-help">Deleted {creationDate(item.trashedAt)} by {item.trashedByName} · was {item.statusBefore || "unknown"}{item.hasHistory ? " · has learner or classroom history" : ""}</p>
+              <p className="m3-editor-help">Deleted {creationDate(item.trashedAt)}{teacher ? "" : ` by ${item.trashedByName}`} · was {item.statusBefore || "unknown"}{item.hasHistory ? " · has learner or classroom history" : ""}</p>
             </div>
             <div className="m3-admin-module-actions">
               <button type="button" className="m3-button m3-button--secondary" disabled={busy} aria-label={`Restore ${item.title} from the Trash`}
                 onClick={() => void runTrashAction(async () => {
                   const restored = await restoreTrashedModule(item.id);
                   return restored === "archived"
-                    ? `${item.title} was restored as archived. Publish it again when it is ready for learners.`
+                    ? teacher
+                      ? `${item.title} was restored as archived. It stays hidden from learners until you choose Publish Again on the module.`
+                      : `${item.title} was restored as archived. Publish it again when it is ready for learners.`
                     : `${item.title} was restored as a draft.`;
                 })}><RotateCcw size={17} aria-hidden="true" /> Restore</button>
-              {!item.hasHistory && <button type="button" className="m3-button m3-module-delete-button" disabled={busy} aria-label={`Delete ${item.title} permanently`}
+              {/* Permanent deletion stays with the School Admin (m3_purge_module is Admin-only). */}
+              {!teacher && !item.hasHistory && <button type="button" className="m3-button m3-module-delete-button" disabled={busy} aria-label={`Delete ${item.title} permanently`}
                 onClick={() => void (async () => {
                   if (!(await confirmReadFlow(modulePurgeMessage(item.title)))) return;
                   await runTrashAction(async () => { await purgeTrashedModule(item.id); return `${item.title} was permanently deleted.`; });
