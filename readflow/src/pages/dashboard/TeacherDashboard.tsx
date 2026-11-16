@@ -1,4 +1,4 @@
-import { ChartNoAxesCombined, ClipboardList, Mic2, School, TriangleAlert, Users } from "lucide-react";
+import { BookOpenCheck, ChartNoAxesCombined, ClipboardList, Mic2, PlusCircle, School, TriangleAlert, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { getProfileDisplayName } from "../../modules/module1/utils/profileFields";
@@ -42,6 +42,8 @@ export default function TeacherDashboard() {
       <div className="rd-grid">
         <DashboardSection title="Quick actions">
           <QuickActions actions={[
+            { label: "Create Reading Module", to: "/m3/teacher/content/new", icon: PlusCircle },
+            { label: "My Reading Modules", to: "/m3/teacher/content", icon: BookOpenCheck, secondary: true },
             { label: "Open Learning Rooms", to: "/m3/teacher/learning-rooms", icon: School },
             { label: "Assign Reading Activities", to: "/m3/teacher/learning-rooms", icon: ClipboardList },
             { label: "Review Oral Reading Assessments", to: "/m3/teacher/oral-reading", icon: Mic2 },

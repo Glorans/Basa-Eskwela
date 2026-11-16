@@ -17,16 +17,20 @@ export function moduleDeletionMessage(
   ].join("\n\n");
 }
 
-// With the Trash installed, "Delete Reading Module" is recoverable.
+// With the Trash installed, "Delete Reading Module" is recoverable. Teachers cannot publish an archived module
+// again (the School Admin can), so their message says so instead of promising a Publish they cannot do.
 export function moduleTrashMessage(
   module: Pick<ReadingModule, "title" | "status" | "publishedAt">,
+  audience: "admin" | "teacher" = "admin",
 ): string {
   const wasPublished = module.status !== "draft" || Boolean(module.publishedAt);
   return [
     `Delete "${module.title}"?`,
     "It moves to the Trash and disappears from active catalogs. Passages, question banks, assignments, results and XP are kept.",
     wasPublished
-      ? "You can restore it from the Trash. A module that was published comes back archived and must be published again before learners see it."
+      ? audience === "teacher"
+        ? "You can restore it from the Trash. A module that was published comes back archived (hidden from learners) until you choose Publish Again."
+        : "You can restore it from the Trash. A module that was published comes back archived and must be published again before learners see it."
       : "You can restore it from the Trash as a draft.",
   ].join("\n\n");
 }
@@ -35,5 +39,14 @@ export function modulePurgeMessage(title: string): string {
   return [
     `Permanently delete "${title}"?`,
     "Its passages, question banks and answer keys are removed for good. This cannot be undone.",
+  ].join("\n\n");
+}
+
+// Teacher Publish Again (after restoring their own published module from the Trash). The database checks the
+// passages and reviewed question banks exactly as for a first publication.
+export function moduleRepublishMessage(module: Pick<ReadingModule, "title">): string {
+  return [
+    `Publish "${module.title}" again?`,
+    "Learners will see it in the library again, and it can be assigned to Learning Rooms. Its passages and questions are checked again before it is published.",
   ].join("\n\n");
 }

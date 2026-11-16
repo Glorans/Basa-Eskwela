@@ -192,12 +192,14 @@ select pg_temp.run('F4 other Teacher cannot delete', 't2', format('select public
 select pg_temp.run('F4 Student cannot delete', 'student', format('select public.m3_delete_module(%L)', (select v from m3k where k='m_fil')), 'denied');
 select pg_temp.run('F4 Teacher cannot delete an Admin module', 't1', format('select public.m3_delete_module(%L)', (select v from m3k where k='m_admin')), 'denied');
 select pg_temp.run('F4 Teacher cannot delete directly', 't1', format('delete from public.modules where id = %L', (select v from m3k where k='m_fil')), 'rows=0');
-select pg_temp.run('F4 owner deletes an unused draft', 't1', format('select public.m3_delete_module(%L)', (select v from m3k where k='m_fil')), 'value=permanent');
+-- m3_teacher_trash: Teachers never hard-delete; their Delete moves the module to the Trash (restorable).
+select pg_temp.run('F4 Teacher hard delete refused', 't1', format('select public.m3_delete_module(%L)', (select v from m3k where k='m_fil')), 'denied');
+select pg_temp.run('F4 owner moves an unused draft to the Trash', 't1', format('select public.m3_trash_module(%L)', (select v from m3k where k='m_fil')), 'value=trashed');
 -- History: a learner's progress row on T1's published module must survive deletion.
 reset role;
 insert into public.progress(user_id, module_id)
 select (select v from m3k where k='student'), id from public.modules where id = (select v from m3k where k='m_t1');
-select pg_temp.run('F4 owner deletes a module with history: preserved, not purged', 't1', format('select public.m3_delete_module(%L)', (select v from m3k where k='m_t1')), 'value=soft');
+select pg_temp.run('F4 owner moves a module with history to the Trash: preserved, not purged', 't1', format('select public.m3_trash_module(%L)', (select v from m3k where k='m_t1')), 'value=trashed');
 select pg_temp.run('F4 learner progress kept', 'db', format('select count(*)::text from public.progress where module_id = %L', (select v from m3k where k='m_t1')), 'value=1');
 select pg_temp.run('F4 deleted module hidden from Student', 'student', format('select count(*)::text from public.modules where id = %L', (select v from m3k where k='m_t1')), 'value=0');
 
