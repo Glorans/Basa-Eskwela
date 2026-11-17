@@ -93,9 +93,8 @@ test("Profile Setup stores learner nicknames separately from teacher full names"
   ]);
 
   assert.match(page, /label=\{isTeacher \? "Full Name" : "What should we call you\?"\}/);
-  assert.match(page, /completeProfileSetup\(profile\.id, normalizedValue, asksAge \? Number\(ageValue\) : undefined\)/);
-  assert.match(service, /isLearner \? \{ nickname: normalizedName \} : \{ full_name: normalizedName \}/);
-  assert.match(service, /\.update\(asksAge \? \{ \.\.\.nameField, age \} : nameField\)/);
+  assert.match(page, /completeProfileSetup\(profile\.id, normalizedValue\)/);
+  assert.match(service, /\.update\(isLearner \? \{ nickname: normalizedName \} : \{ full_name: normalizedName \}\)/);
   assert.match(service, /updateNickname[\s\S]*?\.update\(\{ nickname \}\)/);
   assert.match(service, /updateFullName[\s\S]*?\.update\(\{ full_name: fullName \}\)/);
   assert.match(sql, /add column if not exists nickname text/i);
@@ -105,7 +104,7 @@ test("Profile Setup stores learner nicknames separately from teacher full names"
 test("Profile Setup trims learner input and refreshes the saved profile", async () => {
   const page = await readFile(new URL("../src/modules/module1/pages/ProfileSetupPage.tsx", import.meta.url), "utf8");
   assert.ok(page.includes("const normalizedValue = profileValue.trim()"));
-  assert.match(page, /await completeProfileSetup\(profile\.id, normalizedValue, asksAge \? Number\(ageValue\) : undefined\)/);
+  assert.match(page, /await completeProfileSetup\(profile\.id, normalizedValue\)/);
   assert.ok(page.includes("const completedProfile = await refreshProfile()"));
 });
 

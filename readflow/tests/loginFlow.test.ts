@@ -16,7 +16,6 @@ function profile(overrides: Partial<AuthProfile>): AuthProfile {
     id: userId,
     full_name: "",
     nickname: null,
-    age: null,
     role: null,
     teacher_status: null,
     status: "active",

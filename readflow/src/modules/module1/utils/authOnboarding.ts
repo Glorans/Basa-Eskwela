@@ -39,25 +39,6 @@ export const PASSWORD_REQUIREMENTS = [
 
 export const NICKNAME_MAX_LENGTH = 30;
 export const FULL_NAME_MAX_LENGTH = 100;
-export const AGE_MIN = 1;
-export const AGE_MAX = 120;
-
-// Profile setup asks Students and Teachers for their age. Independent Learners are not asked, so a new Independent
-// Learner's age is unknown (null). The optional profiles.age column and any stored values are unchanged. Any rule that
-// reads age (for example an adult check) must treat a missing age as unknown, never as an adult.
-export function profileSetupAsksAge(role: unknown) {
-  return role === "student" || role === "teacher";
-}
-
-export function getAgeValidationError(value: string) {
-  const age = value.trim();
-  if (!age) return "Enter your age.";
-  if (!/^\d+$/.test(age) || Number(age) < AGE_MIN || Number(age) > AGE_MAX) {
-    return `Enter a whole-number age from ${AGE_MIN} to ${AGE_MAX}.`;
-  }
-  return "";
-}
-
 export function isAppRole(value: unknown): value is AppRole {
   return typeof value === "string" && APP_ROLES.includes(value as AppRole);
 }

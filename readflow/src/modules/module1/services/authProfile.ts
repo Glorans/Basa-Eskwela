@@ -3,11 +3,9 @@ import { supabase } from "../../../lib/supabaseClient";
 import { hasCompletedInitialDiagnostic } from "../../module2/services/diagnosticDatabase";
 import {
   type AssignableUserRole,
-  getAgeValidationError,
   getOnboardingPath,
   getProfileNameValidationError,
   isAssignableUserRole,
-  profileSetupAsksAge,
   isDiagnosticLearnerRole,
   resolveUserDestination,
 } from "../utils/authOnboarding";
@@ -18,7 +16,7 @@ import {
 
 export type AuthProfile = Pick<
   Tables<"profiles">,
-  "id" | "full_name" | "nickname" | "age" | "role" | "status" | "created_at" | "teacher_status"
+  "id" | "full_name" | "nickname" | "role" | "status" | "created_at" | "teacher_status"
 >;
 
 export async function getAuthProfile(userId: string) {
@@ -32,39 +30,23 @@ export async function getAuthProfile(userId: string) {
     throw error;
   }
 
-  // Age is private even when another module allows reading a profile's name.
-  const { data: age, error: ageError } = await supabase.rpc("get_own_profile_age", {
-    profile_id: userId,
-  });
-  // Keep existing logins working while the age migration awaits approval.
-  if (ageError && ageError.code !== "PGRST202") throw ageError;
-  return { ...data, age: ageError ? null : age } satisfies AuthProfile;
+  return data satisfies AuthProfile;
 }
 
-/**
- * Completes onboarding. Students and Teachers must give a valid age; Independent Learners are not asked, and their
- * save writes only the nickname (any stored age is left as it is).
- */
-export async function completeProfileSetup(userId: string, name: string, age?: number) {
+/** Completes onboarding: learners save a nickname, Teachers a full name. Basa Eskwela does not collect age. */
+export async function completeProfileSetup(userId: string, name: string) {
   const profile = await getAuthProfile(userId);
   const isLearner = isDiagnosticLearnerRole(profile.role);
   if (!isLearner && profile.role !== "teacher") {
     throw new Error("This role does not use profile setup.");
   }
-  const asksAge = profileSetupAsksAge(profile.role);
-  if (asksAge) {
-    const ageError = getAgeValidationError(age === undefined ? "" : String(age));
-    if (ageError) throw new Error(ageError);
-  }
   const normalizedName = name.trim();
   const nameError = getProfileNameValidationError(normalizedName, isLearner);
   if (nameError) throw new Error(nameError);
 
-  const nameField = isLearner ? { nickname: normalizedName } : { full_name: normalizedName };
-  // One update prevents a failed age save from leaving a completed name behind.
   const { error } = await supabase
     .from("profiles")
-    .update(asksAge ? { ...nameField, age } : nameField)
+    .update(isLearner ? { nickname: normalizedName } : { full_name: normalizedName })
     .eq("id", userId)
     .select("id")
     .single();

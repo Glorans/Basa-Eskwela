@@ -544,7 +544,6 @@ export type Database = {
       }
       profiles: {
         Row: {
-          age: number | null
           teacher_status: "pending" | "approved" | "rejected" | null
           created_at: string
           full_name: string
@@ -554,7 +553,6 @@ export type Database = {
           status: string
         }
         Insert: {
-          age?: number | null
           teacher_status?: "pending" | "approved" | "rejected" | null
           created_at?: string
           full_name: string
@@ -564,7 +562,6 @@ export type Database = {
           status?: string
         }
         Update: {
-          age?: number | null
           teacher_status?: "pending" | "approved" | "rejected" | null
           created_at?: string
           full_name?: string
@@ -843,7 +840,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      get_own_profile_age: { Args: { profile_id: string }; Returns: number | null }
       register_teacher_with_invite: { Args: { invite_code: string }; Returns: boolean }
       review_teacher_registration: { Args: { target_user: string; decision: string }; Returns: string }
       assign_own_role: { Args: { selected_role: string }; Returns: string }

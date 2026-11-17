@@ -6,14 +6,10 @@ import {
   completeProfileSetup,
 } from "../services/authProfile";
 import {
-  AGE_MIN,
-  AGE_MAX,
   FULL_NAME_MAX_LENGTH,
-  getAgeValidationError,
   getProfileNameValidationError,
   isDiagnosticLearnerRole,
   NICKNAME_MAX_LENGTH,
-  profileSetupAsksAge,
 } from "../utils/authOnboarding";
 import "./ProfileSetupPage.css";
 
@@ -21,8 +17,6 @@ export default function ProfileSetupPage() {
   const navigate = useNavigate();
   const { profile, loading: authLoading, profileError, refreshProfile } = useAuth();
   const [profileValue, setProfileValue] = useState("");
-  const [ageValue, setAgeValue] = useState("");
-  const [ageError, setAgeError] = useState("");
   const [error, setError] = useState("");
   const [checkingProfile, setCheckingProfile] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,18 +62,14 @@ export default function ProfileSetupPage() {
     const normalizedValue = profileValue.trim();
     const isLearner = isDiagnosticLearnerRole(profile.role);
     const validationError = getProfileNameValidationError(normalizedValue, isLearner);
-
-    const asksAge = profileSetupAsksAge(profile.role);
-    const ageValidationError = asksAge ? getAgeValidationError(ageValue) : "";
     setError(validationError);
-    setAgeError(ageValidationError);
-    if (validationError || ageValidationError) return;
+    if (validationError) return;
 
     setError("");
     setSaving(true);
 
     try {
-      await completeProfileSetup(profile.id, normalizedValue, asksAge ? Number(ageValue) : undefined);
+      await completeProfileSetup(profile.id, normalizedValue);
 
       const completedProfile = await refreshProfile();
       if (!completedProfile) throw new Error("Completed profile unavailable");
@@ -94,8 +84,6 @@ export default function ProfileSetupPage() {
   if (loading) return null;
 
   const isTeacher = profile?.role === "teacher";
-  // Independent Learners are not asked for their age (see profileSetupAsksAge).
-  const showAge = profileSetupAsksAge(profile?.role);
 
   return (
     <main className="profile-setup-page">
@@ -129,36 +117,6 @@ export default function ProfileSetupPage() {
             autoComplete={isTeacher ? "name" : "nickname"}
             disabled={loading || saving}
           />
-
-          {showAge && (<>
-            <label className="profile-setup-prompt" htmlFor="age">Age</label>
-            <input
-              className="profile-setup-input profile-setup-input--age"
-              id="age"
-              name="age"
-              type="number"
-              inputMode="numeric"
-              min={AGE_MIN}
-              max={AGE_MAX}
-              step={1}
-              required
-              placeholder="Enter your age"
-              value={ageValue}
-              onChange={(event) => {
-                setAgeValue(event.target.value);
-                setAgeError("");
-                setError("");
-              }}
-              aria-invalid={!!ageError}
-              aria-describedby={ageError ? "profile-age-error" : undefined}
-              disabled={loading || saving}
-            />
-            {ageError && (
-              <p id="profile-age-error" className="profile-setup-error" role="alert">
-                {ageError}
-              </p>
-            )}
-          </>)}
 
           {error && (
             <p className="profile-setup-error" role="alert">

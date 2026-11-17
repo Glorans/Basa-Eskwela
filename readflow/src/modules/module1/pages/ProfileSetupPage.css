@@ -84,19 +84,6 @@
     box-shadow 160ms ease;
 }
 
-/* Age stays a number input (validation, min/max, numeric keyboard); only the spinner is hidden. */
-.profile-setup-input--age {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-.profile-setup-input--age::-webkit-outer-spin-button,
-.profile-setup-input--age::-webkit-inner-spin-button {
-  margin: 0;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
 .profile-setup-input::placeholder {
   color: #70807d;
 }
