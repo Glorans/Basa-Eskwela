@@ -84,14 +84,20 @@ test("a real M5 access refusal stops the receipt through the real loader", async
 
 test("verifying a saved reading uses the saved transcript and never fails the save", async () => {
   const fake = client();
-  assert.deepEqual(await verifySavedReading(LEARNER, { id: "attempt-1", transcript: "Saved text" }, fake), { verified: true });
+  // A classroom reading (a Student's reading without a classroom is personal practice: no M8 XP, see below).
+  assert.deepEqual(await verifySavedReading(LEARNER, { id: "attempt-1", transcript: "Saved text", room_id: "room-1" }, fake), { verified: true });
   assert.deepEqual(fake.calls[0].args, { p_attempt: "attempt-1", p_user: "learner-1", p_sha256: sha("Saved text") });
   assert.deepEqual(await verifySavedReading({ user: { id: "a" }, profile: { role: "admin" } }, { id: "x", transcript: "t" }, client()),
     { verified: false, reason: "not_learner" });
-  const failing = await verifySavedReading(LEARNER, { id: "x", transcript: "t" }, { log: () => {}, getSupabaseAdmin: () => { throw new Error("down"); } });
+  const failing = await verifySavedReading(LEARNER, { id: "x", transcript: "t", room_id: "room-1" }, { log: () => {}, getSupabaseAdmin: () => { throw new Error("down"); } });
   assert.deepEqual(failing, { verified: false, reason: "unavailable" });
-  assert.deepEqual(await verifySavedReading(LEARNER, { id: "x", transcript: "t" }, { getSupabaseAdmin: () => ({}) }),
+  assert.deepEqual(await verifySavedReading(LEARNER, { id: "x", transcript: "t", room_id: "room-1" }, { getSupabaseAdmin: () => ({}) }),
     { verified: false, reason: "unavailable" }, "a client without RPC support is tolerated");
+  // Student personal Read Aloud practice (published module, no classroom): no verification call, no M8 XP.
+  const personal = client();
+  assert.deepEqual(await verifySavedReading(LEARNER, { id: "p", transcript: "t", room_id: null, material_id: null }, personal),
+    { verified: false, reason: "personal_practice" });
+  assert.equal(personal.calls.length, 0);
 });
 
 function fakeResponse() {

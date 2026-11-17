@@ -32,7 +32,11 @@ const BEFORE = {
   'independent learner: personal reading history (modules + own materials)': '17e175352e19105b6fe588e2069bcc2df4ff0ab378da380efaecc17a64ba363a',
   'independent learner: leftover classroom rows are ignored': 'a493dba714c7aa22ff807caaf70af56d2b2774e1c6a18d5a23c857f71638b9bb',
   'independent learner: large history': 'b20a3bac7d610247daed21c67cca02c3d9c08183871a3e3c1bcc679227e484dd',
-  'teacher analytics (regression guard)': 'f468dd3b300f8edd5ff5c6d9f3d3a69255d083b9199dedf29ba3db840fde7cf5',
+  // Updated 2026-11-17 (Student personal reading and comprehension): a Student's reading or quiz without a
+  // classroom is no longer attributed to a Teacher. Verified: the new output equals the old output computed with
+  // this fixture's 15 classroom-less readings and 7 classroom-less quizzes removed. Staging had no Student reading
+  // or quiz without a classroom. Previous value: f468dd3b300f8edd5ff5c6d9f3d3a69255d083b9199dedf29ba3db840fde7cf5
+  'teacher analytics (regression guard)': '483d1505290a01925d694b38ace140b99bb10dc263ab0b74e875b5a477783609',
 };
 const fingerprint = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const all = datasets();

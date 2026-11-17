@@ -290,7 +290,8 @@ test("Teacher list adds comprehension status for each attempt with batched queri
   assert.deepEqual(byId.get(ORAL_ALOUD), { status: "not_applicable" });
   assert.equal(byId.get(ORAL_LEGACY).status, "completed");
   assert.equal(byId.get(ORAL_LEGACY).firstCorrect, 2);
-  assert.deepEqual(byId.get(ORAL_PRACTICE), { status: "not_applicable" });
+  // A Student's reading without a classroom is personal practice: not attributed to any Teacher (2026-11-17).
+  assert.equal(byId.has(ORAL_PRACTICE), false);
   assert.equal(byId.has(ORAL_B), false);
   for (const row of rows) assert.equal("questions" in row.comprehension, false);
   // Batched, never per attempt: M7 keyset pagination reads one page plus the empty page

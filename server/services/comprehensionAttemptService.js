@@ -14,6 +14,15 @@ const {
 const { displayEvidence } = require("./passageEvidence");
 const { ARCHIVED_CLASSROOM_MESSAGE, isArchivedRoomDatabaseError, isRoomArchived } = require("./roomArchive");
 
+// One comprehension assessment per Student per passage across personal practice and classroom work (2026-11-17):
+// an assessment of a module passage in one context (started or completed) means no new one in the other context.
+// Classroom-to-classroom is unchanged (one per assignment). Also enforced at completion by the database
+// (m6_assert_learner_completion_access in supabase/proposed/m6_student_personal_comprehension_PROPOSED.sql).
+const STUDENT_CLASSROOM_ASSESSMENT_EXISTS =
+  "You already have a comprehension assessment for this passage from a classroom. Open it from your Reading History.";
+const STUDENT_PERSONAL_ASSESSMENT_EXISTS =
+  "You already have a personal comprehension assessment for this passage. Open it from your Reading History.";
+
 class ComprehensionError extends Error {
   constructor(message, statusCode = 500) {
     super(message);
@@ -581,7 +590,9 @@ async function startComprehensionAttempt(requester, body = {}) {
 
   if (isAdminRequester(requester)) await assertAdminPracticeModule(db, requester, body.moduleId);
 
-  // Check publication, enrollment, assignment, and passage access.
+  // Check publication, enrollment, assignment, and passage access. A Student may also take the comprehension of a
+  // published module outside any classroom (personal practice, like M5): an assigned module keeps the classroom
+  // path, and classroom restrictions are never bypassed (see loadAccessiblePublishedModule).
   const module = materialId ? await loadMaterialReadingSource(requester, materialId, body) : await loadAccessiblePublishedModule(
     requester,
     body.moduleId,
@@ -591,6 +602,7 @@ async function startComprehensionAttempt(requester, body = {}) {
       roomId: body.roomId,
       assignmentId: body.assignmentId,
     },
+    { studentPersonal: true },
   );
 
   if (materialId && module.readAloudOnly === true) {
@@ -677,6 +689,23 @@ async function startComprehensionAttempt(requester, body = {}) {
 
   // A saved assessment reopens above (read-only results); an archived room starts no new one.
   if (settled(archivedResult)) throw new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
+
+  // Student module assessments: personal practice and classroom work are separate activities, but one passage is
+  // assessed once across them. This activity's own assessment already reopened above (resume or read-only result);
+  // here an assessment of the same passage in the OTHER context (started or completed) blocks a new one. Nothing is
+  // converted: the existing assessment stays where it is, in Reading History.
+  if (requester.profile.role === "student" && !materialId) {
+    const { data: passageAttempts, error: passageError } = await db.from("m6_comprehension_attempts")
+      .select("id,room_id,material_id").eq("user_id", requester.user.id).eq("module_id", module.id).eq("passage_id", module.passageId);
+    if (passageError) throw databaseError(passageError, "Unable to check your comprehension activity.");
+    const rows = passageAttempts ?? [];
+    if (module.personalPractice === true && rows.some((row) => row.room_id != null)) {
+      throw new ComprehensionError(STUDENT_CLASSROOM_ASSESSMENT_EXISTS, 409);
+    }
+    if (module.roomId && rows.some((row) => row.room_id == null && row.material_id == null)) {
+      throw new ComprehensionError(STUDENT_PERSONAL_ASSESSMENT_EXISTS, 409);
+    }
+  }
 
   const { bank: privateBank, questions } = settled(bankResult);
 

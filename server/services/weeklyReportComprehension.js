@@ -18,7 +18,8 @@ async function loadWeeklyComprehensions(requester, bounds, dependencies = {}) {
   const eligible = new Map();
   // The one assessment per learning activity, chosen before the period filter (M6's rule).
   for (const quiz of splitCanonicalCompleted(attempts).canonical) {
-    if (quiz.room_id && !students.roomsByStudent?.get(quiz.user_id)?.has(quiz.room_id)) continue;
+    // Own-classroom quizzes only: a Student's personal comprehension (no classroom) is not attributed to a Teacher.
+    if (!quiz.room_id || !students.roomsByStudent?.get(quiz.user_id)?.has(quiz.room_id)) continue;
     const time = Date.parse(quiz.completed_at);
     if (!Number.isFinite(time)) throw new Error('Completed assessment date is invalid. Report was not generated.');
     if (time < bounds.start || time >= bounds.endExclusive) continue;
@@ -51,7 +52,7 @@ async function loadWeeklyRiskSummary(requester, dependencies = {}) {
   const students = await loadTeacherStudentProfiles(db, requester.user.id, true);
   const attempts = await reportRows(db, 'm6_comprehension_attempts', ATTEMPT_COLUMNS, { status: 'completed' }, 'user_id', [...students.keys()]);
   const eligible = splitCanonicalCompleted(attempts).canonical
-    .filter((quiz) => !quiz.room_id || students.roomsByStudent?.get(quiz.user_id)?.has(quiz.room_id));
+    .filter((quiz) => Boolean(quiz.room_id) && students.roomsByStudent?.get(quiz.user_id)?.has(quiz.room_id));
   const responses = await reportRows(db, 'm6_comprehension_responses',
     'id,attempt_id,question_id,first_option_index,resolved,hint_used', {}, 'attempt_id', eligible.map((quiz) => quiz.id));
   return riskSummary([...students.entries()].map(([studentId, student]) => {

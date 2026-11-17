@@ -411,6 +411,9 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
           {loading && <p className="m5-pending-status" role="status"><span className="m5-loading-indicator" aria-hidden="true" />{t("Opening your reading activity...")}</p>}
           {loadError && <p role="alert">{ui.message(loadError, "Unable to load the activity.")} <button type="button" onClick={() => setLoadRevision(value => value + 1)}>{t("Retry")}</button></p>}
           <h2 className="read-aloud-story-heading">{t("Read the Story Aloud")}</h2>
+          {role === "student" && module.personalPractice === true && (
+            <p className="read-aloud-personal-note" role="note">{t("Personal practice: this reading is saved to your Reading History. It is not part of any classroom.")}</p>
+          )}
           <div className="read-aloud-story-box">
             {/* Exactly N lines tall with no vertical padding, so no line is ever cut. */}
             <div

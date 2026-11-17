@@ -182,10 +182,14 @@ test("an Admin answers and completes their own activity through the existing pro
 
 test("Students' classroom M6 is unchanged by the Admin rule", async () => {
   current = seed();
-  // A Student without an enrollment is still refused by the existing classroom checks.
+  // A Student without an enrollment is still refused by the existing classroom checks for a classroom request.
   current.tables.enrollments = [];
   const oral = reading(current, { user: STUDENT });
-  await assert.rejects(start(student, { moduleId: MODULE, passageId: PASSAGE, oralReadingAttemptId: oral }), { statusCode: 403 });
+  await assert.rejects(start(student, { moduleId: MODULE, passageId: PASSAGE, oralReadingAttemptId: oral, roomId: ROOM }), { statusCode: 403 });
+  // Without a classroom it is the Student's personal practice (2026-11-17), with no classroom attached.
+  const personal = await start(student, { moduleId: MODULE, passageId: PASSAGE, oralReadingAttemptId: oral });
+  assert.equal(personal.roomId ?? null, null);
+  assert.equal(current.tables.m6_comprehension_attempts.find((row) => row.id === personal.id).room_id ?? null, null);
 });
 
 test("Admin M5 practice on their own module saves the normal reading results; other Admins' modules are refused", async () => {

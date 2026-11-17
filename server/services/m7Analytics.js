@@ -295,16 +295,20 @@ async function teacher(teacherId) {
   // (bounded, to respect the database pool) instead of one after another. Output order is unchanged.
   const students = await mapInOrder(scope.students, TEACHER_STUDENT_CONCURRENCY, async (student) => {
     const roomIds = scope.enrollments.filter(e => e.student_id === student.id).map(e => e.room_id);
-    const inScope = { include: a => !a.room_id || roomIds.includes(a.room_id) };
+    // Own-classroom work only: a Student's personal practice (room_id null: M5 reading or M6 comprehension) is
+    // not attributed to a Teacher. No Student attempt without a classroom existed before personal practice.
+    const inScope = { include: a => Boolean(a.room_id) && roomIds.includes(a.room_id) };
     const [allQuizzes, extraResults, allReadings, activityRows, attemptRows] = await Promise.all([
       quizzes({ user_id: student.id }, { ...inScope, rows: load }), historicalQuizzes({ user_id: student.id }, { ...inScope, rows: load }),
       load('oral_reading_attempts', TEACHER_READING_COLUMNS, { user_id: student.id }),
       roomIds.length ? load('reading_activity_assignments', '*', { student_id: student.id, room_id: roomIds }) : [],
       load('m6_comprehension_attempts', TEACHER_ATTEMPT_COLUMNS, { user_id: student.id }),
     ]);
-    // Match M5 visibility: enrolled learners' independent work and own-classroom work.
-    const quizResults = allQuizzes.filter(q => !q.roomId || roomIds.includes(q.roomId));
-    const readings = allReadings.filter(r => !r.room_id || roomIds.includes(r.room_id));
+    const quizResults = allQuizzes.filter(q => Boolean(q.roomId) && roomIds.includes(q.roomId));
+    // Readings: own-classroom work only. A Student's personal Read Aloud practice (room_id null) is not
+    // attributed to a Teacher (matches inTeacherClassroom in oralReadingAttemptService.js). No Student reading
+    // without a classroom existed before personal practice, so existing figures are unchanged.
+    const readings = allReadings.filter(r => Boolean(r.room_id) && roomIds.includes(r.room_id));
     const unavailable = quizResults.some(q => q.dataQuality);
     const risk = !quizResults.length ? { classification: NO_ASSESSMENT_DATA }
       : unavailable ? { classification: 'Evaluation unavailable' } : classifyRisk(quizResults);

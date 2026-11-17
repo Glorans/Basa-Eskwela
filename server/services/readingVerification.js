@@ -104,6 +104,9 @@ async function recordTranscriptReceipt(requester, { language, query }, text, dep
 async function verifySavedReading(requester, attempt, dependencies = {}) {
   const log = dependencies.log ?? console.error;
   if (attempt.material_id && !attempt.activity_assignment_id && !attempt.room_id) return { verified: false, reason: "personal_practice" };
+  // Student personal practice (a published module outside any classroom) earns no M8 XP, so it cannot change a
+  // classroom leaderboard. Its transcript receipt is refused too: the receipt keeps the classroom rule.
+  if (requester?.profile?.role === "student" && !attempt.room_id && !attempt.material_id) return { verified: false, reason: "personal_practice" };
   try {
     if (!LEARNER_ROLES.has(requester?.profile?.role)) return { verified: false, reason: "not_learner" };
     const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();

@@ -67,10 +67,13 @@ class Query {
   }
 }
 
-function attempt(id, userId, completedAt) {
+// Each Student reading belongs to that Student's classroom (a reading without one is personal practice and is
+// never shown to a Teacher; see the personal-practice test below).
+function attempt(id, userId, completedAt, roomId = null) {
   return {
     id,
     user_id: userId,
+    room_id: roomId,
     module_id: MODULE,
     passage_snapshot: "Seeds need sun and water.",
     transcript: "Seeds need sun and water.",
@@ -111,8 +114,8 @@ function createDatabase() {
       ],
       modules: [{ id: MODULE, title: "Seeds", difficulty: "Easy" }],
       oral_reading_attempts: [
-        attempt(ATTEMPT_A, STUDENT_A, "2026-10-01T10:00:00.000Z"),
-        attempt(ATTEMPT_B, STUDENT_B, "2026-10-01T09:00:00.000Z"),
+        attempt(ATTEMPT_A, STUDENT_A, "2026-10-01T10:00:00.000Z", ROOM_A),
+        attempt(ATTEMPT_B, STUDENT_B, "2026-10-01T09:00:00.000Z", ROOM_B),
         attempt(ATTEMPT_GENERAL, GENERAL, "2026-10-01T08:00:00.000Z"),
       ],
     },
@@ -252,6 +255,17 @@ test("Teacher cannot inspect a contextual attempt from another classroom even fo
   db.tables.oral_reading_attempts[0].room_id = ROOM_B;
   assert.equal((await listTeacherOralReadingAttempts(requester(TEACHER_A), dependencies(db))).length, 0);
   await assert.rejects(getTeacherOralReadingAttempt(requester(TEACHER_A), ATTEMPT_A, dependencies(db)), error => error.statusCode === 404);
+});
+
+test("a Student's personal practice (no classroom) is never listed or opened for any of their Teachers", async () => {
+  const db = createDatabase();
+  db.tables.oral_reading_attempts[0].room_id = null; // Student A's reading, saved as personal practice
+  for (const teacher of [TEACHER_A, TEACHER_B]) {
+    assert.ok(!(await listTeacherOralReadingAttempts(requester(teacher), dependencies(db))).some(row => row.id === ATTEMPT_A));
+    await assert.rejects(getTeacherOralReadingAttempt(requester(teacher), ATTEMPT_A, dependencies(db)), error => error.statusCode === 404);
+  }
+  // The classroom reading of the other Student is unchanged.
+  assert.deepEqual((await listTeacherOralReadingAttempts(requester(TEACHER_B), dependencies(db))).map(row => row.id), [ATTEMPT_B]);
 });
 
 test("removed enrollment revokes both historical attempt list and direct access", async () => {

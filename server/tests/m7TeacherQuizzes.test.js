@@ -33,9 +33,10 @@ test('all quizzes sharing a reading survive pagination and duplicate enrollments
   const tables=fixture();
   add(tables,'q1'); add(tables,'q2','room-a',{},false); add(tables,'q3','room-b'); add(tables,'q4',null);
   const results=await load(tables);
-  assert.deepEqual(results.map(q=>q.attemptId),['q1','q2','q3','q4']);
-  assert.deepEqual(results.map(q=>q.scorePercentage),[100,0,100,100]);
-  assert.deepEqual(results.map(q=>q.roomId),['room-a','room-a','room-b',null]);
+  // q4 has no classroom: a Student's personal practice is not attributed to any Teacher (2026-11-17).
+  assert.deepEqual(results.map(q=>q.attemptId),['q1','q2','q3']);
+  assert.deepEqual(results.map(q=>q.scorePercentage),[100,0,100]);
+  assert.deepEqual(results.map(q=>q.roomId),['room-a','room-a','room-b']);
   assert.equal(results[0].studentName,'Learner');
 });
 

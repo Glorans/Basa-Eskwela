@@ -103,6 +103,15 @@
   margin-top: 24px;
 }
 
+/* Student opened an unassigned module from Reading Materials: silent reading only, explained in place. */
+.basa-reading-module-actions.basa-reading-module-note {
+  justify-content: flex-start;
+  margin-bottom: 0;
+  color: #475569;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .basa-reading-module-actions a {
   display: inline-flex;
   align-items: center;

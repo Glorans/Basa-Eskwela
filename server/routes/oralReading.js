@@ -227,7 +227,8 @@ function createOralReadingRouter(dependencies = {}) {
   router.get("/modules/:moduleId", async (req, res) => {
     try {
       const requester = await authorizePractice(req, dependencies);
-      const module = await loadModule(requester, req.params.moduleId, dependencies, req.query);
+      // M5 read aloud: a Student may practise a published module outside any classroom (personal practice).
+      const module = await loadModule(requester, req.params.moduleId, dependencies, req.query, { studentPersonal: true });
       const roomArchived = await (dependencies.isRoomArchived ?? isRoomArchived)(getAdmin(), module.roomId);
       return res.json({ success: true, module: { ...module, roomArchived } });
     } catch (error) {

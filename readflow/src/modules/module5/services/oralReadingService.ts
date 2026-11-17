@@ -38,10 +38,19 @@ interface TeacherAttemptResponse {
 }
 
 export class OralReadingServiceError extends Error {
-  constructor(message: string) {
+  /** The server's reason code, when it sends one (for example CLASSROOM_ASSIGNMENT_REQUIRED). */
+  readonly code?: string;
+  constructor(message: string, code?: string) {
     super(message);
     this.name = "OralReadingServiceError";
+    if (code) this.code = code;
   }
+}
+
+/** Student refusals that mean "read silently here; Read Aloud needs a classroom assignment" (not a fault). */
+export const STUDENT_ASSIGNMENT_CODES = ["CLASSROOM_ASSIGNMENT_REQUIRED", "SELECTED_STUDENTS_ONLY", "MODULE_REMOVED_FROM_CLASSROOM"] as const;
+export function isStudentAssignmentRefusal(error: unknown): error is OralReadingServiceError {
+  return error instanceof OralReadingServiceError && (STUDENT_ASSIGNMENT_CODES as readonly string[]).includes(error.code ?? "");
 }
 
 const readingData = new ReadingDataCache();
@@ -97,9 +106,10 @@ function toServiceError(error: unknown, fallback: string) {
   if (error instanceof OralReadingServiceError) return error;
   if (isTimeoutError(error)) return new OralReadingServiceError(SLOW_CONNECTION_MESSAGE);
   if (axios.isAxiosError(error)) {
-    const message = (error.response?.data as { message?: unknown } | undefined)?.message;
+    const data = error.response?.data as { message?: unknown; code?: unknown } | undefined;
+    const message = data?.message;
     if (typeof message === "string" && message.trim()) {
-      return new OralReadingServiceError(message);
+      return new OralReadingServiceError(message, typeof data?.code === "string" ? data.code : undefined);
     }
   }
   return new OralReadingServiceError(fallback);
@@ -224,6 +234,8 @@ export async function getOralReadingAttemptNumber(attempt: OralReadingAttempt) {
 }
 
 export interface OwnOralReadingSummary {
+  /** "personal" when saved outside any classroom; "classroom" otherwise. Absent from older servers. */
+  practiceContext?: "personal" | "classroom";
   id: string;
   moduleId: string;
   materialId?: string | null;

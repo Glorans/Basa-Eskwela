@@ -46,6 +46,17 @@ export function readingResultTarget(role: LearnerM5Role, oralReadingAttemptId: s
  * A saved M6 activity: Students have a results route; Independent Learners and Admin/Teacher
  * practice see results on the activity page.
  */
+/**
+ * The page of one saved M6 activity: it reopens that assessment exactly as saved (unfinished: the next question with
+ * every submitted answer kept; completed: its read-only results). The same route the activity introduction's
+ * "Continue Comprehension" button opens; the server checks ownership and the one-assessment rule as before.
+ */
+export function comprehensionActivityTarget(role: LearnerM5Role, comprehensionAttemptId: string) {
+  return role === "student"
+    ? `/dashboard/comprehension/${encodeURIComponent(comprehensionAttemptId)}`
+    : comprehensionResultTarget(role, comprehensionAttemptId);
+}
+
 export function comprehensionResultTarget(role: LearnerM5Role, comprehensionAttemptId: string) {
   const id = encodeURIComponent(comprehensionAttemptId);
   return role === "student" ? `/dashboard/comprehension/${id}/results`

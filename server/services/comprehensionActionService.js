@@ -61,6 +61,13 @@ async function finishQuestions(db, responses) {
 function rpcError(error) {
   // The room was archived while this answer was on its way: the database refused it.
   if (isArchivedRoomDatabaseError(error)) return new ComprehensionError(ARCHIVED_CLASSROOM_MESSAGE, 409);
+  // The database's one-assessment-per-passage rule across personal and classroom work (completion).
+  if (error.code === "42501" && /^This passage already has a classroom comprehension assessment/.test(error.message ?? "")) {
+    return new ComprehensionError("You already have a comprehension assessment for this passage from a classroom. Open it from your Reading History.", 409);
+  }
+  if (error.code === "42501" && /^This passage already has a personal comprehension assessment/.test(error.message ?? "")) {
+    return new ComprehensionError("You already have a personal comprehension assessment for this passage. Open it from your Reading History.", 409);
+  }
   if (error.code === "42501") {
     return new ComprehensionError("Access to this activity has been revoked or is not authorized.", 403);
   }

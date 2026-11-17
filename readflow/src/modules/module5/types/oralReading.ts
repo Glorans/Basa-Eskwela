@@ -18,6 +18,8 @@ export interface OralReadingModule extends OralReadingContext {
   readAloudOnly?: boolean;
   /** Set by the server: the reading belongs to an archived classroom (read-only, no recorder). */
   roomArchived?: boolean;
+  /** Student only, set by the server: a published module read outside any classroom (personal practice). */
+  personalPractice?: boolean;
   passageTitle?: string;
   id: string | null;
   title: string;
@@ -43,6 +45,8 @@ export interface CreateOralReadingAttemptInput extends OralReadingContext {
 }
 
 export interface OralReadingAttempt extends OralReadingContext {
+  /** "personal" when saved outside any classroom; "classroom" otherwise. Absent from older servers. */
+  practiceContext?: "personal" | "classroom";
   readAloudOnly?: boolean;
   readAloudCompleted?: boolean;
   passageTitle?: string;

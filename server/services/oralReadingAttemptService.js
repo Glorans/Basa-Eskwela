@@ -20,12 +20,24 @@ const MAX_RECORDING_SECONDS = 300;
 const MAX_TRANSCRIPT_LENGTH = 100000;
 
 class OralReadingAuthorizationError extends Error {
-  constructor(message = "This oral-reading activity is not available to your account.") {
+  constructor(message = "This oral-reading activity is not available to your account.", code = undefined) {
     super(message);
     this.name = "OralReadingAuthorizationError";
     this.statusCode = 403;
+    // Optional reason code so the Student module page can explain a refusal instead of offering Read Aloud.
+    if (code) this.code = code;
   }
 }
+
+// Student refusals. Classroom reading needs an active assignment in an enrolled classroom; M5 personal practice
+// (loadAccessiblePublishedModule's studentPersonal option) covers published modules with no classroom relation.
+const STUDENT_ASSIGNMENT_CODES = Object.freeze({
+  required: "CLASSROOM_ASSIGNMENT_REQUIRED",
+  selectedOnly: "SELECTED_STUDENTS_ONLY",
+  removed: "MODULE_REMOVED_FROM_CLASSROOM",
+});
+const CLASSROOM_ASSIGNMENT_MESSAGE = "This module must be assigned in a classroom where you are enrolled.";
+const NO_CLASSROOM_MESSAGE = `${CLASSROOM_ASSIGNMENT_MESSAGE} Join your teacher's classroom first.`;
 
 class OralReadingPersistenceError extends Error {
   constructor(message, statusCode = 500, code = "ORAL_READING_OPERATION_FAILED") {
@@ -150,7 +162,14 @@ async function authorizeTeacherOralReadingRequest(req, dependencies = {}) {
   return { user, profile };
 }
 
-async function loadAccessiblePublishedModule(requester, moduleId, dependencies = {}, context = {}) {
+/**
+ * `options.studentPersonal` (set only by the M5 read-aloud load and save and the M6 start, never from a request)
+ * lets a Student read and assess a published module with no classroom relation as PERSONAL practice: room_id and
+ * assignment_id stay null, no enrollment or assignment is created. A module assigned to the Student keeps the
+ * classroom path, and classroom restrictions (removed from the room, selected students only, an explicit room or
+ * assignment) are never bypassed. The M8 transcript receipt does not pass it: personal practice earns no XP.
+ */
+async function loadAccessiblePublishedModule(requester, moduleId, dependencies = {}, context = {}, options = {}) {
   requireUuid(moduleId, "The module ID");
   const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
   const { data: moduleRow, error } = await supabase
@@ -169,6 +188,7 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
 
   let roomId = null;
   let assignmentId = null;
+  let personalPractice = false;
   if (requester.profile.role === "student") {
     const { data: enrolled, error: enrolledError } = await supabase.from("enrollments")
       .select("room_id").eq("student_id", requester.user.id);
@@ -176,56 +196,73 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
     const rooms = (enrolled ?? []).map(row => row.room_id);
     if (context.roomId) requireUuid(context.roomId, "The classroom ID");
     if (context.assignmentId) requireUuid(context.assignmentId, "The assignment ID");
-    if (!rooms.length || (context.roomId && !rooms.includes(context.roomId))) {
+    // A classroom the Student is not enrolled in stays a plain authorization refusal.
+    if (context.roomId && !rooms.includes(context.roomId)) {
       throw new OralReadingAuthorizationError();
     }
-    // "*" keeps working before and after the optional removed_at column exists.
-    let query = supabase.from("room_modules").select("*")
-      .eq("module_id", moduleId).in("room_id", rooms);
-    if (context.roomId) query = query.eq("room_id", context.roomId);
-    if (context.assignmentId) query = query.eq("id", context.assignmentId);
-    const { data: rows, error: assignmentError } = await query;
-    if (assignmentError) {
-      throw new OralReadingPersistenceError("Unable to verify the classroom assignment.");
+    // Personal practice is only for a catalog request that names no classroom or assignment.
+    const personalAllowed = options.studentPersonal === true && !context.roomId && !context.assignmentId;
+    // Not enrolled anywhere: personal practice when allowed; otherwise the assignment rule, explained
+    // accurately (it was the generic "not available to your account" refusal).
+    if (!rooms.length && !personalAllowed) {
+      throw new OralReadingAuthorizationError(NO_CLASSROOM_MESSAGE, STUDENT_ASSIGNMENT_CODES.required);
     }
-    // A removed module cannot be started again; saved results stay in Reading History.
-    const active = (rows ?? []).filter(row => !row.removed_at);
-    if (rows?.length && !active.length) {
-      throw new OralReadingAuthorizationError(
-        "Your teacher removed this module from the classroom. Your saved results are still in Reading History.",
-      );
+    if (rooms.length) {
+      // "*" keeps working before and after the optional removed_at column exists.
+      let query = supabase.from("room_modules").select("*")
+        .eq("module_id", moduleId).in("room_id", rooms);
+      if (context.roomId) query = query.eq("room_id", context.roomId);
+      if (context.assignmentId) query = query.eq("id", context.assignmentId);
+      const { data: rows, error: assignmentError } = await query;
+      if (assignmentError) {
+        throw new OralReadingPersistenceError("Unable to verify the classroom assignment.");
+      }
+      // A removed module cannot be started again; saved results stay in Reading History.
+      const active = (rows ?? []).filter(row => !row.removed_at);
+      if (rows?.length && !active.length) {
+        throw new OralReadingAuthorizationError(
+          "Your teacher removed this module from the classroom. Your saved results are still in Reading History.",
+          STUDENT_ASSIGNMENT_CODES.removed,
+        );
+      }
+      // Selected-student assignments (proposed m4_module_recipients): only recipients may start them.
+      // Rows have no targeting_mode before that migration, so nothing changes until it is installed;
+      // the database also rejects a non-recipient's attempt for every writer.
+      const targeted = active.filter(row => row.targeting_mode === "selected_students");
+      let recipientOf = new Set();
+      if (targeted.length) {
+        const { data: recipients, error: recipientError } = await supabase.from("room_module_recipients")
+          .select("room_module_id").eq("student_id", requester.user.id).in("room_module_id", targeted.map(row => row.id));
+        if (recipientError) throw new OralReadingPersistenceError("Unable to verify the classroom assignment.");
+        recipientOf = new Set((recipients ?? []).map(row => row.room_module_id));
+      }
+      const assignments = active.filter(row => row.targeting_mode !== "selected_students" || recipientOf.has(row.id));
+      if (active.length && !assignments.length) {
+        throw new OralReadingAuthorizationError(
+          "Your teacher assigned this module to selected students only.",
+          STUDENT_ASSIGNMENT_CODES.selectedOnly,
+        );
+      }
+      // No classroom relation at all (rows is empty here): personal practice when allowed.
+      if (!assignments.length && !personalAllowed) {
+        throw new OralReadingAuthorizationError(
+          "This module must be assigned in a classroom where you are enrolled.",
+          STUDENT_ASSIGNMENT_CODES.required,
+        );
+      }
+      if (assignments.length > 1) {
+        throw new OralReadingPersistenceError(
+          "Open this activity from its classroom to select the assignment.",
+          400,
+          "CLASSROOM_REQUIRED",
+        );
+      }
+      if (assignments.length) {
+        roomId = assignments[0].room_id;
+        assignmentId = assignments[0].id;
+      }
     }
-    // Selected-student assignments (proposed m4_module_recipients): only recipients may start them.
-    // Rows have no targeting_mode before that migration, so nothing changes until it is installed;
-    // the database also rejects a non-recipient's attempt for every writer.
-    const targeted = active.filter(row => row.targeting_mode === "selected_students");
-    let recipientOf = new Set();
-    if (targeted.length) {
-      const { data: recipients, error: recipientError } = await supabase.from("room_module_recipients")
-        .select("room_module_id").eq("student_id", requester.user.id).in("room_module_id", targeted.map(row => row.id));
-      if (recipientError) throw new OralReadingPersistenceError("Unable to verify the classroom assignment.");
-      recipientOf = new Set((recipients ?? []).map(row => row.room_module_id));
-    }
-    const assignments = active.filter(row => row.targeting_mode !== "selected_students" || recipientOf.has(row.id));
-    if (active.length && !assignments.length) {
-      throw new OralReadingAuthorizationError(
-        "Your teacher assigned this module to selected students only.",
-      );
-    }
-    if (!assignments.length) {
-      throw new OralReadingAuthorizationError(
-        "This module must be assigned in a classroom where you are enrolled.",
-      );
-    }
-    if (assignments.length > 1) {
-      throw new OralReadingPersistenceError(
-        "Open this activity from its classroom to select the assignment.",
-        400,
-        "CLASSROOM_REQUIRED",
-      );
-    }
-    roomId = assignments[0].room_id;
-    assignmentId = assignments[0].id;
+    personalPractice = roomId === null;
   } else if (
     !(["general_user", "admin"].includes(requester.profile.role) || isApprovedTeacher(requester))
     || context.roomId || context.assignmentId
@@ -285,6 +322,8 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
     passageTitle: selected?.title ?? moduleRow.title,
     roomId,
     assignmentId,
+    // Student only: true for personal practice (no classroom), false for a classroom reading.
+    ...(requester.profile.role === "student" ? { personalPractice } : {}),
     learningPath: path.path_name,
     language: normalizeLanguage(path.language),
   };
@@ -397,6 +436,8 @@ function toAttemptDto(row, module) {
     passageSnapshot: row.passage_snapshot,
     roomId: row.room_id ?? null,
     assignmentId: row.assignment_id ?? null,
+    // "personal": saved outside any classroom (a Student's or learner's own practice); "classroom" otherwise.
+    practiceContext: row.room_id ? "classroom" : "personal",
     scoringVersion: row.scoring_version ?? 1,
     transcript: row.transcript,
     durationSeconds: Number(row.duration_seconds),
@@ -468,7 +509,7 @@ async function createOralReadingAttempt(requester, body, dependencies = {}) {
 
   const module = materialId
     ? await loadMaterialReadingSource(requester, materialId, body, dependencies)
-    : await loadAccessiblePublishedModule(requester, moduleId, dependencies, body);
+    : await loadAccessiblePublishedModule(requester, moduleId, dependencies, body, { studentPersonal: true });
   if (materialId && body.passageRevision !== module.passageRevision) {
     throw new OralReadingPersistenceError("This story changed. Reload it and record the current story before saving.", 409);
   }
@@ -640,6 +681,14 @@ async function readTeacherListAttempts(supabase, strict, studentIds) {
   return selectReviewRows(supabase, strict, "oral_reading_attempts", "*", {}, "user_id", studentIds, message);
 }
 
+// A Student's reading reaches a Teacher only through one of that Teacher's classrooms where the Student is
+// enrolled. Personal practice (room_id null) is not attributed to any Teacher. Before Student personal practice
+// existed every Student reading had a classroom (Staging 2026-11-17: 0 of 33 without), so this changes no
+// existing Teacher view; it was `!attempt.room_id || ...`.
+function inTeacherClassroom(students, attempt) {
+  return Boolean(attempt.room_id) && students.roomsByStudent?.get(attempt.user_id)?.has(attempt.room_id) === true;
+}
+
 async function listTeacherOralReadingAttempts(requester, dependencies = {}) {
   const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
   const students = await loadTeacherStudentProfiles(supabase, requester.user.id, dependencies.weeklyReportStrict === true);
@@ -656,10 +705,10 @@ async function listTeacherOralReadingAttempts(requester, dependencies = {}) {
     const module = attempt.material_id
       ? { title: attempt.module_title_snapshot, difficulty: "" }
       : modules.get(attempt.module_id);
-    if (dependencies.weeklyReportStrict && student && !module && (!attempt.room_id || students.roomsByStudent?.get(attempt.user_id)?.has(attempt.room_id))) {
+    if (dependencies.weeklyReportStrict && student && !module && inTeacherClassroom(students, attempt)) {
       throw new OralReadingPersistenceError("Required report module metadata is missing.");
     }
-    return student && module && (!attempt.room_id || students.roomsByStudent?.get(attempt.user_id)?.has(attempt.room_id))
+    return student && module && inTeacherClassroom(students, attempt)
       ? [{ attempt, student, module }]
       : [];
   });
@@ -695,7 +744,7 @@ async function getTeacherOralReadingAttempt(requester, attemptId, dependencies =
   }
 
   const student = attempt ? students.get(attempt.user_id) : undefined;
-  if (!attempt || !student || (attempt.room_id && !students.roomsByStudent?.get(attempt.user_id)?.has(attempt.room_id))) {
+  if (!attempt || !student || !inTeacherClassroom(students, attempt)) {
     throw new OralReadingPersistenceError(
       "Oral-reading result not found.",
       404,
@@ -794,6 +843,7 @@ async function listOwnOralReadingAttempts(requester, moduleId, dependencies = {}
     passageId: row.passage_id ?? null,
     roomId: row.room_id ?? null,
     assignmentId: row.assignment_id ?? null,
+    practiceContext: row.room_id ? "classroom" : "personal",
     moduleTitle: row.module_title_snapshot ?? "Reading module",
     passageTitle: row.passage_title_snapshot ?? "Reading result",
     language: row.language_snapshot === "fil" || row.language_snapshot === "en" ? row.language_snapshot : null,
@@ -810,6 +860,7 @@ module.exports = {
   loadTeacherStudentProfiles,
   listOwnOralReadingAttempts,
   OralReadingAuthorizationError,
+  STUDENT_ASSIGNMENT_CODES,
   OralReadingPersistenceError,
   authorizeOralReadingRequest,
   authorizeOralReadingPracticeRequest,

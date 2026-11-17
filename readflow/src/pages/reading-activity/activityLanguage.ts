@@ -260,6 +260,17 @@ const filipino = {
   "Comprehension activity not found.": "Hindi nahanap ang gawain sa pag-unawa.",
   "This activity requires a passage with reviewed questions.": "Kailangan ng gawaing ito ng tekstong may mga nasuring tanong.",
   "This oral-reading result is not available to your account.": "Hindi magagamit ng iyong account ang resultang ito ng pagbasa nang malakas.",
+  // Student personal Read Aloud practice (a published module outside any classroom)
+  "Personal practice": "Pansariling pagsasanay",
+  "Personal practice: this reading is saved to your Reading History. It is not part of any classroom.": "Pansariling pagsasanay: nase-save ang pagbasang ito sa iyong Kasaysayan ng Pagbasa. Hindi ito bahagi ng anumang silid-aralan.",
+  "Personal practice: this reading and its comprehension are saved to your history. They are not part of any classroom.": "Pansariling pagsasanay: nase-save sa iyong kasaysayan ang pagbasang ito at ang pag-unawa rito. Hindi bahagi ng anumang silid-aralan ang mga ito.",
+  "You already have a comprehension assessment for this passage from a classroom. Open it from your Reading History.": "Mayroon ka nang pagtatasa sa pag-unawa para sa tekstong ito mula sa isang silid-aralan. Buksan ito sa iyong Kasaysayan ng Pagbasa.",
+  "You already have a personal comprehension assessment for this passage. Open it from your Reading History.": "Mayroon ka nang pansariling pagtatasa sa pag-unawa para sa tekstong ito. Buksan ito sa iyong Kasaysayan ng Pagbasa.",
+  // Student classroom-assignment refusals (server/services/oralReadingAttemptService.js)
+  "This module must be assigned in a classroom where you are enrolled.": "Kailangang iatas ang modyul na ito sa isang silid-aralan kung saan ka naka-enroll.",
+  "This module must be assigned in a classroom where you are enrolled. Join your teacher's classroom first.": "Kailangang iatas ang modyul na ito sa isang silid-aralan kung saan ka naka-enroll. Sumali muna sa silid-aralan ng iyong guro.",
+  "Your teacher assigned this module to selected students only.": "Iniatas ng iyong guro ang modyul na ito sa mga piling mag-aaral lamang.",
+  "Your teacher removed this module from the classroom. Your saved results are still in Reading History.": "Inalis ng iyong guro ang modyul na ito sa silid-aralan. Nasa Kasaysayan ng Pagbasa pa rin ang iyong mga naka-save na resulta.",
   "No speech was detected. Please record your reading again.": "Walang natukoy na pagsasalita. Paki-record muli ang iyong pagbasa.",
   // Speech endpoint access and limits (server/services/speechAccess.js, server/routes/diagnosticAudio.js)
   "Speech practice is not available for this account.": "Hindi magagamit ng account na ito ang pagsasanay sa pagsasalita.",
