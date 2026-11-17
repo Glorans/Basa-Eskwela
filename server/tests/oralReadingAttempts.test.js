@@ -295,7 +295,14 @@ test("Student assignment and supplied classroom context are checked server-side"
   await assert.rejects(loadAccessiblePublishedModule(student, MODULE, dependencies(db), { roomId: PATH }), OralReadingAuthorizationError);
   await assert.rejects(loadAccessiblePublishedModule(student, MODULE, dependencies(db), { assignmentId: PATH }), OralReadingAuthorizationError);
   db.tables.room_modules = [];
-  await assert.rejects(createOralReadingAttempt(student, perfectAttemptBody(), dependencies(db)), OralReadingAuthorizationError);
+  // Without an assignment, a save that names the classroom is refused (classroom work is never relabelled)...
+  await assert.rejects(createOralReadingAttempt(student, perfectAttemptBody({ roomId: ROOM }), dependencies(db)), OralReadingAuthorizationError);
+  await assert.rejects(createOralReadingAttempt(student, perfectAttemptBody({ assignmentId: ROOM }), dependencies(db)), OralReadingAuthorizationError);
+  // ...and a catalog save (no classroom named) is personal practice (2026-11-17), saved without a classroom.
+  const personal = await createOralReadingAttempt(student, perfectAttemptBody(), dependencies(db));
+  assert.equal(personal.roomId, null);
+  assert.equal(personal.assignmentId, null);
+  assert.equal(personal.practiceContext, "personal");
 });
 test("save retry reopens the existing submission without another insert", async () => {
   const db = createDatabase();
@@ -350,7 +357,7 @@ test("saved classroom context survives reload and later assignment removal", asy
   assert.equal(saved.roomId, ROOM);
   assert.equal(saved.assignmentId, ROOM);
 });
-test("direct module and save API requests reject unassigned Student content", async () => {
+test("direct module and save API: an unenrolled Student reads a published module as personal practice only", async () => {
   const express = require("express");
   const { createOralReadingRouter } = require("../routes/oralReading");
   const db = createDatabase();
@@ -361,9 +368,26 @@ test("direct module and save API requests reject unassigned Student content", as
   await new Promise(resolve => server.once("listening", resolve));
   try {
     const url = `http://127.0.0.1:${server.address().port}`;
-    assert.equal((await fetch(`${url}/modules/${MODULE}`)).status, 403);
-    assert.equal((await fetch(`${url}/attempts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(perfectAttemptBody()) })).status, 403);
+    // A classroom the Student is not enrolled in, or a draft, stays refused; nothing is saved.
+    assert.equal((await fetch(`${url}/modules/${MODULE}?roomId=${ROOM}`)).status, 403);
+    assert.equal((await fetch(`${url}/modules/${DRAFT_MODULE}`)).status, 403);
+    assert.equal((await fetch(`${url}/attempts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(perfectAttemptBody({ roomId: ROOM })) })).status, 403);
     assert.equal(db.tables.oral_reading_attempts.length, 0);
+    // Personal practice: the published module opens and saves with no classroom, under this Student only.
+    const opened = await fetch(`${url}/modules/${MODULE}`);
+    assert.equal(opened.status, 200);
+    const module = (await opened.json()).module;
+    assert.equal(module.roomId, null);
+    assert.equal(module.personalPractice, true);
+    const saved = await fetch(`${url}/attempts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(perfectAttemptBody()) });
+    assert.equal(saved.status, 201, await saved.clone().text());
+    assert.equal(db.tables.oral_reading_attempts.length, 1);
+    assert.equal(db.tables.oral_reading_attempts[0].user_id, OTHER_STUDENT);
+    assert.equal(db.tables.oral_reading_attempts[0].room_id, null);
+    assert.equal(db.tables.oral_reading_attempts[0].assignment_id, null);
+    // No enrollment or classroom assignment was created.
+    assert.deepEqual(db.tables.enrollments, [{ student_id: STUDENT, room_id: ROOM }]);
+    assert.equal(db.tables.room_modules.length, 1);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 

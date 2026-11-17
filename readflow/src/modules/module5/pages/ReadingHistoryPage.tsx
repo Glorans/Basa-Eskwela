@@ -82,6 +82,7 @@ export default function ReadingHistoryPage({ role, embedded = false, language }:
             <span className="block">
               <time dateTime={attempt.completedAt}>{new Date(attempt.completedAt).toLocaleString()}</time>
               {attempt.language && <> · {attempt.language === "fil" ? "Filipino" : "English"}</>}
+              {role === "student" && !attempt.materialId && !attempt.roomId && <> · {rowT("Personal practice")}</>}
             </span>
             {/* The saved field is transcript-based reading accuracy, not a pronunciation score. */}
             <span className="my-3 block">{rowT("Reading accuracy: ")}{attempt.pronunciationAccuracy.toFixed(1)}% · {rowT("Speed: ")}{Math.round(attempt.readingSpeedWpm)} {rowT("WPM")}</span>

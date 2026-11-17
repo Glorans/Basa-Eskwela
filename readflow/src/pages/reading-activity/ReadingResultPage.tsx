@@ -223,6 +223,9 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   // Learners are told when a reading has no comprehension activity, rather than
   // the button silently disappearing. Read-aloud-only activities and admin
   // self-practice never have questions, so they show nothing extra.
+  // A Student's personal practice (a published module outside any classroom): same results and comprehension,
+  // labelled as personal.
+  const studentPersonalPractice = role === "student" && !attempt.materialId && !attempt.roomId;
   const comprehensionUnavailable = !comprehensionTarget && !isPracticeRole(role) && attempt.readAloudOnly !== true;
   // F2, F3 and F4 labels: a Filipino reading gets transcript-based results, not a pronunciation check.
   const filipino = language === "fil";
@@ -497,6 +500,11 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
             </section>
           </M5Modal>
 
+          {studentPersonalPractice && (
+            <p className="result-feedback-note result-feedback-status" role="note">
+              {t("Personal practice: this reading and its comprehension are saved to your history. They are not part of any classroom.")}
+            </p>
+          )}
           {comprehensionUnavailable && (
             <p className="result-feedback-note result-feedback-status" role="note">
               {t("Comprehension questions are not available for this story yet. Your reading result is saved.")}

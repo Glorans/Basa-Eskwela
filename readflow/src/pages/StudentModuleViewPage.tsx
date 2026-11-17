@@ -7,6 +7,7 @@ import {
   type StudentModuleDetail,
 } from "../modules/module3/services/studentModuleDetail";
 import { readAloudTarget } from "../modules/module5/services/oralReadingNavigation";
+import { getOralReadingModule, isStudentAssignmentRefusal } from "../modules/module5/services/oralReadingService";
 import "./StudentModuleViewPage.css";
 
 interface ClassroomNavigationState {
@@ -65,6 +66,11 @@ export default function StudentModuleViewPage({
   const [activePassageId, setActivePassageId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  // Opened from Reading Materials (not a classroom): an assigned module opens as classroom reading and any other
+  // published module as personal practice. A classroom restriction (removed from the room, selected students only)
+  // still refuses it, so ask the server (the same cached request the Read Aloud page makes) and explain that here
+  // instead of offering a Read Aloud that cannot open.
+  const [readAloudRefusal, setReadAloudRefusal] = useState<{ moduleId: string; message: string }>();
 
   useEffect(() => {
     let active = true;
@@ -104,6 +110,21 @@ export default function StudentModuleViewPage({
       active = false;
     };
   }, [getStudentModule, moduleId, requestedPassageId]);
+
+  const checkPassageId = module ? (module.passages[0]?.id ?? module.id) : undefined;
+  const checkReadAloud = role === "student" && !cameFromClassroom && !archivedRoom && Boolean(module);
+  useEffect(() => {
+    if (!checkReadAloud || !module) return;
+    let active = true;
+    const checkedModuleId = module.id;
+    // Network and other errors keep the Read Aloud link: that page shows them with Retry.
+    getOralReadingModule(checkedModuleId, { passageId: checkPassageId })
+      .then(() => { if (active) setReadAloudRefusal(undefined); })
+      .catch((error: unknown) => {
+        if (active && isStudentAssignmentRefusal(error)) setReadAloudRefusal({ moduleId: checkedModuleId, message: error.message });
+      });
+    return () => { active = false; };
+  }, [checkReadAloud, module, checkPassageId]);
 
   if (loading || (module && module.id !== moduleId)) {
     return (
@@ -232,6 +253,10 @@ export default function StudentModuleViewPage({
         {archivedRoom ? (
           <p className="basa-reading-module-actions" role="note">
             This classroom is archived. You can read these passages, but new read-aloud recordings cannot be saved.
+          </p>
+        ) : readAloudRefusal?.moduleId === module.id ? (
+          <p className="basa-reading-module-actions basa-reading-module-note" role="note">
+            You can read this passage here. Read Aloud is not available: {readAloudRefusal.message}
           </p>
         ) : (
         <div className="basa-reading-module-actions">

@@ -21,7 +21,8 @@ async function getTeacherQuizzes(requester, dependencies = {}) {
     if (!students.has(quiz.user_id)) continue;
     // Enrollment authorizes access; only the saved room attributes the quiz.
     // Independent/legacy unattributed quizzes remain roomId: null.
-    if (quiz.room_id != null && !students.roomsByStudent?.get(quiz.user_id)?.has(quiz.room_id)) continue;
+    // Own-classroom quizzes only: a Student's personal comprehension (no classroom) is not attributed to a Teacher.
+    if (quiz.room_id == null || !students.roomsByStudent?.get(quiz.user_id)?.has(quiz.room_id)) continue;
     eligible.set(quiz.id, quiz);
   }
   const responses = await load(db, 'm6_comprehension_responses',

@@ -196,3 +196,12 @@
 .read-aloud-saved-card strong { align-self: flex-start; padding: 4px 12px; border-radius: 999px; background: var(--basa-yellow); }
 .read-aloud-saved-card:hover { box-shadow: 0 4px 12px rgb(11 58 61 / 16%); }
 .read-aloud-saved-card:focus-visible { outline: 3px solid var(--basa-navy); outline-offset: 3px; }
+
+/* Student personal Read Aloud practice: a quiet note under the heading (no classroom attached). */
+.read-aloud-personal-note {
+  margin: 0 0 12px;
+  color: #475569;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
