@@ -11,7 +11,10 @@ test("Filipino UI translates required labels and preserves technical classificat
 
 test("all recorder status messages have Filipino interface wording", () => {
  const recorder=readFileSync(new URL("../src/modules/module2/hooks/useAudioRecorder.ts",import.meta.url),"utf8");
- const blocks=Array.from(recorder.matchAll(/setMessage\(([\s\S]*?)\);/g),m=>m[1]).join("\n");
+ // setMessage(...) literals plus the named message constants (e.g. the microphone-stopped message).
+ const blocks=[...Array.from(recorder.matchAll(/setMessage\(([\s\S]*?)\);/g),m=>m[1]),
+   ...Array.from(recorder.matchAll(/^(?:export )?const [A-Z_]+_MESSAGE = ("[^"\n]+");/gm),m=>m[1])].join("\n");
+ assert.match(blocks,/Your microphone stopped/);
  const messages=Array.from(blocks.matchAll(/"([^"\n]+)"/g),m=>m[1]).filter(s=>s.includes(" "));
  assert.ok(messages.length>10);
  for(const message of messages) assert.notEqual(diagnosticCopy("fil",message),message,message);

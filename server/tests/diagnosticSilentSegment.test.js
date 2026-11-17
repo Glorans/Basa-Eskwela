@@ -104,17 +104,28 @@ test('an empty phrase between recognized phrases is skipped (original behaviour)
   assert.equal(part.status, 200); assert.equal(part.body.transcription.text, 'The cat sat. It was happy.');
 });
 
-test('only the pause AFTER the reading may be silent: a silent part before speech (microphone dropout) is refused', async () => {
+test('server-confirmed silent parts are accepted anywhere: before, between and after speech', async () => {
   const spoken = async (text, seg) => (await uploadPart([speech(text)], seg)).body.transcription.receipt;
   const quiet = async seg => (await uploadPart([SILENCE], seg)).body.transcription.receipt;
-  const middle = [await spoken('The cat sat', 1), await quiet(2), await spoken('on the mat.', 3)];
-  const leading = [await quiet(1), await spoken('The cat sat on the mat.', 2)];
-  for (const tokens of [middle, leading]) {
-    assert.throws(() => verify(tokens), e => e.code === 'NO_SPEECH' && e.statusCode === 422);
-  }
-  // Several trailing silent parts are still fine, and only the spoken words are scored.
-  const trailing = verify([await spoken('The cat sat on the mat.', 1), await quiet(2), await quiet(3)]);
-  assert.equal(trailing.text, 'The cat sat on the mat.');
+  assert.equal(verify([await spoken('The cat sat', 1), await quiet(2), await spoken('on the mat.', 3)]).text, 'The cat sat on the mat.');
+  assert.equal(verify([await quiet(1), await spoken('The cat sat on the mat.', 2)]).text, 'The cat sat on the mat.');
+  assert.equal(verify([await spoken('The cat sat on the mat.', 1), await quiet(2), await quiet(3)]).text, 'The cat sat on the mat.');
+});
+
+test('an empty part without the signed no-speech mark is never accepted, wherever it is', () => {
+  const claims = (seg, text, extra = {}) => receipts.issue({ userId: USER, language: 'en', binding, recordingId: RID, segmentIndex: seg, source: 'upload', text, ...extra });
+  // A receipt issued with text cannot be emptied (the signature covers the text), and receipts.issue refuses empty
+  // text without noSpeech, so an unmarked empty part can only come from a forged token: it fails verification.
+  const forged = claims(2, 'x').replace(/\.[^.]+$/, '.AAAA');
+  assert.throws(() => verify([claims(1, 'The cat sat.'), forged, claims(3, 'On the mat.')]), e => e.code === 'READING_NOT_VERIFIED');
+  // Defence in depth: even a validly signed claim with empty text but no ns flag is refused by verifyReading.
+  const real = [claims(1, 'The cat sat.'), claims(2, 'x'), claims(3, 'On the mat.')].map(token => receipts.verify(token));
+  real[1] = { ...real[1], text: '' };
+  const fake = { verify: token => real[Number(token)] };
+  assert.throws(() => verifyReading({ tokens: ['0', '1', '2'], userId: USER, language: 'en', binding, receiptService: fake }),
+    e => e.code === 'READING_NOT_VERIFIED');
+  real[1] = { ...real[1], ns: true };
+  assert.equal(verifyReading({ tokens: ['0', '1', '2'], userId: USER, language: 'en', binding, receiptService: fake }).text, 'The cat sat. On the mat.');
 });
 
 test('silent receipts never change the scored transcript compared with the same reading without the pause', async () => {

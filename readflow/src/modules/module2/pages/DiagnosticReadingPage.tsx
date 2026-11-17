@@ -86,7 +86,7 @@ export default function DiagnosticReadingPage({
     stopRecording,
   } = useAudioRecorder({
     createPlaybackUrls: false,
-    preserveOnTrackEnd: true,
+    reportMicrophoneEnd: true,
     maxSegmentDurationSeconds: DIAGNOSTIC_SEGMENT_DURATION_SECONDS,
     maxTotalDurationSeconds: DIAGNOSTIC_MAX_RECORDING_SECONDS,
     onStreamReady: (stream) => {
@@ -118,7 +118,8 @@ export default function DiagnosticReadingPage({
           t("We couldn't process your full reading. Please try recording again.")
         : uploadStatus === "success"
           ? t("Your reading was processed successfully.")
-          : streaming.failed
+          // Only when a recording exists: after a microphone loss there is none, and the recorder's message explains it.
+          : streaming.failed && (isRecording || audioSegments.length > 0)
             ? isRecording
               ? t("Keep reading. We can process your recording after you stop.")
               : t("Your recording is ready. Continue to process your reading.")

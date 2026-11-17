@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const INITIAL_MESSAGE = "Press the microphone button when you're ready.";
+export const MICROPHONE_ENDED_MESSAGE = "Your microphone stopped, so the recording ended early. Please record your reading again.";
+const RECORDING_FAILED_MESSAGE = "Recording failed. Please try again.";
 const PREFERRED_MIME_TYPE = "audio/webm;codecs=opus";
 
 // How long a finished session waits for the continuous recorder's final data.
@@ -18,7 +20,12 @@ interface AudioRecorderOptions {
   maxTotalDurationSeconds?: number;
   onStreamReady?: (stream: MediaStream) => void;
   onStreamStopped?: (reason: StreamStopReason) => void;
-  preserveOnTrackEnd?: boolean;
+  /**
+   * M2: when the microphone stops unexpectedly (unplugged, permission revoked, device taken by another app), the
+   * interrupted recording is discarded with MICROPHONE_ENDED_MESSAGE so the learner records again; it is never
+   * presented as a successfully captured reading. Without it the recording fails with the generic message (M5).
+   */
+  reportMicrophoneEnd?: boolean;
 }
 
 type RecorderStopReason = "manual" | "rotate" | "maximum";
@@ -97,7 +104,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
   const createPlaybackUrls = options.createPlaybackUrls ?? true;
   const maxSegmentDurationSeconds = options.maxSegmentDurationSeconds;
   const maxTotalDurationSeconds = options.maxTotalDurationSeconds;
-  const preserveOnTrackEnd = options.preserveOnTrackEnd ?? false;
+  const reportMicrophoneEnd = options.reportMicrophoneEnd ?? false;
 
   function clearTimers() {
     if (segmentTimerRef.current !== null) {
@@ -258,11 +265,10 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
       const recorderOptions = MediaRecorder.isTypeSupported(PREFERRED_MIME_TYPE)
         ? { mimeType: PREFERRED_MIME_TYPE }
         : undefined;
-      let microphoneEnded = false;
       // Resolves with the continuous file, or null if it could not be recorded.
       let fullRecordingDone: Promise<Blob | null> = Promise.resolve(null);
 
-      const abortRecording = (source: string) => {
+      const abortRecording = (source: string, failureMessage = RECORDING_FAILED_MESSAGE) => {
         if (sessionFinalizedRef.current) return;
         sessionFinalizedRef.current = true;
         sessionActiveRef.current = false;
@@ -281,7 +287,7 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
           setAudioURLs([]);
           setSegmentDurationsSeconds([]);
           setRecordingDurationSeconds(null);
-          setMessage("Recording failed. Please try again.");
+          setMessage(failureMessage);
         }
       };
 
@@ -384,9 +390,6 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
           }
 
           if (recorder.state === "inactive") {
-            // Track loss may already have queued MediaRecorder's final data/stop
-            // events. Let those events preserve the captured recording.
-            if (microphoneEnded) return;
             abortRecording("MediaRecorder was already inactive when stop was requested");
             return;
           }
@@ -415,16 +418,14 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
           if (sessionFinalizedRef.current) return;
 
           if (!segmentStopRequested || stopReason === null) {
-            if (preserveOnTrackEnd && stream.getAudioTracks().every((track) => track.readyState === "ended")) {
-              microphoneEnded = true;
-              stopReason = "manual";
-              sessionActiveRef.current = false;
-              terminalStopReasonRef.current = "manual";
-              sessionEndedAtRef.current = performance.now();
-            } else {
-              abortRecording("MediaRecorder stopped without a requested rotation or session stop");
-              return;
-            }
+            // The browser stopped the recorder itself. When every microphone track has ended, the microphone was lost
+            // mid-reading: the interrupted recording is discarded and the learner is asked to record again.
+            const microphoneLost = stream.getAudioTracks().every((track) => track.readyState === "ended");
+            abortRecording(
+              microphoneLost ? "MediaRecorder stopped after the microphone ended" : "MediaRecorder stopped without a requested rotation or session stop",
+              microphoneLost && reportMicrophoneEnd ? MICROPHONE_ENDED_MESSAGE : RECORDING_FAILED_MESSAGE,
+            );
+            return;
           }
 
           const stoppedAt = segmentStoppedAt ?? performance.now();
@@ -493,12 +494,8 @@ export function useAudioRecorder(options: AudioRecorderOptions = {}) {
             readyState: track.readyState,
           });
           if (sessionActiveRef.current) {
-            if (preserveOnTrackEnd) {
-              microphoneEnded = true;
-              stopSessionRef.current?.("manual");
-            } else {
-              abortRecording("MediaStream track ended unexpectedly");
-            }
+            // Never treated as a normal Stop: the reading was interrupted, so nothing is kept for processing.
+            abortRecording("MediaStream track ended unexpectedly", reportMicrophoneEnd ? MICROPHONE_ENDED_MESSAGE : RECORDING_FAILED_MESSAGE);
           }
         };
         trackEndedHandlersRef.current.set(track, handleTrackEnded);

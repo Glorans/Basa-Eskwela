@@ -77,6 +77,7 @@ const FILIPINO: Record<string, string> = {
   "The story is difficult right now, so an easier story and extra support may help.": "Mahirap pa ang kuwentong ito para sa iyo ngayon. Makakatulong ang mas madaling kuwento at dagdag na gabay.",
   "Press the microphone button when you're ready.": "Pindutin ang mikropono kapag handa ka na.",
   "Audio recording is unavailable. Use a supported browser on HTTPS or localhost.": "Hindi makapagrekord ng tunog. Gumamit ng browser na may suporta sa pagrekord at buksan ang ligtas na pahina (HTTPS o localhost).",
+  "Your microphone stopped, so the recording ended early. Please record your reading again.": "Huminto ang mikropono mo kaya maagang natapos ang rekording. Pakirekord muli ang iyong pagbasa.",
   "Recording failed. Please try again.": "Hindi nagtagumpay ang pagrekord. Subukan muli.",
   "No audio was captured. Please try again.": "Walang tunog na nairekord. Subukan muli.",
   "Recording reached the five-minute limit. Your reading was captured successfully.": "Umabot na sa limang minuto ang pagrekord. Nairekord ang iyong pagbasa.",

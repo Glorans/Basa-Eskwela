@@ -198,12 +198,8 @@ export async function processDiagnosticRecording({
     }
   }
 
-  // Only the pause AFTER the reading may be silent. A silent part followed by speech is a gap in the reading (for
-  // example the microphone cut out), so the reading is recorded again instead of scoring those words as missed.
-  const gap = transcriptions.findIndex((part, index) =>
-    !part.text.trim() && transcriptions.slice(index + 1).some((next) => next.text.trim()));
-  if (gap >= 0) throw new DiagnosticRecordingProcessingError({ code: "NO_SPEECH", segmentIndex: gap + 1 });
-
+  // Parts with only silence or noise (a long pause, or the pause after reading) add no words; the server confirmed
+  // each one with a signed receipt. The speech before and after them is kept and scored as usual.
   const transcription = combineDiagnosticTranscriptions(transcriptions);
   // Azure returned text (or only silent parts) but no reading words: re-recording, not re-processing, is needed.
   if (!getReadingWords(transcription.text, language).length) throw new DiagnosticRecordingProcessingError({ code: "NO_SPEECH" });

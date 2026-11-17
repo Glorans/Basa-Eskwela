@@ -548,15 +548,19 @@ test("M2: a part with only silence or noise (signed, empty receipt) is accepted;
   }
 });
 
-test("M2: a silent part BEFORE speech (e.g. a microphone dropout mid-reading) is refused, never scored as missed words",async()=>{
+test("M2: server-confirmed silent parts are accepted before, between and after speech (long pauses); speech on both sides is kept",async()=>{
   const blob=()=>new Blob(["audio"],{type:"audio/webm"});
   const spoken=(text:string,receipt:string)=>({success:true,message:"ok",transcription:{text,receipt}});
   const silent=(receipt:string)=>({success:true,message:"This part had no speech.",transcription:{text:"",receipt,noSpeech:true}});
-  for(const parts of [[spoken("Ana reads","r1"),silent("r2"),spoken("a book.","r3")],[silent("r1"),spoken("Ana reads a book.","r2")]]){
+  for(const parts of [[spoken("Ana reads","r1"),silent("r2"),spoken("a book.","r3")],[silent("r1"),spoken("Ana reads a book.","r2")],
+    [spoken("Ana","r1"),silent("r2"),spoken("reads","r3"),silent("r4"),spoken("a book.","r5"),silent("r6")]]){
     let index=0;
-    await assert.rejects(processDiagnosticRecording({audioSegments:parts.map(blob),language:"en",expectedText:"Ana reads a book.",recordingDurationSeconds:60,
+    const result=await processDiagnosticRecording({audioSegments:parts.map(blob),language:"en",expectedText:"Ana reads a book.",recordingDurationSeconds:60,
       segmentDurationsSeconds:parts.map(()=>20),uploadSegment:async()=>parts[index++],
-      diagnostic:{recordingId:"00000000-0000-4000-8000-0000000000c1",assessmentId:"a",assessmentVersion:"1"}}),
-      (e:unknown)=>e instanceof DiagnosticRecordingProcessingError&&e.code==="NO_SPEECH"&&e.segmentIndex===parts.findIndex(p=>!p.transcription.text)+1);
+      diagnostic:{recordingId:"00000000-0000-4000-8000-0000000000c1",assessmentId:"a",assessmentVersion:"1"}});
+    assert.equal(result.transcription.text,"Ana reads a book.");
+    assert.equal(result.oralReadingMetrics.correctWords,4);
+    assert.equal(result.oralReadingMetrics.omissions,0);
+    assert.deepEqual(result.transcriptReceipts,parts.map(p=>p.transcription.receipt),"every part keeps its signed receipt, in order");
   }
 });
