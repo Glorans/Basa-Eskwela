@@ -321,3 +321,21 @@ test("F4 example audio is the American English (en-US) voice and is disabled whi
   assert.match(readFileSync(new URL("../src/modules/module5/components/PronunciationFeedback.tsx", import.meta.url), "utf8"),
     /speech\.play\(word, "en", undefined, "american"\)/);
 });
+
+test("F2 while it checks: the step (1-4 of 4) and that the recording can be played meanwhile; loading is marked busy", () => {
+  const steps = [["loading", "Loading your recording", 1], ["preparing", "Preparing your recording", 2],
+    ["uploading", "Sending your recording", 3], ["assessing", "Checking your pronunciation", 4]] as const;
+  for (const [step, message, number] of steps) {
+    const html = render("PronunciationFeedbackPanel", { check: waiting({ status: "checking", step }), autoStart: true });
+    assert.match(html, /role="status" aria-live="polite" aria-busy="true"/);
+    assert.ok(visible(html).includes(`${message}… This can take about half as long as your reading. Step ${number} of 4. You can listen to your recording below while you wait.`), step);
+  }
+  // Before the automatic check starts it shows step 1.
+  assert.match(visible(render("PronunciationFeedbackPanel", { check: waiting({}), autoStart: true })), /Step 1 of 4\./);
+  // Reading a saved result: the same busy status with the spinner.
+  const loading = render("PronunciationFeedbackPanel", { check: waiting({ status: "loading" }), autoStart: true });
+  assert.match(loading, /aria-busy="true"/);
+  assert.match(loading, /m5-loading-indicator/);
+  // A finished result never shows a step.
+  assert.doesNotMatch(visible(render("PronunciationFeedbackPanel", { check: waiting({ status: "error", error: "x" }), autoStart: true })), /Step \d of 4/);
+});

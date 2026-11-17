@@ -49,6 +49,8 @@ const STEP_MESSAGES: Record<PronunciationCheckStep, string> = {
   uploading: "Sending your recording…",
   assessing: "Checking your pronunciation…",
 };
+// Display only: where the learner is in the check. The check itself (and Azure) is unchanged.
+const STEP_ORDER: PronunciationCheckStep[] = ["loading", "preparing", "uploading", "assessing"];
 
 /** The one paid request: the whole saved recording, assessed and saved once by the server. */
 const runPronunciationCheck: PronunciationCheckRunner = (attemptId, { signal, onStep }) =>
@@ -146,7 +148,11 @@ function PendingNote({ check }: { check: PronunciationCheck }) {
  */
 function FeedbackStatus({ check, autoStart }: { check: PronunciationCheck; autoStart: boolean }) {
   if (check.status === "loading") {
-    return <p className="result-feedback-note" role="status" aria-live="polite">Loading your pronunciation feedback…</p>;
+    return (
+      <p className="result-feedback-note" role="status" aria-live="polite" aria-busy="true">
+        <span className="m5-loading-indicator" aria-hidden="true" /> Loading your pronunciation feedback…
+      </p>
+    );
   }
   if (check.status === "pending") return <PendingNote check={check} />;
   if (check.status === "checking" || (check.status === "idle" && autoStart && !check.loadError && !check.autoTried)) {
@@ -154,6 +160,7 @@ function FeedbackStatus({ check, autoStart }: { check: PronunciationCheck; autoS
     return (
       <p className="result-feedback-note" role="status" aria-live="polite" aria-busy="true">
         <span className="m5-loading-indicator" aria-hidden="true" /> {STEP_MESSAGES[step]} This can take about half as long as your reading.
+        {" "}Step {STEP_ORDER.indexOf(step) + 1} of {STEP_ORDER.length}. You can listen to your recording below while you wait.
       </p>
     );
   }

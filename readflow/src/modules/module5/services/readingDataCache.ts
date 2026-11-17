@@ -24,6 +24,11 @@ export class ReadingDataCache {
     return entry && entry.expires > this.now() ? entry.value as T | undefined : undefined;
   }
 
+  /** Drops one entry (and lets a pending request finish without filling it). */
+  forget(key: string) {
+    this.entries.delete(key);
+  }
+
   put<T>(session: string, key: string, value: T) {
     if (!session || session !== this.session) return;
     this.entries.delete(key);

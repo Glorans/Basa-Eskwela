@@ -1,0 +1,12 @@
+/* Independent Learner Global Leaderboard on phones: learners' names need the room. The row styles are inline,
+   so these narrow-screen overrides use !important. The avatar is a generic icon (no information). */
+@media (max-width: 480px) {
+  .il-leaderboard-row {
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  .il-leaderboard-avatar {
+    display: none !important;
+  }
+}

@@ -299,11 +299,21 @@ export async function getOralReadingRecording(
 ): Promise<{ available: boolean; segments: string[] }> {
   const scope = reviewer === "admin" ? "admin/" : reviewer ? "teacher/" : "";
   try {
-    const response = await api.get(
+    const headers = await getAuthHeaders();
+    const fetchRecording = async () => (await api.get<{ recording: { available: boolean; segments: string[] } }>(
       `/api/oral-reading/${scope}attempts/${encodeURIComponent(attemptId)}/recording`,
-      { headers: await getAuthHeaders(), timeout: REQUEST_TIMEOUT_MS },
-    );
-    return response.data.recording;
+      { headers, timeout: REQUEST_TIMEOUT_MS },
+    )).data.recording;
+    // Teacher and Admin review always ask the server.
+    if (reviewer !== false) return await fetchRecording();
+    // The learner's own recording: opening Pronunciation Feedback starts the player and the pronunciation check at the
+    // same moment, and both used to ask for the links separately (one extra request and audio download). One request now
+    // serves both. Per signed-in session only (cleared on sign-out or another account), kept for the cache's 60 s (the
+    // links are valid for 300 s), and never while the recording is not saved yet.
+    const key = `recording:${attemptId}`;
+    const recording = await readingData.load(headers.Authorization.slice(7), key, fetchRecording);
+    if (!recording.available || recording.segments.length === 0) readingData.forget(key);
+    return recording;
   } catch (error) {
     throw toServiceError(error, "Unable to load recording. Please retry.");
   }
