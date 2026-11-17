@@ -1,3 +1,4 @@
+import { getQuestionGenerationError } from '../services/questionGenerationError';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ASSIGNED_QUESTION_SET_MESSAGE, DEFAULT_NEW_QUESTION_SET_COUNT, NEW_QUESTION_SET_COUNTS, createMaterialQuestionSet, deleteMaterialQuestionSet, getMaterialQuestionSets, getMaterialServiceError } from '../services/materialService';
@@ -63,7 +64,7 @@ export default function MaterialQuestionSets({ materialId, root, canGenerate, ca
       const set = await createMaterialQuestionSet(materialId, questionCount);
       setSets(current => [...current.filter(value => value.id !== set.id), set].sort((a, b) => a.sequenceNumber - b.sequenceNumber));
       setSuccess(`${set.name} generated and saved. Your previous sets are unchanged.`);
-    } catch (error) { setError(getMaterialServiceError(error)); }
+    } catch (error) { setError(getQuestionGenerationError(error)); }
     finally { setBusy(false); }
   }
   async function remove(set: MaterialQuestionSetSummary) {

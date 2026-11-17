@@ -1,6 +1,6 @@
 import PersonalMaterialPractice from "../components/PersonalMaterialPractice";
 import { ArrowLeft, FileText, LoaderCircle } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import M3PageHeader from "../components/M3PageHeader";
 import M3StatusBadge from "../components/M3StatusBadge";
 import MaterialLanguageControl from "../components/MaterialLanguageControl";
@@ -16,6 +16,7 @@ interface MaterialDetailPageProps {
 
 export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
   const { materialId } = useParams<{ materialId: string }>();
+  const [searchParams] = useSearchParams();
   const {
     getMaterial,
     materialsLoading,
@@ -65,6 +66,40 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
 
   const backTarget = role === "admin" ? root : `${root}/materials`;
   const showQuestionSets = role !== "general_user";
+
+  // Independent Learner: a short summary, then the practice steps (the reading text is checked and edited in step 1).
+  if (role === "general_user") {
+    return (
+      <div className="m3-page-stack m3-page-stack--narrow m3-personal-material">
+        <Link className="m3-back-link" to={backTarget}>
+          <ArrowLeft size={17} /> Back to Reading Materials
+        </Link>
+        <M3PageHeader eyebrow="My reading material" title={material.title} description="Check the text, then practice reading it." />
+        <section className="m3-detail-card">
+          <div className="m3-detail-summary">
+            <div><span>Source</span><strong>{material.originalFilename}</strong></div>
+            <div><span>File type</span><strong>{material.fileType}</strong></div>
+            <div><span>Status</span><M3StatusBadge value={material.processingStatus} /></div>
+          </div>
+          <MaterialLanguageControl
+            materialId={material.id}
+            language={material.languageCode}
+            canEdit={canEditLanguage}
+            hasQuestionSets={false}
+            onChanged={refreshMaterials}
+          />
+        </section>
+        <PersonalMaterialPractice
+          key={`${material.id}:${material.languageCode}`}
+          materialId={material.id}
+          contentText={material.contentText}
+          startEditing={searchParams.get("edit") === "1"}
+          onTextSaved={() => void refreshMaterials()}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={`m3-page-stack ${showQuestionSets ? "m3-page-stack--wide" : "m3-page-stack--narrow"}`}>
       <Link className="m3-back-link" to={backTarget}>
@@ -139,18 +174,15 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
         </div>
       </section>
 
-      {role === "general_user" && <PersonalMaterialPractice key={`${material.id}:${material.languageCode}`} materialId={material.id} />}
-      {role !== "general_user" && (
-        <div className="m3-material-split__main">
-          <MaterialQuestionSets
-            key={material.id}
-            materialId={material.id}
-            root={root}
-            canGenerate={canGenerate}
-            canDelete={canDeleteSets}
-          />
-        </div>
-      )}
+      <div className="m3-material-split__main">
+        <MaterialQuestionSets
+          key={material.id}
+          materialId={material.id}
+          root={root}
+          canGenerate={canGenerate}
+          canDelete={canDeleteSets}
+        />
+      </div>
       </div>
     </div>
   );

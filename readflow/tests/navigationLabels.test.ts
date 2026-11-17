@@ -36,6 +36,13 @@ test("old navigation wording is gone from navigation and page headings", async (
     "pages/MyMaterials.tsx",
     "pages/StudentModuleViewPage.tsx",
   ].map(source));
+  // The Independent Learner Reading Materials page names the learner's active list "My Materials" (as opposed to Trash;
+  // requested 2026-11-18) in four short messages only. Its title, the navigation and every other page keep
+  // "Reading Materials".
+  assert.match(files[3], /title="Reading Materials"/);
+  const learnerPhrases = /Back to My Materials|is back in My Materials\.|It leaves My Materials|It is still in My Materials\./g;
+  assert.equal((files[3].match(learnerPhrases) ?? []).length, 4);
+  files[3] = files[3].replace(learnerPhrases, "");
   for (const text of files) {
     assert.doesNotMatch(text, /My Materials|My Badges|My Progress|My Results|Progress & Results/);
   }

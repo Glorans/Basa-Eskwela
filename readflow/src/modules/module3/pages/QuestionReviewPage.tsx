@@ -1,3 +1,4 @@
+import { getQuestionGenerationError } from "../services/questionGenerationError";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, FileQuestion, LoaderCircle, Save } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
@@ -155,7 +156,7 @@ export default function QuestionReviewPage({ role, editing = false }: QuestionRe
       setSelectedSet(set); setQuestions(toReviewableQuestions(set.questions)); setRegenerating(false);
       setFeedback(`${set.name} regenerated and saved. Other sets are unchanged.`);
     } catch (error) {
-      if (activeIdentity.current === identity) setSaveError(getMaterialServiceError(error));
+      if (activeIdentity.current === identity) setSaveError(getQuestionGenerationError(error));
     } finally { requestPending.current = false; if (activeIdentity.current === identity) setBusy(false); }
   }
 

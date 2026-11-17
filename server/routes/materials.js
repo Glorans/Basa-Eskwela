@@ -35,6 +35,7 @@ const {
   listPersistedMaterials,
   requireUploadRole,
   updateMaterialLanguage,
+  listTrashedPersonalMaterials,
 } = require("../services/materialPersistenceService");
 const {
   materialFileUpload,
@@ -64,6 +65,21 @@ function sanitizeOriginalFilename(originalFilename) {
 }
 
 function sendMaterialError(res, error, fallbackMessage) {
+  if (error instanceof QuestionGenerationError) {
+    const safeValidation = {
+      MISSING_CONTENT_TEXT: "Reviewed material text is required before generating questions.",
+      CONTENT_TEXT_TOO_LONG: "Reviewed material text must be 30,000 characters or fewer.",
+      UNSUPPORTED_QUESTION_LANGUAGE: "Choose English or Filipino as the material language.",
+      INVALID_QUESTION_COUNT: "Choose 3, 6, 9 or 12 questions.",
+      INVALID_MATERIAL_ID: "Choose a saved material and try again.",
+    };
+    // Only bounded server error codes/status enter logs; never provider payloads, prompts, keys or stacks.
+    const code = typeof error.code === "string" && /^[A-Z_]{1,80}$/.test(error.code) ? error.code : "QUESTION_GENERATION_FAILED";
+    console.error("M3 question generation failed", { code, statusCode: error.statusCode });
+    return res.status(error.statusCode).json({ success: false,
+      message: safeValidation[code] || "We couldn't generate a new question set. Please try again." });
+  }
+
   if (error instanceof MaterialValidationError) {
     return res.status(error.statusCode).json({ success: false, message: error.message });
   }
@@ -73,21 +89,32 @@ function sendMaterialError(res, error, fallbackMessage) {
   if (
     error instanceof MaterialAuthorizationError
     || error instanceof MaterialPersistenceError
-    || error instanceof QuestionGenerationError
     || error instanceof require("../services/personalMaterialService").PersonalMaterialError
   ) {
-    if (error.statusCode >= 500) console.error("M3 material operation failed:",
-      error instanceof QuestionGenerationError
-        ? { code: error.code, statusCode: error.statusCode, message: error.message }
-        : error);
+    if (error.statusCode >= 500) console.error("M3 material operation failed:", error);
     return res.status(error.statusCode).json({ success: false, message: error.message });
   }
   if (error instanceof SupabaseServerConfigurationError) {
     console.error("M3 material persistence is not configured.");
     return res.status(503).json({ success: false, message: error.message });
   }
-  console.error("Unexpected M3 material operation failure:", error);
+  console.error("Unexpected M3 material operation failure:", safeErrorSummary(error));
   return res.status(500).json({ success: false, message: fallbackMessage });
+}
+
+// Developer log for unexpected failures: enough to diagnose (type, code, short message) without request bodies,
+// provider payloads, stacks or anything that looks like a key, token or password.
+function safeErrorSummary(error) {
+  const text = (value, max) => (typeof value === "string" ? value : "").slice(0, max);
+  const message = text(error?.message, 300)
+    .replace(/\b(api[_-]?key|key|token|secret|password|authorization|bearer)\b(\s*[:=]\s*|\s+)\S+/gi, "$1$2[redacted]")
+    .replace(/\b[A-Za-z0-9_\-]{32,}\b/g, "[redacted]");
+  const code = text(error?.code, 40);
+  return {
+    name: text(error?.name, 60) || typeof error,
+    code: /^[A-Za-z0-9_.-]{1,40}$/.test(code) ? code : undefined,
+    message,
+  };
 }
 
 function sendUploadError(res, error) {
@@ -348,6 +375,17 @@ function createMaterialsRouter(dependencies = {}) {
     }
   });
 
+  // Independent Learner Trash: own materials that were moved to Trash (never erased). Other roles are refused.
+  router.get("/trash", async (req, res) => {
+    try {
+      const requester = await authorize(req, dependencies);
+      res.set("Cache-Control", "no-store");
+      return res.json({ success: true, materials: await listTrashedPersonalMaterials(requester, adminDependencies) });
+    } catch (error) {
+      return sendMaterialError(res, error, "Unable to load your Trash.");
+    }
+  });
+
   router.delete("/temporary/:temporaryId", async (req, res) => {
     try {
       const requester = await authorize(req, dependencies);
@@ -397,7 +435,7 @@ function createMaterialsRouter(dependencies = {}) {
         requester, requireMaterialId(req.params.materialId), req.params.setId ? requireMaterialId(req.params.setId) : null,
         req.body?.revision, generateWithGemini, adminDependencies, req.body?.questionCount);
       return res.status(req.params.setId ? 200 : 201).json({ success: true, set });
-    } catch (error) { return sendMaterialError(res, error, "Unable to generate the question set."); }
+    } catch (error) { return sendMaterialError(res, error, "We couldn't generate a new question set. Please try again."); }
   });
   router.delete("/:materialId/question-sets/:setId", async (req, res) => {
     try {
@@ -440,9 +478,37 @@ function createMaterialsRouter(dependencies = {}) {
   router.get("/:materialId/personal-practice", async (req, res) => {
     try {
       const requester = await authorize(req);
-      const state = await require("../services/personalMaterialService").personalMaterialAccess(requester, requireMaterialId(req.params.materialId), "status", {}, adminDependencies);
+      const state = await require("../services/personalMaterialService").personalPracticeState(requester, requireMaterialId(req.params.materialId), adminDependencies);
       res.json({ state });
     } catch (error) { return sendMaterialError(res, error, "Unable to load personal practice."); }
+  });
+  // Independent Learner question preview: read-only, owner-only, no answer keys; never starts an assessment.
+  router.get("/:materialId/personal-practice/questions", async (req, res) => {
+    try {
+      const requester = await authorize(req);
+      const preview = await require("../services/personalMaterialService").previewPersonalQuestions(requester, requireMaterialId(req.params.materialId), adminDependencies);
+      res.set("Cache-Control", "no-store");
+      return res.json(preview);
+    } catch (error) { return sendMaterialError(res, error, "Unable to load your questions."); }
+  });
+  // Independent Learner: correct the extracted reading text (the original file is unchanged; saved results keep their
+  // own copies). The database decides when editing is allowed (see personalMaterialService.updatePersonalMaterialText).
+  router.put("/:materialId/personal-practice/text", async (req, res) => {
+    try {
+      const requester = await authorize(req);
+      const service = require("../services/personalMaterialService");
+      const id = requireMaterialId(req.params.materialId);
+      await service.updatePersonalMaterialText(requester, id, { contentText: req.body?.contentText, revision: req.body?.revision }, adminDependencies);
+      return res.json({ state: await service.personalPracticeState(requester, id, adminDependencies) });
+    } catch (error) { return sendMaterialError(res, error, "Unable to save your text."); }
+  });
+  // Independent Learner: Trash -> My Materials.
+  router.post("/:materialId/personal-practice/restore", async (req, res) => {
+    try {
+      const requester = await authorize(req);
+      return res.json(await require("../services/personalMaterialService").restorePersonalMaterial(
+        requester, requireMaterialId(req.params.materialId), adminDependencies));
+    } catch (error) { return sendMaterialError(res, error, "Unable to restore this material."); }
   });
   router.post("/:materialId/personal-practice/:action", async (req, res) => {
     try {
@@ -453,17 +519,33 @@ function createMaterialsRouter(dependencies = {}) {
         const state = await service.personalMaterialAccess(requester, id, "confirm", { expected_revision: req.body.revision }, adminDependencies);
         return res.json({ state });
       }
-      if (req.params.action === "generate") {
+      if (req.params.action === "generate" || req.params.action === "new-questions") {
         const decision = personalGenerationLimiter.take(requester.user.id);
         if (!decision.allowed) {
           res.set("Retry-After", String(decision.retryAfterSeconds));
           return res.status(429).json({ success: false, code: "PERSONAL_GENERATION_RATE_LIMITED",
             message: "Too many question-generation requests. Please wait before trying again; saved questions are kept." });
         }
-        return res.json({ set: await service.generatePersonalQuestions(requester, id, { ...adminDependencies, generate: generateWithGemini }) });
+        // "new-questions": a new set for the same text before any assessment (counts toward the same limits).
+        return res.json({ set: await service.generatePersonalQuestions(requester, id, { ...adminDependencies, generate: generateWithGemini },
+          { replace: req.params.action === "new-questions" }) });
       }
       return res.status(400).json({ message: "Confirm the reviewed text or generate private questions." });
-    } catch (error) { return sendMaterialError(res, error, "Unable to update personal practice."); }
+    } catch (error) {
+      const generating = ["generate", "new-questions"].includes(req.params.action);
+      // AI-step failures are logged by sendMaterialError (code + status). Refusals from the private-question database
+      // functions (for example an invalid bank, or the material changing during generation) were not logged at all;
+      // log a sanitized summary for every personal generation failure so a failed attempt can be diagnosed later.
+      if (generating && !(error instanceof QuestionGenerationError)) {
+        console.error("Personal question generation refused", {
+          action: req.params.action,
+          statusCode: typeof error?.statusCode === "number" ? error.statusCode : 500,
+          code: typeof error?.code === "string" && /^[A-Z0-9_]{1,40}$/.test(error.code) ? error.code : undefined,
+          reason: typeof error?.message === "string" ? error.message.slice(0, 160).replace(/[A-Za-z0-9_\-]{32,}/g, "[redacted]") : undefined,
+        });
+      }
+      return sendMaterialError(res, error, generating ? "We couldn't generate a new question set. Please try again." : "Unable to update personal practice.");
+    }
   });
 
   router.get("/:materialId", async (req, res) => {

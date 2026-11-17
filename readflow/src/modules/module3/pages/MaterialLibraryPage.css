@@ -1,0 +1,32 @@
+/* Independent Learner only; reuse the Teacher page structure and shared components. */
+.m3-personal-library .m3-page-header { align-items: center; }
+.m3-personal-library .m3-panel { background: #f4f8f1; border: 1px solid #cbdcc8; }
+.m3-personal-library .m3-card-list { gap: 18px; }
+.m3-personal-library .m3-record-card { grid-template-columns: 52px minmax(0, 1fr); align-items: start; padding: 22px; border-color: #d0dfcc; box-shadow: 0 3px 12px #183c3308; }
+.m3-personal-library .m3-record-icon--material { background: #e1efda; color: #2f673d; }
+.m3-personal-library .m3-record-heading h2 { font-size: 1.1rem; }
+.m3-personal-library .m3-record-heading > div { min-width: 0; }
+.m3-personal-library .m3-record-heading :is(h2,p) { overflow-wrap: anywhere; }
+.m3-personal-library .m3-record-meta span { padding: 5px 9px; background: #f1f6ed; border-radius: 8px; color: #395747; }
+.m3-personal-library .m3-record-actions { grid-column: 1 / -1; max-width: none; justify-content: flex-start; border-top: 1px solid #e1eadd; padding-top: 14px; }
+.m3-personal-library .m3-record-actions .m3-action-link { justify-content: center; white-space: normal; text-align: center; max-width: 100%; }
+@media (max-width: 560px) {
+ .m3-personal-library .m3-page-header { align-items: stretch; }
+ .m3-personal-library .m3-page-actions, .m3-personal-library .m3-page-actions a { width: 100%; }
+ .m3-personal-library .m3-record-card { padding: 15px; gap: 12px; }
+ .m3-personal-library .m3-record-heading { flex-direction: column; gap: 8px; }
+ .m3-personal-library .m3-record-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+}
+/* Independent Learner: [Trash (count)] [Upload Material] in the page header. */
+.m3-personal-library .m3-trash-button { position: relative; gap: 8px; }
+.m3-personal-library .m3-trash-button.is-active { border-color: #2f673d; background: #e1efda; color: #1f4f2c; }
+.m3-personal-library .m3-trash-button__count {
+  min-width: 24px; padding: 1px 8px; border-radius: 999px; background: #dcebd5; color: #1f4f2c;
+  font-size: 0.85rem; font-weight: 800; line-height: 1.5; text-align: center;
+}
+.m3-personal-library .m3-record-card--trash { background: #fbfbf8; }
+.m3-personal-library #trash .m3-section-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+@media (max-width: 560px) {
+ .m3-personal-library .m3-page-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); width: 100%; }
+ .m3-personal-library .m3-page-actions > * { width: 100%; justify-content: center; white-space: normal; text-align: center; }
+}

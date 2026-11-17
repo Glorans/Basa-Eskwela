@@ -415,7 +415,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
 
       {archivedOpen && (
         <div className="m6-card" role="note">
-          <p>{attempt?.materialDeleted ? (language === "fil" ? "Inalis na ang babasahing ito sa iyong listahan. Naka-save ang mga sagot mo, pero hindi na maaaring ituloy ang pagsusulit na ito." : "This material was removed from your Reading Materials. Your saved answers are kept, but this unfinished assessment cannot continue.") : language === "fil"
+          <p>{attempt?.materialDeleted ? (language === "fil" ? "Nasa Trash ang babasahing ito. Naka-save ang mga sagot mo. Ibalik ito mula sa Trash sa Reading Materials para maituloy ang pagsusulit." : "This material is in Trash. Your saved answers are kept. Restore it from Trash in Reading Materials to continue this assessment.") : language === "fil"
             ? "Naka-archive na ang klaseng ito. Naka-save ang mga sagot mo, pero hindi na maipapasa ang mga bagong sagot."
             : "This classroom is archived. Your saved answers are kept, but new answers cannot be submitted."}</p>
           <Link className="m6-button" to={linkedReading ?? readingTarget} state={activityState}>{t("Back to Reading Result")}</Link>

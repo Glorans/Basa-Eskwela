@@ -110,3 +110,65 @@ export async function deleteMaterialQuestionSet(materialId: string, setId: strin
     throw error;
   }
 }
+
+// ==========================
+// INDEPENDENT LEARNER: personal practice, text correction, question preview (no answer keys), Trash and Restore
+// ==========================
+export interface PersonalPracticeState {
+  revision: string; reviewed: boolean; missingPages: number[] | null;
+  questionSetId: string | null; readingId: string | null;
+  attemptId: string | null; attemptStatus: "in_progress" | "completed" | null;
+  /** Questions exist only for an older version of the text: new questions are needed before answering. */
+  questionsOutdated?: boolean;
+  canEditText?: boolean;
+  textLockedReason?: "assessment_unfinished" | "practice_started" | null;
+  /** New questions for the same text (before any assessment), when the database supports it. */
+  canGetNewQuestions?: boolean;
+  /** Why the questions can no longer change: an assessment exists (its frozen copy is what is scored). */
+  questionsLockedReason?: "assessment_unfinished" | "assessment_completed" | null;
+}
+
+export interface PersonalQuestionPreview {
+  questionSetId: string | null;
+  // Exactly what the learner sees while answering; the server never sends answers, explanations, evidence or hints.
+  questions: { id: string; type: "literal" | "inferential" | "critical"; questionText: string; options: string[] }[];
+}
+
+export type TrashedMaterial = UploadedMaterial & { deletedAt: string };
+
+const personalPracticePath = (materialId: string) => `/api/materials/${encodeURIComponent(materialId)}/personal-practice`;
+
+export async function getPersonalPracticeState(materialId: string) {
+  const { data } = await api.get<{ state: PersonalPracticeState }>(personalPracticePath(materialId), { headers: await getMaterialAuthHeaders() });
+  return data.state;
+}
+
+/** Saves corrected reading text (before practice starts). Changed text must be confirmed again. */
+export async function savePersonalMaterialText(materialId: string, contentText: string, revision: string) {
+  const { data } = await api.put<{ state: PersonalPracticeState }>(`${personalPracticePath(materialId)}/text`,
+    { contentText, revision }, { headers: await getMaterialAuthHeaders() });
+  return data.state;
+}
+
+export async function confirmPersonalMaterialText(materialId: string, revision: string) {
+  await api.post(`${personalPracticePath(materialId)}/confirm`, { confirmed: true, revision }, { headers: await getMaterialAuthHeaders() });
+}
+
+export async function getPersonalQuestionPreview(materialId: string) {
+  const { data } = await api.get<PersonalQuestionPreview>(`${personalPracticePath(materialId)}/questions`, { headers: await getMaterialAuthHeaders() });
+  return data;
+}
+
+export async function getTrashedMaterials() {
+  const { data } = await api.get<{ materials: TrashedMaterial[] }>("/api/materials/trash", { headers: await getMaterialAuthHeaders() });
+  return data.materials;
+}
+
+export async function restorePersonalMaterial(materialId: string) {
+  await api.post(`${personalPracticePath(materialId)}/restore`, {}, { headers: await getMaterialAuthHeaders() });
+}
+
+/** Regenerate Questions: replaces the current private questions with a new set for the same text (before any assessment). */
+export async function getNewPersonalQuestions(materialId: string) {
+  await api.post(`${personalPracticePath(materialId)}/new-questions`, {}, { headers: await getMaterialAuthHeaders(), timeout: 150000 });
+}

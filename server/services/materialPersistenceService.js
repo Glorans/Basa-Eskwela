@@ -311,6 +311,28 @@ async function listPersistedMaterials(
   }));
 }
 
+/**
+ * Independent Learner Trash: the signed-in learner's own materials that were moved to Trash (soft deletion in
+ * personal_material_state). Nothing in Trash has been erased, so each can be restored.
+ */
+async function listTrashedPersonalMaterials(requester, dependencies = {}) {
+  const personal = require("./personalMaterialService");
+  personal.personalContext(requester);
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("uploaded_materials")
+    .select(MATERIAL_SELECT)
+    .eq("uploaded_by", requester.user.id)
+    .order("created_at", { ascending: false });
+  if (error) throw new MaterialPersistenceError("Unable to load your Trash.");
+  const deleted = await personal.deletedPersonalMaterials(supabase, (data ?? []).map((m) => m.id));
+  const trashed = (data ?? []).filter((m) => deleted.has(m.id));
+  const profiles = await loadUploaderProfiles(supabase, trashed);
+  return trashed
+    .map((material) => ({ ...toMaterialDto(material, profiles.get(material.uploaded_by)), deletedAt: deleted.get(material.id) }))
+    .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
+}
+
 async function loadMaterialRow(
   materialId,
   dependencies = {},
@@ -377,7 +399,7 @@ async function getAuthorizedMaterialRow(
   }
 
   if (requester.profile.role === "general_user" && (await require("./personalMaterialService").deletedPersonalIds(dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin(), [materialId])).has(materialId)) {
-    throw new MaterialAuthorizationError("This material was removed from your Reading Materials.");
+    throw new MaterialAuthorizationError("This material is in Trash. Restore it from Trash in Reading Materials to use it again.");
   }
   return material;
 }
@@ -823,6 +845,7 @@ module.exports = {
   getAuthorizedMaterialRow,
   toQuestionDto,
   listPersistedMaterials,
+  listTrashedPersonalMaterials,
   requireUploadRole,
   toMaterialDto,
   updateMaterialLanguage,

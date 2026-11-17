@@ -45,6 +45,7 @@ import ModuleDetailPage from "./modules/module3/pages/ModuleDetailPage";
 import UploadMaterialPage from "./modules/module3/pages/UploadMaterialPage";
 import MaterialDetailPage from "./modules/module3/pages/MaterialDetailPage";
 import QuestionReviewPage from "./modules/module3/pages/QuestionReviewPage";
+import PersonalQuestionPreviewPage from "./modules/module3/pages/PersonalQuestionPreviewPage";
 import { M3ContentProvider } from "./modules/module3/context/M3ContentContext";
 
 import LearningRoomsPage from "./modules/module4/pages/LearningRoomsPage";
@@ -602,6 +603,8 @@ function App() {
               path="materials/:materialId"
               element={<MaterialDetailPage role="general_user" />}
             />
+            {/* Independent Learner: read-only preview of the private questions (no answers; never starts an assessment). */}
+            <Route path="materials/:materialId/questions" element={<PersonalQuestionPreviewPage />} />
             <Route path="materials/:materialId/read-aloud" element={<ReadAloudPage role="general_user" />} />
             <Route path="materials/:materialId/comprehension" element={<ComprehensionPage role="general_user" />} />
 

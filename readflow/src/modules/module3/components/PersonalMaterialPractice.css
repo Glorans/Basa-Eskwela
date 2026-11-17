@@ -5,9 +5,63 @@
 }
 .m3-personal-practice h2 { margin: 0; font-size: 1.35rem; font-weight: 800; }
 .m3-personal-practice p { margin: 0; line-height: 1.6; }
-.m3-personal-review { display: grid; gap: 14px; }
-.m3-personal-review label { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
-.m3-personal-review input { margin-top: 6px; flex-shrink: 0; }
-.m3-personal-review button { justify-self: start; }
 .m3-personal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .m3-personal-actions > span, .m3-personal-actions > p { flex-basis: 100%; line-height: 1.6; }
+
+/* Numbered steps with a clear Done / To do state. */
+.m3-practice-steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.m3-practice-step {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid #d6e3df;
+  border-radius: 14px;
+  background: #ffffff;
+}
+.m3-practice-step--done { border-color: #b9d8b3; background: #f5faf2; }
+.m3-practice-step__head { display: flex; align-items: center; gap: 10px; color: #6b7f78; }
+.m3-practice-step--done .m3-practice-step__head { color: #2f7a3e; }
+.m3-practice-step__head h3 { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 1.05rem; font-weight: 800; color: #244b42; }
+.m3-practice-step__number { color: #4f6f66; font-weight: 700; }
+.m3-practice-step__status {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef3f1;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.m3-practice-step--done .m3-practice-step__status { background: #dcefd6; }
+.m3-practice-step__body { display: grid; gap: 10px; padding-left: 32px; }
+.m3-practice-note { color: #5c726b; font-size: 0.95rem; }
+.m3-practice-text {
+  max-height: 320px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #d6e3df;
+  border-radius: 10px;
+  background: #fbfdfc;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.m3-practice-text:focus-visible { outline: 3px solid #8cc5b5; outline-offset: 2px; }
+.m3-practice-editor { display: grid; gap: 12px; }
+.m3-practice-editor textarea { width: 100%; min-height: 240px; line-height: 1.7; font: inherit; resize: vertical; }
+
+@media (max-width: 560px) {
+  .m3-practice-step { padding: 12px; }
+  .m3-practice-step__body { padding-left: 0; }
+  .m3-practice-step__head h3 { font-size: 1rem; }
+  .m3-personal-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .m3-personal-actions .m3-button, .m3-personal-actions .m3-action-link { justify-content: center; text-align: center; }
+}
+.m3-practice-lock { display: flex; align-items: flex-start; gap: 6px; }
+.m3-practice-lock svg { flex: 0 0 auto; margin-top: 4px; }
+
+/* Independent Learner material card: it shows three facts (Source, File type, Status), but the shared summary grid
+   (module3.css, also used by Teacher/Admin pages with four facts) has four columns, leaving an empty gray cell. Here the
+   three facts share the full width; phones (<=560px) keep the shared one-column layout. */
+@media (min-width: 561px) {
+  .m3-personal-material .m3-detail-summary { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); }
+}
