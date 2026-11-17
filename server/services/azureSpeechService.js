@@ -25,13 +25,28 @@ function createSpeechConfig(sdk, config, locale) {
   return speechConfig;
 }
 
-function cancellationCode(sdk, errorCode) {
+// Azure closes the WebSocket with code 1007 both for bad input and for "Quota exceeded" (the Speech resource's
+// usage limit, e.g. concurrent requests on the free tier); the SDK reports both as BadRequestParameters. A quota
+// refusal is not a bad recording: it is STT_QUOTA ("temporarily busy"), never "please record it again".
+const QUOTA_DETAILS = /quota exceeded/i;
+
+function cancellationCode(sdk, errorCode, errorDetails) {
   const codes = sdk.CancellationErrorCode ?? {};
   if (errorCode === codes.AuthenticationFailure || errorCode === codes.Forbidden) return "STT_PERMISSION";
   if (errorCode === codes.TooManyRequests) return "STT_QUOTA";
   if (errorCode === codes.ServiceTimeout) return "STT_DEADLINE";
-  if (errorCode === codes.BadRequestParameters) return "STT_INVALID_AUDIO";
+  if (errorCode === codes.BadRequestParameters) {
+    return typeof errorDetails === "string" && QUOTA_DETAILS.test(errorDetails) ? "STT_QUOTA" : "STT_INVALID_AUDIO";
+  }
   return "STT_PROVIDER_ERROR";
+}
+
+/** A safe error for an Azure cancellation, carrying the SDK's error-code name (never its details) for the log. */
+function cancellationError(sdk, errorCode, errorDetails) {
+  const error = new SpeechTranscriptionError(cancellationCode(sdk, errorCode, errorDetails));
+  const name = sdk.CancellationErrorCode?.[errorCode];
+  if (typeof name === "string") error.providerErrorCode = name;
+  return error;
 }
 
 /** NBest[0].Confidence from the detailed JSON result, when Azure provides it. */
@@ -104,7 +119,7 @@ async function recognizePcm({
       });
       recognizer.canceled = safe((_sender, event) => {
         if (event.reason === sdk.CancellationReason.EndOfStream) finish();
-        else finish(new SpeechTranscriptionError(cancellationCode(sdk, event.errorCode)));
+        else finish(cancellationError(sdk, event.errorCode, event.errorDetails));
       });
       recognizer.sessionStopped = safe(() => finish());
       recognizer.startContinuousRecognitionAsync(safe(() => {
@@ -144,10 +159,11 @@ function noMatchKind(sdk, result) {
 const resultSeconds = (result) => (Number.isFinite(result?.duration) && result.duration >= 0 ? result.duration / 10_000_000 : null);
 
 function logProviderFailure(log, operation, error) {
-  // Only the safe code is logged: never audio, transcripts, keys or SDK payloads.
+  // Only the safe code and the SDK's error-code name are logged: never audio, transcripts, keys or SDK payloads.
   log("Azure Speech operation failed", {
     operation,
     code: error instanceof SpeechTranscriptionError ? error.code : "STT_PROVIDER_ERROR",
+    ...(typeof error?.providerErrorCode === "string" ? { azureErrorCode: error.providerErrorCode } : {}),
   });
 }
 
@@ -396,7 +412,7 @@ async function synthesizeSpeech(text, languageCode, {
       speak((result) => {
         if (result.reason !== sdk.ResultReason.SynthesizingAudioCompleted) {
           const details = sdk.CancellationDetails?.fromResult?.(result);
-          finish(new SpeechTranscriptionError(cancellationCode(sdk, details?.errorCode)));
+          finish(cancellationError(sdk, details?.errorCode, details?.errorDetails));
           return;
         }
         const audio = Buffer.from(result.audioData || new ArrayBuffer(0));
