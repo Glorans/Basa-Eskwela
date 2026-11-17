@@ -239,8 +239,8 @@ test("Independent Learner leaderboard and badges remain within authenticated rol
   const independentSource = await readSource("../src/pages/IndependentLeaderboard.tsx");
   assert.match(independentSource, /"m8_independent_leaderboard"/);
   assert.doesNotMatch(independentSource, MOCK_LEARNER_CONTENT);
-  assert.match(layoutSource, /useAuthenticatedProfile/);
-  assert.match(layoutSource, /ROLE_LABELS\[profile\.role\]/);
+  assert.match(await readSource("../src/components/basa/ProfileDropdown.tsx"), /useAuthenticatedProfile/);
+  assert.match(await readSource("../src/components/basa/ProfileDropdown.tsx"), /ROLE_LABELS\[profile\.role\]/);
   assert.doesNotMatch(layoutSource, MOCK_LEARNER_CONTENT);
 });
 

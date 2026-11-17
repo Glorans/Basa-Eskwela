@@ -179,7 +179,7 @@ test("routes: System Admin reaches only M1 pages; School Admin keeps every exist
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["User Management", "Create School Admin", "Profile Settings"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["User Management", "Create School Admin"]);
 });
 
 test("security: no public System/School Admin registration, no role editing, no privileged keys in the frontend", () => {

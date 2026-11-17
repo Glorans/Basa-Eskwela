@@ -1,3 +1,4 @@
+import { diagnosticCopy } from "../utils/diagnosticCopy";
 import "../components/DiagnosticProgress.css";
 import { createPassageDiagnosticResult } from "../services/diagnosticPassage";
 import { useDiagnosticSession } from "../components/DiagnosticSessionProvider";
@@ -36,6 +37,7 @@ export default function DiagnosticQuestionsPage({
   assessment,
 }: DiagnosticQuestionsPageProps) {
   const navigate = useNavigate();
+  const t = (text: string) => diagnosticCopy(assessment.language, text);
   const diagnosticSession = useDiagnosticSession();
   const [session] = useState(() => diagnosticSession.get(assessment));
   const reading = session?.reading;
@@ -72,8 +74,8 @@ export default function DiagnosticQuestionsPage({
         className="diagnostic-questions-panel"
         labelledBy="diagnostic-questions-title"
       >
-        <h1 id="diagnostic-questions-title">Answer the Questions</h1>
-        <p>No diagnostic questions are available yet.</p>
+        <h1 id="diagnostic-questions-title">{t("Answer the Questions")}</h1>
+        <p>{t("No diagnostic questions are available yet.")}</p>
       </DiagnosticLayout>
     );
   }
@@ -135,8 +137,12 @@ export default function DiagnosticQuestionsPage({
       }
       setSaveError(
         code === "READING_NOT_VERIFIED" || code === "ASSESSMENT_CHANGED" || code === "AUTH_REQUIRED"
-          ? (error as Error).message
-          : "We couldn't save your result. Your answers are still here—please try again.",
+          ? (assessment.language === "fil"
+            ? code === "AUTH_REQUIRED" ? "Mag-sign in muli upang ma-save ang resulta."
+              : code === "ASSESSMENT_CHANGED" ? "Nagbago ang pagtataya. Bumalik sa kuwento at magsimula muli."
+                : "Hindi mapatunayan ang rekording. Bumalik sa kuwento at magrekord muli."
+            : (error as Error).message)
+          : t("We couldn't save your result. Your answers are still here—please try again."),
       );
     } finally {
       saving.current = false;
@@ -152,10 +158,10 @@ export default function DiagnosticQuestionsPage({
       className="diagnostic-questions-panel"
       labelledBy="diagnostic-questions-title"
     >
-      <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`/diagnostic/${assessment.language}/reading`)}>Back to the story</button>
+      <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`/diagnostic/${assessment.language}/reading`)}>{t("Back to the story")}</button>
       <header className="diagnostic-questions-header">
-        <h1 id="diagnostic-questions-title">Answer the Questions</h1>
-        <p>Choose the best answer. Take your time!</p>
+        <h1 id="diagnostic-questions-title">{t("Answer the Questions")}</h1>
+        <p>{t("Choose the best answer. Take your time!")}</p>
       </header>
 
       <section
@@ -163,14 +169,12 @@ export default function DiagnosticQuestionsPage({
         aria-labelledby="diagnostic-question-prompt"
       >
         <p className="diagnostic-question-counter">
-          Question {currentQuestionIndex + 1} of {totalQuestions}
+          {assessment.language === "fil" ? "Tanong" : "Question"} {currentQuestionIndex + 1} {assessment.language === "fil" ? "sa" : "of"} {totalQuestions}
         </p>
         <h2 id="diagnostic-question-prompt">{currentQuestion.prompt}</h2>
 
         <fieldset className="diagnostic-answer-list">
-          <legend className="diagnostic-visually-hidden">
-            Select one answer
-          </legend>
+          <legend className="diagnostic-visually-hidden">{t("Select one answer")}</legend>
           {displayedChoices.map((choice) => (
             <label
               className={`diagnostic-answer${
@@ -209,12 +213,12 @@ export default function DiagnosticQuestionsPage({
           onClick={() => void continueAssessment()}
         >
           {isSaving
-            ? "Saving Result..."
+            ? t("Saving Result...")
             : saveError
-              ? "Try Saving Again"
+              ? t("Try Saving Again")
               : isFinalQuestion
-                ? "View Result"
-                : "Next"}
+                ? t("View Result")
+                : t("Next")}
         </button>
       </div>
     </DiagnosticLayout>

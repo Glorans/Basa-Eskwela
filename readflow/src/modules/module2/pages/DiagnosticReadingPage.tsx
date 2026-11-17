@@ -1,3 +1,4 @@
+import { diagnosticCopy } from "../utils/diagnosticCopy";
 import "../components/DiagnosticProgress.css";
 import { useDiagnosticSession } from "../components/DiagnosticSessionProvider";
 import { Mic, Square } from "lucide-react";
@@ -35,6 +36,7 @@ export default function DiagnosticReadingPage({
   assessment,
 }: DiagnosticReadingPageProps) {
   const navigate = useNavigate();
+  const t = (text: string) => diagnosticCopy(assessment.language, text);
   const diagnosticSession = useDiagnosticSession();
   // The whole passage (all sentences, one per paragraph) is read and graded as
   // one continuous reading: one recording, one transcript, one set of metrics.
@@ -109,16 +111,16 @@ export default function DiagnosticReadingPage({
   const recordingBusy = isStarting || isStopping || isUploading;
   const statusMessage =
     uploadStatus === "uploading"
-      ? "Processing your reading..."
+      ? t("Processing your reading...")
       : uploadStatus === "error"
         ? uploadError ??
-          "We couldn't process your full reading. Please try recording again."
+          t("We couldn't process your full reading. Please try recording again.")
         : uploadStatus === "success"
-          ? "Your reading was processed successfully."
+          ? t("Your reading was processed successfully.")
           : streaming.failed
             ? isRecording
-              ? "Keep reading. We can process your recording after you stop."
-              : "Your recording is ready. Continue to process your reading."
+              ? t("Keep reading. We can process your recording after you stop.")
+              : t("Your recording is ready. Continue to process your reading.")
             : message;
 
   const handleRecordingButtonClick = () => {
@@ -186,7 +188,7 @@ export default function DiagnosticReadingPage({
     } catch {
       if (!mountedRef.current) return;
       setUploadError(
-        "We couldn't process your reading. You can try again or record it again.",
+        t("We couldn't process your reading. You can try again or record it again."),
       );
       setUploadStatus("error");
     } finally {
@@ -215,12 +217,9 @@ export default function DiagnosticReadingPage({
       labelledBy="diagnostic-reading-title"
     >
       <header className="diagnostic-reading-header">
-        <h1 id="diagnostic-reading-title">Read the Story Aloud</h1>
+        <h1 id="diagnostic-reading-title">{t("Read the Story Aloud")}</h1>
 
-        <p>
-          Read the whole story below, from the first line to the last. When
-          you're ready, press the microphone button and begin reading.
-        </p>
+        <p>{t("Read the whole story below, from the first line to the last. When you're ready, press the microphone button and begin reading.")}</p>
       </header>
 
       <article
@@ -270,27 +269,27 @@ export default function DiagnosticReadingPage({
               <Mic size={21} aria-hidden="true" />
             )}
             {isStarting
-              ? "Opening microphone..."
+              ? t("Opening microphone...")
               : isStopping
-                ? "Finishing recording..."
+                ? t("Finishing recording...")
                 : isRecording
-                  ? "Stop recording"
-                  : "Start recording"}
+                  ? t("Stop recording")
+                  : t("Start recording")}
           </button>
         )}
 
         <p className="diagnostic-recording-status" role="status" aria-live="polite">
-          {statusMessage}
+          {t(statusMessage)}
         </p>
 
         {!isRecording && !isStarting && !isStopping && (audioSegments.length > 0 || currentResult) && (
           <div className="diagnostic-recording-review">
             <div className="diagnostic-recording-summary">
-              <strong>{currentResult ? "Reading Complete" : "Recording Complete"}</strong>
+              <strong>{currentResult ? t("Reading Complete") : t("Recording Complete")}</strong>
               <span>
                 {currentResult
-                  ? "Great reading! Next, answer a few questions about the story."
-                  : "Your reading is ready to process."}
+                  ? t("Great reading! Next, answer a few questions about the story.")
+                  : t("Your reading is ready to process.")}
               </span>
             </div>
 
@@ -300,9 +299,7 @@ export default function DiagnosticReadingPage({
                 type="button"
                 disabled={isUploading}
                 onClick={handleRecordAgain}
-              >
-                Record Again
-              </button>
+              >{t("Record Again")}</button>
               <button
                 className="diagnostic-primary-button"
                 type="button"
@@ -313,10 +310,10 @@ export default function DiagnosticReadingPage({
                 }}
               >
                 {isUploading
-                  ? "Processing your reading..."
+                  ? t("Processing your reading...")
                   : uploadStatus === "error"
-                    ? "Try Processing Again"
-                    : currentResult ? "Continue to Questions" : "Process Recording"}
+                    ? t("Try Processing Again")
+                    : currentResult ? t("Continue to Questions") : t("Process Recording")}
               </button>
             </div>
           </div>

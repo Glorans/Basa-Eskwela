@@ -1,3 +1,4 @@
+import { diagnosticCopy } from "../utils/diagnosticCopy";
 import "../components/DiagnosticProgress.css";
 import { diagnosticAssessmentRegistry, diagnosticLanguageLabels, getNextDiagnosticLanguage } from "../data/diagnosticData";
 import {
@@ -83,6 +84,7 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
   const navigate = useNavigate();
   const { profile } = useAuthenticatedProfile();
   const [result, setResult] = useState<DiagnosticResult>();
+  const t = (text: string) => diagnosticCopy(result?.language ?? language, text);
   const [resultLoadStatus, setResultLoadStatus] = useState<ResultLoadStatus>("loading");
   const [nextLanguage, setNextLanguage] = useState<DiagnosticLanguage>();
   const [reloadRequest, setReloadRequest] = useState(0);
@@ -145,7 +147,7 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
 
     if (!language) {
       setTtsError(
-        "The diagnostic language is unavailable. Please reload your result.",
+        t("The diagnostic language is unavailable. Please reload your result."),
       );
       return;
     }
@@ -173,7 +175,7 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
         audioUrlCacheRef.current.set(cacheKey, audioUrl);
       } catch {
         if (mountedRef.current) {
-          setTtsError("Pronunciation audio is unavailable. Please try again.");
+          setTtsError(t("Pronunciation audio is unavailable. Please try again."));
         }
         return;
       } finally {
@@ -189,7 +191,7 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
       await audio.play();
     } catch {
       if (mountedRef.current) {
-        setTtsError("Your browser could not play the pronunciation audio.");
+        setTtsError(t("Your browser could not play the pronunciation audio."));
       }
     }
   }
@@ -204,13 +206,13 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
       >
         <div className="diagnostic-result-message" role={isLoading ? "status" : undefined}>
           <h1 id="diagnostic-result-title">
-            {isLoading ? "Loading Your Reading Result"
-              : isError ? "We Couldn’t Load Your Result" : "No Saved Result Yet"}
+            {isLoading ? t("Loading Your Reading Result")
+              : isError ? t("We Couldn’t Load Your Result") : t("No Saved Result Yet")}
           </h1>
           <p>
-            {isLoading ? "Please wait while we retrieve your saved diagnostic."
-              : isError ? "Please check your connection and try again."
-                : "Complete the diagnostic to see your reading placement."}
+            {isLoading ? t("Please wait while we retrieve your saved diagnostic.")
+              : isError ? t("Please check your connection and try again.")
+                : t("Complete the diagnostic to see your reading placement.")}
           </p>
           {!isLoading && (
             <button
@@ -220,7 +222,7 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
                 ? setReloadRequest((request) => request + 1)
                 : navigate("/diagnostic")}
             >
-              {isError ? "Try Again" : "Return to Diagnostic"}
+              {isError ? t("Try Again") : t("Return to Diagnostic")}
             </button>
           )}
         </div>
@@ -238,41 +240,41 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
     : undefined;
   const cards = [
     {
-      label: "Reading Level",
+      label: t("Reading Level"),
       value: result.readingLevel ?? "—",
       detail: undefined,
       icon: BookOpen,
       tone: "green",
     },
     {
-      label: "Difficulty Level",
-      value: result.difficultyTier ?? "—",
+      label: t("Difficulty Level"),
+      value: t(result.difficultyTier ?? "—"),
       detail: undefined,
       icon: Gauge,
       tone: "yellow",
     },
     {
-      label: "Oral Reading Score",
+      label: t("Oral Reading Score"),
       value: displayPercent(result.orvScore),
       detail: [
-        typeof miscues === "number" ? `${miscues} ${miscues === 1 ? "miscue" : "miscues"}` : undefined,
-        domainLevels ? `Word reading: ${domainLevels.wordRecognitionLevel}` : undefined,
+        typeof miscues === "number" ? `${miscues} ${result.language === "fil" ? "pagkakamali sa pagbasa" : miscues === 1 ? "miscue" : "miscues"}` : undefined,
+        domainLevels ? `${result.language === "fil" ? "Pagbasa ng salita" : "Word reading"}: ${domainLevels.wordRecognitionLevel}` : undefined,
       ].filter(Boolean).join(" · ") || undefined,
       icon: Mic,
       tone: "coral",
     },
     {
-      label: "Comprehension Score",
-      value: correctAnswers === undefined ? "—" : `${correctAnswers} of ${questionCount}`,
+      label: t("Comprehension Score"),
+      value: correctAnswers === undefined ? "—" : `${correctAnswers} ${result.language === "fil" ? "sa" : "of"} ${questionCount}`,
       detail: [
         displayPercent(result.comprehensionScore),
-        domainLevels ? `Comprehension: ${domainLevels.comprehensionLevel}` : undefined,
+        domainLevels ? `${result.language === "fil" ? "Pag-unawa" : "Comprehension"}: ${domainLevels.comprehensionLevel}` : undefined,
       ].filter(Boolean).join(" · "),
       icon: CheckCircle2,
       tone: "blue",
     },
     {
-      label: "Reading Speed",
+      label: t("Reading Speed"),
       value: displayNumber(result.readingSpeedWpm, " WPM"),
       detail: undefined,
       icon: Timer,
@@ -290,10 +292,10 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
       labelledBy="diagnostic-result-title"
     >
       <div className="diagnostic-result-content">
-        <h1 id="diagnostic-result-title">{diagnosticLanguageLabels[language]} Reading Result</h1>
+        <h1 id="diagnostic-result-title">{(result.language ?? language) === "fil" ? "Resulta ng Pagbasa sa Filipino" : `${diagnosticLanguageLabels[language]} Reading Result`}</h1>
         <div className="diagnostic-result-layout">
           <div className="diagnostic-result-mascot-wrap">
-            <img src={mascot} alt="Happy Basa Eskwela mascot" />
+            <img src={mascot} alt="" />
           </div>
 
           <div className="diagnostic-result-grid">
@@ -312,10 +314,7 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
         </div>
 
         {!placementIsValid && (
-          <p className="diagnostic-result-pending" role="status">
-            This saved result is incomplete, so reading-level placement is
-            unavailable.
-          </p>
+          <p className="diagnostic-result-pending" role="status">{t("This saved result is incomplete, so reading-level placement is unavailable.")}</p>
         )}
 
         {assignedLevel && (
@@ -323,11 +322,9 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
             className={`diagnostic-level-explanation diagnostic-level-tone--${assignedLevel.tone}`}
             aria-labelledby="diagnostic-level-explanation-title"
           >
-            <h2 id="diagnostic-level-explanation-title">
-              What does my reading level mean?
-            </h2>
-            <h3>{assignedLevel.title}</h3>
-            <p>{assignedLevel.description}</p>
+            <h2 id="diagnostic-level-explanation-title">{t("What does my reading level mean?")}</h2>
+            <h3>{result.language === "fil" ? result.readingLevel : assignedLevel.title}</h3>
+            <p>{t(assignedLevel.description)}</p>
           </section>
         )}
 
@@ -335,7 +332,7 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
           className="diagnostic-reading-levels"
           aria-labelledby="diagnostic-reading-levels-title"
         >
-          <h2 id="diagnostic-reading-levels-title">Reading Levels</h2>
+          <h2 id="diagnostic-reading-levels-title">{t("Reading Levels")}</h2>
           <div className="diagnostic-reading-levels-grid">
             {Object.entries(READING_LEVEL_DETAILS).map(([level, details]) => {
               const isCurrent =
@@ -351,11 +348,11 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
                 >
                   <Icon size={24} aria-hidden="true" />
                   <h3>{level}</h3>
-                  <p>{details.summary}</p>
+                  <p>{t(details.summary)}</p>
                   {isCurrent && (
                     <span className="diagnostic-level-current-label">
                       <CheckCircle2 size={17} aria-hidden="true" />
-                      Your current level
+                      {t("Your current level")}
                     </span>
                   )}
                 </article>
@@ -369,11 +366,8 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
             className="diagnostic-practice"
             aria-labelledby="diagnostic-practice-title"
           >
-            <h2 id="diagnostic-practice-title">Words to Practice</h2>
-            <p>
-              These words may have been skipped or recognized differently. Select
-              Listen to hear an example pronunciation.
-            </p>
+            <h2 id="diagnostic-practice-title">{t("Words to Practice")}</h2>
+            <p>{t("These words may have been skipped or recognized differently. Select Listen to hear an example pronunciation.")}</p>
 
             <ul className="diagnostic-practice-list">
               {practiceWords.map((word) => (
@@ -382,11 +376,11 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
                   <button
                     type="button"
                     disabled={loadingWord !== null}
-                    aria-label={`Listen to ${word}`}
+                    aria-label={`${result.language === "fil" ? "Pakinggan ang" : "Listen to"} ${word}`}
                     onClick={() => void listenToPracticeWord(word)}
                   >
                     <Volume2 size={17} aria-hidden="true" />
-                    {loadingWord === word ? "Loading..." : "Listen"}
+                    {loadingWord === word ? t("Loading...") : t("Listen")}
                   </button>
                 </li>
               ))}
@@ -406,7 +400,7 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
             type="button"
             onClick={() => navigate(nextLanguage ? `/diagnostic/${nextLanguage}/reading` : homePath)}
           >
-            {nextLanguage ? `Continue to ${diagnosticLanguageLabels[nextLanguage]} Assessment` : "Go to homepage"}
+            {nextLanguage ? (result.language === "fil" ? `Magpatuloy sa Pagtataya sa ${diagnosticLanguageLabels[nextLanguage]}` : `Continue to ${diagnosticLanguageLabels[nextLanguage]} Assessment`) : t("Go to homepage")}
           </button>
         </div>
       </div>

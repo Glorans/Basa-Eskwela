@@ -1,3 +1,4 @@
+import { diagnosticCopy } from "../utils/diagnosticCopy";
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabaseClient";
@@ -19,6 +20,7 @@ type GuardStatus = "checking" | "allowed" | "completed" | "error";
 export default function InitialDiagnosticGuard() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const t = (text: string) => diagnosticCopy(pathname.split("/")[2] === "fil" ? "fil" : "en", text);
   const [completedLanguages, setCompletedLanguages] = useState<DiagnosticLanguage[]>([]);
   const [status, setStatus] = useState<GuardStatus>("checking");
   const [completedDestination, setCompletedDestination] = useState("/dashboard");
@@ -96,13 +98,13 @@ export default function InitialDiagnosticGuard() {
       <div className="diagnostic-guard-message" role="status">
         <h1 id="diagnostic-guard-title">
           {status === "checking"
-            ? "Checking Your Diagnostic"
-            : "We Couldn’t Check Your Diagnostic"}
+            ? t("Checking Your Diagnostic")
+            : t("We Couldn’t Check Your Diagnostic")}
         </h1>
         <p>
           {status === "checking"
-            ? "Please wait while we check your saved result."
-            : "Please check your connection and try again."}
+            ? t("Please wait while we check your saved result.")
+            : t("Please check your connection and try again.")}
         </p>
 
         {status === "error" && (
@@ -111,16 +113,12 @@ export default function InitialDiagnosticGuard() {
               className="diagnostic-primary-button"
               type="button"
               onClick={() => setRetryRequest((request) => request + 1)}
-            >
-              Try Again
-            </button>
+            >{t("Try Again")}</button>
             <button
               className="diagnostic-guard-secondary"
               type="button"
               onClick={() => navigate(completedDestination)}
-            >
-              Return to Dashboard
-            </button>
+            >{t("Return to Dashboard")}</button>
           </div>
         )}
       </div>

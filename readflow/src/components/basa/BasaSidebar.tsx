@@ -1,9 +1,7 @@
-import { Archive, School, Home, BookOpen, Trophy, Award, Settings, LogOut, Menu, X } from "lucide-react";
+import { Archive, School, Home, BookOpen, Trophy, Award, Menu, X } from "lucide-react";
 import type useResponsiveSidebar from "../../hooks/useResponsiveSidebar";
-import { useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import mascot from "../../assets/mascot.png";
-import { logout } from "../../services/authService";
 import "./BasaSidebar.css";
 
 interface BasaSidebarProps {
@@ -21,27 +19,9 @@ const NAV_ITEMS = [
   { label: "Progress & Result", to: "/dashboard/progress", icon: BookOpen },
   { label: "Reading History", to: "/dashboard/reading-history", icon: BookOpen },
   { label: "Archived Rooms", to: "/dashboard/archived-learning-rooms", icon: Archive },
-  { label: "Settings", to: "/dashboard/settings", icon: Settings },
 ];
 
 export default function BasaSidebar({ open, onClose, controller }: BasaSidebarProps) {
-  const navigate = useNavigate();
-  const [loggingOut, setLoggingOut] = useState(false);
-
-  async function handleLogout() {
-    if (loggingOut) return;
-    setLoggingOut(true);
-    const signedOut = await logout();
-
-    if (!signedOut) {
-      setLoggingOut(false);
-      return;
-    }
-
-    onClose();
-    navigate("/login", { replace: true });
-  }
-
   return (
     <>
       {open && <button type="button" tabIndex={-1} className="basa-sidebar-overlay rf-backdrop" onClick={onClose} aria-label="Close navigation" />}
@@ -86,19 +66,6 @@ export default function BasaSidebar({ open, onClose, controller }: BasaSidebarPr
           </nav>
         </div>
 
-        <div className="basa-sidebar-footer rf-sidebar-footer">
-          <button
-            className="basa-sidebar-item"
-            type="button"
-            disabled={loggingOut}
-            aria-label={loggingOut ? "Signing out..." : "Logout"}
-            title="Logout"
-            onClick={() => void handleLogout()}
-          >
-            <LogOut size={18} />
-            <span className="rf-nav-label">{loggingOut ? "Signing out..." : "Logout"}</span>
-          </button>
-        </div>
       </aside>
     </>
   );

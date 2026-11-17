@@ -30,13 +30,13 @@ async function mount(path: string, stubs: (id: string) => unknown, renders = 4) 
 const buttons = (tree: unknown, label: RegExp) => findAll(tree, (node) => node.type === "button" && label.test(textOf(node)));
 const auth = { supabase: { auth: { getUser: async () => ({ data: { user: { id: "me" } }, error: null }) } } };
 
-test("Teacher sidebar: Archived Classrooms sits directly below Reports and above Profile Settings", () => {
+test("Teacher sidebar: Archived Classrooms sits directly below Reports", () => {
   const layout = read("modules/module3/components/M3Layout.tsx");
   const teacher = layout.slice(layout.indexOf('if (role === "teacher")'), layout.indexOf('if (role === "general_user")'));
   assert.ok(teacher.indexOf('"Reports"') < teacher.indexOf('"Archived Classrooms"'), "below Reports");
   assert.match(teacher, /label: "Reports".*\r?\n\s*items\.push\(\{ label: "Archived Classrooms", to: "\/m3\/teacher\/archived-classrooms", icon: Archive/);
   const afterTeacher = layout.slice(layout.indexOf('if (role === "general_user")'));
-  assert.match(afterTeacher, /label: "Profile Settings"/, "Profile Settings is added after the teacher items");
+  assert.doesNotMatch(afterTeacher, /label: "Profile Settings"/, "Settings is available from the shared account menu");
   assert.match(read("App.tsx"), /path="archived-classrooms"\s+element=\{<ArchivedClassroomsPage \/>\}/);
 });
 

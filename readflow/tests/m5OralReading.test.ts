@@ -160,11 +160,10 @@ test("M5 pages rely on route layouts and do not render duplicate sidebars", asyn
   }
 });
 
-test("Independent Learner layout hides its role subtitle and scrolls only content", async () => {
+test("Independent Learner layout shares the account menu and scrolls only content", async () => {
   const layout = await readFile(new URL("../src/modules/module3/components/M3Layout.tsx", import.meta.url), "utf8");
   const style = await readFile(new URL("../src/modules/module3/styles/module3.css", import.meta.url), "utf8");
-  assert.match(layout, /shouldShowRole = profile\?\.role === "teacher" \|\| profile\?\.role === "admin"/);
-  assert.match(layout, /shouldShowRole && <small>\{roleLabel\}<\/small>/);
+  assert.match(layout, /<ProfileDropdown/);
   assert.match(style, /\.m3-shell--general \{[\s\S]*height: 100dvh;[\s\S]*min-height: 0;/);
   assert.match(style, /\.m3-shell--general \.m3-content \{[\s\S]*overflow-y: auto;/);
 });

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import useResponsiveSidebar from "../../../hooks/useResponsiveSidebar";
 import "../../../styles/responsive-shell.css";
 import {
@@ -9,12 +8,10 @@ import {
   FilePlus2,
   Files,
   House,
-  LogOut,
   Menu,
   Mic2,
   PlusCircle,
   School,
-  Settings,
   Trophy,
   Users,
   UserRound,
@@ -22,12 +19,10 @@ import {
   X,
   Archive,
 } from "lucide-react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import mascot from "../../../assets/mascot.png";
-import useAuthenticatedProfile from "../../../hooks/useAuthenticatedProfile";
-import { logout } from "../../../services/authService";
-import { getRoleHomePath, isAppRole, ROLE_LABELS } from "../../module1/utils/authOnboarding";
-import { getProfileDisplayName, getProfileInitials } from "../../module1/utils/profileFields";
+import ProfileDropdown from "../../../components/basa/ProfileDropdown";
+import { getRoleHomePath, ROLE_LABELS } from "../../module1/utils/authOnboarding";
 import type { M3Role } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
 import "../styles/module3.css";
@@ -46,7 +41,6 @@ function getNavItems(role: ShellRole) {
     return [
       { label: "User Management", to: "/system-admin/users", icon: Users, end: true },
       { label: "Create School Admin", to: "/system-admin/school-admins/new", icon: UserPlus, end: true },
-      { label: "Profile Settings", to: "/system-admin/settings", icon: Settings, end: true },
     ];
   }
   return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
@@ -72,7 +66,6 @@ function getWorkspaceNavItems(role: M3Role) {
         end: true,
       },
       { label: "Learning Rooms", to: "/admin/learning-rooms", icon: School, end: false },
-      { label: "Profile Settings", to: "/m3/admin/settings", icon: Settings, end: true },
     ];
   }
 
@@ -113,7 +106,6 @@ function getWorkspaceNavItems(role: M3Role) {
     items.push({ label: "Progress & Result", to: "/m3/general/progress", icon: ChartNoAxesCombined, end: true });
   }
 
-  items.push({ label: "Profile Settings", to: `${root}/settings`, icon: Settings, end: true });
   return items;
 }
 
@@ -127,31 +119,7 @@ function getProfileRoute(role: ShellRole) {
 export default function M3Layout({ role }: M3LayoutProps) {
   const sidebar = useResponsiveSidebar();
   const sidebarOpen = sidebar.drawerOpen;
-  const [loggingOut, setLoggingOut] = useState(false);
-  const navigate = useNavigate();
-  const { profile, loading } = useAuthenticatedProfile();
   const navItems = getNavItems(role);
-  const showIdentity = !loading && !!profile;
-  const shouldShowRole = profile?.role === "teacher" || profile?.role === "admin" || profile?.role === "system_admin";
-  const displayName = getProfileDisplayName(profile);
-  const roleLabel = profile && isAppRole(profile.role)
-    ? ROLE_LABELS[profile.role]
-    : profile?.role || "\u2014";
-  const initials = getProfileInitials(profile);
-
-  async function handleLogout() {
-    if (loggingOut) return;
-    setLoggingOut(true);
-    const signedOut = await logout();
-
-    if (!signedOut) {
-      setLoggingOut(false);
-      return;
-    }
-
-    sidebar.close();
-    navigate("/login", { replace: true });
-  }
 
   const shellClassName = [
     "m3-shell",
@@ -227,19 +195,6 @@ export default function M3Layout({ role }: M3LayoutProps) {
           </nav>
         </div>
 
-        <div className="m3-sidebar-footer rf-sidebar-footer">
-          <button
-            className="m3-sidebar-quiet-link"
-            type="button"
-            disabled={loggingOut}
-            aria-label={loggingOut ? "Signing out..." : "Logout"}
-            title="Logout"
-            onClick={() => void handleLogout()}
-          >
-            <LogOut size={18} />
-            <span className="rf-nav-label">{loggingOut ? "Signing out..." : "Logout"}</span>
-          </button>
-        </div>
       </aside>
 
       <div className="m3-workspace rf-workspace" ref={sidebar.workspaceRef}>
@@ -259,17 +214,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
             </button>
           </div>
 
-          <NavLink className="m3-topbar-user" to={getProfileRoute(role)} aria-label="Profile and Account">
-            <span className="m3-user-avatar" aria-hidden="true">
-              {showIdentity ? initials : <UserRound size={20} />}
-            </span>
-            {showIdentity && (
-              <span className="m3-user-copy">
-                <strong>{displayName}</strong>
-                {shouldShowRole && <small>{roleLabel}</small>}
-              </span>
-            )}
-          </NavLink>
+          <ProfileDropdown settingsPath={getProfileRoute(role)} onOpen={sidebar.close} />
         </header>
 
         <div className="rf-content-scroll" tabIndex={0} role="region" aria-label="Main content"><main className="m3-content">

@@ -104,7 +104,7 @@ test("Admin sidebar: vertical scrolling kept, no horizontal scrolling, and no Ad
   assert.match(css, /\.m3-sidebar \{[^}]*overflow-y: auto;/);
 });
 
-test("every role's sidebar uses one shared navigation scroller with the brand and Logout outside it", () => {
+test("every role's sidebar uses one shared navigation scroller with the brand outside it and account actions in the header", () => {
   const shell = readFileSync(new URL("../src/styles/responsive-shell.css", import.meta.url), "utf8");
   const scroller = shell.slice(shell.indexOf(".rf-shell .rf-sidebar-scroll {"), shell.indexOf("}", shell.indexOf(".rf-shell .rf-sidebar-scroll {")));
   for (const declaration of ["overflow-y: auto;", "overflow-x: hidden;", "min-height:", "margin-right: calc(-1 * var(--rf-sidebar-pad-x));"]) {
@@ -124,7 +124,7 @@ test("every role's sidebar uses one shared navigation scroller with the brand an
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.match(source, /<nav className="[^"]*\brf-sidebar-scroll\b/, file);
     assert.match(source, /className="[^"]*\brf-sidebar-main\b/, file);
-    assert.match(source, /className="[^"]*\brf-sidebar-footer\b/, file);
+    assert.doesNotMatch(source, /rf-sidebar-footer|await logout\(\)/, file);
     // The brand stays outside the scroller: it comes before the <nav> inside the fixed part of the sidebar.
     assert.ok(source.indexOf("Basa Eskwela, go to Dashboard") < source.indexOf("rf-sidebar-scroll"), file);
   }
