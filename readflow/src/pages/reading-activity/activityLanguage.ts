@@ -18,6 +18,10 @@ export function activityLanguageFromState(state: unknown): unknown {
 }
 
 const filipino = {
+  "We couldn't process your reading. Please try processing it again.": "Hindi maproseso ang pagbasa mo. Subukang iproseso itong muli.",
+  "Speech processing could not accept the request. Please try again later. Your recording does not need to be replaced.": "Hindi matanggap ang kahilingan sa pagproseso ng pagsasalita. Subukan muli mamaya. Hindi kailangang palitan ang rekording mo.",
+  "Speech processing is temporarily busy. Please try again later.": "Abala ang pagproseso ng pagsasalita. Subukan muli mamaya.",
+  "No speech could be recognized from the recording.": "Hindi nakilala ang pagsasalita sa rekording.",
   "View Story": "Tingnan ang Kuwento",
   "Close story": "Isara ang kuwento",
   "Reading passage": "Babasahing teksto",
@@ -448,7 +452,7 @@ export function getActivityText(value: unknown) {
     if (language === "en") return raw || fallback;
     if (Object.prototype.hasOwnProperty.call(filipino, raw)) return t(raw as ActivityText);
     if (value && typeof value === "object" && "code" in value && value.code === "NO_SPEECH") {
-      return t("No speech was detected. Please record your reading again.");
+      return t("No speech could be recognized from the recording.");
     }
     // Unknown server/provider detail must not leak English into a Filipino screen.
     return t(fallback);

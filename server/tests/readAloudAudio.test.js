@@ -238,7 +238,7 @@ test("provider failures and silence are safe errors; one reading is one throttle
     const failed = await server.post("/api/read-aloud/audio");
     assert.equal(failed.status, 502);
     assert.doesNotMatch(await failed.text(), /private provider detail/);
-    reply = () => ({ text: "" });
+    reply = () => { throw new (require("../services/speechErrors").SpeechTranscriptionError)("NO_SPEECH"); };
     const silent = await server.post("/api/read-aloud/audio");
     assert.equal(silent.status, 422);
     assert.equal((await silent.json()).code, "NO_SPEECH");

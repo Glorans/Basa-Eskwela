@@ -215,7 +215,7 @@ export async function transcribeOralReadingRecording(
     developmentTiming({ step: "transcription", ...timing });
   }
   if (!result.success || !result.transcription?.text.trim()) {
-    throw new DiagnosticAudioUploadError(result.code ?? "NO_SPEECH", result.message);
+    throw new DiagnosticAudioUploadError(result.code ?? "STT_PROVIDER_ERROR", result.message);
   }
   return { text: result.transcription.text, confidence: result.transcription.confidence };
 }

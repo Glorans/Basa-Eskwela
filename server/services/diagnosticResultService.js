@@ -52,6 +52,11 @@ function verifyReading({ tokens, userId, language, binding, receiptService }) {
     && claim.rid === first.rid && claim.src === first.src && claim.seg === index + 1);
   if (!sameRecording || (first.src === "stream" && claims.length !== 1)) throw rejectReading();
 
+  // A part may be empty only when the server confirmed that Azure heard nothing but silence or noise in it (signed
+  // receipt flag ns). Such parts may appear anywhere, e.g. a long pause between sentences; they add no words, so
+  // the speech before and after the pause is scored exactly as if there had been no pause. Missing, unsigned or
+  // out-of-order parts are refused above, and a recording with no reading words at all is refused below.
+  if (claims.some((claim) => !claim.text.trim() && claim.ns !== true)) throw rejectReading();
   const text = claims.map((claim) => claim.text.trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
   if (!getReadingWords(text, language).length) {
     throw new DiagnosticSubmissionError(422, "NO_SPEECH", "No speech could be recognized from the recording.");

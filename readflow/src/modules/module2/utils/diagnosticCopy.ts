@@ -2,6 +2,14 @@ import type { DiagnosticLanguage } from "../types/diagnostic";
 
 // Basa Eskwela interface wording; not official Phil-IRI text. Never pass passage or question content here.
 const FILIPINO: Record<string, string> = {
+  "No speech could be recognized in part of the recording. Listen to your recording and try again.": "Hindi nakilala ang pagsasalita sa isang bahagi ng rekording. Pakinggan ang rekording mo at subukang muli.",
+  "The recording could not be processed. Please record it again.": "Hindi maproseso ang rekording. Magrekord muli.",
+  "The recording is too long or too large to process. Please make a shorter recording.": "Masyadong mahaba o malaki ang rekording. Gumawa ng mas maikling rekording.",
+  "Speech processing is temporarily busy. Please wait and try processing the same recording again.": "Abala ang pagproseso ng pagsasalita. Maghintay at subukang iproseso muli ang parehong rekording.",
+  "Speech processing is temporarily unavailable. Please try again later. Your recording is still available on this page.": "Pansamantalang hindi magagamit ang pagproseso ng pagsasalita. Subukan muli mamaya. Narito pa sa pahinang ito ang rekording mo.",
+  "Speech processing timed out. Please try processing the same recording again.": "Masyadong natagalan ang pagproseso. Subukang iproseso muli ang parehong rekording.",
+  "Your session has expired. Please sign in again.": "Nag-expire na ang sesyon mo. Mag-sign in muli.",
+  "We couldn't process your reading. Please try processing it again.": "Hindi maproseso ang pagbasa mo. Subukang iproseso itong muli.",
   "Reading Level": "Antas sa Pagbasa",
   "Difficulty Level": "Antas ng Hirap",
   "Easy": "Madali",
@@ -69,6 +77,7 @@ const FILIPINO: Record<string, string> = {
   "The story is difficult right now, so an easier story and extra support may help.": "Mahirap pa ang kuwentong ito para sa iyo ngayon. Makakatulong ang mas madaling kuwento at dagdag na gabay.",
   "Press the microphone button when you're ready.": "Pindutin ang mikropono kapag handa ka na.",
   "Audio recording is unavailable. Use a supported browser on HTTPS or localhost.": "Hindi makapagrekord ng tunog. Gumamit ng browser na may suporta sa pagrekord at buksan ang ligtas na pahina (HTTPS o localhost).",
+  "Your microphone stopped, so the recording ended early. Please record your reading again.": "Huminto ang mikropono mo kaya maagang natapos ang rekording. Pakirekord muli ang iyong pagbasa.",
   "Recording failed. Please try again.": "Hindi nagtagumpay ang pagrekord. Subukan muli.",
   "No audio was captured. Please try again.": "Walang tunog na nairekord. Subukan muli.",
   "Recording reached the five-minute limit. Your reading was captured successfully.": "Umabot na sa limang minuto ang pagrekord. Nairekord ang iyong pagbasa.",

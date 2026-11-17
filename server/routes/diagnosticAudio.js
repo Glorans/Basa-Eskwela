@@ -1,7 +1,7 @@
 const { unlink } = require("node:fs/promises");
 const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { transcribeWav } = require("../services/azureSpeechService");
-const { getSpeechErrorResponse } = require("../services/speechErrors");
+const { getSpeechErrorResponse, SpeechTranscriptionError } = require("../services/speechErrors");
 const { isUuid } = require("../services/diagnosticTranscriptReceipts");
 const { getDiagnosticAssessmentBinding } = require("../services/diagnosticAssessments");
 const { MAX_SEGMENTS } = require("../services/diagnosticResultService");
@@ -64,8 +64,29 @@ function createDiagnosticAudioHandler({ transcribe = transcribeWav, remove = unl
           return res.status(503).json({ success: false, code: "STT_PERMISSION", message: UNAVAILABLE_MESSAGE });
         }
       }
-      const transcription = await transcribe(req.file.path, languageCode);
-      if (!transcription.text) return res.status(422).json({ success: false, code: "NO_SPEECH", message: "No speech could be recognized from the recording." });
+      let transcription;
+      try {
+        transcription = await transcribe(req.file.path, languageCode);
+      } catch (error) {
+        // M2 uploads a long reading in ~25-second parts. A part with only silence or background noise (for example
+        // the pause after the learner finished) is not an error: it gets a signed, empty receipt so the rest of the
+        // reading can still be scored. The result service still refuses a recording with no reading words at all.
+        // Speech that Azure heard but could not recognize is never treated this way (it stays NO_SPEECH).
+        if (!(segment && error?.code === "NO_SPEECH" && error.silenceOnly === true)) throw error;
+        log("Diagnostic part had no speech (silence or noise only)", { segmentIndex: segment.segmentIndex });
+        const receipt = receipts.issue({
+          userId: res.locals.speechRequester.user.id,
+          language: req.body.language,
+          binding: segment.binding,
+          recordingId: segment.recordingId,
+          segmentIndex: segment.segmentIndex,
+          source: "upload",
+          text: "",
+          noSpeech: true,
+        });
+        return res.json({ success: true, message: "This part had no speech.", transcription: { text: "", receipt, noSpeech: true } });
+      }
+      if (typeof transcription?.text !== "string" || !transcription.text.trim()) throw new SpeechTranscriptionError("STT_PROVIDER_ERROR");
       const receipt = segment
         ? receipts.issue({
             userId: res.locals.speechRequester.user.id,

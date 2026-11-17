@@ -80,6 +80,7 @@ export async function processOralReading({
     });
   }
   const text = transcription.text.replace(/\s+/g, " ").trim();
+  // Azure returned text but no reading words: re-recording, not re-processing, is needed.
   if (!getReadingWords(text, language).length) throw new DiagnosticRecordingProcessingError({ code: "NO_SPEECH" });
   const metrics = calculateOralReadingMetrics(
     normalizeOralReadingAbbreviations(expectedText, language),

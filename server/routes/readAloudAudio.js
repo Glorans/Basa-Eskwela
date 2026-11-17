@@ -1,7 +1,7 @@
 const { unlink } = require("node:fs/promises");
 const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { transcribeWav } = require("../services/azureSpeechService");
-const { getSpeechErrorResponse } = require("../services/speechErrors");
+const { getSpeechErrorResponse, SpeechTranscriptionError } = require("../services/speechErrors");
 const { prepareTranscriptReceipt, recordTranscriptReceipt } = require("../services/readingVerification");
 const { ARCHIVED_CLASSROOM_CODE, ARCHIVED_CLASSROOM_MESSAGE, isArchivedReadingContext } = require("../services/roomArchive");
 
@@ -102,7 +102,7 @@ function createReadAloudAudioHandler({
       }
       // Lets the browser's network panel show where the time went.
       res.set("Server-Timing", `upload;dur=${uploadMs}, recognition;dur=${recognitionMs}`);
-      if (!transcription.text) return res.status(422).json({ success: false, code: "NO_SPEECH", message: "No speech could be recognized from the recording." });
+      if (typeof transcription?.text !== "string" || !transcription.text.trim()) throw new SpeechTranscriptionError("STT_PROVIDER_ERROR");
       // Awaited so the save that follows can find it. M5 continues if this fails: the reading
       // is saved and simply earns no M8 XP (services/readingVerification.js).
       await recordReceipt(res.locals?.speechRequester, { language: req.body.language, query: req.query }, transcription.text,

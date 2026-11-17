@@ -97,7 +97,7 @@ test("server and network failures reject with a safe code and never return parti
   postReply = async () => { throw { isAxiosError: true, code: "ERR_NETWORK" }; };
   await rejectsWith(transcribeOralReadingRecording(recording(), "en", { recordingDurationSeconds: 40, convert: toWav }), "STT_PROVIDER_ERROR");
   postReply = async () => ({ data: { success: true, message: "ok", transcription: { text: "   " } } });
-  await rejectsWith(transcribeOralReadingRecording(recording(), "en", { recordingDurationSeconds: 40, convert: toWav }), "NO_SPEECH");
+  await rejectsWith(transcribeOralReadingRecording(recording(), "en", { recordingDurationSeconds: 40, convert: toWav }), "STT_PROVIDER_ERROR");
   // A retry sends the same recording again and can succeed.
   postReply = async () => ({ data: { success: true, message: "ok", transcription: { text: "Lia sweeps" } } });
   assert.equal((await transcribeOralReadingRecording(recording(), "en", { recordingDurationSeconds: 40, convert: toWav })).text, "Lia sweeps");
@@ -292,4 +292,18 @@ test("a failed pronunciation reply is an error, never an empty result", async ()
   await settle();
   state.reply!({ success: false, code: "STT_QUOTA", message: "Speech services are busy. Please try again later." });
   await assert.rejects(work, /busy/);
+});
+
+
+test("M5 keeps the original recording across quota, request, auth and network failures and successful retry", async () => {
+  const original = recording(); const bytes = await original.arrayBuffer(); const converted: Blob[] = [];
+  const convert = async (blob: Blob) => { converted.push(blob); return toWav(); };
+  for (const code of ["NO_SPEECH", "STT_INVALID_AUDIO", "STT_BAD_REQUEST", "STT_PERMISSION", "STT_QUOTA", "STT_PROVIDER_ERROR"] as const) {
+    postReply = async () => { throw { isAxiosError: true, response: { status: code === "NO_SPEECH" ? 422 : 503, data: {code,message:"Safe failure"} } }; };
+    await rejectsWith(transcribeOralReadingRecording(original, "en", {recordingDurationSeconds:40,convert}),code);
+    assert.deepEqual(await original.arrayBuffer(),bytes);
+  }
+  postReply = async () => ({data:{success:true,transcription:{text:"Ana reads a book."}}});
+  assert.equal((await transcribeOralReadingRecording(original,"en",{recordingDurationSeconds:40,convert})).text,"Ana reads a book.");
+  assert.ok(converted.every(blob=>blob===original));
 });

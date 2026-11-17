@@ -125,6 +125,8 @@ function setup({ failFullRecorder = false, holdFullStop = false, denyMicrophone 
     advance,
     settle,
     endTrack: () => [...trackListeners].forEach((listener) => listener()),
+    /** The browser stops the active recorder itself after the microphone is lost (no track event first). */
+    loseMicrophoneSilently: () => { track.readyState = "ended"; [...recorders].reverse().find((item) => !item.continuous && item.state === "recording")?.stop(); },
     releaseFullStop: () => heldStops.splice(0).forEach((finish) => finish()),
     async start(recorderOptions: Record<string, unknown>) {
       options = { maxSegmentDurationSeconds: SEGMENT_SECONDS, maxTotalDurationSeconds: MAX_SECONDS, ...recorderOptions };
@@ -321,4 +323,51 @@ test("M2 still rotates its recorder every 25 s (unchanged)", async () => {
   const result = recorder.render();
   assert.equal(recorder.recorders.length, 3);
   assert.deepEqual([...result.segmentDurationsSeconds].map(Math.round), [25, 25, 10]);
+});
+
+// M2 (reportMicrophoneEnd): a microphone lost mid-reading is never presented as a captured reading. Nothing is kept
+// for processing, so no diagnostic is scored or completed from the interrupted recording.
+const MICROPHONE_ENDED = "Your microphone stopped, so the recording ended early. Please record your reading again.";
+for (const [how, lose] of [
+  ["the track's ended event", (recorder: ReturnType<typeof setup>) => recorder.endTrack()],
+  ["the browser stopping the recorder", (recorder: ReturnType<typeof setup>) => recorder.loseMicrophoneSilently()],
+] as const) {
+  test(`M2: losing the microphone mid-reading (${how}) asks the learner to record again and keeps nothing`, async () => {
+    const recorder = setup();
+    await recorder.start({ reportMicrophoneEnd: true });
+    await recorder.advance(40_000); // one full 25 s part already captured
+    lose(recorder);
+    await recorder.settle();
+    const result = recorder.render();
+    assert.equal(result.isRecording, false);
+    assert.equal(result.isStopping, false);
+    assert.equal(result.audioSegments.length, 0, "the interrupted recording cannot be processed");
+    assert.equal(result.recordingDurationSeconds, null);
+    assert.equal(result.message, MICROPHONE_ENDED);
+    assert.doesNotMatch(result.message, /captured successfully/);
+    assert.equal(recorder.recorders.filter((item) => item.state !== "inactive").length, 0);
+  });
+}
+
+test("M2: a normal Stop with reportMicrophoneEnd still keeps every part as a captured reading", async () => {
+  const recorder = setup();
+  await recorder.start({ reportMicrophoneEnd: true });
+  await recorder.advance(40_000);
+  recorder.render().stopRecording();
+  await recorder.settle();
+  const result = recorder.render();
+  assert.equal(result.audioSegments.length, 2);
+  assert.equal(result.recordingDurationSeconds, 40);
+  assert.equal(result.message, "Recording complete. Your reading was captured successfully.");
+});
+
+test("M5 (no reportMicrophoneEnd) keeps its existing message when the browser stops the recorder", async () => {
+  const recorder = setup();
+  await recorder.start({ captureFullRecording: true });
+  await recorder.advance(20_000);
+  recorder.loseMicrophoneSilently();
+  await recorder.settle();
+  const result = recorder.render();
+  assert.equal(result.audioSegments.length, 0);
+  assert.equal(result.message, "Recording failed. Please try again.");
 });

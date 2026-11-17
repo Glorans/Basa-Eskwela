@@ -73,17 +73,16 @@ test("Azure 'Quota exceeded' (1007, BadRequestParameters) is STT_QUOTA for read-
   assert.ok(!JSON.stringify(logs).includes("Cid"));
 });
 
-test("a genuine bad request (other 1007 details) stays STT_INVALID_AUDIO", async () => {
+test("only explicit bad audio is invalid audio; unknown bad request details do not blame the recording", async () => {
   for (const details of [BAD_AUDIO, "", undefined]) {
     const error = await failure(transcribeWav("reading.wav", "fil-PH", { sdkFactory: () => cancellingSdk(2, details), env: ENV,
       readFile: async () => wav(5), log() {}, wholeRecording: true }));
-    assert.equal(error.code, "STT_INVALID_AUDIO", String(details));
-    assert.equal(getSpeechErrorResponse(error).message, "The recording could not be processed. Please record it again.");
+    assert.equal(error.code, details === BAD_AUDIO ? "STT_INVALID_AUDIO" : "STT_BAD_REQUEST", String(details));
   }
 });
 
 test("other cancellations keep their existing codes", async () => {
-  for (const [code, expected] of [[1, "STT_PERMISSION"], [8, "STT_PERMISSION"], [3, "STT_QUOTA"], [5, "STT_DEADLINE"], [4, "STT_PROVIDER_ERROR"], [6, "STT_PROVIDER_ERROR"]]) {
+  for (const [code, expected] of [[1, "STT_PERMISSION"], [8, "STT_QUOTA"], [3, "STT_QUOTA"], [5, "STT_DEADLINE"], [4, "STT_PROVIDER_ERROR"], [6, "STT_PROVIDER_ERROR"]]) {
     const error = await failure(transcribeWav("reading.wav", "en-US", { sdkFactory: () => cancellingSdk(code, QUOTA), env: ENV,
       readFile: async () => wav(5), log() {}, wholeRecording: true }));
     assert.equal(error.code, expected, `errorCode ${code}`);

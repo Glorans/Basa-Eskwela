@@ -1,3 +1,4 @@
+import { diagnosticProcessingMessage } from "../services/diagnosticAudioError";
 import { diagnosticCopy } from "../utils/diagnosticCopy";
 import "../components/DiagnosticProgress.css";
 import { useDiagnosticSession } from "../components/DiagnosticSessionProvider";
@@ -85,7 +86,7 @@ export default function DiagnosticReadingPage({
     stopRecording,
   } = useAudioRecorder({
     createPlaybackUrls: false,
-    preserveOnTrackEnd: true,
+    reportMicrophoneEnd: true,
     maxSegmentDurationSeconds: DIAGNOSTIC_SEGMENT_DURATION_SECONDS,
     maxTotalDurationSeconds: DIAGNOSTIC_MAX_RECORDING_SECONDS,
     onStreamReady: (stream) => {
@@ -117,7 +118,8 @@ export default function DiagnosticReadingPage({
           t("We couldn't process your full reading. Please try recording again.")
         : uploadStatus === "success"
           ? t("Your reading was processed successfully.")
-          : streaming.failed
+          // Only when a recording exists: after a microphone loss there is none, and the recorder's message explains it.
+          : streaming.failed && (isRecording || audioSegments.length > 0)
             ? isRecording
               ? t("Keep reading. We can process your recording after you stop.")
               : t("Your recording is ready. Continue to process your reading.")
@@ -185,11 +187,9 @@ export default function DiagnosticReadingPage({
 
       saveReading({ language: assessment.language, transcription, oralReadingMetrics, transcriptReceipts });
 
-    } catch {
+    } catch (error) {
       if (!mountedRef.current) return;
-      setUploadError(
-        t("We couldn't process your reading. You can try again or record it again."),
-      );
+      setUploadError(t(diagnosticProcessingMessage(error)));
       setUploadStatus("error");
     } finally {
       processingRef.current = false;

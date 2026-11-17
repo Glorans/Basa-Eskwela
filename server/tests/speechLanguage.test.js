@@ -202,7 +202,7 @@ test("Azure silence, cancellations and start failures map to safe codes and alwa
   const cases = [
     [batchScript([{ reason: 0, text: "" }]), "NO_SPEECH"],
     [batchScript([], { cancel: 1 }), "STT_PERMISSION"],
-    [batchScript([], { cancel: 8 }), "STT_PERMISSION"],
+    [batchScript([], { cancel: 8 }), "STT_QUOTA"],
     [batchScript([], { cancel: 3 }), "STT_QUOTA"],
     [batchScript([], { cancel: 5 }), "STT_DEADLINE"],
     [batchScript([], { cancel: 6 }), "STT_PROVIDER_ERROR"],

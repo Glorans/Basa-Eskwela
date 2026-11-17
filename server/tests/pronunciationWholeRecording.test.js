@@ -202,3 +202,8 @@ test("silence alone is no speech; unassessable speech alone is an incomplete, em
   const unclear = await assessmentSdk([noMatch("NoMatch", 6)]);
   assert.deepEqual([unclear.complete, unclear.utterances.length, unclear.unassessedSeconds], [false, 0, 6]);
 });
+
+
+test("an empty pronunciation session without a NoMatch event is a provider error", async () => {
+  await assert.rejects(assessmentSdk([]), error => error.code === "STT_PROVIDER_ERROR");
+});

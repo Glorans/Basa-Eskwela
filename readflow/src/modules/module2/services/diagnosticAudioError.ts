@@ -2,6 +2,7 @@ export type DiagnosticAudioErrorCode =
   | "AUDIO_TOO_LONG"
   | "NO_SPEECH"
   | "STT_INVALID_AUDIO"
+  | "STT_BAD_REQUEST"
   | "STT_DEADLINE"
   | "STT_PERMISSION"
   | "STT_QUOTA"
@@ -23,6 +24,7 @@ const SAFE_ERROR_CODES = new Set<DiagnosticAudioErrorCode>([
   "AUDIO_TOO_LONG",
   "NO_SPEECH",
   "STT_INVALID_AUDIO",
+  "STT_BAD_REQUEST",
   "STT_DEADLINE",
   "STT_PERMISSION",
   "STT_QUOTA",
@@ -43,7 +45,7 @@ const SAFE_ERROR_CODES = new Set<DiagnosticAudioErrorCode>([
 
 export const SESSION_EXPIRED_MESSAGE = "Your session has expired. Please sign in again.";
 
-const DEFAULT_MESSAGE = "We couldn't process your reading. Please record it again.";
+const DEFAULT_MESSAGE = "We couldn't process your reading. Please try processing it again.";
 
 interface HttpErrorLike {
   isAxiosError?: boolean;
@@ -95,4 +97,19 @@ export function toDiagnosticAudioUploadError(error: unknown) {
     : DEFAULT_MESSAGE;
 
   return new DiagnosticAudioUploadError(code, message, response?.status);
+}
+
+/** M2 renders bounded application wording, never arbitrary provider detail. Audio stays in page memory on failure. */
+export function diagnosticProcessingMessage(error: unknown): string {
+  const code = (error as { code?: string } | null)?.code;
+  switch (code) {
+    case "NO_SPEECH": return "No speech could be recognized in part of the recording. Listen to your recording and try again.";
+    case "STT_INVALID_AUDIO": return "The recording could not be processed. Please record it again.";
+    case "AUDIO_TOO_LONG": case "AUDIO_TOO_LARGE": return "The recording is too long or too large to process. Please make a shorter recording.";
+    case "STT_QUOTA": case "SPEECH_RATE_LIMITED": return "Speech processing is temporarily busy. Please wait and try processing the same recording again.";
+    case "STT_PERMISSION": case "SPEECH_NOT_CONFIGURED": case "STT_BAD_REQUEST": return "Speech processing is temporarily unavailable. Please try again later. Your recording is still available on this page.";
+    case "STT_DEADLINE": return "Speech processing timed out. Please try processing the same recording again.";
+    case "AUTH_REQUIRED": return SESSION_EXPIRED_MESSAGE;
+    default: return DEFAULT_MESSAGE;
+  }
 }
