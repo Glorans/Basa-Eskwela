@@ -110,7 +110,7 @@ try {
   };
   const open = async (role, completed = false) => {
     await send('Page.navigate', { url: `http://127.0.0.1:5189/setup-profile?role=${role}&completed=${completed}` });
-    await until(completed ? '!!document.getElementById("destination")' : '!!document.getElementById("age")');
+    await until(completed ? '!!document.getElementById("destination")' : '!!document.querySelector("#nickname,#fullName")');
   };
   const fill = (id, value) => evaluate(`(()=>{const input=document.getElementById(${JSON.stringify(id)});
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});
@@ -123,6 +123,29 @@ try {
       await open(role);
       await evaluate('document.fonts.ready');
       const nameId = role === 'teacher' ? 'fullName' : 'nickname';
+      if (role === 'general_user') {
+        // Independent Learners are not asked for their age: only the nickname field, then Continue.
+        assert.deepEqual(await evaluate('[...document.querySelectorAll("input")].map(input=>input.id)'), [nameId]);
+        assert.equal(await evaluate('document.querySelector("label[for=age]")'), null);
+        assert.equal(await evaluate('document.querySelector("label[for=nickname]").textContent'), 'What should we call you?');
+        assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+        if (width > 1000) assert.ok(await evaluate('document.documentElement.scrollHeight<=innerHeight'));
+        assert.ok(await evaluate(`(()=>{const i=document.getElementById('nickname').getBoundingClientRect(),b=document.querySelector('.profile-setup-continue').getBoundingClientRect();
+          return b.top>i.bottom && Math.abs(b.left-i.left)<1 && Math.abs(b.width-i.width)<1;})()`), 'Continue sits below the nickname, aligned to it');
+        const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+        await writeFile(join(artifacts, `${role}-${width}x${height}.png`), Buffer.from(shot.data, 'base64'));
+        await fill(nameId, '   '); await submit();
+        await until('document.querySelector("[role=alert]")?.textContent.length > 0');
+        assert.equal(await evaluate('window.writes.length'), 0, 'an empty nickname is still refused');
+        await fill(nameId, '  Taylor  '); await submit();
+        await until('!!document.getElementById("destination")');
+        assert.equal(await evaluate('location.pathname'), '/diagnostic');
+        assert.equal(await evaluate('JSON.stringify(window.writes)'), JSON.stringify([{ nickname: 'Taylor' }]), 'no age is written');
+        assert.equal(await evaluate('window.reloadProfile().then(profile=>profile.age)'), null);
+        assert.equal(await evaluate('window.row.role'), 'general_user');
+        console.log(`PASS no Age field, alignment, validation, save without age, reload and routing: ${role} ${width}x${height}`);
+        continue;
+      }
       assert.deepEqual(await evaluate('[...document.querySelectorAll("input")].map(input=>input.id)'), [nameId, 'age']);
       assert.equal(await evaluate('document.querySelector("label[for=age]").textContent'), 'Age');
       assert.equal(await evaluate('document.getElementById("age").type'), 'number');
@@ -154,7 +177,7 @@ try {
   assert.equal(await evaluate('window.row.age'), null);
   await evaluate('window.failSave=false'); await submit();
   await until('!!document.getElementById("destination")');
-  for (const [role, destination] of [['student', '/dashboard'], ['teacher', '/m3/teacher'], ['general_user', '/m3/general']]) {
+  for (const [role, destination] of [['student', '/dashboard'], ['teacher', '/m3/teacher/dashboard'], ['general_user', '/m3/general/dashboard']]) {
     await open(role, true);
     assert.equal(await evaluate('location.pathname'), destination);
     assert.equal(await evaluate('window.writes.length'), 0);

@@ -7,6 +7,7 @@ import {
   getOnboardingPath,
   getProfileNameValidationError,
   isAssignableUserRole,
+  profileSetupAsksAge,
   isDiagnosticLearnerRole,
   resolveUserDestination,
 } from "../utils/authOnboarding";
@@ -40,25 +41,30 @@ export async function getAuthProfile(userId: string) {
   return { ...data, age: ageError ? null : age } satisfies AuthProfile;
 }
 
-export async function completeProfileSetup(userId: string, name: string, age: number) {
-  const ageError = getAgeValidationError(String(age));
-  if (ageError) throw new Error(ageError);
-
+/**
+ * Completes onboarding. Students and Teachers must give a valid age; Independent Learners are not asked, and their
+ * save writes only the nickname (any stored age is left as it is).
+ */
+export async function completeProfileSetup(userId: string, name: string, age?: number) {
   const profile = await getAuthProfile(userId);
   const isLearner = isDiagnosticLearnerRole(profile.role);
   if (!isLearner && profile.role !== "teacher") {
     throw new Error("This role does not use profile setup.");
   }
+  const asksAge = profileSetupAsksAge(profile.role);
+  if (asksAge) {
+    const ageError = getAgeValidationError(age === undefined ? "" : String(age));
+    if (ageError) throw new Error(ageError);
+  }
   const normalizedName = name.trim();
   const nameError = getProfileNameValidationError(normalizedName, isLearner);
   if (nameError) throw new Error(nameError);
 
+  const nameField = isLearner ? { nickname: normalizedName } : { full_name: normalizedName };
   // One update prevents a failed age save from leaving a completed name behind.
   const { error } = await supabase
     .from("profiles")
-    .update(isLearner
-      ? { nickname: normalizedName, age }
-      : { full_name: normalizedName, age })
+    .update(asksAge ? { ...nameField, age } : nameField)
     .eq("id", userId)
     .select("id")
     .single();
