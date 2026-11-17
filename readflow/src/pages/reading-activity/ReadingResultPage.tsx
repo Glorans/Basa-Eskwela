@@ -1,5 +1,5 @@
 import { activityLanguageFromState, activityLanguageState, getActivityText } from "./activityLanguage";
-import { PRACTICE_PATHS, comprehensionResultTarget, comprehensionTargetForReading, isPracticeRole, learningAreaTarget } from "../../modules/module5/services/comprehensionNavigation";
+import { PRACTICE_PATHS, comprehensionActivityTarget, comprehensionResultTarget, comprehensionTargetForReading, isPracticeRole, learningAreaTarget } from "../../modules/module5/services/comprehensionNavigation";
 import { getComprehensionForReading, type LinkedComprehension } from "../../modules/module6/services/comprehensionService";
 import { BookOpen, Gauge, Headphones, ListChecks, MessageCircle, Mic, Sparkles, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -220,6 +220,12 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const linked = linkedComprehension?.readingId === attempt.id ? linkedComprehension : undefined;
   // Every role with an M6 path (Admin practice included) reopens its own completed activity.
   const completedComprehension = linked?.attempt?.status === "completed" ? linked.attempt : null;
+  // An unfinished assessment already found for this reading opens directly instead of through the M6 introduction's
+  // "Continue Comprehension" (one click, not two): module readings and an Independent Learner's own material, exactly
+  // where that introduction is shown. Classroom material activities keep their existing path (the server reopens them).
+  // A new assessment keeps the introduction and its Start Comprehension.
+  const introductionResume = !attempt?.materialId || (role === "general_user" && !attempt.roomId && !attempt.activityAssignmentId);
+  const unfinishedComprehension = introductionResume && linked?.attempt && linked.attempt.status !== "completed" ? linked.attempt : null;
   // Learners are told when a reading has no comprehension activity, rather than
   // the button silently disappearing. Read-aloud-only activities and admin
   // self-practice never have questions, so they show nothing extra.
@@ -523,10 +529,11 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
                 state={activityState}
               >{t("View Comprehension Result")}</Link>
             ) : (
-              // No activity yet, or one in progress: the existing start-or-resume path.
+              // No activity yet: the introduction and its Start Comprehension. One in progress: that same saved
+              // assessment directly (the route the introduction's Continue Comprehension opens).
               <Link
                 className="result-feedback-button result-feedback-button--primary"
-                to={comprehensionTarget}
+                to={unfinishedComprehension ? comprehensionActivityTarget(role, unfinishedComprehension.id) : comprehensionTarget}
                 state={activityState}
               >{t("Continue to Questions")}</Link>
             ))}

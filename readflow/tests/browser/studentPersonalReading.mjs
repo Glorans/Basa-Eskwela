@@ -271,6 +271,42 @@ try {
   tables.enrollments.splice(tables.enrollments.findIndex(e => e.id === 'e2'), 1);
   tables.room_modules.splice(tables.room_modules.findIndex(r => r.id === ASSIGN_EARLY), 1);
 
+  // Resume: an unfinished assessment reopens directly from the reading result (no second Continue), with its answer kept.
+  who = OTHER;
+  const otherReading = await save(EARLY, P_EARLY, EARLY_TEXT);
+  await navigate(`/dashboard/read-aloud/results/${otherReading.id}`);
+  await until(`[...document.querySelectorAll('a')].some(a => a.textContent.trim() === 'Continue to Questions')`);
+  await click('Continue to Questions');
+  await until(`document.querySelector('.m6-card') && document.body.innerText.includes('Ready to answer?')`);
+  await until(`![...document.querySelectorAll('p')].some(e=>e.textContent.includes('Checking your questions'))`);
+  await click('Start Comprehension');
+  await until(`!!document.querySelector('input[type="radio"]:not(:disabled)')`);
+  await evaluate(`document.querySelectorAll('input[type="radio"]')[0].click()`);
+  await click('Submit answer');
+  await until(`!![...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Next Question'&&!e.disabled)`);
+  const otherQuiz = tables.m6_comprehension_attempts.find(a => a.user_id === OTHER);
+  assert.equal(tables.m6_comprehension_responses.filter(r => r.attempt_id === otherQuiz.id).length, 1);
+  await navigate(`/dashboard/read-aloud/results/${otherReading.id}`);
+  await until(`[...document.querySelectorAll('a')].some(a => a.textContent.trim() === 'Continue to Questions' && a.getAttribute('href').endsWith('/dashboard/comprehension/${otherQuiz.id}'))`);
+  await click('Continue to Questions');
+  await until(`!!document.querySelector('input[type="radio"]:not(:disabled)')`);
+  assert.equal(await evaluate(`[...document.querySelectorAll('button')].some(e => e.textContent.trim() === 'Continue Comprehension')`), false, 'no intermediate Continue page');
+  assert.ok((await text()).includes('Question 2'), 'resumes at the next unanswered question');
+  await shot('resume-direct');
+  for (let i = 1; i < 3; i++) {
+    await until(`!!document.querySelector('input[type="radio"]:not(:disabled)')`);
+    await evaluate(`document.querySelectorAll('input[type="radio"]')[0].click()`);
+    await click('Submit answer');
+    if (i < 2) { await until(`!![...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Next Question'&&!e.disabled)`); await click('Next Question'); }
+  }
+  await until(`!![...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Finish Assessment'&&!e.disabled) || document.body.innerText.includes('Your comprehension results')`);
+  if (await evaluate(`!![...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Finish Assessment')`)) await click('Finish Assessment');
+  await until(`document.body.innerText.includes('Your comprehension results')`);
+  assert.equal(tables.m6_comprehension_attempts.filter(a => a.user_id === OTHER).length, 1, 'no second attempt');
+  assert.equal(tables.m6_comprehension_responses.filter(r => r.attempt_id === otherQuiz.id).length, 3, 'first answer kept, three in total');
+  await navigate(`/dashboard/read-aloud/results/${otherReading.id}`);
+  await until(`[...document.querySelectorAll('a')].some(a => a.textContent.trim() === 'View Comprehension Result')`);
+
   // C. Another Student cannot open the first Student's reading or assessment.
   who = OTHER;
   assert.ok([403, 404].includes((await asJson(`/api/oral-reading/attempts/${lonerReading.id}`)).status));
