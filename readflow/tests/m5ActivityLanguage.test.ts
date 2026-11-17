@@ -20,7 +20,7 @@ test("interface messages and dynamic values localize without changing English", 
   assert.equal(fil.t("{correct}/{total} correct on the first answer ({percentage}%)", { correct: 4, total: 6, percentage: 67 }), "4/6 tama sa unang sagot (67%)");
   assert.equal(fil.message(new Error("Network error detail"), "Your result could not be saved. Please try again."), fil.t("Your result could not be saved. Please try again."));
   assert.equal(en.message(new Error("Network error detail"), "Unable to load the result."), "Network error detail");
-  assert.equal(fil.message(Object.assign(new Error("Provider detail"), { code: "NO_SPEECH" }), "Unable to load the result."), fil.t("No speech was detected. Please record your reading again."));
+  assert.equal(fil.message(Object.assign(new Error("Provider detail"), { code: "NO_SPEECH" }), "Unable to load the result."), fil.t("No speech could be recognized from the recording."));
 });
 
 test("all shared recorder status messages have explicit Filipino translations", () => {

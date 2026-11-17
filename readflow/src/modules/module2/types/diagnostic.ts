@@ -47,6 +47,8 @@ export interface DiagnosticTranscription {
   confidence?: number;
   /** Server-signed proof that the backend produced this Azure transcript. */
   receipt?: string;
+  /** A part of an M2 recording that held only silence or noise (signed, empty receipt). */
+  noSpeech?: boolean;
 }
 
 export type ReadingWordAlignment =

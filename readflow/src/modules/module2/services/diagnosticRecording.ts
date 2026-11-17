@@ -165,9 +165,11 @@ export async function processDiagnosticRecording({
         : await uploadSegment(audioSegment, language);
       const transcription = result.transcription;
 
-      if (!result.success || !transcription?.text.trim()) {
+      // A part with only silence or noise (e.g. the pause after reading) comes back empty with a signed receipt.
+      const silentPart = transcription?.noSpeech === true && !transcription.text.trim() && Boolean(transcription.receipt);
+      if (!result.success || !transcription || (!transcription.text.trim() && !silentPart)) {
         throw new DiagnosticAudioUploadError(
-          result.code ?? "NO_SPEECH",
+          result.code ?? "STT_PROVIDER_ERROR",
           result.message,
         );
       }
@@ -196,7 +198,14 @@ export async function processDiagnosticRecording({
     }
   }
 
+  // Only the pause AFTER the reading may be silent. A silent part followed by speech is a gap in the reading (for
+  // example the microphone cut out), so the reading is recorded again instead of scoring those words as missed.
+  const gap = transcriptions.findIndex((part, index) =>
+    !part.text.trim() && transcriptions.slice(index + 1).some((next) => next.text.trim()));
+  if (gap >= 0) throw new DiagnosticRecordingProcessingError({ code: "NO_SPEECH", segmentIndex: gap + 1 });
+
   const transcription = combineDiagnosticTranscriptions(transcriptions);
+  // Azure returned text (or only silent parts) but no reading words: re-recording, not re-processing, is needed.
   if (!getReadingWords(transcription.text, language).length) throw new DiagnosticRecordingProcessingError({ code: "NO_SPEECH" });
 
   return {

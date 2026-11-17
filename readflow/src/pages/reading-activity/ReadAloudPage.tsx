@@ -48,6 +48,15 @@ interface ReadAloudPageProps {
 }
 
 // "processing" covers speech-to-text (see transcriptionStep); "saving" the result; "saving-recording" its audio.
+// After a failed transcription the learner may process the SAME recording again when the speech service was busy,
+// timed out, unavailable or unreachable. Only a recording problem (no speech, unreadable, too long or too large)
+// asks for a new recording.
+const RECORD_AGAIN_CODES = new Set(["NO_SPEECH", "STT_INVALID_AUDIO", "AUDIO_TOO_LONG", "AUDIO_TOO_LARGE"]);
+function canRetrySameRecording(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  return !(typeof code === "string" && RECORD_AGAIN_CODES.has(code));
+}
+
 type ProcessingStatus = "idle" | "processing" | "saving" | "saving-recording" | "transcription-error" | "save-error" | "recording-error";
 
 const TRANSCRIPTION_STEP_MESSAGES = {
@@ -485,7 +494,8 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
                     <button className="read-aloud-secondary" type="button" onClick={() => openResult(savedAttemptId)}>{t("Continue Without Recording")}</button>
                   </> : <>
                   <button className="read-aloud-secondary" type="button" disabled={isProcessing || processingStatus === "save-error"} onClick={handleRecordAgain}>{t("Record Again")}</button>
-                  {(!materialId && processingStatus !== "transcription-error" || processingStatus === "save-error" || materialId && processingStatus === "transcription-error") && (
+                  {(!materialId && processingStatus !== "transcription-error" || processingStatus === "save-error"
+                    || processingStatus === "transcription-error" && (materialId || canRetrySameRecording(processingError))) && (
                     <button className="read-aloud-continue" type="button" disabled={isProcessing} onClick={handleProcess}>
                       {processingStatus === "processing"
                         ? t("Processing your reading...")
@@ -493,7 +503,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
                           ? t("Saving result...")
                           : processingStatus === "save-error"
                             ? t("Try Saving Again")
-                            : materialId ? t("Retry Processing") : t("Process Reading")}
+                            : materialId || processingStatus === "transcription-error" ? t("Retry Processing") : t("Process Reading")}
                     </button>
                   )}
                   </>}

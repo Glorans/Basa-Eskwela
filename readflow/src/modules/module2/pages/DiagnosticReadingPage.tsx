@@ -1,3 +1,4 @@
+import { diagnosticProcessingMessage } from "../services/diagnosticAudioError";
 import { diagnosticCopy } from "../utils/diagnosticCopy";
 import "../components/DiagnosticProgress.css";
 import { useDiagnosticSession } from "../components/DiagnosticSessionProvider";
@@ -185,11 +186,9 @@ export default function DiagnosticReadingPage({
 
       saveReading({ language: assessment.language, transcription, oralReadingMetrics, transcriptReceipts });
 
-    } catch {
+    } catch (error) {
       if (!mountedRef.current) return;
-      setUploadError(
-        t("We couldn't process your reading. You can try again or record it again."),
-      );
+      setUploadError(t(diagnosticProcessingMessage(error)));
       setUploadStatus("error");
     } finally {
       processingRef.current = false;

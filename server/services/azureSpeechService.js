@@ -32,11 +32,16 @@ const QUOTA_DETAILS = /quota exceeded/i;
 
 function cancellationCode(sdk, errorCode, errorDetails) {
   const codes = sdk.CancellationErrorCode ?? {};
-  if (errorCode === codes.AuthenticationFailure || errorCode === codes.Forbidden) return "STT_PERMISSION";
-  if (errorCode === codes.TooManyRequests) return "STT_QUOTA";
+  // SDK Forbidden means quota overrun (not AuthenticationFailure); see the public CancellationErrorCode contract.
+  if (errorCode === codes.AuthenticationFailure) return "STT_PERMISSION";
+  if (errorCode === codes.TooManyRequests || errorCode === codes.Forbidden) return "STT_QUOTA";
   if (errorCode === codes.ServiceTimeout) return "STT_DEADLINE";
   if (errorCode === codes.BadRequestParameters) {
-    return typeof errorDetails === "string" && QUOTA_DETAILS.test(errorDetails) ? "STT_QUOTA" : "STT_INVALID_AUDIO";
+    if (typeof errorDetails === "string" && QUOTA_DETAILS.test(errorDetails)) return "STT_QUOTA";
+    // The SDK's generic "Invalid parameter OR unsupported audio format" cannot establish bad audio.
+    // Only an explicit audio-only rejection should ask the learner to replace their recording.
+    if (typeof errorDetails === "string" && /^(?:invalid|unsupported) audio format[.!\s]/i.test(errorDetails.trim())) return "STT_INVALID_AUDIO";
+    return "STT_BAD_REQUEST";
   }
   return "STT_PROVIDER_ERROR";
 }
@@ -237,6 +242,8 @@ async function transcribeWav(filePath, languageCode, {
       },
       onRecognized: (result) => {
         const text = typeof result.text === "string" ? result.text.trim() : "";
+        // An empty phrase between recognized phrases is skipped (original behaviour); a recording with no text at
+        // all still ends below as NO_SPEECH (explicit NoMatch) or STT_PROVIDER_ERROR.
         if (!text) return;
         diagnostics.phrases += 1;
         diagnostics.firstPhraseOffsetMs ??= offsetMs(result);
@@ -254,7 +261,17 @@ async function transcribeWav(filePath, languageCode, {
     try { onDiagnostics?.(diagnostics); } catch { /* diagnostics never affect the result */ }
   }
   const text = texts.join(" ").replace(/\s+/g, " ").trim();
-  if (!text) throw new SpeechTranscriptionError("NO_SPEECH");
+  if (!text) {
+    // Session end alone is not evidence of silence. Require an explicit final NoMatch event.
+    const code = diagnostics.unrecognized + diagnostics.silence + diagnostics.noise > 0 ? "NO_SPEECH" : "STT_PROVIDER_ERROR";
+    log("Azure Speech empty transcription", { code, audioBytes: buffer.length, durationSeconds: wav.durationSeconds,
+      locale: languageCode, recognition: diagnostics }); // counts/timing only; never content or Azure details
+    const error = new SpeechTranscriptionError(code);
+    // Only silence or background noise (no speech Azure failed to recognize): a part of a longer M2 recording with
+    // nothing in it, e.g. the pause after the learner finished. Speech that went unrecognized is never marked.
+    if (code === "NO_SPEECH") error.silenceOnly = diagnostics.unrecognized === 0;
+    throw error;
+  }
   if (!confidences.length) return { text };
   const confidence = confidences.reduce((total, value) => total + value, 0) / confidences.length;
   return { text, confidence: Number(confidence.toFixed(4)) };
@@ -298,6 +315,7 @@ async function assessPronunciationWav(buffer, language, referenceText, {
   // Speech Azure could not assess. Silence and noise are expected and are not
   // counted; anything else means the result does not cover the whole reading.
   const unassessed = [];
+  let noMatchCount = 0;
   const startedAt = Date.now();
   try {
     const sdk = sdkFactory();
@@ -307,6 +325,7 @@ async function assessPronunciationWav(buffer, language, referenceText, {
       // Not a failure: the same audio would fail again on every retry. It is
       // reported, so the result is never shown as covering the whole reading.
       onNoMatch: (result) => {
+        noMatchCount += 1;
         if (noMatchKind(sdk, result) === "unrecognized") unassessed.push(resultSeconds(result));
       },
       configure: (recognizer) => {
@@ -333,7 +352,7 @@ async function assessPronunciationWav(buffer, language, referenceText, {
     throw toSafeError(error);
   }
   // Only silence or noise: nothing to assess.
-  if (!utterances.length && !unassessed.length) throw new SpeechTranscriptionError("NO_SPEECH");
+  if (!utterances.length && !unassessed.length) throw new SpeechTranscriptionError(noMatchCount > 0 ? "NO_SPEECH" : "STT_PROVIDER_ERROR");
   const coverage = unassessed.length
     ? {
       complete: false,

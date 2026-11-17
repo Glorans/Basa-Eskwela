@@ -14,6 +14,10 @@ const SAFE_SPEECH_ERRORS = Object.freeze({
     status: 422,
     message: "The recording could not be processed. Please record it again.",
   },
+  STT_BAD_REQUEST: {
+    status: 503,
+    message: "Speech processing could not accept the request. Please try again later. Your recording does not need to be replaced.",
+  },
   STT_DEADLINE: {
     status: 504,
     message: "Speech processing timed out. Please try again.",

@@ -479,3 +479,84 @@ test("DT1: Module 5 read-alouds are unchanged: no recording identity, no receipt
   assert.deepEqual(result.transcriptReceipts, []);
   assert.equal(result.oralReadingMetrics.correctWords, 2);
 });
+
+
+test("M2 preserves failure codes and the original parts; no partial scoring; explicit retry reuses all parts", async () => {
+  const parts = [new Blob(["first"],{type:"audio/webm"}),new Blob(["second"],{type:"audio/webm"})];
+  let scored=0;const received:Blob[]=[];
+  for (const code of ["NO_SPEECH","STT_INVALID_AUDIO","STT_BAD_REQUEST","STT_PERMISSION","STT_QUOTA","STT_PROVIDER_ERROR"] as const) {
+    await assert.rejects(processDiagnosticRecording({audioSegments:parts,language:"en",expectedText:"Ana reads",recordingDurationSeconds:40,
+      uploadSegment:async blob=>{received.push(blob);if(blob===parts[1])throw new DiagnosticAudioUploadError(code);return {success:true,message:"ok",transcription:{text:"Ana"}};},
+      calculateMetrics:()=>{scored++;return emptyMetrics();},
+    }), (error:unknown)=>error instanceof DiagnosticRecordingProcessingError && error.code===code && error.segmentIndex===2);
+  }
+  assert.equal(scored,0);
+  const result=await processDiagnosticRecording({audioSegments:parts,language:"en",expectedText:"Ana reads",recordingDurationSeconds:40,
+    uploadSegment:async blob=>{received.push(blob);return {success:true,message:"ok",transcription:{text:blob===parts[0]?"Ana":"reads"}};},
+    calculateMetrics:()=>{scored++;return emptyMetrics();}});
+  assert.equal(result.transcription.text,"Ana reads");assert.equal(scored,1);
+  assert.ok(received.every((blob,index)=>blob===parts[index%2]));assert.deepEqual(await Promise.all(parts.map(p=>p.text())),["first","second"]);
+});
+
+test("M2 malformed success or failure replies are provider errors, not evidence of no speech",async()=>{
+  for(const success of [true,false])await assert.rejects(processDiagnosticRecording({audioSegments:[new Blob(["audio"],{type:"audio/webm"})],
+    language:"en",expectedText:"Ana reads",recordingDurationSeconds:1,uploadSegment:async()=>({success,message:"empty",transcription:{text:""}})}),
+    (e:unknown)=>e instanceof DiagnosticRecordingProcessingError&&e.code==="STT_PROVIDER_ERROR");
+});
+
+test("M2 displays bounded actionable speech errors in English and Filipino",async()=>{
+  const {diagnosticProcessingMessage}=await import("../src/modules/module2/services/diagnosticAudioError.ts");
+  const {diagnosticCopy}=await import("../src/modules/module2/utils/diagnosticCopy.ts");
+  for(const code of ["NO_SPEECH","STT_INVALID_AUDIO","STT_BAD_REQUEST","STT_PERMISSION","STT_QUOTA","STT_DEADLINE","STT_PROVIDER_ERROR","AUTH_REQUIRED"]){
+    const message=diagnosticProcessingMessage({code,message:"secret-provider-detail"});
+    assert.doesNotMatch(message,/secret-provider-detail/);assert.notEqual(diagnosticCopy("fil",message),message);
+    if(["STT_BAD_REQUEST","STT_PERMISSION","STT_QUOTA"].includes(code))assert.doesNotMatch(message,/record it again/);
+  }
+});
+
+
+// Azure returned text, but none of it is reading words. The same audio gives the same text on every retry, so
+// "try processing again" would loop; NO_SPEECH tells the learner to listen and record again. (An empty or failed
+// response with no code is still a provider error: see the segment and transcription fallbacks.)
+test("a transcript without reading words asks for a new recording (NO_SPEECH), not another processing attempt",async()=>{
+  const {processOralReading}=await import("../src/modules/module5/services/oralReadingProcessing.ts");
+  const blob=new Blob(["audio"],{type:"audio/webm"});
+  const isProviderError=(e:unknown)=>e instanceof DiagnosticRecordingProcessingError&&e.code==="NO_SPEECH";
+  await assert.rejects(processDiagnosticRecording({audioSegments:[blob],language:"en",expectedText:"Ana reads",recordingDurationSeconds:1,
+    uploadSegment:async()=>({success:true,message:"ok",transcription:{text:"..."}})}),isProviderError);
+  await assert.rejects(processOralReading({moduleId:"module",recording:blob,language:"en",expectedText:"Ana reads",recordingDurationSeconds:1,
+    transcribeRecording:async()=>({text:"..."})}),isProviderError);
+});
+
+test("M2: a part with only silence or noise (signed, empty receipt) is accepted; the rest of the reading is scored",async()=>{
+  const blob=()=>new Blob(["audio"],{type:"audio/webm"});
+  const parts:{success:boolean;message:string;transcription:{text:string;receipt?:string;noSpeech?:boolean}}[]=[{success:true,message:"ok",transcription:{text:"Ana reads a book.",receipt:"r1"}},
+    {success:true,message:"This part had no speech.",transcription:{text:"",receipt:"r2",noSpeech:true}}];
+  let index=0;
+  const result=await processDiagnosticRecording({audioSegments:[blob(),blob()],language:"en",expectedText:"Ana reads a book.",recordingDurationSeconds:30,
+    segmentDurationsSeconds:[25,5],uploadSegment:async()=>parts[index++],
+    diagnostic:{recordingId:"00000000-0000-4000-8000-0000000000c1",assessmentId:"a",assessmentVersion:"1"}});
+  assert.equal(result.transcription.text,"Ana reads a book.");
+  assert.deepEqual(result.transcriptReceipts,["r1","r2"],"every part keeps its signed receipt, in order");
+  // Empty text without the server's noSpeech mark (or without a receipt) is still refused.
+  for(const bad of [{text:"",receipt:"r2"},{text:"",noSpeech:true}]){
+    index=0;parts[1]={success:true,message:"ok",transcription:bad};
+    await assert.rejects(processDiagnosticRecording({audioSegments:[blob(),blob()],language:"en",expectedText:"Ana reads a book.",recordingDurationSeconds:30,
+      segmentDurationsSeconds:[25,5],uploadSegment:async()=>parts[index++],
+      diagnostic:{recordingId:"00000000-0000-4000-8000-0000000000c1",assessmentId:"a",assessmentVersion:"1"}}),
+      (e:unknown)=>e instanceof DiagnosticRecordingProcessingError&&e.code==="STT_PROVIDER_ERROR");
+  }
+});
+
+test("M2: a silent part BEFORE speech (e.g. a microphone dropout mid-reading) is refused, never scored as missed words",async()=>{
+  const blob=()=>new Blob(["audio"],{type:"audio/webm"});
+  const spoken=(text:string,receipt:string)=>({success:true,message:"ok",transcription:{text,receipt}});
+  const silent=(receipt:string)=>({success:true,message:"This part had no speech.",transcription:{text:"",receipt,noSpeech:true}});
+  for(const parts of [[spoken("Ana reads","r1"),silent("r2"),spoken("a book.","r3")],[silent("r1"),spoken("Ana reads a book.","r2")]]){
+    let index=0;
+    await assert.rejects(processDiagnosticRecording({audioSegments:parts.map(blob),language:"en",expectedText:"Ana reads a book.",recordingDurationSeconds:60,
+      segmentDurationsSeconds:parts.map(()=>20),uploadSegment:async()=>parts[index++],
+      diagnostic:{recordingId:"00000000-0000-4000-8000-0000000000c1",assessmentId:"a",assessmentVersion:"1"}}),
+      (e:unknown)=>e instanceof DiagnosticRecordingProcessingError&&e.code==="NO_SPEECH"&&e.segmentIndex===parts.findIndex(p=>!p.transcription.text)+1);
+  }
+});

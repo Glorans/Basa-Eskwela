@@ -2,6 +2,14 @@ import type { DiagnosticLanguage } from "../types/diagnostic";
 
 // Basa Eskwela interface wording; not official Phil-IRI text. Never pass passage or question content here.
 const FILIPINO: Record<string, string> = {
+  "No speech could be recognized in part of the recording. Listen to your recording and try again.": "Hindi nakilala ang pagsasalita sa isang bahagi ng rekording. Pakinggan ang rekording mo at subukang muli.",
+  "The recording could not be processed. Please record it again.": "Hindi maproseso ang rekording. Magrekord muli.",
+  "The recording is too long or too large to process. Please make a shorter recording.": "Masyadong mahaba o malaki ang rekording. Gumawa ng mas maikling rekording.",
+  "Speech processing is temporarily busy. Please wait and try processing the same recording again.": "Abala ang pagproseso ng pagsasalita. Maghintay at subukang iproseso muli ang parehong rekording.",
+  "Speech processing is temporarily unavailable. Please try again later. Your recording is still available on this page.": "Pansamantalang hindi magagamit ang pagproseso ng pagsasalita. Subukan muli mamaya. Narito pa sa pahinang ito ang rekording mo.",
+  "Speech processing timed out. Please try processing the same recording again.": "Masyadong natagalan ang pagproseso. Subukang iproseso muli ang parehong rekording.",
+  "Your session has expired. Please sign in again.": "Nag-expire na ang sesyon mo. Mag-sign in muli.",
+  "We couldn't process your reading. Please try processing it again.": "Hindi maproseso ang pagbasa mo. Subukang iproseso itong muli.",
   "Reading Level": "Antas sa Pagbasa",
   "Difficulty Level": "Antas ng Hirap",
   "Easy": "Madali",

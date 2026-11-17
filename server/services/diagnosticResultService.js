@@ -52,6 +52,13 @@ function verifyReading({ tokens, userId, language, binding, receiptService }) {
     && claim.rid === first.rid && claim.src === first.src && claim.seg === index + 1);
   if (!sameRecording || (first.src === "stream" && claims.length !== 1)) throw rejectReading();
 
+  // A part may be empty only when Azure heard silence or noise in it (receipt flag ns), and only AFTER the last part
+  // with speech (the pause after reading). An empty part before speech is a gap in the reading, e.g. a microphone
+  // dropout; scoring it would count those words as missed, so the recording is refused instead.
+  const spoken = claims.map((claim) => Boolean(claim.text.trim()));
+  if (claims.some((claim, index) => !spoken[index] && (claim.ns !== true || spoken.slice(index + 1).some(Boolean)))) {
+    throw new DiagnosticSubmissionError(422, "NO_SPEECH", "No speech could be recognized in part of the recording.");
+  }
   const text = claims.map((claim) => claim.text.trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
   if (!getReadingWords(text, language).length) {
     throw new DiagnosticSubmissionError(422, "NO_SPEECH", "No speech could be recognized from the recording.");

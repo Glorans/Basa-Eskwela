@@ -64,12 +64,14 @@ function createTranscriptReceiptService({
   }
 
   function issue({
-    userId, language, binding, recordingId, segmentIndex, source, text, confidence, audioSeconds,
+    userId, language, binding, recordingId, segmentIndex, source, text, confidence, audioSeconds, noSpeech = false,
   }) {
     const secret = readSecret(getSecret());
     if (typeof userId !== "string" || !userId || !RECEIPT_SOURCES.includes(source)
       || !isUuid(recordingId) || !Number.isInteger(segmentIndex) || segmentIndex < 1
-      || typeof text !== "string" || !text.trim()
+      // Empty text only for an uploaded part where Azure heard nothing but silence or noise (noSpeech); the
+      // diagnostic is still refused unless the recording as a whole contains reading words.
+      || typeof text !== "string" || (!text.trim() && !(noSpeech === true && source === "upload"))
       || typeof binding?.assessmentId !== "string" || typeof binding.assessmentVersion !== "string"
       || !PASSAGE_HASH_PATTERN.test(binding.passageHash ?? "")) {
       throw new Error("Invalid transcript receipt claims.");
@@ -86,6 +88,7 @@ function createTranscriptReceiptService({
       seg: segmentIndex,
       src: source,
       text: text.trim(),
+      ...(noSpeech === true ? { ns: true } : {}),
       ...(Number.isFinite(confidence) ? { conf: confidence } : {}),
       ...(Number.isFinite(audioSeconds) && audioSeconds > 0 ? { secs: audioSeconds } : {}),
       iat: now(),
