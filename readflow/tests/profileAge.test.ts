@@ -67,7 +67,7 @@ function fixture(role = "student", ageError: { code: string } | null = null) {
   };
 }
 
-for (const role of ["student", "general_user", "teacher"]) {
+for (const role of ["student", "teacher"]) {
   test(`${role} saves name and age atomically and reloads age without changing authorization`, async () => {
     const f = fixture(role);
     await f.service.completeProfileSetup("self", "  Taylor  ", 18);
@@ -81,6 +81,32 @@ for (const role of ["student", "general_user", "teacher"]) {
     assert.equal(await f.service.getPostAuthenticationPath(saved), role === "teacher" ? "/teacher-verification" : "/diagnostic");
   });
 }
+
+test("Independent Learner setup saves the nickname only: no age is asked, written or required", async () => {
+  for (const age of [undefined, 18]) {
+    const f = fixture("general_user");
+    await f.service.completeProfileSetup("self", "  Taylor  ", age);
+    assert.equal(f.writes.length, 1);
+    assert.equal(JSON.stringify(f.writes[0]), JSON.stringify({ nickname: "Taylor" }), "age is never written for an Independent Learner");
+    const saved = await f.service.getAuthProfile("self");
+    assert.equal(saved.age, null, "the stored age is left as it was");
+    assert.equal(saved.role, "general_user");
+    assert.equal(await f.service.getPostAuthenticationPath(saved), "/diagnostic");
+  }
+  const kept = fixture("general_user");
+  kept.row.age = 30;
+  await kept.service.completeProfileSetup("self", "Reader");
+  assert.equal(kept.row.age, 30, "an existing stored age is not deleted");
+  await assert.rejects(fixture("general_user").service.completeProfileSetup("self", ""), /nickname/);
+});
+
+test("Students and Teachers must still give a valid age", async () => {
+  for (const role of ["student", "teacher"]) {
+    const f = fixture(role);
+    await assert.rejects(f.service.completeProfileSetup("self", "Reader Name"), /Enter your age/);
+    assert.equal(f.writes.length, 0);
+  }
+});
 
 test("invalid ages, names and unsupported roles cannot write a profile", async () => {
   const f = fixture();
