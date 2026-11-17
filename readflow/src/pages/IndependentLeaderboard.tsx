@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 
 import { supabase } from "../lib/supabaseClient";
-import { rankByXp } from "../modules/module8/leaderboardRanking";
+import useAuthenticatedProfile from "../hooks/useAuthenticatedProfile";
+import { ownLeaderboardLabel, rankByXp } from "../modules/module8/leaderboardRanking";
+import "./IndependentLeaderboard.css";
 
 type Entry = {
   user_id: string;
@@ -48,6 +50,7 @@ export default function IndependentLeaderboard() {
   const [perLanguage, setPerLanguage] = useState(false);
   const [rows, setRows] = useState<Entry[]>([]);
   const [me, setMe] = useState<string | undefined>();
+  const { profile } = useAuthenticatedProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -249,6 +252,7 @@ export default function IndependentLeaderboard() {
               return (
                 <li
                   key={entry.user_id}
+                  className="il-leaderboard-row"
                   style={{
                     ...rowStyle,
                     ...(isYou ? currentUserRowStyle : {}),
@@ -273,6 +277,8 @@ export default function IndependentLeaderboard() {
 
                   {/* USER AVATAR */}
                   <div
+                    className="il-leaderboard-avatar"
+                    aria-hidden="true"
                     style={{
                       ...avatarStyle,
                       backgroundColor:
@@ -287,8 +293,8 @@ export default function IndependentLeaderboard() {
                   {/* LEARNER DETAILS */}
                   <div style={userInfoStyle}>
                     <strong style={userNameStyle}>
-                      {isYou && entry.display_name !== "You"
-                        ? `You (${entry.display_name})`
+                      {isYou
+                        ? ownLeaderboardLabel(entry.display_name, profile?.nickname)
                         : entry.display_name}
                     </strong>
 
@@ -482,7 +488,11 @@ const userInfoStyle: CSSProperties = {
 
 const userNameStyle: CSSProperties = {
   fontSize: "15px",
-  overflowWrap: "anywhere",
+  // Names wrap between words; a single very long word still breaks rather than overflowing.
+  overflowWrap: "break-word",
+  wordBreak: "normal",
+  minWidth: 0,
+  maxWidth: "100%",
 };
 
 const difficultyStyle: CSSProperties = {

@@ -194,7 +194,8 @@ test("F4: the pages prefer the private per-language rankings and keep working wi
     assert.match(page, /is_me \?\? /);
     assert.doesNotMatch(page, /difficulty \|\| "Easy"/, "a missing level is not shown as Easy");
   }
-  assert.match(read("src/pages/IndependentLeaderboard.tsx"), /isYou && entry\.display_name !== "You"/, "your own row just says You");
+  // Adviser feedback 2026-11-17: your own row shows your nickname ("Ana (You)"); other learners stay "Reader XXXXXX".
+  assert.match(read("src/pages/IndependentLeaderboard.tsx"), /isYou\s*\? ownLeaderboardLabel\(entry\.display_name, profile\?\.nickname\)/, "your own row shows your own nickname");
 });
 
 // --- Function 4: leaderboards -------------------------------------------------------------------
