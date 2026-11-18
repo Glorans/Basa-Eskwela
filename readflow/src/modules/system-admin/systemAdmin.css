@@ -3,14 +3,15 @@
   --sa-forest: #123f32;
   --sa-green: #287453;
   --sa-light: #e9f3ec;
-  --sa-border: #dce5df;
+  --sa-border: #d8d5c9;
   --sa-muted: #3e5248; /* >= 7.3:1 on white, page and tinted surfaces */
-  --sa-card-border: #a7bbad; /* visible card edge on the light page */
+  --sa-card-border: #d8d5c9; /* with the white fill and a soft shadow, separates cards from the cream page */
   --sa-control-border: #6f877a; /* >= 3:1 control boundary on white and tinted surfaces */
-  --sa-tint: #eef5f0;
-  --basa-bg: #f4f6f5;
-  --basa-main-content-bg: #f4f6f5;
-  --basa-content-bg: #f4f6f5;
+  --sa-tint: #faf7f0; /* secondary surfaces */
+  --sa-page: #f8f3e8; /* warm cream workspace */
+  --basa-bg: #f8f3e8;
+  --basa-main-content-bg: #f8f3e8;
+  --basa-content-bg: #f8f3e8;
   --basa-card: #ffffff;
   --basa-cream: #e9f3ec;
   --basa-green-card: #e9f3ec;
@@ -29,7 +30,7 @@
   --basa-scrollbar-thumb-end: #92aa9b;
   --basa-scrollbar-thumb-hover: #607e6c;
   --basa-scrollbar-thumb-hover-end: #607e6c;
-  --basa-scrollbar-track: #edf1ee;
+  --basa-scrollbar-track: #ede3cf;
   --basa-scrollbar-size: 10px;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   color: #1b3329;
@@ -38,7 +39,7 @@
 }
 .system-admin-ui.m3-shell :is(h1,h2,h3,h4,button,input,textarea,select) { font-family: inherit; }
 .system-admin-ui.m3-shell :is(h1,h2,h3,h4) { color: var(--sa-forest); letter-spacing: -.025em; }
-.system-admin-ui.m3-shell .m3-workspace { padding: 0; background: #f4f6f5; }
+.system-admin-ui.m3-shell .m3-workspace { padding: 0; background: var(--sa-page); }
 .system-admin-ui.m3-shell aside.m3-sidebar {
   background: var(--sa-forest); color: white; border-radius: 0; padding: 24px 18px 16px;
   box-shadow: none; border-right: 1px solid #204d3e; gap: 24px;
@@ -63,14 +64,14 @@
 .system-admin-ui.m3-shell .profile-dropdown small { color: var(--sa-muted); }
 .system-admin-ui.m3-shell .profile-dropdown-panel { border-radius: 10px; box-shadow: 0 12px 32px #123f321a; }
 .system-admin-ui.m3-shell .rf-content-scroll { margin: 0; padding: 0; scrollbar-gutter: stable; }
-.system-admin-ui.m3-shell .m3-content { padding: 32px; margin: 0; border-radius: 0; background: #f4f6f5; width: 100%; min-width: 0; }
+.system-admin-ui.m3-shell .m3-content { padding: 32px; margin: 0; border-radius: 0; background: var(--sa-page); width: 100%; min-width: 0; }
 .system-admin-ui.m3-shell .m3-page-stack { gap: 24px; }
 .system-admin-ui.m3-shell :is(.m3-page-header,.m3-editor-header,.admin-users-header,.m7-dashboard-header) { padding: 0; margin-bottom: 24px; background: transparent; border: 0; box-shadow: none; }
 .system-admin-ui.m3-shell :is(.m3-page-header,.m3-editor-header,.admin-users-header,.m7-dashboard-header,.create-school-admin-page) h1 { font-size: clamp(24px,2.3vw,32px); line-height: 1.25; font-weight: 650; color: var(--sa-forest); }
 .system-admin-ui.m3-shell :is(.m3-page-header,.m3-editor-header,.admin-users-header,.m7-dashboard-header) p { color: var(--sa-muted); max-width: 76ch; line-height: 1.65; }
 .system-admin-ui.m3-shell :is(.m3-eyebrow,.m3-page-eyebrow) { background: transparent; color: var(--sa-green); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
 .system-admin-ui.m3-shell :is(.m3-panel,.m3-record-card,.m3-detail-card,.m3-editor-card,.m3-saved-set-card,.m3-question-editor,.m3-confirmation-modal,.admin-users-table-wrap,.create-school-admin-form,.basa-settings-card) {
-  background: white; border: 1px solid var(--sa-card-border); border-radius: 12px; box-shadow: 0 2px 6px #123f3204;
+  background: white; border: 1px solid var(--sa-card-border); border-radius: 12px; box-shadow: 0 1px 4px #4a3b1f1a;
 }
 .system-admin-ui.m3-shell .m3-record-card { padding: 20px; gap: 18px; }
 .system-admin-ui.m3-shell .m3-record-icon { background: var(--sa-light); color: var(--sa-green); border-radius: 10px; }
@@ -93,25 +94,25 @@
 .system-admin-ui.m3-shell :is(input:not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select) { background: white; color: #1b3329; border-color: var(--sa-control-border); border-radius: 8px; font-size: 14px; }
 .system-admin-ui.m3-shell .m3-action-link { color: var(--sa-green); }
 .system-admin-ui.m3-shell :is(.m3-status-badge,.m3-editor-badge,.m3-editor-badge--pending,.m3-review-callout,.m3-question-number,.m3-question-summary > div,.m3-material-language,.admin-users-role-readonly) { background: var(--sa-light); color: #28553c; border-color: var(--sa-border); }
-.system-admin-ui.m3-shell :is(.m3-editor-recovery,.m3-editor-notice--missing,.m3-processing-placeholder) { background: #f1f5f2; color: #3c5143; border-color: #bccdc0; }
-.system-admin-ui.m3-shell :is(.m3-editor-upload,.m3-editor-review,.m3-reading-preview,.m3-options-editor label,.m3-generated-answer-details) { background: #f7f9f7; border-color: var(--sa-border); border-radius: 8px; }
+.system-admin-ui.m3-shell :is(.m3-editor-recovery,.m3-editor-notice--missing,.m3-processing-placeholder) { background: var(--sa-tint); color: #3c5143; border-color: var(--sa-border); }
+.system-admin-ui.m3-shell :is(.m3-editor-upload,.m3-editor-review,.m3-reading-preview,.m3-options-editor label,.m3-generated-answer-details) { background: var(--sa-tint); border-color: var(--sa-border); border-radius: 8px; }
 .system-admin-ui.m3-shell .m3-confirmation-modal { color: var(--sa-forest); }
 .system-admin-ui.m3-shell .m3-modal-backdrop { background: #123f3270; }
 .system-admin-ui.m3-shell :is(.m7-dashboard,.m7-page) { padding: 0; max-width: none; background: transparent; }
 .system-admin-ui.m3-shell .m7-dashboard .m7-dashboard-content { background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
-.system-admin-ui.m3-shell .m7-dashboard :is(section,.m7-card) { border: 1px solid var(--sa-border); border-radius: 12px; box-shadow: none; background: white; }
+.system-admin-ui.m3-shell .m7-dashboard :is(section,.m7-card) { border: 1px solid var(--sa-border); border-radius: 12px; box-shadow: 0 1px 4px #4a3b1f1a; background: white; }
 .system-admin-ui.m3-shell .m7-dashboard section { padding: 24px; margin: 0 0 24px; }
 .system-admin-ui.m3-shell .m7-dashboard h2 { font-size: 17px; font-weight: 650; margin: 0 0 12px; }
 .system-admin-ui.m3-shell .m7-dashboard h3 { font-size: 15px; font-weight: 650; margin: 24px 0 12px; }
 .system-admin-ui.m3-shell .m7-dashboard .m7-metrics { grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); gap: 12px; }
-.system-admin-ui.m3-shell .m7-dashboard .m7-card { background: #f7faf8; padding: 18px; margin: 0; gap: 8px; }
+.system-admin-ui.m3-shell .m7-dashboard .m7-card { background: var(--sa-tint); padding: 18px; margin: 0; gap: 8px; }
 .system-admin-ui.m3-shell .m7-card span { font-size: 12px; color: var(--sa-muted); }
 .system-admin-ui.m3-shell .m7-card strong { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--sa-forest); }
 .system-admin-ui.m3-shell :is(.m7-scroll,.admin-users-table-scroll) { border: 1px solid var(--sa-border); border-radius: 8px; max-width: 100%; overflow-x: auto; }
 .system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) table { border-collapse: collapse; width: 100%; font-size: 13px; }
-.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) :is(th,td) { padding: 14px 16px; border-bottom: 1px solid #e5ece7; text-align: left; vertical-align: middle; }
-.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) th { background: #edf3ef; color: #3e5748; font-size: 11px; letter-spacing: .035em; font-weight: 650; }
-.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) tbody tr:hover { background: #f7faf8; }
+.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) :is(th,td) { padding: 14px 16px; border-bottom: 1px solid var(--sa-border); text-align: left; vertical-align: middle; }
+.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) th { background: var(--sa-tint); color: #3e5748; font-size: 11px; letter-spacing: .035em; font-weight: 650; }
+.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) tbody tr:hover { background: var(--sa-tint); }
 .system-admin-ui.m3-shell .m7-performance-scope { color: var(--sa-muted); font-size: 12px; margin-top: 16px; }
 .system-admin-ui.m3-shell .admin-users-table-wrap { padding: 22px; }
 .system-admin-ui.m3-shell .admin-users-header h1 { margin-top: 0; }
@@ -135,7 +136,7 @@
 .system-admin-ui.m3-shell .sa-chart-date { color: var(--sa-muted); font-size: 12px; }
 .system-admin-ui.m3-shell .sa-chart-bars { display: grid; gap: 6px; }
 .system-admin-ui.m3-shell .sa-chart-bars > div { display: grid; grid-template-columns: minmax(0,1fr) 40px; gap: 10px; align-items: center; font-size: 12px; font-variant-numeric: tabular-nums; }
-.system-admin-ui.m3-shell .sa-chart-track { height: 10px; border-radius: 3px; background: #f1f5f2; }
+.system-admin-ui.m3-shell .sa-chart-track { height: 10px; border-radius: 3px; background: var(--sa-tint); }
 .system-admin-ui.m3-shell .sa-chart-track > span { display: block; height: 100%; background: var(--sa-green); border-radius: 3px; }
 .system-admin-ui.m3-shell .sa-chart-bars > div:last-child .sa-chart-track > span { background: #89ac96; }
 @media (min-width: 1000px) {

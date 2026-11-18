@@ -73,7 +73,7 @@ try {
   for(const width of [390,768,1024,1440]) for(const [name,content] of [['analytics',overview],['editor',editor],['users',users]]) {
     await render('system_admin',width,content);
     const dimensions=await evaluate(`(()=>{let e=document.querySelector('.m3-content'),h=document.querySelector('.m3-topbar'); return {documentFits:document.documentElement.scrollWidth<=innerWidth,contentFits:e.scrollWidth<=e.clientWidth+1,headerFits:h.scrollWidth<=h.clientWidth+1,sidebar:getComputedStyle(document.querySelector('.m3-sidebar')).backgroundColor,background:getComputedStyle(e).backgroundColor,heading:getComputedStyle(e.querySelector('h1')).color}})()`);
-    assert.deepEqual(dimensions,{documentFits:true,contentFits:true,headerFits:true,sidebar:'rgb(18, 63, 50)',background:'rgb(244, 246, 245)',heading:'rgb(18, 63, 50)'},`${name} ${width}`);
+    assert.deepEqual(dimensions,{documentFits:true,contentFits:true,headerFits:true,sidebar:'rgb(18, 63, 50)',background:'rgb(248, 243, 232)',heading:'rgb(18, 63, 50)'},`${name} ${width}`);
     // Minimal header: account controls flush right, no title text, compact height; one h1 in the content.
     const header=await evaluate(`(()=>{let h=document.querySelector('.m3-topbar'),p=h.querySelector('.profile-dropdown'),hr=h.getBoundingClientRect(),pr=p.getBoundingClientRect(),pad=parseFloat(getComputedStyle(h).paddingRight);return {right:Math.abs(hr.right-pad-pr.right)<=1,height:Math.round(hr.height)<=68,title:h.querySelector('.m3-topbar-title').textContent.replace('?','').trim(),h1:document.querySelectorAll('h1').length}})()`);
     assert.deepEqual(header,{right:true,height:true,title:'',h1:1},`${name} ${width} header`);
