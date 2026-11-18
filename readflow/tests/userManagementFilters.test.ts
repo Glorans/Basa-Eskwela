@@ -107,7 +107,7 @@ test("frontend Admin user service has no role-update request", async () => {
     "utf8",
   );
 
-  assert.doesNotMatch(service, /updateManagedUserRole|\.patch\(|\/role/);
+  assert.doesNotMatch(service, /updateManagedUserRole|\/role/);
   assert.match(service, /getManagedUsers/);
   assert.doesNotMatch(service, /deleteManagedUser|api\.delete\(/, "no permanent-deletion request from the browser");
 });

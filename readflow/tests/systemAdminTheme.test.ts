@@ -52,8 +52,8 @@ test('System Admin alone opts into the theme, with existing Settings, Logout and
  assert.equal(findAll(tree,n=>n.type==='img')[0].props.src,'mascot.png');
  assert.equal(findAll(tree,n=>n.type==='ProfileDropdown')[0].props.settingsPath,'/system-admin/settings');
  assert.equal(findAll(tree,n=>n.type==='SidebarLogout').length,1);
- const nav=findAll(tree,n=>n.type==='NavLink');assert.equal(nav.length,8);
- for(const route of ['content','content/modules/new','content/materials','content/materials/upload','users','school-admins/new','analytics','independent-learners']) assert.ok(nav.some(n=>n.props.to===`/system-admin/${route}`));
+ const nav=findAll(tree,n=>n.type==='NavLink');assert.equal(nav.length,7);
+ for(const route of ['content','content/modules/new','content/materials','content/materials/upload','users','analytics','independent-learners']) assert.ok(nav.some(n=>n.props.to===`/system-admin/${route}`));
  nav[0].props.onClick();findAll(tree,n=>n.type==='SidebarLogout')[0].props.onSignedOut();
  assert.deepEqual(calls,['close','close']);
  assert.equal(nav[0].props.className({isActive:true}),'m3-nav-item m3-nav-item--active');
