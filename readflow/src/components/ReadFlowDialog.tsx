@@ -25,6 +25,10 @@ export function showReadFlowDialog(message: string, kind: DialogKind = "error", 
   dialogOpen = true;
   const previousFocus = document.activeElement;
   const host = document.createElement("div");
+  // Dialogs mount outside the page shell. Opt in only while the System Admin shell is present.
+  if (document.querySelector(".system-admin-ui.m3-shell")) {
+    host.className = "system-admin-ui system-admin-dialog-host";
+  }
   document.body.append(host);
   const root = createRoot(host);
   return new Promise(resolve => {

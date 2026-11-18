@@ -13,7 +13,7 @@ test("Admin extraction is a dedicated authenticated endpoint and never finalizes
 
   assert.match(client, /\/api\/admin\/modules\/extract/);
   assert.match(client, /getMaterialAuthHeaders/);
-  assert.match(route, /profile\?\.role !== "admin"/);
+  assert.ok(route.includes('!["admin", "system_admin"].includes(profile?.role) && !approvedTeacher'));
   assert.match(route, /validateMaterialFileSignature/);
   assert.match(route, /extractReadingMaterial/);
   assert.match(route, /removeUploadedMaterialFile/);

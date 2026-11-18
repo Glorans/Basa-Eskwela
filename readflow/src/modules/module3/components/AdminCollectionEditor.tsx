@@ -1,3 +1,4 @@
+import { ArrowLeft, Plus } from "lucide-react";
 import { confirmReadFlow } from "../../../components/ReadFlowDialog";
 import "./AdminCollectionEditor.css";
 import InlineRegeneration from "./InlineRegeneration";
@@ -50,10 +51,11 @@ import {
   type AdminPassage,
 } from "../services/adminCollectionService";
 
-export type M3EditorWorkspace = "admin" | "teacher";
+export type M3EditorWorkspace = "admin" | "system_admin" | "teacher";
 
 /** Where the shared editor links to. Admin paths are unchanged. */
 export function editorPaths(workspace: M3EditorWorkspace) {
+  if (workspace === "system_admin") return { list: "/system-admin/content", module: "/system-admin/content/modules", backLabel: "Back to Content Management", eyebrow: "" };
   return workspace === "teacher"
     ? { list: "/m3/teacher/content", module: "/m3/teacher/content", backLabel: "Back to My Reading Modules", eyebrow: "Teacher Workspace" }
     : { list: "/m3/admin", module: "/m3/admin/modules", backLabel: "Back to Content Management", eyebrow: "Admin Workspace" };
@@ -150,7 +152,7 @@ export default function AdminCollectionEditor({
   }, []);
 
   useEffect(() => {
-    if (mode !== "detail" || !moduleId || workspace !== "admin") { setRevisions(null); return; }
+    if (mode !== "detail" || !moduleId || workspace === "teacher") { setRevisions(null); return; }
     let live = true;
     void getModuleRevisions(moduleId).then((list) => { if (live) setRevisions(list); });
     return () => { live = false; };
@@ -736,9 +738,9 @@ export default function AdminCollectionEditor({
     <div className="m3-page-stack m3-page-stack--narrow m3-collection-editor">
       <header className="m3-editor-header">
         <Link className="m3-editor-back" to={paths.list}>
-          &larr; {paths.backLabel}
+          {workspace === "system_admin" ? <ArrowLeft size={17} aria-hidden="true" /> : "\u2190"} {paths.backLabel}
         </Link>
-        <p className="m3-eyebrow">{paths.eyebrow}</p>
+        {paths.eyebrow && <p className="m3-eyebrow">{paths.eyebrow}</p>}
         <h1>
           {mode === "create"
             ? "Create Reading Module"
@@ -1333,9 +1335,23 @@ export default function AdminCollectionEditor({
                   )}
               </>
             )}
+            {!readOnly && workspace === "system_admin" && (
+              // System Admin: circular add button beside the card's upper-right edge (inside the card on phones).
+              // Last in the card, so keyboard order is unchanged; the tooltip shows on hover and keyboard focus.
+              <button
+                type="button"
+                className="sa-add-passage"
+                disabled={busy || Boolean(bankDirty)}
+                aria-label="Add Passage Below"
+                onClick={() => addPassageBelow(index)}
+              >
+                <Plus size={20} strokeWidth={2.5} aria-hidden="true" />
+                <span className="sa-add-passage-tooltip" aria-hidden="true">Add Passage Below</span>
+              </button>
+            )}
           </section>
 
-          {!readOnly && (
+          {!readOnly && workspace !== "system_admin" && (
             <div className="m3-collection-actions">
               <button
                 type="button"

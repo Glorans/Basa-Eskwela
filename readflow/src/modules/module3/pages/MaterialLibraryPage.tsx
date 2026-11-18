@@ -11,7 +11,7 @@ import type { M3Role, UploadedMaterial } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
 
 interface MaterialLibraryPageProps {
-  role: Extract<M3Role, "teacher" | "general_user">;
+  role: Extract<M3Role, "teacher" | "general_user" | "system_admin">;
 }
 
 function formatDate(value: string) {
@@ -125,7 +125,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
                 <span>{material.fileType}</span>
                 <span>{material.language}</span>
                 <span>Uploaded {formatDate(material.uploadedAt)}</span>
-                {role === "teacher" && <span>{material.questionSetCount
+                {(role === "teacher" || role === "system_admin") && <span>{material.questionSetCount
                   ? `${material.questionSetCount} saved question ${material.questionSetCount === 1 ? "set" : "sets"}`
                   : "No saved question sets yet"}</span>}
               </div>
@@ -139,7 +139,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
                   <Pencil size={16} /> Edit Text
                 </Link>
               )}
-              {role === "teacher" && (
+              {(role === "teacher" || role === "system_admin") && (
                 <Link className="m3-action-link" to={`${root}/materials/${material.id}#question-sets`}>
                   <FileQuestion size={16} /> {(material.questionSetCount ?? 0) > 0 ? "View Question Sets" : "Generate First Question Set"}
                 </Link>
@@ -229,10 +229,10 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
   return (
     <div className={`m3-page-stack${personal ? " m3-personal-library" : ""}`}>
       <M3PageHeader
-        eyebrow={role === "teacher" ? "Teacher workspace" : "Personal workspace"}
+        eyebrow={role === "system_admin" ? undefined : role === "teacher" ? "Teacher workspace" : "Personal workspace"}
         title="Reading Materials"
         description={
-          role === "teacher"
+          role !== "general_user"
             ? "Manage your source files and review generated comprehension questions."
             : "Upload a reading, check its text, then practice."
         }

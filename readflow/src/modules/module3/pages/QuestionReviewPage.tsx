@@ -25,7 +25,7 @@ import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
 
 interface QuestionReviewPageProps {
   editing?: boolean;
-  role: Extract<M3Role, "admin" | "teacher">;
+  role: Extract<M3Role, "admin" | "teacher" | "system_admin">;
 }
 
 export default function QuestionReviewPage({ role, editing = false }: QuestionReviewPageProps) {
@@ -147,7 +147,7 @@ export default function QuestionReviewPage({ role, editing = false }: QuestionRe
   }
 
   async function regenerate() {
-    if (!material || !selectedSet || selectedSet.id !== setId || role !== "teacher" || !canReview || busy || requestPending.current || dirty || selectedSet.hasStudentAttempts) return;
+    if (!material || !selectedSet || selectedSet.id !== setId || (role !== "teacher" && role !== "system_admin") || !canReview || busy || requestPending.current || dirty || selectedSet.hasStudentAttempts) return;
     requestPending.current = true;
     setBusy(true); setSaveError(""); setFeedback(""); setSaved(false);
     try {
@@ -175,8 +175,8 @@ export default function QuestionReviewPage({ role, editing = false }: QuestionRe
         <FileQuestion size={36} />
         <h1>Material not found.</h1>
         <p>The requested material does not exist or is unavailable to your account.</p>
-        <Link className="m3-button m3-button--primary" to={role === "admin" ? root : `${root}/materials`}>
-          Back to Materials
+        <Link className={role === "system_admin" ? "m3-back-link" : "m3-button m3-button--primary"} to={role === "admin" ? root : `${root}/materials`}>
+          {role === "system_admin" && <ArrowLeft size={17} aria-hidden="true" />} Back to Materials
         </Link>
       </div>
     );
@@ -187,9 +187,9 @@ export default function QuestionReviewPage({ role, editing = false }: QuestionRe
       <div className="m3-empty-state m3-empty-state--page">
         <FileQuestion size={36} />
         <h1>Question review unavailable</h1>
-        <p>This review route is restricted to Admin or the Teacher who uploaded the material.</p>
-        <Link className="m3-button m3-button--primary" to={`${root}/materials`}>
-          Back to Materials
+        <p>This review route is restricted to authorized administrators or the material owner.</p>
+        <Link className={role === "system_admin" ? "m3-back-link" : "m3-button m3-button--primary"} to={`${root}/materials`}>
+          {role === "system_admin" && <ArrowLeft size={17} aria-hidden="true" />} Back to Materials
         </Link>
       </div>
     );
@@ -205,7 +205,7 @@ export default function QuestionReviewPage({ role, editing = false }: QuestionRe
         <ArrowLeft size={17} /> Back to Material
       </Link>
       <M3PageHeader
-        eyebrow={`${role === "admin" ? "Admin" : "Teacher"} question review`}
+        eyebrow={role === "system_admin" ? undefined : `${role === "admin" ? "Admin" : "Teacher"} question review`}
         title={selectedSet?.name ?? "Question Set"}
         description={`${material.title} - ${selectedSet?.questionCount ?? 0} Saved Questions`}
         actions={
@@ -367,7 +367,7 @@ export default function QuestionReviewPage({ role, editing = false }: QuestionRe
               <CheckCircle2 size={17} /> {approving ? "Marking as Reviewed..." : "Mark as Reviewed"}
             </button>
           </div>}
-          {role === "teacher" && selectedSet && !locked && (
+          {(role === "teacher" || role === "system_admin") && selectedSet && !locked && (
             <section className="m3-detail-card m3-saved-set-card" aria-label="Regenerate selected set">
               <h2>Need a different version of this set?</h2>
               {dirty && <p>Save your edits before regenerating this set.</p>}
@@ -387,8 +387,8 @@ export default function QuestionReviewPage({ role, editing = false }: QuestionRe
           <FileQuestion size={34} />
           <h2>No generated questions are available yet.</h2>
           <p>Generate questions from the material page before opening the review workflow.</p>
-          <Link className="m3-button m3-button--primary" to={materialTarget}>
-            Back to Material
+          <Link className={role === "system_admin" ? "m3-back-link" : "m3-button m3-button--primary"} to={materialTarget}>
+            {role === "system_admin" && <ArrowLeft size={17} aria-hidden="true" />} Back to Material
           </Link>
         </div>
       )}

@@ -57,3 +57,23 @@ export interface AdminSystemData extends SystemData {
     independentPerformance: Metrics; unassignedClassroomReadings: number;
   };
 }
+
+// ---- System Admin (M7 F2 platform overview, F4 Independent Learner performance) ----
+export interface PlatformOverview {
+  generatedAt: string;
+  users: { total: number; systemAdmins: number; schoolAdmins: number; teachers: number; approvedTeachers: number; students: number; independentLearners: number; withoutRole: number };
+  modules: { published: number; draft: number; archived: number; inTrash: number };
+  activity: Metrics & { activeLearners7Days: number; activeLearners30Days: number };
+  students: Metrics;
+  independentLearners: Metrics;
+  weeklyActivity: { weekStart: string; readings: number; completedQuizzes: number; activeLearners: number }[];
+}
+export interface IndependentLearnerRow extends Metrics { id: string; name: string; lastActivityAt: string | null }
+export interface ResultSource { kind: 'module' | 'own_material'; title: string }
+export interface IndependentLearnerDetail {
+  id: string; name: string; summary: Metrics; lastActivityAt: string | null;
+  competency: Record<string, { total: number; correct: number | null; score: number | null }>;
+  quizzes: { id: string; completedAt: string | null; score: number | null; firstCorrect?: number; totalQuestions?: number; dataQuality?: string; source: ResultSource }[];
+  notCountedQuizzes: number;
+  readings: { id: string; completedAt: string; readingAccuracy: number | null; readingSpeedWpm: number | null; wordsDifferent: number | null; source: ResultSource }[];
+}

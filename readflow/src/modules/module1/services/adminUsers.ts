@@ -10,6 +10,8 @@ export interface ManagedUser {
   nickname: string;
   role: string;
   status: string;
+  // M1 F7: whether Supabase Auth currently refuses sign-in (null when the account has no Auth user).
+  signInBlocked?: boolean | null;
   createdAt: string;
   teacherStatus?: "pending" | "approved" | "rejected" | null;
 }
@@ -20,6 +22,8 @@ export interface AccountPermissions {
   role: string;
   visibleRoles: string[] | "all";
   deletableRoles: string[];
+  // M1 F7: roles this manager may deactivate and reactivate (re-checked on the server).
+  statusRoles: string[];
   canCreateSchoolAdmin: boolean;
 }
 
@@ -38,7 +42,7 @@ export interface CreatedSchoolAdmin {
 }
 
 const NO_PERMISSIONS: AccountPermissions = {
-  role: "", visibleRoles: [], deletableRoles: [], canCreateSchoolAdmin: false,
+  role: "", visibleRoles: [], deletableRoles: [], statusRoles: [], canCreateSchoolAdmin: false,
 };
 
 const getAdminRequestHeaders = () =>
@@ -52,7 +56,8 @@ export async function getManagedAccounts() {
   const response = await api.get<ManagedUsersResponse>("/api/admin/users", {
     headers: await getAdminRequestHeaders(),
   });
-  return { users: response.data.users, permissions: response.data.permissions ?? NO_PERMISSIONS };
+  const permissions = response.data.permissions;
+  return { users: response.data.users, permissions: permissions ? { ...permissions, statusRoles: permissions.statusRoles ?? [] } : NO_PERMISSIONS };
 }
 
 // M1 F8 (System Admin only). The server sets the role; the request carries only the email and name.
@@ -65,11 +70,18 @@ export async function createSchoolAdmin(input: { email: string; fullName: string
   return response.data;
 }
 
-export async function deleteManagedUser(userId: string) {
-  await api.delete(`/api/admin/users/${encodeURIComponent(userId)}`, {
-    headers: await getAdminRequestHeaders(),
-  });
+// M1 F7 Deactivate ("inactive") / Reactivate ("active"). Reversible: the account and its records are kept.
+export type ManagedAccountStatus = "active" | "inactive";
+
+export async function setManagedUserStatus(userId: string, status: ManagedAccountStatus) {
+  const response = await api.patch<{ success: true; account: { id: string; status: ManagedAccountStatus }; message: string }>(
+    `/api/admin/users/${encodeURIComponent(userId)}/status`,
+    { status },
+    { headers: await getAdminRequestHeaders() },
+  );
+  return response.data;
 }
+
 
 export async function reviewTeacherRegistration(userId: string, decision: "approved" | "rejected") {
   const { data, error } = await supabase.rpc("review_teacher_registration", {

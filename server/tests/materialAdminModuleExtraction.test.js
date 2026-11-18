@@ -212,6 +212,7 @@ for (const [role, expectedStatus, teacherStatus = null] of [
   ["teacher", 400, "approved"],
   ["general_user", 403],
   ["admin", 400],
+  ["system_admin", 400],
 ]) {
   test(`${role ?? "unauthenticated"}${teacherStatus ? ` (${teacherStatus})` : ""} module extraction authorization returns ${expectedStatus}`, async (context) => {
     const { server, baseUrl } = await listen(createAppForRole(role, {}, teacherStatus));
@@ -223,3 +224,13 @@ for (const [role, expectedStatus, teacherStatus = null] of [
     assert.equal(response.status, expectedStatus);
   });
 }
+
+
+test("System Admin extracts a DOCX using the same module upload endpoint", async context => {
+  const { server, baseUrl } = await listen(createAppForRole("system_admin"));
+  context.after(() => new Promise(resolve => server.close(resolve)));
+  const response = await postFile(baseUrl, await createSimpleDocx("System Admin passage"),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "lesson.docx");
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).extraction.extractedText, "System Admin passage");
+});

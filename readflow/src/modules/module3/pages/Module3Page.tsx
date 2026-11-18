@@ -98,7 +98,7 @@ export default function Module3Page({ workspace = "admin" }: { workspace?: M3Edi
 
   return (
     <div className="m3-page-stack m3-admin-content">
-      <M3PageHeader eyebrow={teacher ? "Teacher workspace" : "Admin library"} title={teacher ? "My Reading Modules" : "Content Management"}
+      <M3PageHeader eyebrow={teacher ? "Teacher workspace" : workspace === "system_admin" ? undefined : "Admin library"} title={teacher ? "My Reading Modules" : "Content Management"}
         description={teacher
           ? "Create, organize, edit and publish the reading modules you made. Published modules join the shared library."
           : "Manage reading modules and open their passages and question banks."}
@@ -132,7 +132,7 @@ export default function Module3Page({ workspace = "admin" }: { workspace?: M3Edi
             <label><span>Language</span><select value={language} onChange={event => setLanguage(event.target.value as typeof language)}>
               <option value="all">All languages</option><option value="en">English</option><option value="fil">Filipino</option>
             </select></label>
-            {teacher && <>
+            {(teacher || workspace === "system_admin") && <>
               <label><span>Reading level</span><select value={level} onChange={event => setLevel(event.target.value as typeof level)}>
                 <option value="all">All reading levels</option>
                 {(["Frustration", "Instructional", "Independent"] as const).map(value => <option value={value} key={value}>{value}</option>)}

@@ -4,8 +4,8 @@ const {
   AdminUserOperationError,
   authorizeAccountManager,
   createSchoolAdmin,
-  deleteManagedUser,
   listManagedUsers,
+  setManagedUserStatus,
 } = require("../services/adminUserService");
 const { describePermissions } = require("../services/m1AccountScope");
 const {
@@ -35,14 +35,14 @@ function sendAdminError(res, error) {
   });
 }
 
-// M1 F6 (view user roles), F7 (delete user account) and F8 (create School Admin account).
+// M1 F6 (view user roles), F7 (deactivate/reactivate user account; delete) and F8 (create School Admin account).
 // System Admin and School Admin only; every scope rule is enforced here, on the server.
 function createAdminUsersRouter(dependencies = {}) {
   const router = express.Router();
   const authorize = dependencies.authorizeAccountManager ?? authorizeAccountManager;
   const listUsers = dependencies.listManagedUsers ?? listManagedUsers;
-  const deleteUser = dependencies.deleteManagedUser ?? deleteManagedUser;
   const createAdmin = dependencies.createSchoolAdmin ?? createSchoolAdmin;
+  const setStatus = dependencies.setManagedUserStatus ?? setManagedUserStatus;
 
   router.get("/", async (req, res) => {
     try {
@@ -57,15 +57,29 @@ function createAdminUsersRouter(dependencies = {}) {
     }
   });
 
-  router.delete("/:userId", async (req, res) => {
+  // Routine permanent deletion is disabled (M1 F7 replaced it with reversible Deactivate/Reactivate). Deleting an
+  // Auth user cascades to diagnostic, oral reading, comprehension and achievement records, so this route answers 410
+  // for every caller and every ID, before any lookup, and never reaches auth.admin.deleteUser(). A legitimate
+  // account/data-deletion request needs its own separately approved process (see deleteManagedUser).
+  router.delete("/:userId", (_req, res) => res.status(410).json({
+    success: false,
+    message: "Permanent account deletion is disabled. Use Deactivate instead; it keeps the account and its records.",
+  }));
+
+  // F7 Deactivate (status "inactive") / Reactivate (status "active"). Scope, self and System Admin protection are
+  // re-checked on the server; the browser's account list is never trusted.
+  router.patch("/:userId/status", async (req, res) => {
     try {
       const { user, profile } = await authorize(req);
       if (!uuidPattern.test(req.params.userId)) {
         return res.status(400).json({ success: false, message: "Invalid user ID." });
       }
-
-      await deleteUser(user.id, req.params.userId, undefined, profile.role);
-      return res.json({ success: true, message: "User account deleted." });
+      const account = await setStatus(user.id, req.params.userId, req.body?.status, undefined, profile.role);
+      return res.json({
+        success: true,
+        account,
+        message: account.status === "inactive" ? "Account deactivated." : "Account reactivated.",
+      });
     } catch (error) {
       return sendAdminError(res, error);
     }

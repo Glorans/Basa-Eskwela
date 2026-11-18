@@ -59,17 +59,17 @@ test("Delete is offered only inside the manager's scope and never for their own 
   assert.equal(canDeleteManagedUser({ deletableRoles: [] }, { id: "x", role: "student" }, me), false, "no permissions = no delete");
 });
 
-function mountUsers(permissions: object, users: object[], deleted: string[] = []) {
+function mountUsers(permissions: object, users: object[], changes: string[][] = [], confirmAnswer = true) {
   const runtime = createHookRuntime(require("react"));
   const page = loadComponentModule(new URL("../src/modules/module1/pages/admin/UserManagementPage.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
     if (id === "react-router-dom") return { Link: "a" };
-    if (id.endsWith("/components/ReadFlowDialog")) return { confirmReadFlow: async () => true };
+    if (id.endsWith("/components/ReadFlowDialog")) return { confirmReadFlow: async (message: string, labels: { confirm: string }) => { changes.push(["confirm", labels.confirm, message]); return confirmAnswer; } };
     if (id.endsWith("/auth/useAuth")) return { useAuth: () => ({ user: { id: "me" } }) };
     if (id.endsWith("/services/adminUsers")) {
       return {
         getManagedAccounts: async () => ({ users, permissions }),
-        deleteManagedUser: async (userId: string) => { deleted.push(userId); },
+        setManagedUserStatus: async (userId: string, status: string) => { changes.push([userId, status]); return { account: { id: userId, status } }; },
         getAdminUserError: (e: Error) => e.message,
       };
     }
@@ -82,44 +82,84 @@ function mountUsers(permissions: object, users: object[], deleted: string[] = []
   const settle = async () => { for (let i = 0; i < 6; i++) { await tick(); render(); } };
   const rows = () => findAll(render(), (n) => n.type === "tr").slice(1);
   const rowFor = (id: string) => rows().find((r) => textOf(r).includes(`${id}@example.invalid`));
-  const deleteButton = (id: string) => findAll(rowFor(id), (n) => n.type === "button")[0];
-  return { render, settle, rows, rowFor, deleteButton, text: () => textOf(render()) };
+  const statusButton = (id: string) => findAll(rowFor(id), (n) => n.type === "button")[0];
+  return { render, settle, rows, rowFor, statusButton, text: () => textOf(render()) };
 }
 
-test("System Admin User Management: all roles listed, deletes only Independent Learners and School Admins", async () => {
+test("System Admin User Management: all roles listed; deactivates/reactivates only Independent Learners and School Admins", async () => {
   const users = ["me:system_admin", "sa:admin", "il:general_user", "t:teacher", "s:student", "other:system_admin"]
     .map((x) => account(x.split(":")[0], x.split(":")[1]));
-  const deleted: string[] = [];
-  const m = mountUsers(SYSTEM, users, deleted);
+  const changes: string[][] = [];
+  const m = mountUsers({ ...SYSTEM, statusRoles: ["general_user", "admin"] }, users, changes);
   await m.settle();
   assert.equal(m.rows().length, 6);
-  assert.match(m.text(), /delete Independent Learner and School Admin accounts/);
+  assert.match(m.text(), /deactivate and reactivate Independent Learner and School Admin accounts/);
+  assert.doesNotMatch(m.text(), /Delete/, "no routine permanent deletion");
   const roleOptions = findAll(m.render(), (n) => n.type === "option").map((o) => o.props.value).filter((v: string) => APP_ROLES.includes(v as never));
   assert.deepEqual(roleOptions, [...APP_ROLES]);
   for (const [id, enabled] of [["me", false], ["sa", true], ["il", true], ["t", false], ["s", false], ["other", false]] as const) {
-    assert.equal(m.deleteButton(id).props.disabled, !enabled, id);
+    assert.equal(m.statusButton(id).props.disabled, !enabled, id);
+    assert.equal(textOf(m.statusButton(id)), "Deactivate", id);
   }
   assert.equal(findAll(m.rowFor("t"), (n) => n.type === "a").length, 0, "Teacher review link is School Admin only");
   assert.match(textOf(m.rowFor("sa")), /School Admin/);
-  m.deleteButton("t").props.onClick();
+  m.statusButton("t").props.onClick();
   await m.settle();
-  assert.deepEqual(deleted, [], "an out-of-scope click does nothing");
-  m.deleteButton("sa").props.onClick();
+  assert.deepEqual(changes, [], "an out-of-scope click does nothing");
+  m.statusButton("sa").props.onClick();
   await m.settle();
-  assert.deepEqual(deleted, ["sa"]);
-  assert.equal(m.rowFor("sa"), undefined);
+  assert.equal(changes[0][0], "confirm"); assert.equal(changes[0][1], "Deactivate");
+  assert.match(changes[0][2], /lose administrator access/); assert.match(changes[0][2], /records and learning history are kept/);
+  assert.deepEqual(changes[1], ["sa", "inactive"]);
+  assert.ok(m.rowFor("sa"), "the account stays listed");
+  assert.match(textOf(m.rowFor("sa")), /Deactivated/);
+  assert.equal(textOf(m.statusButton("sa")), "Reactivate");
+  m.statusButton("sa").props.onClick();
+  await m.settle();
+  assert.equal(changes[2][1], "Reactivate");
+  assert.deepEqual(changes[3], ["sa", "active"]);
+  assert.match(textOf(m.rowFor("sa")), /Active/);
 });
 
 test("School Admin User Management: Teachers and Students only, with the existing Teacher review link", async () => {
-  const m = mountUsers(SCHOOL, [account("t", "teacher"), account("s", "student")]);
+  const changes: string[][] = [];
+  const m = mountUsers({ ...SCHOOL, statusRoles: ["teacher", "student"] }, [account("t", "teacher"), { ...account("s", "student"), status: "inactive" }], changes);
   await m.settle();
-  assert.match(m.text(), /view and delete Teacher and Student accounts/);
+  assert.match(m.text(), /view, deactivate and reactivate Teacher and Student accounts/);
   const roleOptions = findAll(m.render(), (n) => n.type === "option").map((o) => o.props.value).filter(Boolean);
   assert.ok(roleOptions.includes("teacher") && roleOptions.includes("student"));
   assert.ok(!roleOptions.includes("general_user") && !roleOptions.includes("admin") && !roleOptions.includes("system_admin"));
-  assert.equal(m.deleteButton("t").props.disabled, false);
-  assert.equal(m.deleteButton("s").props.disabled, false);
+  assert.equal(m.statusButton("t").props.disabled, false);
+  assert.equal(m.statusButton("s").props.disabled, false);
+  assert.equal(textOf(m.statusButton("s")), "Reactivate", "a deactivated Student shows Reactivate");
+  m.statusButton("s").props.onClick();
+  await m.settle();
+  assert.match(changes[0][2], /sign in again with the same account/);
+  assert.deepEqual(changes[1], ["s", "active"]);
   assert.equal(findAll(m.rowFor("t"), (n) => n.type === "a").length, 1);
+});
+
+test("Restore sign-in retries a reactivation that stopped before the Auth unban", async () => {
+  const changes: string[][] = [];
+  const m = mountUsers({ ...SCHOOL, statusRoles: ["teacher", "student"] }, [{ ...account("s", "student"), signInBlocked: true }], changes);
+  await m.settle();
+  assert.match(textOf(m.rowFor("s")), /Active \(sign-in still blocked\)/);
+  assert.equal(textOf(m.statusButton("s")), "Restore sign-in");
+  m.statusButton("s").props.onClick();
+  await m.settle();
+  assert.match(changes[0][2], /sign-in is still blocked/);
+  assert.deepEqual(changes[1], ["s", "active"]);
+  assert.equal(textOf(m.statusButton("s")), "Deactivate", "reconciled");
+});
+
+test("Deactivate needs confirmation: Cancel changes nothing", async () => {
+  const changes: string[][] = [];
+  const m = mountUsers({ ...SCHOOL, statusRoles: ["teacher", "student"] }, [account("t", "teacher")], changes, false);
+  await m.settle();
+  m.statusButton("t").props.onClick();
+  await m.settle();
+  assert.deepEqual(changes.map((c) => c[0]), ["confirm"], "only the confirmation dialog");
+  assert.equal(textOf(m.statusButton("t")), "Deactivate");
 });
 
 function mountCreate(createSchoolAdmin: (input: object) => Promise<object>) {
@@ -169,17 +209,17 @@ test("Create School Admin validates, sends only email and name, and shows succes
   assert.match(m.text(), /already exists/);
 });
 
-test("routes: System Admin reaches only M1 pages; School Admin keeps every existing Admin route", () => {
+test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4); School Admin keeps its routes", () => {
   const app = src("App.tsx");
   const block = app.slice(app.indexOf('allowedRoles={["system_admin"]}'), app.indexOf("{/* Admin (School Admin) routes */}"));
   assert.match(block, /path="\/system-admin" element=\{<M3Layout role="system_admin" \/>\}/);
-  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]), ["/system-admin", "users", "school-admins/new", "settings"]);
-  assert.equal((app.match(/"system_admin"/g) ?? []).length, 2, "system_admin appears only in its own guard and layout");
+  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "users", "school-admins/new", "analytics", "independent-learners", "settings"]);
+  assert.equal((app.match(/allowedRoles=\{\["system_admin"\]\}/g) ?? []).length, 1, "System Admin has its own route guard");
   assert.match(app, /<Route element=\{<RequireRole allowedRoles=\{\["admin"\]\} \/>\}>\s*<Route\s+path="\/m3\/admin"/);
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["User Management", "Create School Admin"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Create School Admin", "Platform Analytics", "Independent Learners"]);
 });
 
 test("security: no public System/School Admin registration, no role editing, no privileged keys in the frontend", () => {

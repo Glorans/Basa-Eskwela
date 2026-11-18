@@ -27,9 +27,9 @@ import { getRoleHomePath, ROLE_LABELS } from "../../module1/utils/authOnboarding
 import type { M3Role } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
 import "../styles/module3.css";
+import "../../system-admin/systemAdmin.css";
 
-// The System Admin (platform level, M1 account management only) shares this shell but has no M3 workspace.
-type ShellRole = M3Role | "system_admin";
+type ShellRole = M3Role;
 
 interface M3LayoutProps {
   role: ShellRole;
@@ -40,8 +40,15 @@ function getNavItems(role: ShellRole) {
   if (role === "system_admin") {
     // Appendix N M1 for the System Admin: F6/F7 (User Management), F8 (Create School Admin), F4/F5 (profile).
     return [
+      { label: "Content Management", to: "/system-admin/content", icon: Files, end: true },
+      { label: "Create Module", to: "/system-admin/content/modules/new", icon: PlusCircle, end: true },
+      { label: "Reading Materials", to: "/system-admin/content/materials", icon: Files, end: true },
+      { label: "Upload Material", to: "/system-admin/content/materials/upload", icon: FilePlus2, end: true },
       { label: "User Management", to: "/system-admin/users", icon: Users, end: true },
       { label: "Create School Admin", to: "/system-admin/school-admins/new", icon: UserPlus, end: true },
+      // Appendix N M7 for the System Admin: F2 (system-wide dashboard) and F4 (Independent Learner performance).
+      { label: "Platform Analytics", to: "/system-admin/analytics", icon: ChartNoAxesCombined, end: true },
+      { label: "Independent Learners", to: "/system-admin/independent-learners", icon: UserRound, end: true },
     ];
   }
   return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
@@ -124,6 +131,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
 
   const shellClassName = [
     "m3-shell",
+    role === "system_admin" ? "system-admin-ui" : "",
     sidebar.shellClasses,
     role === "admin" || role === "system_admin" ? "m3-shell--admin" : "",
     role === "general_user" ? "m3-shell--general" : "",
@@ -152,6 +160,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
               </span>
               <span className="rf-nav-label">
                 <strong>Basa Eskwela</strong>
+                {role === "system_admin" && <small className="sa-brand-caption">Administration</small>}
               </span>
             </Link>
             {/* Desktop only (CSS): collapse/expand the rail from inside the sidebar. Phones and tablets keep

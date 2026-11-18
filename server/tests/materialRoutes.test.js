@@ -103,6 +103,7 @@ for (const [role, expectedStatus] of [
   ["student", 403],
   ["admin", 403],
   ["teacher", 400],
+  ["system_admin", 400],
   ["general_user", 400],
 ]) {
   test(`${role ?? "unauthenticated"} upload authorization returns ${expectedStatus}`, async (context) => {

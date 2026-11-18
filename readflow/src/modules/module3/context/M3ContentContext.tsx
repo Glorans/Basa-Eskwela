@@ -99,7 +99,7 @@ function replaceModule(modules: ReadingModule[], updatedModule: ReadingModule) {
 
 export function M3ContentProvider({ children }: M3ContentProviderProps) {
   const { pathname } = useLocation();
-  const materialWorkspace = pathname.match(/^\/m3\/(admin|teacher|general)(?=\/|$)/)?.[0] ?? "";
+  const materialWorkspace = pathname.match(/^(?:\/m3\/(admin|teacher|general)|\/system-admin\/content)(?=\/|$)/)?.[0] ?? "";
   const [modules, setModules] = useState<ReadingModule[]>([]);
   const [modulesLoading, setModulesLoading] = useState(true);
   const [modulesError, setModulesError] = useState<string | null>(null);

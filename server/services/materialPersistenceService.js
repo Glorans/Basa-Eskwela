@@ -5,17 +5,20 @@ const {
 } = require("./supabaseAdmin");
 
 const MATERIAL_ROLES = Object.freeze([
+  "system_admin",
   "admin",
   "teacher",
   "general_user",
 ]);
 
 const UPLOADER_ROLES = Object.freeze([
+  "system_admin",
   "teacher",
   "general_user",
 ]);
 
 const QUESTION_REVIEW_ROLES = Object.freeze([
+  "system_admin",
   "admin",
   "teacher",
 ]);
@@ -28,6 +31,7 @@ const QUESTION_TYPES = Object.freeze([
 
 const ROLE_LABELS = Object.freeze({
   admin: "Admin",
+  system_admin: "System Admin",
   teacher: "Teacher",
   general_user: "Independent Learner",
 });
@@ -83,7 +87,7 @@ function requireUploadRole(profile) {
   requireRole(
     profile,
     UPLOADER_ROLES,
-    "Only Teachers and Independent Learners may upload reading materials.",
+    "Only System Admins, Teachers and Independent Learners may upload reading materials.",
   );
 }
 

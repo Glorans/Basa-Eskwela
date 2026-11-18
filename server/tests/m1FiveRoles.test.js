@@ -91,11 +91,13 @@ function deletionClient(targetRole) {
   };
 }
 
-test("F7 delete: each administrator deletes only inside its scope; administrators and System Admins are protected", async () => {
+const APPROVED = { approvedDeletionRequestId: "approved-request-test" };
+// The reserved permanent-deletion function keeps its scope rules for a future, separately approved process.
+test("reserved deletion process: each administrator deletes only inside its scope; administrators and System Admins are protected", async () => {
   const attempt = async (manager, targetRole) => {
     const { calls, client } = deletionClient(targetRole);
     try {
-      await deleteManagedUser(id(1), id(7), { getSupabaseAdmin: () => client }, manager);
+      await deleteManagedUser(id(1), id(7), { getSupabaseAdmin: () => client, ...APPROVED }, manager);
       return { ok: true, deleted: calls.length };
     } catch (error) {
       assert.ok(error instanceof AdminUserOperationError, error.message);
@@ -112,11 +114,11 @@ test("F7 delete: each administrator deletes only inside its scope; administrator
   for (const target of ["general_user", "admin"]) assert.deepEqual(await attempt("system_admin", target), { ok: true, deleted: 1 }, `System Admin deletes ${target}`);
   for (const target of ["teacher", "student"]) assert.deepEqual(await attempt("system_admin", target), { ok: false, status: 403, deleted: 0 }, `${target} accounts belong to the School Admin`);
   assert.deepEqual(await attempt("system_admin", "system_admin"), { ok: false, status: 409, deleted: 0 }, "System Admins are never deleted here");
-  await assert.rejects(deleteManagedUser(id(1), id(7), { getSupabaseAdmin: () => deletionClient("student").client }, "teacher"),
+  await assert.rejects(deleteManagedUser(id(1), id(7), { getSupabaseAdmin: () => deletionClient("student").client, ...APPROVED }, "teacher"),
     (error) => error instanceof AdminAuthorizationError, "a Teacher cannot delete anyone");
-  await assert.rejects(deleteManagedUser(id(1), id(7), { getSupabaseAdmin: () => deletionClient("student").client }),
+  await assert.rejects(deleteManagedUser(id(1), id(7), { getSupabaseAdmin: () => deletionClient("student").client, ...APPROVED }),
     (error) => error instanceof AdminAuthorizationError, "no manager role: fails closed");
-  await assert.rejects(deleteManagedUser(id(1), id(1), {}, "system_admin"), (error) => error.statusCode === 409, "no self-deletion");
+  await assert.rejects(deleteManagedUser(id(1), id(1), { ...APPROVED }, "system_admin"), (error) => error.statusCode === 409, "no self-deletion");
 });
 
 function creationClient({ existingEmails = [], roleUpdateFails = false, emailFails = false, createStatus } = {}) {
@@ -203,18 +205,18 @@ test("routes: permissions summary, scoped delete, and School Admin creation for 
   const post = (url, body) => fetch(`${url}/school-admins`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   await server(as("admin"), async (url) => {
     const listing = await (await fetch(url)).json();
-    assert.deepEqual(listing.permissions, { role: "admin", visibleRoles: ["teacher", "student"], deletableRoles: ["teacher", "student"], canCreateSchoolAdmin: false });
+    assert.deepEqual(listing.permissions, { role: "admin", visibleRoles: ["teacher", "student"], deletableRoles: ["teacher", "student"], statusRoles: ["teacher", "student"], canCreateSchoolAdmin: false });
     assert.deepEqual(calls.list.at(-1), [undefined, "admin"]);
     assert.equal((await post(url, { email: "a@b.co", fullName: "A B" })).status, 403, "School Admin cannot create School Admins");
     assert.equal(calls.create.length, 0);
-    assert.equal((await fetch(`${url}/${id(4)}`, { method: "DELETE" })).status, 200);
-    assert.deepEqual(calls.del.at(-1), [id(1), id(4), undefined, "admin"]);
+    assert.equal((await fetch(`${url}/${id(4)}`, { method: "DELETE" })).status, 410, "routine permanent deletion is disabled");
+    assert.deepEqual(calls.del, []);
   });
   for (const role of ["teacher", "student", "general_user"]) {
     await server(as(role), async (url) => {
       assert.equal((await fetch(url)).status, 403, `${role} cannot list accounts`);
       assert.equal((await post(url, { email: "a@b.co", fullName: "A B" })).status, 403, `${role} cannot create School Admins`);
-      assert.equal((await fetch(`${url}/${id(4)}`, { method: "DELETE" })).status, 403, `${role} cannot delete accounts`);
+      assert.equal((await fetch(`${url}/${id(4)}`, { method: "DELETE" })).status, 410, `${role} cannot delete accounts`);
     });
   }
   await server(as("system_admin"), async (url) => {

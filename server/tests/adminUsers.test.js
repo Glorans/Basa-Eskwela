@@ -118,7 +118,8 @@ test("Admin role-update endpoint no longer exists", async () => {
   );
 });
 
-test("delete requires Admin authorization and calls the protected delete service", async () => {
+const APPROVED = { approvedDeletionRequestId: "approved-request-test" };
+test("the DELETE route is disabled (410) and never reaches the delete service", async () => {
   let deleted;
   await withTestServer(
     {
@@ -130,15 +131,15 @@ test("delete requires Admin authorization and calls the protected delete service
         method: "DELETE",
         headers: { Authorization: "Bearer admin" },
       });
-      assert.equal(response.status, 200);
-      assert.deepEqual(deleted, [adminId, userId, undefined, "admin"], "the caller's database role is passed to the scope check");
+      assert.equal(response.status, 410);
+      assert.equal(deleted, undefined, "routine permanent deletion is disabled");
     },
   );
 });
 
 test("service prevents an Admin from deleting the current account", async () => {
   await assert.rejects(
-    () => deleteManagedUser(adminId, adminId, {}, "admin"),
+    () => deleteManagedUser(adminId, adminId, { ...APPROVED }, "admin"),
     (error) => error instanceof AdminUserOperationError && error.statusCode === 409,
   );
 });
@@ -165,7 +166,7 @@ test("service prevents a School Admin from deleting any Admin account, with the 
   };
 
   await assert.rejects(
-    () => deleteManagedUser(adminId, userId, { getSupabaseAdmin: () => supabase }, "admin"),
+    () => deleteManagedUser(adminId, userId, { getSupabaseAdmin: () => supabase, ...APPROVED }, "admin"),
     (error) => error instanceof AdminUserOperationError && error.statusCode === 403
       && error.message === "This account is outside the accounts you can manage.",
   );

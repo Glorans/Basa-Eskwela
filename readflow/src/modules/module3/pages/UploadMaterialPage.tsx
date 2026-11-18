@@ -9,7 +9,7 @@ import type { M3Role } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
 
 interface UploadMaterialPageProps {
-  role: Extract<M3Role, "teacher" | "general_user">;
+  role: Extract<M3Role, "teacher" | "general_user" | "system_admin">;
 }
 
 const UNSAVED_MESSAGE =
@@ -45,7 +45,7 @@ export default function UploadMaterialPage({ role }: UploadMaterialPageProps) {
         <ArrowLeft size={17} /> Back to Reading Materials
       </Link>
       <M3PageHeader
-        eyebrow={role === "teacher" ? "Teacher workspace" : "Personal workspace"}
+        eyebrow={role === "system_admin" ? undefined : role === "teacher" ? "Teacher workspace" : "Personal workspace"}
         title="Upload Reading Material"
         description="Prepare a PDF, DOCX, JPG, or PNG source for a future reading activity."
       />

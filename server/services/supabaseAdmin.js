@@ -14,6 +14,20 @@ class SupabaseAuthenticationError extends Error {
   }
 }
 
+// M1 F7: a deactivated (banned) account. A subclass, so every route keeps answering 401 and the browser signs out.
+class AccountDeactivatedError extends SupabaseAuthenticationError {
+  constructor() {
+    super();
+    this.message = "This account has been deactivated. Contact your administrator.";
+    this.name = "AccountDeactivatedError";
+  }
+}
+
+function isBanned(user, now = Date.now()) {
+  const until = user?.banned_until ? Date.parse(user.banned_until) : NaN;
+  return Number.isFinite(until) && until > now;
+}
+
 let supabaseAdmin;
 
 function getSupabaseAdmin() {
@@ -67,6 +81,9 @@ async function getAuthenticatedSupabaseUser(req) {
   }
   const { data, error } = result;
 
+  // Supabase Auth itself refuses a banned (deactivated) user's existing token (403 user_banned).
+  if (error?.code === "user_banned") throw new AccountDeactivatedError();
+
   if (error || !data.user) {
     console.error("[M5 token verification failed]", {
       status: error?.status,
@@ -76,12 +93,17 @@ async function getAuthenticatedSupabaseUser(req) {
     throw new SupabaseAuthenticationError();
   }
 
+  // Deactivated accounts are refused on every backend endpoint, even with an access token issued before deactivation.
+  if (isBanned(data.user)) throw new AccountDeactivatedError();
+
   return data.user;
 }
 
 module.exports = {
+  AccountDeactivatedError,
   SupabaseAuthenticationError,
   SupabaseServerConfigurationError,
   getAuthenticatedSupabaseUser,
   getSupabaseAdmin,
+  isBanned,
 };
