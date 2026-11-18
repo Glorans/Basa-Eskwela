@@ -40,15 +40,25 @@ test("both layouts reuse the account menu and existing Settings routes", async (
  assert.equal(app.match(/<Route\s+path="settings"\s+element=\{<Settings\s*\/>\}\s*\/>/g)?.length,5);
 });
 
-test("sidebars contain module navigation without duplicate Settings or Logout", async () => {
+test("every sidebar ends with Logout below its navigation; the account menu has identity and Settings only", async () => {
  for(const path of ["components/basa/BasaSidebar.tsx","modules/module3/components/M3Layout.tsx"]){
   const layout=await source(path);
-  assert.doesNotMatch(layout,/label: "(?:Profile Settings|Settings)"|await logout\(\)/);
+  assert.doesNotMatch(layout,/label: "(?:Profile Settings|Settings|Logout)"|await logout\(\)/);
   assert.match(layout,/<nav/);
+  // One shared Logout, after the scrolling navigation and outside it, as the last element of the sidebar.
+  assert.equal(layout.match(/<SidebarLogout /g)?.length,1,path);
+  assert.ok(layout.indexOf("<SidebarLogout ")>layout.indexOf("</nav>"),path);
+  assert.match(layout,/<SidebarLogout [^\n]*\/>\s*<\/aside>/,path);
  }
+ const logoutButton=await source("components/basa/SidebarLogout.tsx");
+ assert.match(logoutButton,/await logout\(\)/);
+ assert.match(logoutButton,/navigate\("\/login", \{ replace: true \}\)/);
+ assert.match(logoutButton,/rf-sidebar-footer/);
+ assert.match(logoutButton,/aria-label=\{label\}/);
  const menu=await source("components/basa/ProfileDropdown.tsx");
- assert.match(menu,/await logout\(\)/);
- assert.match(menu,/navigate\("\/login", \{ replace: true \}\)/);
+ assert.doesNotMatch(menu,/logout\(|authService|LogOut|>Logout<|Signing out/);
+ assert.equal(menu.match(/<\w+ role="menuitem"/g)?.length,1,"Settings is the only account menu item");
+ assert.match(menu,/<Link role="menuitem" to=\{settingsPath\}/);
  assert.match(menu,/ROLE_LABELS\[profile.role\]/);
  assert.match(menu,/getProfileDisplayName\(profile\)/);
 });
