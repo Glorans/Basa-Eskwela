@@ -83,7 +83,7 @@ function mountUsers(permissions: object, users: object[], changes: string[][] = 
   const rows = () => findAll(render(), (n) => n.type === "tr").slice(1);
   const rowFor = (id: string) => rows().find((r) => textOf(r).includes(`${id}@example.invalid`));
   const statusButton = (id: string) => findAll(rowFor(id), (n) => n.type === "button")[0];
-  return { render, settle, rows, rowFor, statusButton, text: () => textOf(render()) };
+  return { render, settle, rows, rowFor, statusButton, selectTab: (role: string) => findAll(render(), (n) => n.props?.id === `school-tab-${role}`)[0].props.onClick(), text: () => textOf(render()) };
 }
 
 test("System Admin User Management: all roles listed; deactivates/reactivates only Independent Learners and School Admins", async () => {
@@ -125,16 +125,18 @@ test("School Admin User Management: Teachers and Students only, with the existin
   const m = mountUsers({ ...SCHOOL, statusRoles: ["teacher", "student"] }, [account("t", "teacher"), { ...account("s", "student"), status: "inactive" }], changes);
   await m.settle();
   assert.match(m.text(), /view, deactivate and reactivate Teacher and Student accounts/);
-  const roleOptions = findAll(m.render(), (n) => n.type === "option").map((o) => o.props.value).filter(Boolean);
-  assert.ok(roleOptions.includes("teacher") && roleOptions.includes("student"));
-  assert.ok(!roleOptions.includes("general_user") && !roleOptions.includes("admin") && !roleOptions.includes("system_admin"));
+  assert.equal(findAll(m.render(), (n) => n.props?.["aria-label"] === "Role filter").length, 0);
+  assert.equal(findAll(m.render(), (n) => n.props?.role === "tab").length, 2);
+  assert.equal(m.rowFor("s"), undefined);
   assert.equal(m.statusButton("t").props.disabled, false);
+  m.selectTab("student");
   assert.equal(m.statusButton("s").props.disabled, false);
   assert.equal(textOf(m.statusButton("s")), "Reactivate", "a deactivated Student shows Reactivate");
   m.statusButton("s").props.onClick();
   await m.settle();
   assert.match(changes[0][2], /sign in again with the same account/);
   assert.deepEqual(changes[1], ["s", "active"]);
+  m.selectTab("teacher");
   assert.equal(findAll(m.rowFor("t"), (n) => n.type === "a").length, 1);
 });
 
@@ -142,6 +144,7 @@ test("Restore sign-in retries a reactivation that stopped before the Auth unban"
   const changes: string[][] = [];
   const m = mountUsers({ ...SCHOOL, statusRoles: ["teacher", "student"] }, [{ ...account("s", "student"), signInBlocked: true }], changes);
   await m.settle();
+  m.selectTab("student");
   assert.match(textOf(m.rowFor("s")), /Active \(sign-in still blocked\)/);
   assert.equal(textOf(m.statusButton("s")), "Restore sign-in");
   m.statusButton("s").props.onClick();

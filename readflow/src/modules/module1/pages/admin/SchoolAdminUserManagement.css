@@ -1,0 +1,28 @@
+
+/* Scoped to School Admin; the existing shell retains its green/orange theme. */
+.school-admin-users-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.school-admin-users-summary article { background: #fff; border: 1px solid #e3e8df; border-radius: 14px; padding: 16px 20px; box-shadow: 0 3px 12px #173b3210; }
+.school-admin-users-summary h2 { margin: 0 0 6px; color: #245f53; font-size: 1rem; }
+.school-admin-users-summary strong { font-size: 1.8rem; color: #16342e; }
+.school-admin-users-summary p { margin: 4px 0 0; color: #526561; font-size: .85rem; }
+.school-admin-users .admin-users-tabs { display: flex; flex-wrap: wrap; gap: 10px; }
+.school-admin-users .admin-users-tabs button,
+.school-admin-users .admin-users-pagination button { min-height: 44px; padding: 9px 16px; border: 1px solid #9db2ab; border-radius: 9px; background: white; color: #245f53; font: inherit; font-weight: 700; cursor: pointer; }
+.school-admin-users .admin-users-tabs button[aria-selected="true"] { background: #123f32; color: white; border-color: #123f32; box-shadow: none; }
+.school-admin-users .admin-users-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px; }
+.school-admin-users .admin-users-pagination span { margin-right: auto; color: #526561; }
+.school-admin-users .admin-users-pagination button:disabled { opacity: .5; cursor: not-allowed; }
+.school-admin-users .admin-users-table :is(th, td) { padding: 8px 12px; }
+.school-admin-users .admin-users-role-readonly { min-width: 0; padding: 6px 10px; }
+.school-admin-users .admin-users-table td:last-child { min-width: 150px; }
+.school-admin-users .admin-users-table td:last-child a { display: block; margin-bottom: 6px; }
+.school-admin-users .admin-users-table td:last-child button { min-height: 40px; white-space: nowrap; }
+@media (max-width: 680px) {
+  .school-admin-users-summary { gap: 10px; }
+  .school-admin-users-summary article { padding: 12px; }
+  .school-admin-users .admin-users-tabs button { flex: 1; }
+}
+
+.school-admin-users .admin-users-header h1 { font-size: clamp(24px, 2.3vw, 32px); font-weight: 800; line-height: 1.25; }
+
+.school-admin-users .admin-users-tabs button:focus-visible { outline: 2px solid #527969; outline-offset: 3px; }

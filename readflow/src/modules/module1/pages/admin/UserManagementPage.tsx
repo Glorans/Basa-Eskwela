@@ -25,6 +25,7 @@ import {
 } from "./userManagementFilters";
 import "../../../../pages/admin/UserManagementPage.css";
 import "./UserManagementCategories.css";
+import "./SchoolAdminUserManagement.css";
 
 const NO_PERMISSIONS: AccountPermissions = {
   role: "", visibleRoles: [], deletableRoles: [], statusRoles: [], canCreateSchoolAdmin: false,
@@ -62,20 +63,22 @@ export default function UserManagementPage() {
   );
   const hasActiveFilters = Boolean(searchQuery.trim() || roleFilter || statusFilter);
   const filterRoles = APP_ROLES.filter((role) => permissions.visibleRoles === "all" || permissions.visibleRoles.includes(role));
+  const isSchoolAdmin = permissions.role === "admin";
   const isSystemAdmin = permissions.role === "system_admin";
   const section = isSystemAdmin ? params.get("section") || "all" : "all";
   const schoolAdmins = users.filter((user) => user.role === "admin");
   const teachers = users.filter((user) => user.role === "teacher");
   const students = users.filter((user) => user.role === "student");
   const learners = users.filter((user) => user.role === "general_user");
-  const schoolView = isSystemAdmin && section === "school";
+  const schoolView = isSchoolAdmin || (isSystemAdmin && section === "school");
   const independentView = isSystemAdmin && section === "independent";
   const schoolTabs = [
     { role: "admin" as const, title: "School Admins", users: schoolAdmins },
     { role: "teacher" as const, title: "Teachers", users: teachers },
     { role: "student" as const, title: "Students", users: students },
-  ];
-  const selectedTab = schoolTabs.find((tab) => tab.role === schoolTab)!;
+  ].filter((tab) => !isSchoolAdmin || tab.role !== "admin");
+  const activeSchoolTab = isSchoolAdmin && schoolTab === "admin" ? "teacher" : schoolTab;
+  const selectedTab = schoolTabs.find((tab) => tab.role === activeSchoolTab)!;
   const matchingSchoolUsers = filterManagedUsers(selectedTab.users, { searchQuery: schoolSearch, role: "", status: schoolStatus });
   const schoolPageCount = Math.max(1, Math.ceil(matchingSchoolUsers.length / 10));
   const currentSchoolPage = Math.min(schoolPage, schoolPageCount);
@@ -96,7 +99,7 @@ export default function UserManagementPage() {
       ? [{ title: "Independent Learner Accounts", users: matchingLearners.slice(learnerPageStart, learnerPageStart + 10) }]
       : [{ title: isSystemAdmin ? "All Registered Users" : "", users: filteredUsers }];
   const showRoleFilter = !schoolView && !independentView;
-  const showVerification = schoolView ? schoolTab === "teacher" : !independentView;
+  const showVerification = schoolView ? activeSchoolTab === "teacher" : !independentView;
   const activeSearch = schoolView ? schoolSearch : independentView ? learnerSearch : searchQuery;
   const activeStatus = schoolView ? schoolStatus : independentView ? learnerStatus : statusFilter;
   const categoryHasFilters = schoolView ? Boolean(schoolSearch.trim() || schoolStatus)
@@ -126,7 +129,6 @@ export default function UserManagementPage() {
     setSchoolPage(1);
   }
 
-  const isSchoolAdmin = permissions.role === "admin";
   const scopeNote = permissions.role === "system_admin"
     ? "You can view every account. You can deactivate and reactivate Independent Learner and School Admin accounts."
     : isSchoolAdmin
@@ -205,7 +207,7 @@ export default function UserManagementPage() {
   }
 
   return (
-    <section className="admin-users-page">
+    <section className={`admin-users-page${isSchoolAdmin ? " school-admin-users" : ""}`}>
       <header className="admin-users-header">
         <div>
           <h1>User Management</h1>
@@ -249,6 +251,19 @@ export default function UserManagementPage() {
                   <Link to="?section=all" aria-current={showRoleFilter ? "page" : undefined}>View All Registered Users</Link>
                 </article>
               </nav>
+            </>
+          )}
+          {isSchoolAdmin && (
+            <div className="school-admin-users-summary" aria-label="Registered account totals">
+              {schoolTabs.map((tab) => (
+                <article key={tab.role}>
+                  <h2>{tab.title}</h2>
+                  <strong>{tab.users.length}</strong>
+                  <p>Total registered accounts</p>
+                </article>
+              ))}
+            </div>
+          )}
               {schoolView && (
                 <div className="admin-users-tabs" role="tablist" aria-label="School account roles">
                   {schoolTabs.map((tab, index) => (
@@ -257,9 +272,9 @@ export default function UserManagementPage() {
                       id={`school-tab-${tab.role}`}
                       type="button"
                       role="tab"
-                      aria-selected={schoolTab === tab.role}
+                      aria-selected={activeSchoolTab === tab.role}
                       aria-controls="school-account-panel"
-                      tabIndex={schoolTab === tab.role ? 0 : -1}
+                      tabIndex={activeSchoolTab === tab.role ? 0 : -1}
                       onClick={() => selectSchoolTab(tab.role)}
                       onKeyDown={(event) => {
                         const nextIndex = event.key === "ArrowRight" ? (index + 1) % schoolTabs.length
@@ -277,14 +292,12 @@ export default function UserManagementPage() {
                   ))}
                 </div>
               )}
-            </>
-          )}
           {groups.map((group) => (
         <div className={`admin-users-table-wrap${paginatedView ? " admin-users-paginated" : ""}`} key={schoolView ? "school" : group.title}
           id={schoolView ? "school-account-panel" : undefined}
           role={schoolView ? "tabpanel" : undefined}
-          aria-labelledby={schoolView ? `school-tab-${schoolTab}` : undefined}>
-          {schoolView && (
+          aria-labelledby={schoolView ? `school-tab-${activeSchoolTab}` : undefined}>
+          {schoolView && !isSchoolAdmin && (
             <div className="admin-users-section-heading admin-users-tab-toolbar">
               {schoolTab === "admin"
                 ? <p>Manage School Admin accounts in the current school environment.</p>
@@ -338,7 +351,7 @@ export default function UserManagementPage() {
               >
                 <option value="">All Statuses</option>
                 <option value="active">Active</option>
-                <option value="inactive">{paginatedView ? "Inactive" : "Deactivated"}</option>
+                <option value="inactive">{paginatedView && !isSchoolAdmin ? "Inactive" : "Deactivated"}</option>
               </select>
             </label>
 
@@ -366,9 +379,9 @@ export default function UserManagementPage() {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
-                {!independentView && <th>Role</th>}
-                <th>Status</th>
-                <th>Registered</th>
+                {!independentView && !isSchoolAdmin && <th>Role</th>}
+                <th>{isSchoolAdmin ? "Account Status" : "Status"}</th>
+                <th>{isSchoolAdmin ? "Registration Date" : "Registered"}</th>
                 {showVerification && <th>Teacher Verification</th>}
                 <th>Actions</th>
               </tr>
@@ -387,7 +400,7 @@ export default function UserManagementPage() {
                   <tr key={user.id}>
                     <td>{getManagedUserDisplayName(user)}{isSelf ? " (You)" : ""}</td>
                     <td>{user.email || "\u2014"}</td>
-                    {!independentView && <td>
+                    {!independentView && !isSchoolAdmin && <td>
                       <span className="admin-users-role-readonly">{roleLabel}</span>
                     </td>}
                     <td>
@@ -419,7 +432,7 @@ export default function UserManagementPage() {
               })}
               {group.users.length === 0 && (
                 <tr>
-                  <td className="admin-users-empty" colSpan={independentView ? 5 : showVerification ? 7 : 6}>
+                  <td className="admin-users-empty" colSpan={isSchoolAdmin ? showVerification ? 6 : 5 : independentView ? 5 : showVerification ? 7 : 6}>
                     {schoolView || independentView
                       ? categoryHasFilters ? "No accounts match your search or filters." : "No accounts in this category yet."
                       : users.length === 0 ? "No user profiles were found." : "No users match your search or filters."}
