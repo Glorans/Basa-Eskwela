@@ -211,7 +211,7 @@ test("invitations panel: open invitations only; cancelled cannot be reused; rese
   assert.match(textOf(rows()[1]), /Closed /);
   assert.match(textOf(rows()[2]), /Cannot be reused/);
   assert.equal(findAll(rows()[2], (n) => n.type === "button").length, 0);
-  assert.match(textOf(m.render()), /no School Admin access until they accept/);
+  assert.match(textOf(m.render()), /Invite authorized School Admins and manage pending invitations\./);
   findAll(rows()[0], (n) => n.type === "button" && textOf(n) === "Resend invitation")[0].props.onClick();
   await m.settle();
   findAll(rows()[1], (n) => n.type === "button" && textOf(n) === "Cancel invitation")[0].props.onClick();
@@ -220,14 +220,24 @@ test("invitations panel: open invitations only; cancelled cannot be reused; rese
   assert.ok(m.calls.some((c) => c[0] === "confirm" && /can never be used again/.test(c[1])));
 });
 
-test("expiry wording: the invitation window and the email link are distinct; no fixed link duration is promised", () => {
+test("expiry wording: plain 7-day help text, no provider names, no fixed link duration is promised", async () => {
   const m = mountPanel([user(1, null, recorded("pending", "i1"))]);
   const text = textOf(m.render());
   assert.match(text, /Invitation open until/);
   assert.doesNotMatch(text, /\bExpires\b/);
-  assert.match(text, /Each emailed setup link can expire sooner, depending on the Supabase Auth email-link setting/);
-  assert.match(text, /use Resend invitation; while the invitation is open, the invitee can also use Forgot password/);
+  assert.match(text, /Invitations are valid for 7 days\. If an email link expires, send a new invitation link\./);
+  assert.doesNotMatch(text, /Supabase|SMTP|GoTrue/, "no technical provider names in user-facing text");
   assert.doesNotMatch(text, /\b(1|one) hour\b|60 minutes/i, "the local link setting is not presented as universal");
+  const row = findAll(m.render(), (n) => n.type === "tr").slice(1)[0];
+  findAll(row, (n) => n.type === "button" && textOf(n) === "Resend invitation")[0].props.onClick();
+  await m.settle();
+  const confirm = m.calls.find((c) => c[0] === "confirm");
+  assert.ok(confirm && !/Supabase|SMTP|GoTrue/.test(String(confirm[1])), "resend confirmation has no provider names");
+});
+
+test("empty state: no open invitations shows 'No pending invitations.'", () => {
+  const m = mountPanel([user(4, "admin", recorded("accepted", "i4")), user(6, "teacher", null)]);
+  assert.match(textOf(m.render()), /No pending invitations\./);
 });
 
 test("authorization note: the recorded decision, or 'unavailable' for accounts created before records; never 'verified'", () => {

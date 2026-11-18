@@ -44,7 +44,7 @@ export default function SchoolAdminInvitationsPanel({ users, onChanged }: { user
     const name = user.fullName || user.email || "this invitee";
     const confirmed = await confirmReadFlow(
       kind === "resend"
-        ? `Send a new setup link to ${name}? The invitation stays open for 7 days from now and earlier links stop working. The new email link itself may expire sooner (set in Supabase Auth).`
+        ? `Send a new setup link to ${name}? The invitation stays open for 7 days from now and earlier links stop working.`
         : `Cancel the School Admin invitation for ${name}? The invitation can never be used again and the account cannot sign in.`,
       { confirm: kind === "resend" ? "Resend invitation" : "Cancel invitation", cancel: "Keep" },
     );
@@ -66,16 +66,12 @@ export default function SchoolAdminInvitationsPanel({ users, onChanged }: { user
 
   return (
     <section className="admin-users-invitations" aria-labelledby="school-admin-invitations-title">
-      <h2 id="school-admin-invitations-title">School Admin invitations</h2>
-      <p>Invitees have no School Admin access until they accept. Accepted invitations appear in the table below.</p>
-      <p className="admin-users-invitations-note">
-        An invitation stays open for 7 days after the latest send. Each emailed setup link can expire sooner, depending on
-        the Supabase Auth email-link setting. If an invitee&apos;s link has expired, use Resend invitation; while the invitation
-        is open, the invitee can also use Forgot password to get a new link.
-      </p>
+      <h2 id="school-admin-invitations-title">School Admin Invitations</h2>
+      <p>Invite authorized School Admins and manage pending invitations.</p>
+      <p className="admin-users-invitations-note">Invitations are valid for 7 days. If an email link expires, send a new invitation link.</p>
       {message && <p className={`admin-users-message admin-users-message--${message.kind}`} role={message.kind === "error" ? "alert" : "status"}>{message.text}</p>}
-      {!invitations.length ? <p className="admin-users-empty">No open invitations.</p> : (
-        <div className="admin-users-table-scroll" tabIndex={0} role="region" aria-label="School Admin invitations">
+      {!invitations.length ? <p className="admin-users-empty">No pending invitations.</p> : (
+        <div className="admin-users-table-scroll" tabIndex={0} role="region" aria-label="School Admin Invitations">
           <table className="admin-users-table">
             <thead><tr><th>Invitee</th><th>Status</th><th>Authorization recorded</th><th>Last sent</th><th>Invitation open until</th><th>Actions</th></tr></thead>
             <tbody>
