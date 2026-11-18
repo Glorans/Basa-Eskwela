@@ -63,7 +63,7 @@ function mountUsers(permissions: object, users: object[], changes: string[][] = 
   const runtime = createHookRuntime(require("react"));
   const page = loadComponentModule(new URL("../src/modules/module1/pages/admin/UserManagementPage.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
-    if (id === "react-router-dom") return { Link: "a" };
+    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()] };
     if (id.endsWith("/components/ReadFlowDialog")) return { confirmReadFlow: async (message: string, labels: { confirm: string }) => { changes.push(["confirm", labels.confirm, message]); return confirmAnswer; } };
     if (id.endsWith("/auth/useAuth")) return { useAuth: () => ({ user: { id: "me" } }) };
     if (id.endsWith("/services/adminUsers")) {
@@ -98,14 +98,13 @@ test("System Admin User Management: all roles listed; deactivates/reactivates on
   const roleOptions = findAll(m.render(), (n) => n.type === "option").map((o) => o.props.value).filter((v: string) => APP_ROLES.includes(v as never));
   assert.deepEqual(roleOptions, [...APP_ROLES]);
   for (const [id, enabled] of [["me", false], ["sa", true], ["il", true], ["t", false], ["s", false], ["other", false]] as const) {
-    assert.equal(m.statusButton(id).props.disabled, !enabled, id);
-    assert.equal(textOf(m.statusButton(id)), "Deactivate", id);
+    if (enabled) { assert.equal(m.statusButton(id).props.disabled, false, id); assert.equal(textOf(m.statusButton(id)), "Deactivate", id); }
+    else assert.equal(m.statusButton(id), undefined, id);
   }
   assert.equal(findAll(m.rowFor("t"), (n) => n.type === "a").length, 0, "Teacher review link is School Admin only");
   assert.match(textOf(m.rowFor("sa")), /School Admin/);
-  m.statusButton("t").props.onClick();
-  await m.settle();
-  assert.deepEqual(changes, [], "an out-of-scope click does nothing");
+  assert.match(textOf(m.rowFor("t")), /Managed by School Admin/);
+  assert.deepEqual(changes, [], "view-only rows have no status action");
   m.statusButton("sa").props.onClick();
   await m.settle();
   assert.equal(changes[0][0], "confirm"); assert.equal(changes[0][1], "Deactivate");
@@ -166,7 +165,7 @@ function mountCreate(createSchoolAdmin: (input: object) => Promise<object>) {
   const runtime = createHookRuntime(require("react"));
   const page = loadComponentModule(new URL("../src/modules/module1/pages/admin/CreateSchoolAdminPage.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
-    if (id === "react-router-dom") return { Link: "a" };
+    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()] };
     if (id.endsWith("/services/adminUsers")) return { createSchoolAdmin, getAdminUserError: (e: Error) => e.message };
     if (id.endsWith("/utils/authOnboarding")) return real("utils/authOnboarding.ts");
     if (id.endsWith(".css")) return {};
@@ -219,7 +218,7 @@ test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4)
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Create School Admin", "Platform Analytics", "Independent Learners"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Platform Analytics", "Independent Learners"]);
 });
 
 test("security: no public System/School Admin registration, no role editing, no privileged keys in the frontend", () => {

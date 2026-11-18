@@ -1,0 +1,21 @@
+/* Category navigation is rendered only for System Admin. */
+.admin-users-categories { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.admin-users-category { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 22px; border: 1px solid #e2e5dc; border-radius: 16px; background: white; box-shadow: 0 3px 12px #123f3209; }
+.admin-users-category h2 { margin: 0; font-size: 1.15rem; color: #123f32; }
+.admin-users-category p { margin: 0; color: #526561; }
+.admin-users-category dl { margin: 0; }
+.admin-users-category dl div { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.admin-users-category dd { margin: 0; font-weight: 700; color: #123f32; }
+.admin-users-category a, .admin-users-primary { display: inline-block; padding: 11px 14px; border-radius: 9px; background: #123f32; color: white; font-weight: 700; text-decoration: none; }
+.admin-users-category a { margin-top: auto; }
+.admin-users-category a[aria-current="page"] { outline: 2px solid #123f32; outline-offset: 3px; }
+.admin-users-page :is(a, button, input, select, [tabindex]):focus-visible { outline: 3px solid #a66a16; outline-offset: 3px; }
+.admin-users-category .admin-users-total { color: #123f32; font-size: 1.8rem; font-weight: 700; }
+.admin-users-total span { display: block; font-size: .9rem; font-weight: 400; color: #526561; }
+.admin-users-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.admin-users-section-heading p { margin: 0; color: #526561; }
+.admin-users-group-heading { margin: 0; padding: 18px 16px; font-size: 1.2rem; color: #123f32; }
+.admin-users-managed-note { color: #526561; font-size: .9rem; }
+@media (max-width: 1000px) { .admin-users-categories { grid-template-columns: 1fr; } }
+
+.system-admin-ui .admin-users-table td:last-child button { white-space: nowrap; }

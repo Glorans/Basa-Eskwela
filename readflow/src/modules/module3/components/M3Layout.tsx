@@ -15,7 +15,6 @@ import {
   Trophy,
   Users,
   UserRound,
-  UserPlus,
   X,
   Archive,
 } from "lucide-react";
@@ -45,7 +44,6 @@ function getNavItems(role: ShellRole) {
       { label: "Reading Materials", to: "/system-admin/content/materials", icon: Files, end: true },
       { label: "Upload Material", to: "/system-admin/content/materials/upload", icon: FilePlus2, end: true },
       { label: "User Management", to: "/system-admin/users", icon: Users, end: true },
-      { label: "Create School Admin", to: "/system-admin/school-admins/new", icon: UserPlus, end: true },
       // Appendix N M7 for the System Admin: F2 (system-wide dashboard) and F4 (Independent Learner performance).
       { label: "Platform Analytics", to: "/system-admin/analytics", icon: ChartNoAxesCombined, end: true },
       { label: "Independent Learners", to: "/system-admin/independent-learners", icon: UserRound, end: true },

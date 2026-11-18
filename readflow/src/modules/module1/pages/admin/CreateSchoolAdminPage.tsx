@@ -47,6 +47,7 @@ export default function CreateSchoolAdminPage() {
 
   return (
     <section className="admin-users-page create-school-admin-page">
+      <Link to="/system-admin/users?section=school">Back to School Accounts</Link>
       <header className="admin-users-header">
         <div>
           <h1>Create School Admin</h1>
@@ -57,7 +58,7 @@ export default function CreateSchoolAdminPage() {
       {error && <p className="admin-users-message admin-users-message--error" role="alert">{error}</p>}
       {success && (
         <p className="admin-users-message admin-users-message--success" role="status">
-          {success} <Link to="/system-admin/users">View in User Management</Link>
+          {success} <Link to="/system-admin/users?section=school">View in School Accounts</Link>
         </p>
       )}
 

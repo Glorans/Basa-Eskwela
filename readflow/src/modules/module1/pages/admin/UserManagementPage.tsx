@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { confirmReadFlow } from "../../../../components/ReadFlowDialog";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../../../auth/useAuth";
@@ -24,6 +24,7 @@ import {
   type UserStatusFilter,
 } from "./userManagementFilters";
 import "../../../../pages/admin/UserManagementPage.css";
+import "./UserManagementCategories.css";
 
 const NO_PERMISSIONS: AccountPermissions = {
   role: "", visibleRoles: [], deletableRoles: [], statusRoles: [], canCreateSchoolAdmin: false,
@@ -34,6 +35,7 @@ const NO_PERMISSIONS: AccountPermissions = {
 // and which may be changed; this page only reflects it.
 export default function UserManagementPage() {
   const { user: currentUser } = useAuth();
+  const [params] = useSearchParams();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [permissions, setPermissions] = useState<AccountPermissions>(NO_PERMISSIONS);
   const [loading, setLoading] = useState(true);
@@ -53,6 +55,18 @@ export default function UserManagementPage() {
   );
   const hasActiveFilters = Boolean(searchQuery.trim() || roleFilter || statusFilter);
   const filterRoles = APP_ROLES.filter((role) => permissions.visibleRoles === "all" || permissions.visibleRoles.includes(role));
+  const isSystemAdmin = permissions.role === "system_admin";
+  const section = isSystemAdmin ? params.get("section") || "all" : "all";
+  const schoolAdmins = users.filter((user) => user.role === "admin");
+  const teachers = users.filter((user) => user.role === "teacher");
+  const students = users.filter((user) => user.role === "student");
+  const learners = users.filter((user) => user.role === "general_user");
+  const groups = isSystemAdmin && section === "school"
+    ? [{ title: "School Admins", users: schoolAdmins }, { title: "Teachers", users: teachers }, { title: "Students", users: students }]
+    : isSystemAdmin && section === "independent"
+      ? [{ title: "Independent Learner Accounts", users: learners }]
+      : [{ title: isSystemAdmin ? "All Registered Users" : "", users: filteredUsers }];
+  const showFilters = !isSystemAdmin || !["school", "independent"].includes(section);
   const isSchoolAdmin = permissions.role === "admin";
   const scopeNote = permissions.role === "system_admin"
     ? "You can view every account. You can deactivate and reactivate Independent Learner and School Admin accounts."
@@ -137,7 +151,45 @@ export default function UserManagementPage() {
       {loading ? (
         <p className="admin-users-loading" role="status">Loading users…</p>
       ) : (
-        <div className="admin-users-table-wrap">
+        <>
+          {isSystemAdmin && (
+            <>
+              <nav className="admin-users-categories" aria-label="Account categories">
+                <article className="admin-users-category">
+                  <h2>School Accounts</h2>
+                  <p>Current School Environment</p>
+                  <dl>
+                    <div><dt>School Admins</dt><dd>{schoolAdmins.length}</dd></div>
+                    <div><dt>Teachers</dt><dd>{teachers.length}</dd></div>
+                    <div><dt>Students</dt><dd>{students.length}</dd></div>
+                  </dl>
+                  <Link to="?section=school" aria-current={section === "school" ? "page" : undefined}>View School Accounts</Link>
+                </article>
+                <article className="admin-users-category">
+                  <h2>Independent Learner Accounts</h2>
+                  <p className="admin-users-total">{learners.length} <span>Independent Learners</span></p>
+                  <p>Manage accounts. Reading and comprehension analytics remain in Independent Learners.</p>
+                  <Link to="?section=independent" aria-current={section === "independent" ? "page" : undefined}>View Independent Learner Accounts</Link>
+                </article>
+                <article className="admin-users-category">
+                  <h2>All Registered Users</h2>
+                  <p className="admin-users-total">{users.length} <span>registered users</span></p>
+                  <p>Search and filter all registered roles across the platform.</p>
+                  <Link to="?section=all" aria-current={showFilters ? "page" : undefined}>View All Registered Users</Link>
+                </article>
+              </nav>
+              {section === "school" && (
+                <div className="admin-users-section-heading">
+                  <p>Teachers and Students are managed by School Admin.</p>
+                  {permissions.canCreateSchoolAdmin && <Link className="admin-users-primary" to="/system-admin/school-admins/new">Create School Admin</Link>}
+                </div>
+              )}
+            </>
+          )}
+          {groups.map((group) => (
+        <div className="admin-users-table-wrap" key={group.title}>
+          {group.title && <h2 className="admin-users-group-heading">{group.title}</h2>}
+          {showFilters && <>
           <div className="admin-users-controls">
             <label className="admin-users-control admin-users-search">
               <span>Search users</span>
@@ -193,7 +245,8 @@ export default function UserManagementPage() {
             Showing {filteredUsers.length} of {users.length} users
           </p>
 
-          <div className="admin-users-table-scroll">
+          </>}
+          <div className="admin-users-table-scroll" tabIndex={0} role="region" aria-label={group.title || "User accounts"}>
             <table className="admin-users-table">
             <thead>
               <tr>
@@ -207,7 +260,7 @@ export default function UserManagementPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user) => {
+              {group.users.map((user) => {
                 const isSelf = user.id === currentUser?.id;
                 const canChangeStatus = canChangeManagedUserStatus(permissions, user, currentUser?.id);
                 const statusView = accountStatusView(user);
@@ -234,24 +287,26 @@ export default function UserManagementPage() {
                       {isSchoolAdmin && isPendingTeacher(user) && (
                         <Link to="/admin/teacher-invitations?tab=pending">Review in Teacher Invitations</Link>
                       )}
-                      <button
+                      {isSystemAdmin && !canChangeStatus ? (
+                        <span className="admin-users-managed-note">{user.role === "teacher" || user.role === "student" ? "Managed by School Admin" : isSelf ? "Your account" : "View only"}</span>
+                      ) : <button
                         type="button"
                         className={statusView.target === "active" ? "admin-users-clear admin-users-reactivate" : "admin-users-delete admin-users-deactivate"}
-                        disabled={!canChangeStatus || isPending}
+                        disabled={!canChangeStatus || (isSystemAdmin ? Boolean(pendingUserId) : isPending)}
                         title={canChangeStatus ? undefined : "This account is outside the accounts you can manage."}
                         aria-label={`${statusView.action} ${getManagedUserDisplayName(user)}`}
                         onClick={() => void handleStatusChange(user)}
                       >
                         {isPending ? "Working…" : statusView.action}
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 );
               })}
-              {filteredUsers.length === 0 && (
+              {group.users.length === 0 && (
                 <tr>
                   <td className="admin-users-empty" colSpan={7}>
-                    {users.length === 0
+                    {!showFilters ? "No accounts in this category yet." : users.length === 0
                       ? "No user profiles were found."
                       : "No users match your search or filters."}
                   </td>
@@ -261,6 +316,8 @@ export default function UserManagementPage() {
           </table>
           </div>
         </div>
+          ))}
+        </>
       )}
     </section>
   );
