@@ -100,7 +100,19 @@ async function listAllAuthUsers(supabase) {
  */
 async function listManagedUsers(dependencies = {}, managerRole) {
   if (!isAccountManager(managerRole)) throw new AdminAuthorizationError("Administrator access is required.");
-  return (await loadAccountDirectory(dependencies)).filter((user) => canViewAccount(managerRole, user.role));
+  const users = (await loadAccountDirectory(dependencies)).filter((user) => canViewAccount(managerRole, user.role));
+  if (managerRole !== "system_admin") return users;
+  // System Admin only: authorization records and invitation states. School Admins never receive these.
+  const supabase = (dependencies.getSupabaseAdmin ?? getSupabaseAdmin)();
+  const records = await require("./schoolAdminInvitations").loadInvitationRecords(supabase);
+  if (!records) return users.map((user) => ({ ...user, schoolAdminAuthorization: user.role === "admin" ? { state: "unavailable" } : null }));
+  const names = new Map(users.map((user) => [user.id, user.fullName]));
+  return users.map((user) => {
+    const record = records.get(user.id);
+    if (record) return { ...user, schoolAdminAuthorization: { ...record, authorizedByName: names.get(record.authorizedBy) || "Unknown System Admin" } };
+    // Created before authorization records existed: shown as unavailable, never with an invented approver or date.
+    return { ...user, schoolAdminAuthorization: user.role === "admin" ? { state: "unavailable" } : null };
+  });
 }
 
 // Every Auth account joined to its profile. Internal: callers must apply a manager scope before returning it.
@@ -309,50 +321,12 @@ function passwordSetupRedirect(env = process.env) {
 }
 
 /**
- * F8: a System Admin creates a School Admin (profiles.role = 'admin'). The account is created WITHOUT a password
- * and with a confirmed email; the person then sets their own password through the existing password-reset email
- * (the same Supabase recovery flow as Forgot password). No password is ever generated, stored or shown.
- * If the role cannot be set, the new Auth account is removed again so no half-created account remains.
+ * F8: a System Admin authorizes and invites a School Admin. The account stays role-less (no access) until the
+ * invitee accepts in the setup-link session; see services/schoolAdminInvitations.js and
+ * supabase/proposed/m1_school_admin_invitations_PROPOSED.sql. The old path that granted the role at creation is gone.
  */
-async function createSchoolAdmin(input, dependencies = {}) {
-  const email = String(input?.email ?? "").trim().toLowerCase();
-  const fullName = String(input?.fullName ?? "").replace(/\s+/g, " ").trim();
-  if (!EMAIL_PATTERN.test(email)) throw new AdminUserOperationError("Enter a valid email address.", 400);
-  if (!fullName || fullName.length > FULL_NAME_MAX_LENGTH) {
-    throw new AdminUserOperationError(`Enter the School Admin's full name (up to ${FULL_NAME_MAX_LENGTH} characters).`, 400);
-  }
-  const redirectTo = (dependencies.passwordSetupRedirect ?? passwordSetupRedirect)();
-  if (!redirectTo) throw new AdminUserOperationError("The password-setup link is not configured on the server.", 503);
-
-  const supabase = (dependencies.getSupabaseAdmin ?? getSupabaseAdmin)();
-  const existing = await listAllAuthUsers(supabase);
-  if (existing.some((user) => String(user.email ?? "").toLowerCase() === email)) {
-    // Only a System Admin reaches this, so saying the address is taken reveals nothing to the public.
-    throw new AdminUserOperationError("An account with this email address already exists.", 409);
-  }
-
-  const { data: created, error: createError } = await supabase.auth.admin.createUser({ email, email_confirm: true });
-  const newId = created?.user?.id;
-  if (createError || !newId) {
-    throw new AdminUserOperationError(createError?.status === 422
-      ? "An account with this email address already exists."
-      : "Unable to create the School Admin account.", createError?.status === 422 ? 409 : 500);
-  }
-
-  // The signup trigger created the profile with no role. Only this server (service role) may set a role.
-  const { data: updated, error: roleError } = await supabase
-    .from("profiles")
-    .update({ role: "admin", full_name: fullName, status: "active" })
-    .eq("id", newId)
-    .is("role", null)
-    .select("id, role");
-  if (roleError || !updated || updated.length !== 1 || updated[0].role !== "admin") {
-    await supabase.auth.admin.deleteUser(newId).catch(() => {});
-    throw new AdminUserOperationError("Unable to assign the School Admin role. No account was created.", 500);
-  }
-
-  const { error: emailError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-  return { id: newId, email, fullName, role: "admin", setupEmailSent: !emailError };
+function createSchoolAdmin(input, dependencies = {}, requester = {}) {
+  return require("./schoolAdminInvitations").createSchoolAdmin(input, dependencies, requester);
 }
 
 module.exports = {
@@ -363,6 +337,7 @@ module.exports = {
   authorizeSystemAdminRequest,
   createSchoolAdmin,
   deleteManagedUser,
+  listAllAuthUsers,
   listManagedUsers,
   setManagedUserStatus,
   passwordSetupRedirect,

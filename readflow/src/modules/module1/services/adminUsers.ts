@@ -12,6 +12,8 @@ export interface ManagedUser {
   status: string;
   // M1 F7: whether Supabase Auth currently refuses sign-in (null when the account has no Auth user).
   signInBlocked?: boolean | null;
+  // System Admin only: the recorded authorization decision and invitation state (null for non-School Admin accounts).
+  schoolAdminAuthorization?: SchoolAdminAuthorization | null;
   createdAt: string;
   teacherStatus?: "pending" | "approved" | "rejected" | null;
 }
@@ -33,12 +35,50 @@ interface ManagedUsersResponse {
   permissions?: AccountPermissions;
 }
 
+// A System Admin's RECORDED decision. It is not verification of identity or school affiliation.
+export type SchoolAdminAuthorization =
+  | { state: "unavailable" }
+  | {
+    id: string;
+    state: "pending" | "expired" | "accepted" | "cancelled";
+    authorizedByName: string;
+    authorizedAt: string;
+    reference: string;
+    confirmationMethod: string;
+    confirmationLabel: string;
+    authorizingPosition: string;
+    note: string | null;
+    lastSentAt: string | null;
+    sendCount: number;
+    expiresAt: string;
+    acceptedAt: string | null;
+    cancelledAt: string | null;
+  };
+
+export const CONFIRMATION_METHODS = [
+  ["official_school_email", "Email from an official school address"],
+  ["official_school_phone", "Call to the school's official phone number"],
+  ["signed_letter", "Signed letter or form from the school"],
+  ["in_person", "In-person meeting with the school representative"],
+  ["other_documented", "Other documented confirmation"],
+] as const;
+
+export interface SchoolAdminAuthorizationInput {
+  reference: string;
+  confirmationMethod: string;
+  authorizingPosition: string;
+  note?: string;
+}
+
 export interface CreatedSchoolAdmin {
   id: string;
+  invitationId: string;
   email: string;
   fullName: string;
-  role: "admin";
+  role: null;
+  invitationStatus: "pending";
   setupEmailSent: boolean;
+  expiresAt: string | null;
 }
 
 const NO_PERMISSIONS: AccountPermissions = {
@@ -61,10 +101,27 @@ export async function getManagedAccounts() {
 }
 
 // M1 F8 (System Admin only). The server sets the role; the request carries only the email and name.
-export async function createSchoolAdmin(input: { email: string; fullName: string }) {
+export async function createSchoolAdmin(input: { email: string; fullName: string; authorization: SchoolAdminAuthorizationInput }) {
   const response = await api.post<{ success: true; account: CreatedSchoolAdmin; message: string }>(
     "/api/admin/users/school-admins",
-    { email: input.email, fullName: input.fullName },
+    { email: input.email, fullName: input.fullName, authorization: input.authorization },
+    { headers: await getAdminRequestHeaders() },
+  );
+  return response.data;
+}
+
+// System Admin only (re-checked on the server and in the database).
+export async function resendSchoolAdminInvitation(invitationId: string) {
+  const response = await api.post<{ success: true; message: string; invitation: { setupEmailSent: boolean; expiresAt: string } }>(
+    `/api/admin/users/school-admins/invitations/${encodeURIComponent(invitationId)}/resend`, {},
+    { headers: await getAdminRequestHeaders() },
+  );
+  return response.data;
+}
+
+export async function cancelSchoolAdminInvitation(invitationId: string, reason: string) {
+  const response = await api.post<{ success: true; message: string }>(
+    `/api/admin/users/school-admins/invitations/${encodeURIComponent(invitationId)}/cancel`, { reason },
     { headers: await getAdminRequestHeaders() },
   );
   return response.data;

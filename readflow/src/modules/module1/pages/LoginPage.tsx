@@ -15,6 +15,7 @@ import {
 
 type LoginLocationState = {
   passwordReset?: boolean;
+  invitationNotice?: string;
   signupPendingConfirmation?: boolean;
   confirmationSent?: boolean;
   email?: string;
@@ -113,6 +114,7 @@ export default function LoginPage() {
         {passwordWasReset && !error && (
           <p className="auth-status" role="status">
             Your password was changed successfully. Log in with your new password.
+            {state?.invitationNotice ? ` ${state.invitationNotice}` : ""}
           </p>
         )}
 

@@ -57,3 +57,10 @@
   .create-school-admin-form { padding: 16px; }
   .create-school-admin-form button { align-self: stretch; }
 }
+
+/* Authorization record (M1 F8). */
+.create-school-admin-form fieldset { display: grid; gap: 14px; margin: 0 0 18px; padding: 0; border: 0; min-width: 0; }
+.create-school-admin-form legend { margin-bottom: 4px; padding: 0; font-weight: 700; font-size: 1rem; color: inherit; }
+.create-school-admin-form :is(select, textarea) { width: 100%; min-width: 0; box-sizing: border-box; font: inherit; padding: 9px 11px; border: 1px solid #6f877a; border-radius: 8px; background: #fff; color: inherit; }
+.create-school-admin-form textarea { resize: vertical; }
+.create-school-admin-hint { margin: 0; line-height: 1.55; color: #3e5248; }

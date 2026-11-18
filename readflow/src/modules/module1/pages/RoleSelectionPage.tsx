@@ -10,6 +10,7 @@ import {
   getPostAuthenticationPath,
 } from "../services/authProfile";
 import type { AssignableUserRole } from "../utils/authOnboarding";
+import { getOwnSchoolAdminInvitation, isInvitedSchoolAdmin, type OwnInvitationState } from "../services/accountInvitation";
 import "./RoleSelectionPage.css";
 
 const roles = [
@@ -39,12 +40,27 @@ type Role = (typeof roles)[number]["value"] & AssignableUserRole;
 
 export default function RoleSelectionPage() {
   const navigate = useNavigate();
-  const { profile, loading: authLoading, profileError, refreshProfile } = useAuth();
+  const { user, profile, loading: authLoading, profileError, refreshProfile } = useAuth();
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [checking, setChecking] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  // M1 F8: an invited School Admin who has not accepted has no role. The database refuses any self-selected role for
+  // an invited account, so these screens only guide; they never grant access. Ordinary accounts make no request.
+  const [confirmedInvitation, setConfirmedInvitation] = useState<OwnInvitationState | null>(null);
+  const [statusCheck, setStatusCheck] = useState<"idle" | "checking" | "failed">("idle");
+  const showInvitation = isInvitedSchoolAdmin(user) || (confirmedInvitation !== null && confirmedInvitation !== "none" && confirmedInvitation !== "accepted");
+
+  async function checkInvitationStatus() {
+    setStatusCheck("checking");
+    try {
+      setConfirmedInvitation(await getOwnSchoolAdminInvitation());
+      setStatusCheck("idle");
+    } catch {
+      setStatusCheck("failed"); // a failed or timed-out check proves nothing and changes nothing
+    }
+  }
 
   useEffect(() => {
     if (authLoading) return;
@@ -105,6 +121,16 @@ export default function RoleSelectionPage() {
         // Show the role-assignment error below.
       }
 
+      // Only when the DATABASE refused the role because the account is an invited School Admin (a rare unmarked
+      // account) ask once (bounded); every other failure, such as an invalid Teacher code, makes no backend request.
+      // Only a positive answer changes the screen; a failed check keeps the ordinary error and retry.
+      const refusedAsInvited = /accepting a School Admin invitation/.test(String((assignmentError as { message?: unknown })?.message ?? ""));
+      const invitation = refusedAsInvited ? await getOwnSchoolAdminInvitation().catch(() => null) : null;
+      if (invitation && invitation !== "none" && invitation !== "accepted") {
+        setConfirmedInvitation(invitation);
+        setSaving(false);
+        return;
+      }
       setError(assignmentError instanceof Error && assignmentError.message === "Invalid Teacher invite code."
         ? assignmentError.message : "We couldn't save your role. Please try again.");
       setSaving(false);
@@ -112,6 +138,30 @@ export default function RoleSelectionPage() {
   };
 
   if (checking) return null;
+
+  if (showInvitation) {
+    const state = confirmedInvitation;
+    return (
+      <main className="role-selection-page">
+        <section className="role-selection-card" aria-labelledby="school-admin-invitation-title">
+          <header className="role-selection-header">
+            <h1 id="school-admin-invitation-title">School Admin invitation</h1>
+            <p role="status">
+              {state === "expired"
+                ? "Your School Admin invitation is no longer open. Ask your System Admin to resend it."
+                : state === "cancelled"
+                  ? "This School Admin invitation was cancelled and can no longer be used."
+                  : "Your School Admin access starts after you accept the invitation: open the most recent setup link from your invitation email and set your password. Email links can expire sooner than the invitation itself; if yours has, use Forgot password on the login page or ask your System Admin to resend it."}
+            </p>
+            {statusCheck === "failed" && <p role="alert">We couldn&apos;t check your invitation right now. Nothing has changed; please try again.</p>}
+          </header>
+          <button type="button" className="role-selection-continue" disabled={statusCheck === "checking"} onClick={() => void checkInvitationStatus()}>
+            {statusCheck === "checking" ? "Checking…" : "Check invitation status"}
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="role-selection-page">

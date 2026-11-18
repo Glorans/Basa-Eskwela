@@ -25,6 +25,7 @@ import {
 } from "./userManagementFilters";
 import "../../../../pages/admin/UserManagementPage.css";
 import "./UserManagementCategories.css";
+import SchoolAdminInvitationsPanel, { SchoolAdminAuthorizationNote } from "./SchoolAdminInvitationsPanel";
 import "./SchoolAdminUserManagement.css";
 
 const NO_PERMISSIONS: AccountPermissions = {
@@ -307,6 +308,9 @@ export default function UserManagementPage() {
               )}
             </div>
           )}
+          {schoolView && !isSchoolAdmin && schoolTab === "admin" && permissions.canCreateSchoolAdmin && (
+            <SchoolAdminInvitationsPanel users={users} onChanged={() => void loadUsers()} />
+          )}
           {group.title && !schoolView && <h2 className="admin-users-group-heading">{group.title}</h2>}
           <div className="admin-users-controls">
             <label className="admin-users-control admin-users-search">
@@ -398,7 +402,10 @@ export default function UserManagementPage() {
 
                 return (
                   <tr key={user.id}>
-                    <td>{getManagedUserDisplayName(user)}{isSelf ? " (You)" : ""}</td>
+                    <td>
+                      {getManagedUserDisplayName(user)}{isSelf ? " (You)" : ""}
+                      {isSystemAdmin && user.role === "admin" && <><br /><SchoolAdminAuthorizationNote authorization={user.schoolAdminAuthorization} /></>}
+                    </td>
                     <td>{user.email || "\u2014"}</td>
                     {!independentView && !isSchoolAdmin && <td>
                       <span className="admin-users-role-readonly">{roleLabel}</span>

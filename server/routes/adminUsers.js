@@ -43,6 +43,9 @@ function createAdminUsersRouter(dependencies = {}) {
   const listUsers = dependencies.listManagedUsers ?? listManagedUsers;
   const createAdmin = dependencies.createSchoolAdmin ?? createSchoolAdmin;
   const setStatus = dependencies.setManagedUserStatus ?? setManagedUserStatus;
+  const invitations = () => require("../services/schoolAdminInvitations");
+  const resendInvitation = dependencies.resendSchoolAdminInvitation ?? ((actor, id) => invitations().resendSchoolAdminInvitation(actor, id));
+  const cancelInvitation = dependencies.cancelSchoolAdminInvitation ?? ((actor, id, reason) => invitations().cancelSchoolAdminInvitation(actor, id, reason));
 
   router.get("/", async (req, res) => {
     try {
@@ -85,24 +88,56 @@ function createAdminUsersRouter(dependencies = {}) {
     }
   });
 
+  // F8: a System Admin records the authorization and invites a School Admin. The account has NO School Admin
+  // access until the invitee accepts (database-enforced). The body never sets a role.
   router.post("/school-admins", async (req, res) => {
     try {
-      const { profile } = await authorize(req);
+      const { user, profile } = await authorize(req);
       if (!describePermissions(profile.role)?.canCreateSchoolAdmin) {
         throw new AdminAuthorizationError("Only a System Admin can create School Admin accounts.");
       }
-      const account = await createAdmin({ email: req.body?.email, fullName: req.body?.fullName });
+      const account = await createAdmin(
+        { email: req.body?.email, fullName: req.body?.fullName, authorization: req.body?.authorization },
+        undefined,
+        { userId: user.id },
+      );
       return res.status(201).json({
         success: true,
         account,
         message: account.setupEmailSent
-          ? "School Admin account created. A password-setup email was sent."
-          : "School Admin account created, but the setup email could not be sent. Ask them to use Forgot password on the login page.",
+          ? "Authorization recorded and invitation sent. The account gets School Admin access only after the invitee accepts."
+          : "Authorization recorded, but the invitation email could not be sent. Use Resend invitation.",
       });
     } catch (error) {
       return sendAdminError(res, error);
     }
   });
+
+  // Resend / cancel a pending School Admin invitation (System Admin only; re-checked in the database).
+  for (const [action, run] of [["resend", resendInvitation], ["cancel", cancelInvitation]]) {
+    router.post(`/school-admins/invitations/:invitationId/${action}`, async (req, res) => {
+      try {
+        const { user, profile } = await authorize(req);
+        if (!describePermissions(profile.role)?.canCreateSchoolAdmin) {
+          throw new AdminAuthorizationError("Only a System Admin can manage School Admin invitations.");
+        }
+        if (!uuidPattern.test(req.params.invitationId)) {
+          return res.status(400).json({ success: false, message: "Invalid invitation ID." });
+        }
+        const result = await run(user.id, req.params.invitationId, req.body?.reason);
+        return res.json({
+          success: true,
+          invitation: result,
+          message: action === "cancel" ? "Invitation cancelled. It can no longer be used."
+            : result.setupEmailSent
+              ? "A new setup link was sent. The invitation stays open for 7 days; the emailed link itself may expire sooner."
+              : "The invitation stays open for 7 more days, but the email could not be sent. Try Resend again.",
+        });
+      } catch (error) {
+        return sendAdminError(res, error);
+      }
+    });
+  }
 
   return router;
 }

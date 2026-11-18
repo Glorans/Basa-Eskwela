@@ -38,3 +38,10 @@
 .system-admin-ui.m3-shell .admin-users-paginated .admin-users-table :is(th, td) { padding: 7px 12px; }
 .system-admin-ui.m3-shell .admin-users-paginated .admin-users-role-readonly { min-width: 0; padding: 6px 10px; }
 .system-admin-ui.m3-shell .admin-users-paginated .admin-users-tab-toolbar { padding-top: 0; }
+
+/* M1 F8 School Admin invitations and authorization records (System Admin only; new class names). */
+.admin-users-authorization { display: inline-block; margin-top: 4px; color: #3e5248; font-size: .8rem; line-height: 1.4; }
+.admin-users-invitations { display: grid; gap: 10px; margin: 0 0 18px; }
+.admin-users-invitations h2 { margin: 0; font-size: 1.05rem; }
+.admin-users-invitations > p { margin: 0; color: #3e5248; }
+.admin-users-invitations-note { font-size: .85rem; }

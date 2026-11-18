@@ -14,6 +14,7 @@ import {
   PASSWORD_REQUIREMENTS,
 } from "../utils/authOnboarding";
 import { recoveryPasswordUpdateFailure } from "../utils/passwordRecoveryMessages";
+import { acceptSchoolAdminInvitation, isInvitedSchoolAdmin } from "../services/accountInvitation";
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -61,10 +62,22 @@ export default function ResetPasswordPage() {
 
     try {
       await updatePassword(password);
+      // M1 F8: an invited School Admin accepts here, in the session opened from the emailed link, after the password
+      // is set. Only accounts the server marked as invited make this request; ordinary password resets make none.
+      // The server and database re-check everything; a failure or timeout grants nothing and never blocks the reset.
+      let invitationNotice = "";
+      if (isInvitedSchoolAdmin(user)) {
+        invitationNotice = await acceptSchoolAdminInvitation()
+          .then(() => "Your School Admin invitation was accepted. Log in to open your workspace.")
+          .catch((acceptError: unknown) => {
+            const message = (acceptError as { response?: { data?: { message?: string } } })?.response?.data?.message;
+            return `Your password was saved, but the School Admin invitation was not accepted. ${message ?? "We couldn't reach the server. Open the most recent setup link from your invitation email, or use Forgot password while the invitation is open."}`;
+          });
+      }
       await logout();
       navigate("/login", {
         replace: true,
-        state: { passwordReset: true },
+        state: invitationNotice ? { passwordReset: true, invitationNotice } : { passwordReset: true },
       });
     } catch (updateError) {
       // Only an ended recovery session is reported as an expired link; a rejected password says why.

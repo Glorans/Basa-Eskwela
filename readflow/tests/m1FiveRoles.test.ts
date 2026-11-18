@@ -75,6 +75,7 @@ function mountUsers(permissions: object, users: object[], changes: string[][] = 
     }
     if (id.endsWith("/utils/authOnboarding")) return real("utils/authOnboarding.ts");
     if (id.endsWith("/userManagementFilters")) return real("pages/admin/userManagementFilters.ts");
+    if (id.endsWith("/SchoolAdminInvitationsPanel")) return { default: "SchoolAdminInvitationsPanel", SchoolAdminAuthorizationNote: "SchoolAdminAuthorizationNote" };
     if (id.endsWith(".css")) return {};
     return require(id);
   });
@@ -169,7 +170,8 @@ function mountCreate(createSchoolAdmin: (input: object) => Promise<object>) {
   const page = loadComponentModule(new URL("../src/modules/module1/pages/admin/CreateSchoolAdminPage.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
     if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()] };
-    if (id.endsWith("/services/adminUsers")) return { createSchoolAdmin, getAdminUserError: (e: Error) => e.message };
+    if (id.endsWith("/services/adminUsers")) return { createSchoolAdmin, getAdminUserError: (e: Error) => e.message,
+      CONFIRMATION_METHODS: [["official_school_email", "Email from an official school address"], ["official_school_phone", "Call to the school's official phone number"]] };
     if (id.endsWith("/utils/authOnboarding")) return real("utils/authOnboarding.ts");
     if (id.endsWith(".css")) return {};
     return require(id);
@@ -178,35 +180,49 @@ function mountCreate(createSchoolAdmin: (input: object) => Promise<object>) {
   const settle = async () => { for (let i = 0; i < 6; i++) { await tick(); render(); } };
   const inputs = () => findAll(render(), (n) => n.type === "input");
   const type = (index: number, value: string) => { inputs()[index].props.onChange({ target: { value } }); render(); };
+  const choose = (value: string) => { findAll(render(), (n) => n.type === "select")[0].props.onChange({ target: { value } }); render(); };
   const submit = async () => { findAll(render(), (n) => n.type === "form")[0].props.onSubmit({ preventDefault() {} }); await settle(); };
-  return { render, settle, type, submit, inputs, text: () => textOf(render()) };
+  return { render, settle, type, choose, submit, inputs, text: () => textOf(render()) };
 }
 
-test("Create School Admin validates, sends only email and name, and shows success or the server error", async () => {
+test("Create School Admin requires an authorization record, sends no role or password, and shows success or the server error", async () => {
   const calls: object[] = [];
   let fail = false;
   const m = mountCreate(async (input) => {
     calls.push(input);
     if (fail) throw new Error("An account with this email address already exists.");
-    return { success: true, message: "School Admin account created. A password-setup email was sent." };
+    return { success: true, message: "Authorization recorded and invitation sent. The account gets School Admin access only after the invitee accepts." };
   });
   m.render();
   assert.equal(findAll(m.render(), (n) => n.type === "input" && n.props.type === "password").length, 0, "no password field");
   await m.submit();
   assert.match(m.text(), /Enter the School Admin's full name/);
   assert.match(m.text(), /Enter a valid email address/);
+  assert.match(m.text(), /Enter the authorization reference/);
+  assert.match(m.text(), /Choose how you confirmed the request/);
+  assert.match(m.text(), /Enter the position of the person who authorized it/);
   assert.equal(calls.length, 0);
+  assert.match(m.text(), /It is not proof of identity or school affiliation/, "a recorded decision, never shown as verification");
+  assert.doesNotMatch(m.text(), /verified/i);
 
   m.type(0, "  Maria Santos ");
   m.type(1, " Principal@School.Example ");
+  m.type(2, " School Principal ");
+  m.type(3, " Request letter dated 2026-11-18 ");
+  m.choose("official_school_phone");
   await m.submit();
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ email: "principal@school.example", fullName: "Maria Santos" }], "no role, no password in the request");
-  assert.match(m.text(), /password-setup email was sent/);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ email: "principal@school.example", fullName: "Maria Santos",
+    authorization: { reference: "Request letter dated 2026-11-18", confirmationMethod: "official_school_phone", authorizingPosition: "School Principal" } }],
+    "no role, no password in the request");
+  assert.match(m.text(), /access only after the invitee accepts/);
   assert.equal(m.inputs()[0].props.value, "", "form clears after success");
 
   fail = true;
   m.type(0, "Maria Santos");
   m.type(1, "principal@school.example");
+  m.type(2, "School Principal");
+  m.type(3, "Request letter dated 2026-11-18");
+  m.choose("official_school_phone");
   await m.submit();
   assert.match(m.text(), /already exists/);
 });
@@ -230,8 +246,9 @@ test("security: no public System/School Admin registration, no role editing, no 
     assert.doesNotMatch(page, /system_admin|"admin"/, path);
   }
   const service = src("modules/module1/services/adminUsers.ts");
-  const create = service.slice(service.indexOf("export async function createSchoolAdmin"));
-  assert.match(create, /\{ email: input\.email, fullName: input\.fullName \}/);
+  const start = service.indexOf("export async function createSchoolAdmin");
+  const create = service.slice(start, service.indexOf("\nexport ", start + 1));
+  assert.match(create, /\{ email: input\.email, fullName: input\.fullName, authorization: input\.authorization \}/);
   assert.doesNotMatch(create, /role|password/i);
   for (const path of ["modules/module1/pages/admin/UserManagementPage.tsx", "modules/module1/pages/admin/CreateSchoolAdminPage.tsx", "modules/module1/services/adminUsers.ts"]) {
     const file = src(path);

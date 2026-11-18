@@ -70,6 +70,21 @@ function world() {
     },
     resetPasswordForEmail: async () => ({ error: null }),
   };
+  // M1 F8 invitation RPCs (fake): the account stays role-less; only acceptance (not exercised here) grants the role.
+  db.tables.m1_school_admin_invitations = [];
+  db.rpc = async (name, args) => {
+    if (name === "m1_create_school_admin_invitation") {
+      const actor = db.tables.profiles.find((p) => p.id === args.p_actor);
+      if (actor?.role !== "system_admin") return { data: null, error: { message: "m1_invite_actor_not_system_admin" } };
+      const target = db.tables.profiles.find((p) => p.id === args.p_user);
+      target.full_name = args.p_full_name;
+      const id = uuid(200 + db.tables.m1_school_admin_invitations.length);
+      db.tables.m1_school_admin_invitations.push({ id, user_id: args.p_user, authorized_by: args.p_actor, status: "pending", expires_at: "2099-01-01T00:00:00Z" });
+      return { data: id, error: null };
+    }
+    if (name === "m1_record_school_admin_invitation_email") return { data: "2099-01-01T00:00:00Z", error: null };
+    return { data: null, error: { message: `unexpected rpc ${name}` } };
+  };
   const getSupabaseAdmin = () => db;
   // Bearer token -> user, like Supabase Auth. The token never carries a role.
   const getAuthenticatedSupabaseUser = async (req) => {
@@ -85,7 +100,7 @@ function world() {
     authorizeAccountManager: (req) => authorizeAccountManager(req, deps),
     listManagedUsers: (_unused, role) => listManagedUsers({ getSupabaseAdmin }, role),
     deleteManagedUser: (requesterId, userId, _unused, role) => deleteManagedUser(requesterId, userId, { getSupabaseAdmin }, role),
-    createSchoolAdmin: (input) => createSchoolAdmin(input, { getSupabaseAdmin, passwordSetupRedirect: () => "https://basaeskwela.com/reset-password" }),
+    createSchoolAdmin: (input, _unused, requester) => createSchoolAdmin(input, { getSupabaseAdmin, passwordSetupRedirect: () => "https://basaeskwela.com/reset-password" }, requester),
   }));
   app.use("/api/admin/diagnostic-results", createAdminDiagnosticResultsRouter({
     authorizeAdminRequest: (req) => authorizeAdminRequest(req, deps),
@@ -199,11 +214,16 @@ test("System Admin manages Independent Learners and School Admins, never System 
     }
     assert.deepEqual(deletedAuthUsers, [], "no Auth user is ever deleted");
 
-    const created = await call("system", "POST", "/api/admin/users/school-admins", { email: "Principal@School.test", fullName: "Pat Principal", role: "system_admin" });
+    assert.equal((await call("system", "POST", "/api/admin/users/school-admins", { email: "x@school.test", fullName: "No Basis" })).status, 400,
+      "an authorization record is required");
+    const created = await call("system", "POST", "/api/admin/users/school-admins", { email: "Principal@School.test", fullName: "Pat Principal", role: "system_admin",
+      authorization: { reference: "Request letter dated 2026-11-18", confirmationMethod: "official_school_phone", authorizingPosition: "School Principal" } });
     assert.equal(created.status, 201);
-    assert.equal(created.json.account.role, "admin");
+    assert.equal(created.json.account.role, null, "no role until the invitation is accepted");
+    assert.equal(created.json.account.invitationStatus, "pending");
     const row = db.tables.profiles.find((p) => p.full_name === "Pat Principal");
-    assert.equal(row.role, "admin", "the body's role is ignored; only School Admin can be created");
+    assert.equal(row.role, null, "the body's role is ignored; the account has no access while pending");
+    assert.equal(db.tables.m1_school_admin_invitations.at(-1).authorized_by, uuid(1), "the authorizing System Admin is recorded");
     assert.equal(db.tables.profiles.filter((p) => p.role === "system_admin").length, 2, "no new System Admin");
 
     // No System Admin access to School Admin (M2-M8) features.
