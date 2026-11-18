@@ -23,9 +23,9 @@ import '/src/index.css';
 const params=new URLSearchParams(location.search);const role=params.get('role')||'system_admin';
 window.fixtureProfile={id:'self',role,full_name:'Review Admin'};
 window.loads=0;window.changes=[];window.creates=[];
-window.rows=params.has('empty')?[]:['admin','teacher','student','general_user','system_admin'].map((role,i)=>({id:role==='system_admin'?'self':role,role,fullName:role+' Name',nickname:'',email:role+'@example.test',status:i===3?'inactive':'active',signInBlocked:i===3,createdAt:'2026-11-01'}));
+window.rows=params.has('empty')?[]:['admin','teacher','student','general_user','system_admin'].map((role,i)=>({id:role==='system_admin'?'self':role,role,fullName:role+' Name',nickname:'',email:role+'@example.test',status:i===3?'inactive':'active',signInBlocked:i===3,createdAt:'2026-11-01',teacherStatus:role==='teacher'?'pending':null}));
 if(params.has('many')) window.rows=['admin','teacher','student','general_user'].flatMap(role=>Array.from({length:23},(_,i)=>({id:role+i,role,fullName:role+' Person '+String(i+1).padStart(2,'0'),nickname:'',email:role+i+'@example.test',status:i<11?'active':'inactive',signInBlocked:i>=11,createdAt:'2026-11-01',teacherStatus:role==='teacher'?'approved':null})));
-createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={[params.has('create')?'/system-admin/school-admins/new':'/system-admin/users?section='+ (params.get('section')||'all')]}><Routes><Route element={<M3 role={role}/>}><Route path='/system-admin/users' element={<Users/>}/><Route path='/system-admin/school-admins/new' element={<Create/>}/></Route></Routes></MemoryRouter>);
+createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={[params.has('create')?'/system-admin/school-admins/new':(role==='admin'?'/admin/users':'/system-admin/users?section='+ (params.get('section')||'all'))]}><Routes><Route element={<M3 role={role}/>}><Route path='/system-admin/users' element={<Users/>}/><Route path='/admin/users' element={<Users/>}/><Route path='/system-admin/school-admins/new' element={<Create/>}/></Route></Routes></MemoryRouter>);
 `;},
 async transform(code,id){if(id==='\0account-fixture.tsx')return transformWithEsbuild(code,'fixture.tsx',{loader:'tsx',jsx:'automatic'});
 const file=id.replaceAll('\\','/');
@@ -40,14 +40,14 @@ export function getAdminUserError(e){return e.message;}
 `,map:null};
 },
 configureServer(server){server.middlewares.use(async(req,res,next)=>{if(!req.url.startsWith('/fixture'))return next();res.setHeader('Content-Type','text/html');res.end(await server.transformIndexHtml(req.url,'<html><body><div id="root"></div><script type="module" src="/account-fixture.tsx"></script></body></html>'));});}
-}],server:{host:'127.0.0.1',port:process.env.M1_REVIEW_ONLY ? Number(process.env.M1_REVIEW_PORT || 5181) : 0,strictPort:true}});
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'filipino-ui-'));
+}],server:{host:'127.0.0.1',port:process.env.M1_REVIEW_ONLY ? Number(process.env.M1_REVIEW_PORT || 5182) : 0,strictPort:true}});
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'm1-account-review-'));
 let chrome, ws;
 const pause = ms => new Promise(r => setTimeout(r, ms));
 try {
   await vite.listen();
   const port = vite.httpServer.address().port;
-  if(process.env.M1_REVIEW_ONLY){console.log('Fixture-only UI review: http://127.0.0.1:'+port+'/fixture?many');await new Promise(()=>{});}
+  if(process.env.M1_REVIEW_ONLY){console.log('Fixture-only UI review: http://127.0.0.1:'+port+'/fixture?role=admin&many');await new Promise(()=>{});}
   chrome = spawn(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe',
     ['--headless=new', '--no-first-run', '--disable-gpu', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' });
   let startupError; chrome.on('error', e => startupError = e);
@@ -77,7 +77,7 @@ try {
   });
   await send('Fetch.enable',{patterns:[{urlPattern:'*'}]});
 
- const captures=process.env.M1_REVIEW_SCREENSHOTS||path.join(os.tmpdir(),'basa-m1-tabs-review'); /* outside the repository */fs.mkdirSync(captures,{recursive:true});
+ const captures=process.env.M1_REVIEW_SCREENSHOTS||path.join(os.tmpdir(),'basa-school-admin-tabs-review'); /* outside the repository */fs.mkdirSync(captures,{recursive:true});
  const click=async selector=>evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
  const navigate=async query=>{await send('Page.navigate',{url:`http://127.0.0.1:${port}/fixture?${query}`});await until('!!document.querySelector(".admin-users-table") || !!document.querySelector(".create-school-admin-form")');};
  const fill=async(selector,value)=>evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`);
@@ -179,9 +179,60 @@ try {
  await evaluate('document.querySelector(".admin-users-table-wrap").scrollIntoView()');
  shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(captures,`independent-accounts-${width}.png`),Buffer.from(shot.data,'base64'));
  }
+
+ for(const width of [320,390,768,1366]){
+ await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
+ await navigate('role=admin&many');
+ assert.equal(await evaluate('document.querySelectorAll(".system-admin-ui").length'),0);
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".school-admin-users-summary strong")].map(e=>e.textContent)'),['23','23']);
+ assert.deepEqual(await evaluate('[...document.querySelectorAll("[role=tab]")].map(e=>e.textContent)'),['Teachers (23)','Students (23)']);
+ assert.equal(await evaluate('document.querySelector("[role=tab][aria-selected=true]").id'),'school-tab-teacher');
+ for(const role of ['teacher','student']){
+ await click('#school-tab-'+role);await until(`document.querySelector('#school-tab-${role}').getAttribute('aria-selected')==='true'`);
+ assert.equal(await evaluate('document.querySelectorAll(".admin-users-table").length'),1);
+ assert.equal(await evaluate('document.querySelectorAll("tbody tr").length'),10);
+ assert.deepEqual(await evaluate('[...document.querySelectorAll("th")].map(e=>e.textContent)'),role==='teacher'?['Name','Email','Account Status','Registration Date','Teacher Verification','Actions']:['Name','Email','Account Status','Registration Date','Actions']);
+ await click('.admin-users-pagination button:last-child');await click('.admin-users-pagination button:last-child');
+ await until('document.querySelectorAll("tbody tr").length===3');
+ assert.match(await evaluate('document.querySelector(".admin-users-result-count").textContent'),/21 - 23 of 23/);
+ await fill('[aria-label="Search users"]',role+'22@example.test');await until('document.querySelectorAll("tbody tr").length===1');
+ assert.equal(await evaluate('document.querySelector(".admin-users-pagination span").textContent'),'Page 1 of 1');
+ await fill('[aria-label="Status filter"]','active');await until('!!document.querySelector(".admin-users-empty")');
+ assert.equal(await evaluate('document.querySelectorAll(".admin-users-pagination button:disabled").length'),2);
+ await click('[aria-label="Clear filters"]');
+ await fill('[aria-label="Status filter"]','active');await click('.admin-users-pagination button:last-child');
+ await until('document.querySelectorAll("tbody tr").length===1');
+ await evaluate('window.confirmResult=false');await click('tbody button');
+ const before=await evaluate('window.changes.length');
+ await evaluate('window.confirmResult=true');await click('tbody button');await until(`window.changes.length===${before+1}`);
+ await until('document.querySelector(".admin-users-pagination span").textContent==="Page 1 of 1"');
+ assert.equal(await evaluate('document.querySelectorAll("tbody tr").length'),10);
+ await fill('[aria-label="Status filter"]','inactive');await until('document.querySelectorAll("tbody tr").length===10');
+ await click('tbody button');await until(`window.changes.length===${before+2}`);
+ await click('[aria-label="Clear filters"]');
+ assert.deepEqual(await evaluate('[...document.querySelectorAll(".school-admin-users-summary strong")].map(e=>e.textContent)'),['23','23']);
+ assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
+ if(width===390||width===1366){
+ await evaluate('document.querySelector(".school-admin-users").scrollIntoView()');
+ const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(captures,`school-admin-${role}-${width}.png`),Buffer.from(shot.data,'base64'));
+ }
+ }
+ assert.equal(await evaluate('window.loads'),1);
+ await click('.admin-users-pagination button:last-child');await click('#school-tab-teacher');
+ assert.equal(await evaluate('document.querySelector(".admin-users-pagination span").textContent'),'Page 1 of 3');
+ await evaluate('document.querySelector("#school-tab-teacher").focus()');
+ await send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
+ await until('document.activeElement.id==="school-tab-student"');
+ await click('.admin-users-header button');await until('window.loads===2');
+ }
  await navigate('role=admin');
+ await until('!!document.querySelector("#school-tab-teacher")');
  assert.equal(await evaluate('document.querySelectorAll(".admin-users-categories").length'),0);
- assert.equal(await evaluate('document.querySelectorAll("tbody button:not(:disabled)").length'),2);
+ assert.equal(await evaluate('document.querySelectorAll("tbody button:not(:disabled)").length'),1);
+ assert.equal(await evaluate(`document.querySelector('tbody a').getAttribute('href')`),'/admin/teacher-invitations?tab=pending');
+ await navigate('role=admin&empty');
+ assert.equal(await evaluate('document.querySelectorAll(".admin-users-empty").length'),1);
+ await click('#school-tab-student');assert.equal(await evaluate('document.querySelectorAll(".admin-users-empty").length'),1);
  await navigate('empty');await click('a[href$="?section=school"]');await until('document.querySelectorAll(".admin-users-empty").length===1');
  await navigate('create');await fill('input[type="text"]','New Admin');await fill('input[type="email"]','admin@example.test');
  await evaluate('window.failCreate=true');await click('button[type="submit"]');await until('document.body.textContent.includes("Fixture create error")');
