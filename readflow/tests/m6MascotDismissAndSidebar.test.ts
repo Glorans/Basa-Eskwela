@@ -124,7 +124,9 @@ test("every role's sidebar uses one shared navigation scroller with the brand ou
     const source = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.match(source, /<nav className="[^"]*\brf-sidebar-scroll\b/, file);
     assert.match(source, /className="[^"]*\brf-sidebar-main\b/, file);
-    assert.doesNotMatch(source, /rf-sidebar-footer|await logout\(\)/, file);
+    // Logout is the shared footer after the scroller (never inside it), so a long menu cannot hide it.
+    assert.doesNotMatch(source, /await logout\(\)/, file);
+    assert.ok(source.indexOf("<SidebarLogout ") > source.indexOf("</nav>"), file);
     // The brand stays outside the scroller: it comes before the <nav> inside the fixed part of the sidebar.
     assert.ok(source.indexOf("Basa Eskwela, go to Dashboard") < source.indexOf("rf-sidebar-scroll"), file);
   }

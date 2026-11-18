@@ -38,7 +38,7 @@ test("Refactor #7 login flow uses authService without duplicating routing", asyn
 
 test("logout, forgot-password, and reset-password mutations use authService", async () => {
   const [sidebar, forgotPassword, resetPassword] = await Promise.all([
-    source("components/basa/ProfileDropdown.tsx"),
+    source("components/basa/SidebarLogout.tsx"),
     source("modules/module1/pages/ForgotPasswordPage.tsx"),
     source("modules/module1/pages/ResetPasswordPage.tsx"),
   ]);

@@ -86,17 +86,20 @@ try {
  for(const width of [320,390,768,1366]) for(const [persona,role] of [['System Admin','system_admin'],['School Admin','admin'],['Teacher','teacher'],['Student','student'],['Independent Learner','general_user']]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
   await navigate(`role=${role}`);await until(`!!document.querySelector('.profile-dropdown-trigger')`);
-  assert.equal(await evaluate(`Array.from(document.querySelectorAll('aside a,aside button')).some(e=>/Settings|Logout/.test(e.textContent))`),false);
+  // Sidebar: no Settings, exactly one Logout (the shared footer).
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll('aside a,aside button')).some(e=>/Settings/.test(e.textContent))`),false);
+  assert.equal(await evaluate(`document.querySelectorAll('aside .rf-sidebar-footer button').length`),1);
+  // Account menu: identity and Settings only.
   await click('.profile-dropdown-trigger');await until(`!!document.querySelector('[role="menu"]')`);
-  assert.equal(await evaluate(`document.querySelectorAll('[role="menuitem"]').length`),2);
+  assert.equal(await evaluate(`document.querySelectorAll('[role="menuitem"]').length`),1);
+  assert.equal(await evaluate(`/Logout/.test(document.querySelector('.profile-dropdown-panel').textContent)`),false);
   const identity=await evaluate(`document.querySelector('.profile-dropdown-identity').textContent`);
   assert.ok(identity.includes(role==='student'||role==='general_user'?'Ana':'Maria Santos'));
   assert.ok(identity.includes(persona));
   const bounds=await evaluate(`(()=>{const r=document.querySelector('.profile-dropdown-panel').getBoundingClientRect();return {left:r.left,right:r.right,bottom:r.bottom,overflow:document.documentElement.scrollWidth>innerWidth+1};})()`);
   assert.ok(bounds.left>=0&&bounds.right<=width&&bounds.bottom<=900&&!bounds.overflow,JSON.stringify({width,persona,bounds}));
   assert.equal(await evaluate(`document.activeElement.textContent`),'Settings');
-  await key('ArrowDown');assert.equal(await evaluate(`document.activeElement.textContent`),'Logout');
-  await key('Home');assert.equal(await evaluate(`document.activeElement.textContent`),'Settings');
+  await key('ArrowDown');assert.equal(await evaluate(`document.activeElement.textContent`),'Settings');
   await key('Escape');assert.equal(await evaluate(`!!document.querySelector('[role="menu"]')`),false);
   assert.equal(await evaluate(`document.activeElement.className`),'profile-dropdown-trigger');
   await key('Enter');await until(`!!document.querySelector('[role="menu"]')`);
@@ -106,10 +109,32 @@ try {
   assert.equal(await evaluate(`!!document.querySelector('[role="menu"]')`),false);
   if(width<1000){await click(role==='student'?'.basa-menu-button':'.m3-menu-button');await key('Escape');await pause(100);await click('.profile-dropdown-trigger');
    assert.equal(await evaluate(`!!document.querySelector('.basa-sidebar--open,.m3-sidebar--open')`),false);
-  }else await click('.profile-dropdown-trigger');
+   await key('Escape');await pause(100);
+  }
+  // Logout sits at the bottom of the sidebar, below the navigation, uncovered; phones/tablets open the drawer first.
+  const openSidebar=async()=>{if(width<1000){await click(role==='student'?'.basa-menu-button':'.m3-menu-button');await until(`!!document.querySelector('.basa-sidebar--open,.m3-sidebar--open')`);await pause(300);}};
+  const footerGeometry=()=>evaluate(`(()=>{const aside=document.querySelector('aside.rf-sidebar');const a=aside.getBoundingClientRect();const f=aside.querySelector('.rf-sidebar-footer');const b=f.querySelector('button');const r=b.getBoundingClientRect();const n=aside.querySelector('nav');const nr=n.getBoundingClientRect();const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {bottomLimit:Math.min(a.bottom,innerHeight),buttonTop:r.top,buttonBottom:r.bottom,footerTop:f.getBoundingClientRect().top,navBottom:nr.bottom,navScrolls:n.scrollHeight>n.clientHeight+1,asideWidth:a.width,label:b.getAttribute('aria-label'),title:b.title,uncovered:b.contains(hit)};})()`);
+  const checkFooter=(g,where)=>{assert.equal(g.label,'Logout',where);assert.ok(g.uncovered,where+JSON.stringify(g));assert.ok(g.navBottom<=g.footerTop+1,where+' nav overlaps Logout '+JSON.stringify(g));
+   assert.ok(g.buttonBottom<=g.bottomLimit+1&&g.buttonBottom>=g.bottomLimit-90,where+' Logout not at the bottom '+JSON.stringify(g));};
+  await openSidebar();checkFooter(await footerGeometry(),`${width} ${persona}`);
+  if(width<1000){await key('Escape');await pause(300);}
+  // A short screen: the navigation scrolls, Logout stays visible at the bottom.
+  await send('Emulation.setDeviceMetricsOverride',{width,height:600,deviceScaleFactor:1,mobile:false});await pause(150);
+  await openSidebar();const short=await footerGeometry();checkFooter(short,`${width}x600 ${persona}`);if(role==='admin')assert.ok(short.navScrolls,'admin navigation scrolls on a short screen');
+  if(width<1000){await key('Escape');await pause(300);}
+  await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});await pause(150);
+  // Collapsed desktop rail: icon only, still labelled and reachable.
+  if(width>=1000){await click('.rf-rail-toggle');await pause(300);const rail=await footerGeometry();assert.ok(rail.asideWidth<=81,JSON.stringify(rail));checkFooter(rail,`rail ${persona}`);
+   assert.equal(await evaluate(`getComputedStyle(document.querySelector('aside .rf-sidebar-footer .rf-nav-label')).display`),'none');
+   await click('.rf-rail-toggle');await pause(300);}
+  await openSidebar();
   const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(captures,`${width}-${persona}.png`),Buffer.from(shot.data,'base64'));
-  await click('[role="menuitem"]:last-child');await until(`document.querySelector('h1')?.textContent==='Login'`);
-  assert.equal(await evaluate(`window.logoutCalled`),true);await click('a');await pause(100);assert.equal(await evaluate(`document.querySelector('h1')?.textContent`),'Login');checks++;
+  // Keyboard: focus Logout and press Enter; the existing sign-out runs and the learner lands on Login.
+  await evaluate(`document.querySelector('aside .rf-sidebar-footer button').focus()`);
+  assert.equal(await evaluate(`document.activeElement.getAttribute('aria-label')`),'Logout');
+  await key('Enter');await until(`document.querySelector('h1')?.textContent==='Login'`);
+  assert.equal(await evaluate(`window.logoutCalled`),true);await click('a');await pause(100);assert.equal(await evaluate(`document.querySelector('h1')?.textContent`),'Login');
+  await evaluate(`window.logoutCalled=false`);checks++;
  }
  for(const width of [320,390,768,1366])for(const language of ['en','fil'])for(const screen of ['result','reading','questions']){
   await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
@@ -122,12 +147,13 @@ try {
   assert.equal(await evaluate(`document.documentElement.scrollWidth>innerWidth+1`),false,`${screen} overflow at ${width}`);
   const shot=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(captures,`${width}-${language}-${screen}.png`),Buffer.from(shot.data,'base64'));checks++;
  }
- // A failed sign-out must retain access, report failure, and allow another attempt.
+ // A failed sign-out must retain access, report failure in the sidebar, and allow another attempt.
  await navigate('role=student');await until(`!!document.querySelector('.profile-dropdown-trigger')`);
- await evaluate(`window.failLogout=true`);await click('.profile-dropdown-trigger');await click('[role="menuitem"]:last-child');
- await until(`!!document.querySelector('[role="alert"]')`);
+ await evaluate(`window.failLogout=true`);await click('aside .rf-sidebar-footer button');
+ await until(`document.querySelector('aside [role="alert"]')?.textContent==='Could not sign out. Please try again.'`);
  assert.equal(await evaluate(`!!document.querySelector('.profile-dropdown-trigger')`),true);
- await evaluate(`window.failLogout=false`);await click('.profile-dropdown-trigger');await click('[role="menuitem"]:last-child');
+ assert.equal(await evaluate(`document.querySelector('aside .rf-sidebar-footer button').disabled`),false);
+ await evaluate(`window.failLogout=false`);await click('aside .rf-sidebar-footer button');
  await until(`document.querySelector('h1')?.textContent==='Login'`);checks++;
  await navigate('screen=result&language=fil');await until(`document.querySelector('h1')?.textContent==='Resulta ng Pagbasa sa Filipino'`);
  await send('Page.reload');await until(`document.querySelector('h1')?.textContent==='Resulta ng Pagbasa sa Filipino'`);checks++;

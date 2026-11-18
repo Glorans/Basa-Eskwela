@@ -1,0 +1,21 @@
+.sidebar-logout-error {
+  margin: 0;
+  padding: 0 6px;
+  color: #10231f;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+/* Collapsed desktop rail (80 px, same breakpoint as responsive-shell.css): the message is still announced, but not
+   squeezed into the narrow rail. Phones and tablets always show it in the drawer. */
+@media (min-width: 1000px) {
+  .rf-shell--collapsed .sidebar-logout-error {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}

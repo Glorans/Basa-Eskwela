@@ -44,7 +44,7 @@ test("each role's sidebar gains only its own M5/M7/M8 entries", async () => {
   const general = layout.slice(layout.indexOf('if (role === "general_user")'));
   for (const to of ["/m3/general/leaderboard", "/m3/general/badges", "/m3/general/reading-history"]) assert.ok(general.includes(`to: "${to}"`), to);
   assert.match(layout, /getM3WorkspaceRoot\(role\)/, "M3 refactor helper is preserved");
-  assert.match(await read("../src/components/basa/ProfileDropdown.tsx"), /await logout\(\)/, "Shared menu preserves M1 sign-out through authService");
+  assert.match(await read("../src/components/basa/SidebarLogout.tsx"), /await logout\(\)/, "Shared sidebar Logout preserves M1 sign-out through authService");
 });
 
 test("admin practice uses the learner pages with admin-only return paths", async () => {

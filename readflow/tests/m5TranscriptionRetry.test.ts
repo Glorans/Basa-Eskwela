@@ -5,7 +5,8 @@ import ts from "typescript";
 
 // After a temporary speech-service failure the learner processes the SAME recording again;
 // only a recording problem asks for a new recording. The helper is evaluated from the page source.
-const page = readFileSync(new URL("../src/pages/reading-activity/ReadAloudPage.tsx", import.meta.url), "utf8");
+// Line endings normalized: Windows checkouts (core.autocrlf) have CRLF.
+const page = readFileSync(new URL("../src/pages/reading-activity/ReadAloudPage.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const start = page.indexOf("const RECORD_AGAIN_CODES");
 const end = page.indexOf("\n}\n", start) + 3;
 const helperJs = ts.transpileModule(page.slice(start, end).replace("export function", "function"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;

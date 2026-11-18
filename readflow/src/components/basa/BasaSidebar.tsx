@@ -2,6 +2,7 @@ import { Archive, School, Home, BookOpen, Trophy, Award, Menu, X } from "lucide-
 import type useResponsiveSidebar from "../../hooks/useResponsiveSidebar";
 import { Link, NavLink } from "react-router-dom";
 import mascot from "../../assets/mascot.png";
+import SidebarLogout from "./SidebarLogout";
 import "./BasaSidebar.css";
 
 interface BasaSidebarProps {
@@ -66,6 +67,7 @@ export default function BasaSidebar({ open, onClose, controller }: BasaSidebarPr
           </nav>
         </div>
 
+        <SidebarLogout footerClassName="basa-sidebar-footer" buttonClassName="basa-sidebar-item" onSignedOut={onClose} />
       </aside>
     </>
   );

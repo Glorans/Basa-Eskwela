@@ -22,6 +22,7 @@ import {
 import { Link, NavLink, Outlet } from "react-router-dom";
 import mascot from "../../../assets/mascot.png";
 import ProfileDropdown from "../../../components/basa/ProfileDropdown";
+import SidebarLogout from "../../../components/basa/SidebarLogout";
 import { getRoleHomePath, ROLE_LABELS } from "../../module1/utils/authOnboarding";
 import type { M3Role } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
@@ -195,6 +196,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
           </nav>
         </div>
 
+        <SidebarLogout footerClassName="m3-sidebar-footer" buttonClassName="m3-sidebar-quiet-link" onSignedOut={() => sidebar.close()} />
       </aside>
 
       <div className="m3-workspace rf-workspace" ref={sidebar.workspaceRef}>
