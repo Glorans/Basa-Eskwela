@@ -150,6 +150,8 @@ function mountForgot(resetResult: () => Promise<{ error: unknown }>) {
   const page = loadComponentModule(new URL("../src/modules/module1/pages/ForgotPasswordPage.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
     if (id.endsWith("/services/authService")) return service;
+    // No School Admin invitation: ordinary password resets are unchanged.
+    if (id.endsWith("/services/accountInvitation")) return { isInvitedSchoolAdmin: () => false, getOwnSchoolAdminInvitation: async () => "none", acceptSchoolAdminInvitation: async () => { throw new Error("not invited"); } };
     if (id.endsWith("/utils/authOnboarding")) return real("modules/module1/utils/authOnboarding.ts");
     if (id.includes("/components/")) return { default: () => null };
     return require(id);
@@ -232,6 +234,8 @@ function mountReset(updateResult: () => Promise<{ error: unknown }>, signOutResu
     if (id === "react-router-dom") return { Link: "a", useNavigate: () => (...args: unknown[]) => navigations.push(args) };
     if (id.endsWith("/auth/useAuth")) return { useAuth: () => ({ user: { id: "u1" }, loading: false, authEvent: "PASSWORD_RECOVERY" }) };
     if (id.endsWith("/services/authService")) return service;
+    // No School Admin invitation: ordinary password resets are unchanged.
+    if (id.endsWith("/services/accountInvitation")) return { isInvitedSchoolAdmin: () => false, getOwnSchoolAdminInvitation: async () => "none", acceptSchoolAdminInvitation: async () => { throw new Error("not invited"); } };
     if (id.endsWith("/utils/authOnboarding")) return real("modules/module1/utils/authOnboarding.ts");
     if (id.endsWith("/utils/passwordRecoveryMessages")) return real("modules/module1/utils/passwordRecoveryMessages.ts");
     if (id.includes("/components/")) return { default: () => null };

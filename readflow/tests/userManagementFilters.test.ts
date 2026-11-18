@@ -131,5 +131,5 @@ test("nickname-only matches are excluded from name and email search", () => {
 
 test("Admin user table renders the role-aware display name", async () => {
   const page = await readFile(new URL("../src/modules/module1/pages/admin/UserManagementPage.tsx", import.meta.url), "utf8");
-  assert.match(page, /<td>\{getManagedUserDisplayName\(user\)\}/);
+  assert.match(page, /<td>\s*\{getManagedUserDisplayName\(user\)\}/);
 });

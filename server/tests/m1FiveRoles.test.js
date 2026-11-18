@@ -121,66 +121,7 @@ test("reserved deletion process: each administrator deletes only inside its scop
   await assert.rejects(deleteManagedUser(id(1), id(1), { ...APPROVED }, "system_admin"), (error) => error.statusCode === 409, "no self-deletion");
 });
 
-function creationClient({ existingEmails = [], roleUpdateFails = false, emailFails = false, createStatus } = {}) {
-  const log = { created: [], roleUpdates: [], deleted: [], resetEmails: [] };
-  const client = {
-    auth: {
-      admin: {
-        listUsers: async () => ({ data: { users: existingEmails.map((email, i) => ({ id: id(50 + i), email })) }, error: null }),
-        createUser: async (args) => { log.created.push(args); return createStatus ? { data: null, error: { status: createStatus } } : { data: { user: { id: id(77) } }, error: null }; },
-        deleteUser: async (userId) => { log.deleted.push(userId); return { error: null }; },
-      },
-      resetPasswordForEmail: async (email, options) => { log.resetEmails.push({ email, ...options }); return { error: emailFails ? { status: 429 } : null }; },
-    },
-    from: (table) => {
-      assert.equal(table, "profiles");
-      const update = { values: null, filters: [] };
-      return {
-        update(values) { update.values = values; return this; },
-        eq(column, value) { update.filters.push(["eq", column, value]); return this; },
-        is(column, value) { update.filters.push(["is", column, value]); return this; },
-        async select() {
-          log.roleUpdates.push(update);
-          return roleUpdateFails ? { data: [], error: null } : { data: [{ id: id(77), role: update.values.role }], error: null };
-        },
-      };
-    },
-  };
-  return { log, client };
-}
-const deps = (client) => ({ getSupabaseAdmin: () => client, passwordSetupRedirect: () => "https://basaeskwela.com/reset-password" });
-
-test("F8 create School Admin: no password, role set only on the new unassigned profile, setup email via the reset flow", async () => {
-  const { log, client } = creationClient();
-  const account = await createSchoolAdmin({ email: "  New.Admin@Example.TEST ", fullName: "  Maria   Santos " }, deps(client));
-  assert.deepEqual(account, { id: id(77), email: "new.admin@example.test", fullName: "Maria Santos", role: "admin", setupEmailSent: true });
-  assert.deepEqual(log.created, [{ email: "new.admin@example.test", email_confirm: true }], "no password is generated or sent");
-  assert.deepEqual(log.roleUpdates[0].values, { role: "admin", full_name: "Maria Santos", status: "active" });
-  assert.deepEqual(log.roleUpdates[0].filters, [["eq", "id", id(77)], ["is", "role", null]], "only the new account, only while it has no role");
-  assert.deepEqual(log.resetEmails, [{ email: "new.admin@example.test", redirectTo: "https://basaeskwela.com/reset-password" }]);
-  assert.deepEqual(log.deleted, []);
-});
-
-test("F8 safety: duplicates, invalid input, failed role assignment and failed email are handled", async () => {
-  let run = creationClient({ existingEmails: ["taken@example.test"] });
-  await assert.rejects(createSchoolAdmin({ email: "TAKEN@example.test", fullName: "A B" }, deps(run.client)), (e) => e.statusCode === 409);
-  assert.equal(run.log.created.length, 0, "no account created for a duplicate");
-  run = creationClient({ createStatus: 422 });
-  await assert.rejects(createSchoolAdmin({ email: "race@example.test", fullName: "A B" }, deps(run.client)), (e) => e.statusCode === 409);
-  for (const input of [{ email: "not-an-email", fullName: "A B" }, { email: "a@b.co", fullName: "  " }, { email: "a@b.co", fullName: "x".repeat(101) }, {}]) {
-    await assert.rejects(createSchoolAdmin(input, deps(creationClient().client)), (e) => e.statusCode === 400, JSON.stringify(input));
-  }
-  run = creationClient({ roleUpdateFails: true });
-  await assert.rejects(createSchoolAdmin({ email: "x@example.test", fullName: "A B" }, deps(run.client)), (e) => e.statusCode === 500);
-  assert.deepEqual(run.log.deleted, [id(77)], "the half-created Auth account is removed again");
-  assert.equal(run.log.resetEmails.length, 0);
-  run = creationClient({ emailFails: true });
-  assert.equal((await createSchoolAdmin({ email: "y@example.test", fullName: "A B" }, deps(run.client))).setupEmailSent, false);
-  await assert.rejects(createSchoolAdmin({ email: "z@example.test", fullName: "A B" }, { getSupabaseAdmin: () => run.client, passwordSetupRedirect: () => null }), (e) => e.statusCode === 503);
-  assert.equal(passwordSetupRedirect({ FRONTEND_ORIGIN: "https://basaeskwela.com/, http://127.0.0.1:5174" }), "https://basaeskwela.com/reset-password");
-  assert.equal(passwordSetupRedirect({ FRONTEND_ORIGIN: "" }), null);
-  assert.equal(passwordSetupRedirect({ FRONTEND_ORIGIN: "javascript:alert(1)" }), null);
-});
+// F8 creation is covered by tests/m1SchoolAdminInvitations.test.js (authorization record + invitation lifecycle).
 
 async function server(dependencies, callback) {
   const app = express();
@@ -225,7 +166,7 @@ test("routes: permissions summary, scoped delete, and School Admin creation for 
     assert.deepEqual(listing.permissions.deletableRoles, ["general_user", "admin"]);
     const response = await post(url, { email: "new@school.test", fullName: "New Admin", role: "system_admin" });
     assert.equal(response.status, 201);
-    assert.deepEqual(calls.create.at(-1), { email: "new@school.test", fullName: "New Admin" }, "a role in the request body is ignored");
-    assert.match((await response.json()).message, /password-setup email/);
+    assert.deepEqual(calls.create.at(-1), { email: "new@school.test", fullName: "New Admin", authorization: undefined }, "a role in the request body is ignored");
+    assert.match((await response.json()).message, /invitation sent. The account gets School Admin access only after the invitee accepts/);
   });
 });
