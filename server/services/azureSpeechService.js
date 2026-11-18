@@ -84,7 +84,7 @@ async function releaseAudio(audioConfig) {
  * the end of the session. `onRecognized` receives each final utterance.
  */
 async function recognizePcm({
-  sdk, config, locale, pcm, configure, onRecognized, onNoMatch, cleanupMs = CLEANUP_MS, timeoutMs = config.timeoutMs, signal,
+  sdk, config, locale, pcm, configure, onRecognized, onNoMatch, onEnd, cleanupMs = CLEANUP_MS, timeoutMs = config.timeoutMs, signal,
 }) {
   if (signal?.aborted) throw new SpeechTranscriptionError("STT_PROVIDER_ERROR");
   const speechConfig = createSpeechConfig(sdk, config, locale);
@@ -123,10 +123,10 @@ async function recognizePcm({
         else if (event.result?.reason === sdk.ResultReason.NoMatch) onNoMatch?.(event.result);
       });
       recognizer.canceled = safe((_sender, event) => {
-        if (event.reason === sdk.CancellationReason.EndOfStream) finish();
+        if (event.reason === sdk.CancellationReason.EndOfStream) { onEnd?.("end_of_stream"); finish(); }
         else finish(cancellationError(sdk, event.errorCode, event.errorDetails));
       });
-      recognizer.sessionStopped = safe(() => finish());
+      recognizer.sessionStopped = safe(() => { onEnd?.("session_stopped"); finish(); });
       recognizer.startContinuousRecognitionAsync(safe(() => {
         stream.write(pcm);
         closeStream();
@@ -214,6 +214,24 @@ function phraseListConfigurer(sdk, locale, phrases) {
   };
 }
 
+/**
+ * Peak and RMS level of the 16-bit PCM in dBFS, for the empty-transcription log only. Two numbers describe the
+ * loudness of the whole recording; they reveal nothing that was said. -Infinity (all zero samples) is reported as null.
+ */
+function pcmLevel(buffer, wav) {
+  let peak = 0;
+  let sumSquares = 0;
+  const samples = wav.dataBytes / 2;
+  for (let index = 0; index < samples; index += 1) {
+    const sample = buffer.readInt16LE(wav.dataOffset + index * 2);
+    const magnitude = Math.abs(sample);
+    if (magnitude > peak) peak = magnitude;
+    sumSquares += sample * sample;
+  }
+  const dbfs = (value) => (value > 0 ? Number((20 * Math.log10(value / 32768)).toFixed(1)) : null);
+  return { peakDbfs: dbfs(peak), rmsDbfs: samples ? dbfs(Math.sqrt(sumSquares / samples)) : null };
+}
+
 async function transcribeWav(filePath, languageCode, {
   sdkFactory = defaultSdkFactory, env = process.env, readFile = fs.readFile, log = console.error, wholeRecording = false,
   signal, onDiagnostics, phrases,
@@ -222,7 +240,8 @@ async function transcribeWav(filePath, languageCode, {
   const buffer = await readFile(filePath);
   // Offsets and counts only (never text or audio): shows whether Azure heard
   // speech at the start that it could not recognize.
-  const diagnostics = { phrases: 0, unrecognized: 0, silence: 0, noise: 0, firstPhraseOffsetMs: null, firstUnrecognizedOffsetMs: null };
+  const diagnostics = { phrases: 0, emptyPhrases: 0, unrecognized: 0, silence: 0, noise: 0, firstPhraseOffsetMs: null,
+    firstUnrecognizedOffsetMs: null, endedBy: null };
   const offsetMs = (result) => (Number.isFinite(result?.offset) ? Math.round(result.offset / 10_000) : null);
   const wav = wholeRecording ? readSpeechWav(buffer, { maxSeconds: MAX_WHOLE_RECORDING_SECONDS }) : readSpeechWav(buffer);
   const texts = [];
@@ -235,6 +254,7 @@ async function transcribeWav(filePath, languageCode, {
       ...(wholeRecording ? { timeoutMs: wholeRecordingDeadlineMs(config, wav.durationSeconds) } : {}),
       configure: phraseListConfigurer(sdk, languageCode, phrases),
       signal,
+      onEnd: (how) => { diagnostics.endedBy ??= how; },
       onNoMatch: (result) => {
         const kind = noMatchKind(sdk, result);
         diagnostics[kind] += 1;
@@ -243,8 +263,8 @@ async function transcribeWav(filePath, languageCode, {
       onRecognized: (result) => {
         const text = typeof result.text === "string" ? result.text.trim() : "";
         // An empty phrase between recognized phrases is skipped (original behaviour); a recording with no text at
-        // all still ends below as NO_SPEECH (explicit NoMatch) or STT_PROVIDER_ERROR.
-        if (!text) return;
+        // all ends below as NO_SPEECH after normal completion; provider failures throw above.
+        if (!text) { diagnostics.emptyPhrases += 1; return; }
         diagnostics.phrases += 1;
         diagnostics.firstPhraseOffsetMs ??= offsetMs(result);
         characters += text.length;
@@ -262,14 +282,16 @@ async function transcribeWav(filePath, languageCode, {
   }
   const text = texts.join(" ").replace(/\s+/g, " ").trim();
   if (!text) {
-    // Session end alone is not evidence of silence. Require an explicit final NoMatch event.
-    const code = diagnostics.unrecognized + diagnostics.silence + diagnostics.noise > 0 ? "NO_SPEECH" : "STT_PROVIDER_ERROR";
-    log("Azure Speech empty transcription", { code, audioBytes: buffer.length, durationSeconds: wav.durationSeconds,
-      locale: languageCode, recognition: diagnostics }); // counts/timing only; never content or Azure details
-    const error = new SpeechTranscriptionError(code);
-    // Only silence or background noise (no speech Azure failed to recognize): a part of a longer M2 recording with
-    // nothing in it, e.g. the pause after the learner finished. Speech that went unrecognized is never marked.
-    if (code === "NO_SPEECH") error.silenceOnly = diagnostics.unrecognized === 0;
+    // The session ended normally (Azure processed the whole recording: provider failures, cancellations and timeouts
+    // were thrown above) but no words were recognized. With a short clip Azure may send no event at all: the SDK
+    // never raises one for the final EndOfDictation message. That is Azure's "no speech", not a provider failure,
+    // and processing the same audio again would give the same answer.
+    log("Azure Speech empty transcription", { code: "NO_SPEECH", audioBytes: buffer.length, durationSeconds: wav.durationSeconds,
+      locale: languageCode, recognition: diagnostics, level: pcmLevel(buffer, wav) }); // counts, timing and level only
+    const error = new SpeechTranscriptionError("NO_SPEECH");
+    // No speech Azure heard but could not recognize: a part of a longer M2 recording with nothing in it (silence,
+    // noise, or nothing Azure detected as speech), e.g. the pause after the learner finished.
+    error.silenceOnly = diagnostics.unrecognized === 0;
     throw error;
   }
   if (!confidences.length) return { text };
@@ -315,7 +337,6 @@ async function assessPronunciationWav(buffer, language, referenceText, {
   // Speech Azure could not assess. Silence and noise are expected and are not
   // counted; anything else means the result does not cover the whole reading.
   const unassessed = [];
-  let noMatchCount = 0;
   const startedAt = Date.now();
   try {
     const sdk = sdkFactory();
@@ -325,7 +346,6 @@ async function assessPronunciationWav(buffer, language, referenceText, {
       // Not a failure: the same audio would fail again on every retry. It is
       // reported, so the result is never shown as covering the whole reading.
       onNoMatch: (result) => {
-        noMatchCount += 1;
         if (noMatchKind(sdk, result) === "unrecognized") unassessed.push(resultSeconds(result));
       },
       configure: (recognizer) => {
@@ -351,8 +371,8 @@ async function assessPronunciationWav(buffer, language, referenceText, {
     logProviderFailure(log, "pronunciation", error);
     throw toSafeError(error);
   }
-  // Only silence or noise: nothing to assess.
-  if (!utterances.length && !unassessed.length) throw new SpeechTranscriptionError(noMatchCount > 0 ? "NO_SPEECH" : "STT_PROVIDER_ERROR");
+  // Only silence or noise, or nothing Azure detected as speech (a clean session end with no event): nothing to assess.
+  if (!utterances.length && !unassessed.length) throw new SpeechTranscriptionError("NO_SPEECH");
   const coverage = unassessed.length
     ? {
       complete: false,

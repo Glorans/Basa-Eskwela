@@ -132,7 +132,7 @@ test("transcription diagnostics report phrase offsets and unrecognized segments,
     onDiagnostics: (details) => { diagnostics = details; },
   });
   assert.equal(result.text, "Saturday, Ben visited");
-  assert.deepEqual(diagnostics, { phrases: 1, unrecognized: 1, silence: 0, noise: 0, firstPhraseOffsetMs: 1100, firstUnrecognizedOffsetMs: 200 });
+  assert.deepEqual(diagnostics, { phrases: 1, emptyPhrases: 0, unrecognized: 1, silence: 0, noise: 0, firstPhraseOffsetMs: 1100, firstUnrecognizedOffsetMs: 200, endedBy: "session_stopped" });
 });
 
 // SDK 1.52 shapes: NoMatch results carry a JSON RecognitionStatus that
@@ -204,6 +204,6 @@ test("silence alone is no speech; unassessable speech alone is an incomplete, em
 });
 
 
-test("an empty pronunciation session without a NoMatch event is a provider error", async () => {
-  await assert.rejects(assessmentSdk([]), error => error.code === "STT_PROVIDER_ERROR");
+test("an empty pronunciation session without any event is no speech (nothing to assess), not a provider error", async () => {
+  await assert.rejects(assessmentSdk([]), error => error.code === "NO_SPEECH");
 });
