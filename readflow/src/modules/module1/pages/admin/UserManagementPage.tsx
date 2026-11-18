@@ -45,6 +45,13 @@ export default function UserManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("");
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("");
+  const [schoolTab, setSchoolTab] = useState<"admin" | "teacher" | "student">("admin");
+  const [schoolSearch, setSchoolSearch] = useState("");
+  const [schoolStatus, setSchoolStatus] = useState<UserStatusFilter>("");
+  const [schoolPage, setSchoolPage] = useState(1);
+  const [learnerSearch, setLearnerSearch] = useState("");
+  const [learnerStatus, setLearnerStatus] = useState<UserStatusFilter>("");
+  const [learnerPage, setLearnerPage] = useState(1);
   const filteredUsers = useMemo(
     () => filterManagedUsers(users, {
       searchQuery,
@@ -61,12 +68,64 @@ export default function UserManagementPage() {
   const teachers = users.filter((user) => user.role === "teacher");
   const students = users.filter((user) => user.role === "student");
   const learners = users.filter((user) => user.role === "general_user");
-  const groups = isSystemAdmin && section === "school"
-    ? [{ title: "School Admins", users: schoolAdmins }, { title: "Teachers", users: teachers }, { title: "Students", users: students }]
-    : isSystemAdmin && section === "independent"
-      ? [{ title: "Independent Learner Accounts", users: learners }]
+  const schoolView = isSystemAdmin && section === "school";
+  const independentView = isSystemAdmin && section === "independent";
+  const schoolTabs = [
+    { role: "admin" as const, title: "School Admins", users: schoolAdmins },
+    { role: "teacher" as const, title: "Teachers", users: teachers },
+    { role: "student" as const, title: "Students", users: students },
+  ];
+  const selectedTab = schoolTabs.find((tab) => tab.role === schoolTab)!;
+  const matchingSchoolUsers = filterManagedUsers(selectedTab.users, { searchQuery: schoolSearch, role: "", status: schoolStatus });
+  const schoolPageCount = Math.max(1, Math.ceil(matchingSchoolUsers.length / 10));
+  const currentSchoolPage = Math.min(schoolPage, schoolPageCount);
+  const schoolPageStart = (currentSchoolPage - 1) * 10;
+  const matchingLearners = filterManagedUsers(learners, { searchQuery: learnerSearch, role: "", status: learnerStatus });
+  const learnerPageCount = Math.max(1, Math.ceil(matchingLearners.length / 10));
+  const currentLearnerPage = Math.min(learnerPage, learnerPageCount);
+  const learnerPageStart = (currentLearnerPage - 1) * 10;
+  const paginatedView = schoolView || independentView;
+  const currentPage = schoolView ? currentSchoolPage : currentLearnerPage;
+  const pageCount = schoolView ? schoolPageCount : learnerPageCount;
+  const pageStart = schoolView ? schoolPageStart : learnerPageStart;
+  const matchingCount = schoolView ? matchingSchoolUsers.length : matchingLearners.length;
+  const setPage = schoolView ? setSchoolPage : setLearnerPage;
+  const groups = schoolView
+    ? [{ title: selectedTab.title, users: matchingSchoolUsers.slice(schoolPageStart, schoolPageStart + 10) }]
+    : independentView
+      ? [{ title: "Independent Learner Accounts", users: matchingLearners.slice(learnerPageStart, learnerPageStart + 10) }]
       : [{ title: isSystemAdmin ? "All Registered Users" : "", users: filteredUsers }];
-  const showFilters = !isSystemAdmin || !["school", "independent"].includes(section);
+  const showRoleFilter = !schoolView && !independentView;
+  const showVerification = schoolView ? schoolTab === "teacher" : !independentView;
+  const activeSearch = schoolView ? schoolSearch : independentView ? learnerSearch : searchQuery;
+  const activeStatus = schoolView ? schoolStatus : independentView ? learnerStatus : statusFilter;
+  const categoryHasFilters = schoolView ? Boolean(schoolSearch.trim() || schoolStatus)
+    : independentView ? Boolean(learnerSearch.trim() || learnerStatus) : hasActiveFilters;
+
+  // Category navigation starts at the default school tab; no additional API request.
+  useEffect(() => {
+    setSchoolTab("admin");
+    setSchoolSearch("");
+    setSchoolStatus("");
+    setSchoolPage(1);
+    setLearnerSearch("");
+    setLearnerStatus("");
+    setLearnerPage(1);
+  }, [section]);
+
+  // Clamp after refresh or a status action removes the last row on the current page.
+  useEffect(() => {
+    setSchoolPage((page) => Math.min(page, schoolPageCount));
+  }, [schoolPageCount]);
+  useEffect(() => {
+    setLearnerPage((page) => Math.min(page, learnerPageCount));
+  }, [learnerPageCount]);
+
+  function selectSchoolTab(role: "admin" | "teacher" | "student") {
+    setSchoolTab(role);
+    setSchoolPage(1);
+  }
+
   const isSchoolAdmin = permissions.role === "admin";
   const scopeNote = permissions.role === "system_admin"
     ? "You can view every account. You can deactivate and reactivate Independent Learner and School Admin accounts."
@@ -128,6 +187,18 @@ export default function UserManagementPage() {
   }
 
   function clearFilters() {
+    if (schoolView) {
+      setSchoolSearch("");
+      setSchoolStatus("");
+      setSchoolPage(1);
+      return;
+    }
+    if (independentView) {
+      setLearnerSearch("");
+      setLearnerStatus("");
+      setLearnerPage(1);
+      return;
+    }
     setSearchQuery("");
     setRoleFilter("");
     setStatusFilter("");
@@ -175,21 +246,55 @@ export default function UserManagementPage() {
                   <h2>All Registered Users</h2>
                   <p className="admin-users-total">{users.length} <span>registered users</span></p>
                   <p>Search and filter all registered roles across the platform.</p>
-                  <Link to="?section=all" aria-current={showFilters ? "page" : undefined}>View All Registered Users</Link>
+                  <Link to="?section=all" aria-current={showRoleFilter ? "page" : undefined}>View All Registered Users</Link>
                 </article>
               </nav>
-              {section === "school" && (
-                <div className="admin-users-section-heading">
-                  <p>Teachers and Students are managed by School Admin.</p>
-                  {permissions.canCreateSchoolAdmin && <Link className="admin-users-primary" to="/system-admin/school-admins/new">Create School Admin</Link>}
+              {schoolView && (
+                <div className="admin-users-tabs" role="tablist" aria-label="School account roles">
+                  {schoolTabs.map((tab, index) => (
+                    <button
+                      key={tab.role}
+                      id={`school-tab-${tab.role}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={schoolTab === tab.role}
+                      aria-controls="school-account-panel"
+                      tabIndex={schoolTab === tab.role ? 0 : -1}
+                      onClick={() => selectSchoolTab(tab.role)}
+                      onKeyDown={(event) => {
+                        const nextIndex = event.key === "ArrowRight" ? (index + 1) % schoolTabs.length
+                          : event.key === "ArrowLeft" ? (index + schoolTabs.length - 1) % schoolTabs.length
+                          : event.key === "Home" ? 0 : event.key === "End" ? schoolTabs.length - 1 : -1;
+                        if (nextIndex < 0) return;
+                        event.preventDefault();
+                        selectSchoolTab(schoolTabs[nextIndex].role);
+                        const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+                        buttons?.[nextIndex].focus();
+                      }}
+                    >
+                      {tab.title} <span>({tab.users.length})</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </>
           )}
           {groups.map((group) => (
-        <div className="admin-users-table-wrap" key={group.title}>
-          {group.title && <h2 className="admin-users-group-heading">{group.title}</h2>}
-          {showFilters && <>
+        <div className={`admin-users-table-wrap${paginatedView ? " admin-users-paginated" : ""}`} key={schoolView ? "school" : group.title}
+          id={schoolView ? "school-account-panel" : undefined}
+          role={schoolView ? "tabpanel" : undefined}
+          aria-labelledby={schoolView ? `school-tab-${schoolTab}` : undefined}>
+          {schoolView && (
+            <div className="admin-users-section-heading admin-users-tab-toolbar">
+              {schoolTab === "admin"
+                ? <p>Manage School Admin accounts in the current school environment.</p>
+                : <p>Managed by School Admin</p>}
+              {schoolTab === "admin" && permissions.canCreateSchoolAdmin && (
+                <Link className="admin-users-primary" to="/system-admin/school-admins/new">Create School Admin</Link>
+              )}
+            </div>
+          )}
+          {group.title && !schoolView && <h2 className="admin-users-group-heading">{group.title}</h2>}
           <div className="admin-users-controls">
             <label className="admin-users-control admin-users-search">
               <span>Search users</span>
@@ -197,12 +302,16 @@ export default function UserManagementPage() {
                 type="search"
                 aria-label="Search users"
                 placeholder="Search name or email"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+                value={activeSearch}
+                onChange={(event) => {
+                  if (schoolView) { setSchoolSearch(event.target.value); setSchoolPage(1); }
+                  else if (independentView) { setLearnerSearch(event.target.value); setLearnerPage(1); }
+                  else setSearchQuery(event.target.value);
+                }}
               />
             </label>
 
-            <label className="admin-users-control">
+            {showRoleFilter && <label className="admin-users-control">
               <span>Role</span>
               <select
                 aria-label="Role filter"
@@ -214,22 +323,26 @@ export default function UserManagementPage() {
                   <option key={role} value={role}>{ROLE_LABELS[role]}</option>
                 ))}
               </select>
-            </label>
+            </label>}
 
             <label className="admin-users-control">
               <span>Status</span>
               <select
                 aria-label="Status filter"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as UserStatusFilter)}
+                value={activeStatus}
+                onChange={(event) => {
+                  if (schoolView) { setSchoolStatus(event.target.value as UserStatusFilter); setSchoolPage(1); }
+                  else if (independentView) { setLearnerStatus(event.target.value as UserStatusFilter); setLearnerPage(1); }
+                  else setStatusFilter(event.target.value as UserStatusFilter);
+                }}
               >
                 <option value="">All Statuses</option>
                 <option value="active">Active</option>
-                <option value="inactive">Deactivated</option>
+                <option value="inactive">{paginatedView ? "Inactive" : "Deactivated"}</option>
               </select>
             </label>
 
-            {hasActiveFilters && (
+            {categoryHasFilters && (
               <button
                 className="admin-users-clear"
                 type="button"
@@ -242,20 +355,21 @@ export default function UserManagementPage() {
           </div>
 
           <p className="admin-users-result-count" aria-live="polite">
-            Showing {filteredUsers.length} of {users.length} users
+            {paginatedView
+              ? `Showing ${matchingCount ? pageStart + 1 : 0} - ${Math.min(pageStart + 10, matchingCount)} of ${matchingCount} matching accounts`
+              : `Showing ${filteredUsers.length} of ${users.length} users`}
           </p>
 
-          </>}
           <div className="admin-users-table-scroll" tabIndex={0} role="region" aria-label={group.title || "User accounts"}>
             <table className="admin-users-table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Role</th>
+                {!independentView && <th>Role</th>}
                 <th>Status</th>
                 <th>Registered</th>
-                <th>Teacher Verification</th>
+                {showVerification && <th>Teacher Verification</th>}
                 <th>Actions</th>
               </tr>
             </thead>
@@ -273,16 +387,16 @@ export default function UserManagementPage() {
                   <tr key={user.id}>
                     <td>{getManagedUserDisplayName(user)}{isSelf ? " (You)" : ""}</td>
                     <td>{user.email || "\u2014"}</td>
-                    <td>
+                    {!independentView && <td>
                       <span className="admin-users-role-readonly">{roleLabel}</span>
-                    </td>
+                    </td>}
                     <td>
                       <span className="admin-users-role-readonly" data-account-status={user.status === "inactive" ? "deactivated" : "active"}>
                         {statusView.label}
                       </span>
                     </td>
                     <td>{new Date(user.createdAt).toLocaleDateString()}</td>
-                    <td>{user.role === "teacher" ? user.teacherStatus ?? "Unavailable" : "Not required"}</td>
+                    {showVerification && <td>{user.role === "teacher" ? user.teacherStatus ?? "Unavailable" : "Not required"}</td>}
                     <td>
                       {isSchoolAdmin && isPendingTeacher(user) && (
                         <Link to="/admin/teacher-invitations?tab=pending">Review in Teacher Invitations</Link>
@@ -305,16 +419,23 @@ export default function UserManagementPage() {
               })}
               {group.users.length === 0 && (
                 <tr>
-                  <td className="admin-users-empty" colSpan={7}>
-                    {!showFilters ? "No accounts in this category yet." : users.length === 0
-                      ? "No user profiles were found."
-                      : "No users match your search or filters."}
+                  <td className="admin-users-empty" colSpan={independentView ? 5 : showVerification ? 7 : 6}>
+                    {schoolView || independentView
+                      ? categoryHasFilters ? "No accounts match your search or filters." : "No accounts in this category yet."
+                      : users.length === 0 ? "No user profiles were found." : "No users match your search or filters."}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
           </div>
+          {paginatedView && (
+            <nav className="admin-users-pagination" aria-label={schoolView ? "School accounts pagination" : "Independent Learner accounts pagination"}>
+              <span aria-live="polite">Page {currentPage} of {pageCount}</span>
+              <button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
+              <button type="button" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</button>
+            </nav>
+          )}
         </div>
           ))}
         </>

@@ -19,3 +19,22 @@
 @media (max-width: 1000px) { .admin-users-categories { grid-template-columns: 1fr; } }
 
 .system-admin-ui .admin-users-table td:last-child button { white-space: nowrap; }
+
+.system-admin-ui .admin-users-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.system-admin-ui .admin-users-tabs button,
+.system-admin-ui .admin-users-pagination button { min-height: 44px; padding: 10px 16px; border: 1px solid #b4c6bb; border-radius: 9px; background: #fff; color: #123f32; font: inherit; font-weight: 700; cursor: pointer; }
+.system-admin-ui .admin-users-tabs button[aria-selected="true"] { background: #123f32; color: #fff; border-color: #123f32; }
+.system-admin-ui .admin-users-tabs button[aria-selected="true"] span { color: inherit; }
+.system-admin-ui .admin-users-tab-toolbar { padding: 16px; }
+.system-admin-ui .admin-users-pagination { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 16px; }
+.system-admin-ui .admin-users-pagination span { margin-right: auto; color: #526561; }
+.system-admin-ui .admin-users-pagination button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 680px) {
+  .system-admin-ui .admin-users-tabs button { flex: 1 1 auto; }
+  .system-admin-ui .admin-users-tab-toolbar .admin-users-primary { width: 100%; text-align: center; }
+}
+
+/* Compact only these two account sections; preserve the full registry and other roles. */
+.system-admin-ui.m3-shell .admin-users-paginated .admin-users-table :is(th, td) { padding: 7px 12px; }
+.system-admin-ui.m3-shell .admin-users-paginated .admin-users-role-readonly { min-width: 0; padding: 6px 10px; }
+.system-admin-ui.m3-shell .admin-users-paginated .admin-users-tab-toolbar { padding-top: 0; }
