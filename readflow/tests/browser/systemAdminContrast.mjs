@@ -92,7 +92,7 @@ try {
   const surfaces = await evaluate(`(()=>{${LIB}
     const card=document.querySelector('.m3-editor-passage'),up=document.querySelector('.m3-editor-upload'),page=bgOf(document.querySelector('.m3-content'));
     const cs=getComputedStyle(card),us=getComputedStyle(up);
-    return {cardBorder:+ratio(over(parse(cs.borderTopColor),page),page).toFixed(2),uploadTinted:us.backgroundColor,uploadBorder:+ratio(over(parse(us.borderTopColor),bgOf(up)),bgOf(card)).toFixed(2)}})()`);
+    return {cardBorder:+ratio(over(parse(cs.borderTopColor),page),page).toFixed(2),cardFill:cs.backgroundColor,pageFill:getComputedStyle(document.querySelector('.m3-content')).backgroundColor,cardShadow:cs.boxShadow,uploadTinted:us.backgroundColor,uploadBorder:+ratio(over(parse(us.borderTopColor),bgOf(up)),bgOf(card)).toFixed(2)}})()`);
   console.log('  surfaces', JSON.stringify(surfaces));
 
   // Save Draft: enabled, hover, focus and disabled must differ by more than colour.
@@ -106,7 +106,9 @@ try {
 
   if (!auditOnly) {
     assert.deepEqual(failures, [], 'all visible System Admin text and control boundaries meet WCAG targets');
-    assert.ok(surfaces.cardBorder >= 1.5, `card border visible against the page (${surfaces.cardBorder}:1)`);
+    // Cards stay separated from the cream page by a white fill, a border and a soft shadow.
+    assert.equal(surfaces.cardFill, 'rgb(255, 255, 255)'); assert.equal(surfaces.pageFill, 'rgb(248, 243, 232)');
+    assert.ok(surfaces.cardBorder >= 1.2 && surfaces.cardShadow !== 'none', `card edge ${surfaces.cardBorder}:1 plus shadow`);
     assert.notEqual(surfaces.uploadTinted, 'rgb(255, 255, 255)', 'Upload / Extract has a tinted background');
     assert.ok(surfaces.uploadBorder >= 3, `Upload / Extract boundary ${surfaces.uploadBorder}:1`);
     assert.notEqual(states.enabled.bg, states.disabled.bg);

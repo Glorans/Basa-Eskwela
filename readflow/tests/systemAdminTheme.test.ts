@@ -75,7 +75,7 @@ test('every stylesheet selector is System Admin-scoped, including responsive and
  const postcss=require('postcss');let count=0;
  postcss.parse(css).walkRules((rule:any)=>{assert.ok(rule.selector.startsWith('.system-admin-ui'),rule.selector);count++;});
  assert.ok(count>60);assert.doesNotMatch(css,/:root|!important/);
- for(const color of ['#123f32','#287453','#e9f3ec','#f4f6f5']) assert.ok(css.includes(color));
+ for(const color of ['#123f32','#287453','#e9f3ec','#f8f3e8','#faf7f0','#d8d5c9']) assert.ok(css.includes(color));
 });
 test('System Admin pages show one title each: no header title and no decorative workspace labels',()=>{
  for(const file of ['modules/module3/pages/Module3Page.tsx','modules/module3/pages/MaterialLibraryPage.tsx','modules/module3/pages/UploadMaterialPage.tsx','modules/module3/pages/QuestionReviewPage.tsx','modules/module3/components/AdminCollectionEditor.tsx','modules/module3/components/M3Layout.tsx','modules/system-admin/systemAdmin.css'])
