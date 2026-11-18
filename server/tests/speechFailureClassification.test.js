@@ -37,8 +37,9 @@ const scenarios=[
  ['recognized',{results:[recognized]},200,undefined],
  ['genuine silence',{results:[noMatch]},422,'NO_SPEECH'],
  ['speech not recognized',{results:[{...noMatch,noMatchReason:realSdk.NoMatchReason.NotRecognized}]},422,'NO_SPEECH'],
- ['empty session without NoMatch',{},502,'STT_PROVIDER_ERROR'],
- ['empty recognized result',{results:[{...recognized,text:'   '}]},502,'STT_PROVIDER_ERROR'],
+ // A clean session end with nothing recognized is Azure's "no speech" (the SDK raises no event for EndOfDictation).
+ ['empty session without NoMatch',{},422,'NO_SPEECH'],
+ ['empty recognized result',{results:[{...recognized,text:'   '}]},422,'NO_SPEECH'],
  ['invalid local WAV',{invalid:true},422,'STT_INVALID_AUDIO'],
  ['bad request unknown',{cancel:E.BadRequestParameters,details:'Invalid recognition parameter; secret-detail'},503,'STT_BAD_REQUEST'],
  ['bad request ambiguous SDK message',{cancel:E.BadRequestParameters,details:'Invalid parameter or unsupported audio format in the request.'},503,'STT_BAD_REQUEST'],
@@ -80,5 +81,34 @@ test('same recording succeeds on explicit retry after a temporary failure',async
 test('empty transcription diagnostics distinguish explicit silence without leaking recordings or transcripts',async()=>{
  const logs=[];
  await assert.rejects(transcribeWav('fixture.wav','en-US',{env:ENV,sdkFactory:()=>sdkFor({results:[noMatch]},[]),readFile:async()=>wav(),log:(...args)=>logs.push(args)}),e=>e.code==='NO_SPEECH');
- assert.deepEqual(logs,[["Azure Speech empty transcription",{code:'NO_SPEECH',audioBytes:32044,durationSeconds:1,locale:'en-US',recognition:{phrases:0,unrecognized:0,silence:1,noise:0,firstPhraseOffsetMs:null,firstUnrecognizedOffsetMs:null}}]]);
+ assert.equal(logs.length,1);
+ const [message,details]=logs[0];
+ assert.equal(message,'Azure Speech empty transcription');
+ const {level,...rest}=details;
+ assert.deepEqual(rest,{code:'NO_SPEECH',audioBytes:32044,durationSeconds:1,locale:'en-US',recognition:{phrases:0,emptyPhrases:0,unrecognized:0,silence:1,noise:0,firstPhraseOffsetMs:null,firstUnrecognizedOffsetMs:null,endedBy:'session_stopped'}});
+ assert.ok(Number.isFinite(level.peakDbfs)&&Number.isFinite(level.rmsDbfs)&&level.peakDbfs>=level.rmsDbfs&&level.peakDbfs<=0,JSON.stringify(level));
+});
+
+// Live incident 2026-11-18 09:27 (M5, fil-PH, 5.58 s): Azure ended the session with no event at all and the learner was
+// told to record again while Retry Processing re-sent the same audio. It is NO_SPEECH: Retry is not offered for it.
+test('live case: a 5.58 s fil-PH recording whose session ends with no event is NO_SPEECH, logged with level and end reason',async()=>{
+ const seconds=5.58,bytes=Math.round(seconds*32000);
+ const silent=Buffer.alloc(44+bytes);silent.write('RIFF');silent.writeUInt32LE(silent.length-8,4);silent.write('WAVEfmt ',8);
+ silent.writeUInt32LE(16,16);silent.writeUInt16LE(1,20);silent.writeUInt16LE(1,22);silent.writeUInt32LE(16000,24);
+ silent.writeUInt32LE(32000,28);silent.writeUInt16LE(2,32);silent.writeUInt16LE(16,34);silent.write('data',36);silent.writeUInt32LE(bytes,40);
+ for(const end of ['end_of_stream','session_stopped']){
+  const logs=[];
+  const sdk={...sdkFor({},[]),SpeechRecognizer:class{static enableTelemetry(){}
+   startContinuousRecognitionAsync(ok){setImmediate(()=>{ok();if(end==='end_of_stream')this.canceled?.(this,{reason:realSdk.CancellationReason.EndOfStream});else this.sessionStopped?.(this,{});});}
+   close(ok){ok();}}};
+  const handler=createReadAloudAudioHandler({transcribe:(file,locale,options)=>transcribeWav(file,locale,{...options,env:ENV,sdkFactory:()=>sdk,readFile:async()=>silent,log:(...a)=>logs.push(a)}),
+   remove:async()=>{},log:(...a)=>logs.push(a),timing(){},contextArchived:async()=>false,recordReceipt:async()=>{throw Error('no receipt for a failed reading');}});
+  const res=Object.assign(new EventEmitter(),{statusCode:200,locals:{},writableFinished:true,headers:{},set(k,v){this.headers[k]=v;return this;},status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}});
+  await handler({body:{language:'fil'},query:{},file:{path:'live.wav',size:silent.length,mimetype:'audio/wav'}},res);
+  assert.equal(res.statusCode,422,end);assert.equal(res.body.code,'NO_SPEECH',end);assert.equal(res.body.transcription,undefined);
+  const empty=logs.find(([m])=>m==='Azure Speech empty transcription')[1];
+  assert.equal(empty.audioBytes,178604);assert.equal(empty.durationSeconds,seconds);assert.equal(empty.locale,'fil-PH');
+  assert.deepEqual(empty.recognition,{phrases:0,emptyPhrases:0,unrecognized:0,silence:0,noise:0,firstPhraseOffsetMs:null,firstUnrecognizedOffsetMs:null,endedBy:end});
+  assert.deepEqual(empty.level,{peakDbfs:null,rmsDbfs:null},'synthetic all-zero PCM fixture reports null levels');
+ }
 });

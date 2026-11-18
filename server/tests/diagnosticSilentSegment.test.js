@@ -60,7 +60,8 @@ const verify = tokens => verifyReading({ tokens, userId: USER, language: 'en', b
 test('a silence-only or noise-only part of an M2 recording gets a signed empty receipt instead of failing the diagnostic', async () => {
   const first = await uploadPart([speech('The cat sat on the mat.')], 1);
   assert.equal(first.status, 200);
-  for (const quiet of [[SILENCE], [NOISE], [SILENCE, NOISE]]) {
+  // [] = Azure ended the session with no event at all (typical for a short trailing part): also no speech.
+  for (const quiet of [[SILENCE], [NOISE], [SILENCE, NOISE], []]) {
     const part = await uploadPart(quiet, 2);
     assert.equal(part.status, 200, JSON.stringify(part.body));
     assert.equal(part.body.transcription.text, '');
