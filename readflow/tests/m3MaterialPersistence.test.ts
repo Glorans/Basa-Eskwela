@@ -84,7 +84,7 @@ test("General User has no generation or question-review controls", async () => {
   const library = await source("pages/MaterialLibraryPage.tsx");
   assert.match(detail, /role === "teacher"/);
   assert.match(detail, /role !== "general_user"/);
-  assert.match(library, /role === "teacher" &&/);
+  assert.ok(library.includes('(role === "teacher" || role === "system_admin") &&'));
 });
 
 test("question review loads and saves one set through persisted APIs", async () => {
@@ -150,7 +150,7 @@ test("material and question pages put the text beside the questions; assigned se
   assert.match(review, /className="m3-detail-card m3-material-split__text"/);
   assert.match(review, /material\.contentText/);
   assert.match(review, /disabled=\{busy \|\| !editing \|\| locked\}/);
-  assert.match(review, /role === "teacher" && selectedSet && !locked/);
+  assert.ok(review.includes('(role === "teacher" || role === "system_admin") && selectedSet && !locked'));
   assert.match(sets, /disabled=\{busy \|\| deleteBusy \|\| Boolean\(set\.assignedCount\)\}/);
   assert.match(sets, /!set\.hasStudentAttempts && <Link/);
   assert.match(css, /\.m3-material-split__text \{[^}]*position: sticky;[^}]*max-height: calc\(100vh - 32px\);[^}]*overflow-y: auto;/);

@@ -73,6 +73,7 @@ import TeacherReportsPage from "./modules/module7/TeacherReportsPage";
 import { StudentProgressPage, AdminAnalyticsPage, TeacherSupportPage } from "./modules/module7/M7Pages";
 import AdminStudentPerformancePage from "./modules/module7/AdminStudentPerformancePage";
 import AdminReportsPage from "./modules/module7/AdminReportsPage";
+import { SystemAdminLearnerPerformancePage, SystemAdminOverviewPage } from "./modules/module7/SystemAdminAnalyticsPage";
 
 function App() {
   return (
@@ -271,12 +272,24 @@ function App() {
           </Route>
         </Route>
 
-        {/* System Admin routes (M1 F4-F8 only: account management and own profile) */}
+        {/* System Admin: account management and the shared M3 content workspace. */}
         <Route element={<RequireRole allowedRoles={["system_admin"]} />}>
           <Route path="/system-admin" element={<M3Layout role="system_admin" />}>
             <Route index element={<Navigate to="users" replace />} />
             <Route path="users" element={<UserManagementPage />} />
             <Route path="school-admins/new" element={<CreateSchoolAdminPage />} />
+            <Route path="analytics" element={<SystemAdminOverviewPage />} />
+            <Route path="independent-learners" element={<SystemAdminLearnerPerformancePage />} />
+            <Route path="content" element={<Module3Page workspace="system_admin" />} />
+            <Route path="content/modules/new" element={<ModuleFormPage mode="create" workspace="system_admin" />} />
+            <Route path="content/modules/:moduleId" element={<ModuleFormPage mode="detail" workspace="system_admin" />} />
+            <Route path="content/modules/:moduleId/edit" element={<ModuleFormPage mode="edit" workspace="system_admin" />} />
+            <Route path="content/materials" element={<MaterialLibraryPage role="system_admin" />} />
+            <Route path="content/materials/upload" element={<UploadMaterialPage role="system_admin" />} />
+            <Route path="content/materials/:materialId" element={<MaterialDetailPage role="system_admin" />} />
+            <Route path="content/materials/:materialId/questions" element={<MaterialDetailPage role="system_admin" />} />
+            <Route path="content/materials/:materialId/question-sets/:setId" element={<QuestionReviewPage role="system_admin" />} />
+            <Route path="content/materials/:materialId/question-sets/:setId/edit" element={<QuestionReviewPage role="system_admin" editing />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Route>

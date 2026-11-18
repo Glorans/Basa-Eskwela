@@ -109,7 +109,7 @@ test("frontend Admin user service has no role-update request", async () => {
 
   assert.doesNotMatch(service, /updateManagedUserRole|\.patch\(|\/role/);
   assert.match(service, /getManagedUsers/);
-  assert.match(service, /deleteManagedUser/);
+  assert.doesNotMatch(service, /deleteManagedUser|api\.delete\(/, "no permanent-deletion request from the browser");
 });
 
 for (const role of ["student", "general_user", "teacher", "admin"]) {

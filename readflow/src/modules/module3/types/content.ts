@@ -1,6 +1,6 @@
 import type { Difficulty, ReadingLevel } from "../../../data/dashboardData";
 
-export type M3Role = "admin" | "teacher" | "general_user";
+export type M3Role = "admin" | "system_admin" | "teacher" | "general_user";
 
 export type ModuleDifficulty = Difficulty;
 export type ModuleStatus = "draft" | "published" | "archived";
@@ -13,7 +13,7 @@ export type MaterialProcessingStatus =
   | "completed"
   | "pending_ocr"
   | "failed";
-export type MaterialUploaderRole = "Admin" | "Teacher" | "Independent Learner" | "User";
+export type MaterialUploaderRole = "Admin" | "System Admin" | "Teacher" | "Independent Learner" | "User";
 export type QuestionType = "literal" | "inferential" | "critical";
 export type GeneratedQuestionsReviewStatus = "generated" | "reviewed";
 

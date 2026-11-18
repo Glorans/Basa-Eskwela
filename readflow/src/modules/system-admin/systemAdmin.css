@@ -1,0 +1,241 @@
+/* Opt-in presentation only. Every selector is rooted in the System Admin shell or its dialog host. */
+.system-admin-ui {
+  --sa-forest: #123f32;
+  --sa-green: #287453;
+  --sa-light: #e9f3ec;
+  --sa-border: #dce5df;
+  --sa-muted: #3e5248; /* >= 7.3:1 on white, page and tinted surfaces */
+  --sa-card-border: #a7bbad; /* visible card edge on the light page */
+  --sa-control-border: #6f877a; /* >= 3:1 control boundary on white and tinted surfaces */
+  --sa-tint: #eef5f0;
+  --basa-bg: #f4f6f5;
+  --basa-main-content-bg: #f4f6f5;
+  --basa-content-bg: #f4f6f5;
+  --basa-card: #ffffff;
+  --basa-cream: #e9f3ec;
+  --basa-green-card: #e9f3ec;
+  --basa-header: #ffffff;
+  --basa-navy: #287453;
+  --basa-sidebar: #123f32;
+  --basa-sidebar-item: transparent;
+  --basa-yellow: #e9f3ec;
+  --basa-link: #287453;
+  --basa-text: #1b3329;
+  --basa-text-soft: #3e5248;
+  --basa-radius-md: 12px;
+  --basa-radius-lg: 12px;
+  --basa-btn-radius: 8px;
+  --basa-scrollbar-thumb: #92aa9b;
+  --basa-scrollbar-thumb-end: #92aa9b;
+  --basa-scrollbar-thumb-hover: #607e6c;
+  --basa-scrollbar-thumb-hover-end: #607e6c;
+  --basa-scrollbar-track: #edf1ee;
+  --basa-scrollbar-size: 10px;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #1b3329;
+  line-height: 1.5;
+  font-size: 14px;
+}
+.system-admin-ui.m3-shell :is(h1,h2,h3,h4,button,input,textarea,select) { font-family: inherit; }
+.system-admin-ui.m3-shell :is(h1,h2,h3,h4) { color: var(--sa-forest); letter-spacing: -.025em; }
+.system-admin-ui.m3-shell .m3-workspace { padding: 0; background: #f4f6f5; }
+.system-admin-ui.m3-shell aside.m3-sidebar {
+  background: var(--sa-forest); color: white; border-radius: 0; padding: 24px 18px 16px;
+  box-shadow: none; border-right: 1px solid #204d3e; gap: 24px;
+}
+.system-admin-ui.m3-shell .m3-sidebar-brand { border-bottom: 1px solid #ffffff24; padding: 0 0 22px; gap: 8px; }
+.system-admin-ui.m3-shell .m3-sidebar-brand strong { color: white; font-size: 15px; font-weight: 650; white-space: nowrap; }
+.system-admin-ui.m3-shell .sa-brand-caption { display: block; font-size: 11px; color: #bcd3c5; margin-top: 2px; letter-spacing: .04em; }
+.system-admin-ui.m3-shell .m3-sidebar-nav { gap: 6px; margin-top: 22px; }
+.system-admin-ui.m3-shell :is(.m3-nav-item,.m3-sidebar-quiet-link) { border-radius: 8px; padding: 11px 12px; background: transparent; color: #edf5ef; font-size: 13px; font-weight: 500; border: 1px solid transparent; box-shadow: none; }
+.system-admin-ui.m3-shell .m3-nav-item:hover { background: #ffffff12; transform: none; }
+.system-admin-ui.m3-shell .m3-nav-item.m3-nav-item--active { background: #ffffff17; color: white; border-color: #ffffff28; box-shadow: inset 3px 0 #92c4a7; }
+.system-admin-ui.m3-shell .m3-sidebar-footer { border-top: 1px solid #ffffff24; padding-top: 12px; margin-top: auto; }
+.system-admin-ui.m3-shell .m3-sidebar-quiet-link:hover { background: #ffffff12; color: white; transform: none; }
+.system-admin-ui.m3-shell :is(.rf-rail-toggle,.rf-drawer-close) { background: #ffffff0e; color: white; border-radius: 8px; }
+.system-admin-ui.m3-shell :is(.rf-rail-toggle,.rf-drawer-close):hover { background: #ffffff20; }
+.system-admin-ui.m3-shell .m3-topbar { min-height: 64px; padding: 10px 32px; background: white; color: var(--sa-forest); border-radius: 0; box-shadow: none; border-bottom: 1px solid var(--sa-border); gap: 16px; }
+.system-admin-ui.m3-shell .m3-topbar-title { min-width: 0; }
+.system-admin-ui.m3-shell .m3-menu-button { background: var(--sa-light); color: var(--sa-forest); border-radius: 8px; }
+.system-admin-ui.m3-shell .profile-dropdown-trigger { color: var(--sa-forest); padding: 4px; }
+.system-admin-ui.m3-shell .profile-dropdown-avatar { background: var(--sa-light); border: 1px solid var(--sa-border); color: var(--sa-green); border-radius: 10px; }
+.system-admin-ui.m3-shell .profile-dropdown-copy strong { font-size: 13px; font-weight: 600; }
+.system-admin-ui.m3-shell .profile-dropdown small { color: var(--sa-muted); }
+.system-admin-ui.m3-shell .profile-dropdown-panel { border-radius: 10px; box-shadow: 0 12px 32px #123f321a; }
+.system-admin-ui.m3-shell .rf-content-scroll { margin: 0; padding: 0; scrollbar-gutter: stable; }
+.system-admin-ui.m3-shell .m3-content { padding: 32px; margin: 0; border-radius: 0; background: #f4f6f5; width: 100%; min-width: 0; }
+.system-admin-ui.m3-shell .m3-page-stack { gap: 24px; }
+.system-admin-ui.m3-shell :is(.m3-page-header,.m3-editor-header,.admin-users-header,.m7-dashboard-header) { padding: 0; margin-bottom: 24px; background: transparent; border: 0; box-shadow: none; }
+.system-admin-ui.m3-shell :is(.m3-page-header,.m3-editor-header,.admin-users-header,.m7-dashboard-header,.create-school-admin-page) h1 { font-size: clamp(24px,2.3vw,32px); line-height: 1.25; font-weight: 650; color: var(--sa-forest); }
+.system-admin-ui.m3-shell :is(.m3-page-header,.m3-editor-header,.admin-users-header,.m7-dashboard-header) p { color: var(--sa-muted); max-width: 76ch; line-height: 1.65; }
+.system-admin-ui.m3-shell :is(.m3-eyebrow,.m3-page-eyebrow) { background: transparent; color: var(--sa-green); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.system-admin-ui.m3-shell :is(.m3-panel,.m3-record-card,.m3-detail-card,.m3-editor-card,.m3-saved-set-card,.m3-question-editor,.m3-confirmation-modal,.admin-users-table-wrap,.create-school-admin-form,.basa-settings-card) {
+  background: white; border: 1px solid var(--sa-card-border); border-radius: 12px; box-shadow: 0 2px 6px #123f3204;
+}
+.system-admin-ui.m3-shell .m3-record-card { padding: 20px; gap: 18px; }
+.system-admin-ui.m3-shell .m3-record-icon { background: var(--sa-light); color: var(--sa-green); border-radius: 10px; }
+.system-admin-ui.m3-shell .m3-record-heading h2 { font-size: 17px; font-weight: 650; }
+.system-admin-ui.m3-shell .m3-admin-module-summary { gap: 16px; }
+.system-admin-ui.m3-shell .m3-admin-module-summary h2 { font-size: 12px; color: var(--sa-muted); font-weight: 600; }
+.system-admin-ui.m3-shell .m3-admin-module-summary strong { color: var(--sa-forest); font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.system-admin-ui.m3-shell :is(.m3-toolbar,.m3-search-field,.admin-users-controls) { background: white; border-color: var(--sa-border); border-radius: 10px; }
+.system-admin-ui.m3-shell :is(.m3-button,.m3-collection-editor .m3-button,.m7-dashboard button,.create-school-admin-form button,.basa-settings-save) {
+  min-height: 42px; border-radius: 8px; border: 1px solid var(--sa-green); background: var(--sa-green); color: white;
+  box-shadow: none; font-weight: 600; font-size: 13px; padding: 10px 16px; text-decoration: none;
+}
+.system-admin-ui.m3-shell :is(.m3-button,.m7-dashboard button,.create-school-admin-form button,.basa-settings-save):hover:not(:disabled) { background: #1e5d41; color: white; transform: none; }
+.system-admin-ui.m3-shell :is(.m3-button--secondary,.m3-collection-editor .m3-button--secondary,.basa-settings-cancel,.admin-users-clear) { background: white; color: var(--sa-forest); border: 1px solid var(--sa-control-border); box-shadow: none; border-radius: 8px; }
+.system-admin-ui.m3-shell :is(.m3-button--secondary,.m3-collection-editor .m3-button--secondary,.basa-settings-cancel,.admin-users-clear):hover:not(:disabled) { background: var(--sa-light); color: var(--sa-forest); }
+.system-admin-ui.m3-shell :is(.m3-module-delete-button,.m3-button--danger,.admin-users-delete,.m3-collection-editor .m3-editor-danger) { color: #9b3434; background: #fff; border: 1px solid #b86f6f; border-radius: 8px; }
+.system-admin-ui.m3-shell :is(.m3-module-delete-button,.m3-button--danger,.admin-users-delete,.m3-collection-editor .m3-editor-danger):hover:not(:disabled) { background: #fff3f3; color: #882929; }
+.system-admin-ui.m3-shell :is(button,a,input,textarea,select,summary):focus-visible { outline: 3px solid #287453; outline-offset: 3px; box-shadow: 0 0 0 5px #e9f3ec; }
+.system-admin-ui.m3-shell .m3-sidebar :is(a,button):focus-visible { outline-color: #c5e7d0; box-shadow: none; outline-offset: -3px; }
+.system-admin-ui.m3-shell :is(input:not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select) { background: white; color: #1b3329; border-color: var(--sa-control-border); border-radius: 8px; font-size: 14px; }
+.system-admin-ui.m3-shell .m3-action-link { color: var(--sa-green); }
+.system-admin-ui.m3-shell :is(.m3-status-badge,.m3-editor-badge,.m3-editor-badge--pending,.m3-review-callout,.m3-question-number,.m3-question-summary > div,.m3-material-language,.admin-users-role-readonly) { background: var(--sa-light); color: #28553c; border-color: var(--sa-border); }
+.system-admin-ui.m3-shell :is(.m3-editor-recovery,.m3-editor-notice--missing,.m3-processing-placeholder) { background: #f1f5f2; color: #3c5143; border-color: #bccdc0; }
+.system-admin-ui.m3-shell :is(.m3-editor-upload,.m3-editor-review,.m3-reading-preview,.m3-options-editor label,.m3-generated-answer-details) { background: #f7f9f7; border-color: var(--sa-border); border-radius: 8px; }
+.system-admin-ui.m3-shell .m3-confirmation-modal { color: var(--sa-forest); }
+.system-admin-ui.m3-shell .m3-modal-backdrop { background: #123f3270; }
+.system-admin-ui.m3-shell :is(.m7-dashboard,.m7-page) { padding: 0; max-width: none; background: transparent; }
+.system-admin-ui.m3-shell .m7-dashboard .m7-dashboard-content { background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
+.system-admin-ui.m3-shell .m7-dashboard :is(section,.m7-card) { border: 1px solid var(--sa-border); border-radius: 12px; box-shadow: none; background: white; }
+.system-admin-ui.m3-shell .m7-dashboard section { padding: 24px; margin: 0 0 24px; }
+.system-admin-ui.m3-shell .m7-dashboard h2 { font-size: 17px; font-weight: 650; margin: 0 0 12px; }
+.system-admin-ui.m3-shell .m7-dashboard h3 { font-size: 15px; font-weight: 650; margin: 24px 0 12px; }
+.system-admin-ui.m3-shell .m7-dashboard .m7-metrics { grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); gap: 12px; }
+.system-admin-ui.m3-shell .m7-dashboard .m7-card { background: #f7faf8; padding: 18px; margin: 0; gap: 8px; }
+.system-admin-ui.m3-shell .m7-card span { font-size: 12px; color: var(--sa-muted); }
+.system-admin-ui.m3-shell .m7-card strong { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--sa-forest); }
+.system-admin-ui.m3-shell :is(.m7-scroll,.admin-users-table-scroll) { border: 1px solid var(--sa-border); border-radius: 8px; max-width: 100%; overflow-x: auto; }
+.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) :is(th,td) { padding: 14px 16px; border-bottom: 1px solid #e5ece7; text-align: left; vertical-align: middle; }
+.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) th { background: #edf3ef; color: #3e5748; font-size: 11px; letter-spacing: .035em; font-weight: 650; }
+.system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) tbody tr:hover { background: #f7faf8; }
+.system-admin-ui.m3-shell .m7-performance-scope { color: var(--sa-muted); font-size: 12px; margin-top: 16px; }
+.system-admin-ui.m3-shell .admin-users-table-wrap { padding: 22px; }
+.system-admin-ui.m3-shell .admin-users-header h1 { margin-top: 0; }
+.system-admin-ui.m3-shell .admin-users-control { color: var(--sa-muted); font-size: 12px; }
+.system-admin-ui.m3-shell .create-school-admin-form { max-width: 640px; padding: 28px; gap: 22px; }
+.system-admin-ui.m3-shell .basa-settings-avatar { background: var(--sa-light); color: var(--sa-green); }
+.system-admin-ui.system-admin-dialog-host dialog { border: 1px solid var(--sa-border); border-radius: 12px; padding: 28px; color: var(--sa-forest); font-family: inherit; box-shadow: 0 24px 80px #123f3233; }
+.system-admin-ui.system-admin-dialog-host dialog::backdrop { background: #123f3266; }
+.system-admin-ui.system-admin-dialog-host dialog h2 { font-size: 20px; font-weight: 650; }
+.system-admin-ui.system-admin-dialog-host dialog button { min-height: 44px; border-radius: 8px; background: var(--sa-light); color: var(--sa-forest); font-weight: 600; }
+.system-admin-ui.system-admin-dialog-host dialog button:last-child { background: var(--sa-green); color: white; }
+.system-admin-ui.m3-shell .sa-activity-chart { margin: 20px 0 26px; }
+.system-admin-ui.m3-shell .sa-activity-chart figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.system-admin-ui.m3-shell .sa-activity-chart figcaption span { color: var(--sa-muted); font-size: 12px; }
+.system-admin-ui.m3-shell .sa-chart-legend { display: flex; flex-wrap: wrap; gap: 20px; margin: 12px 0 20px; color: var(--sa-muted); font-size: 12px; }
+.system-admin-ui.m3-shell .sa-chart-legend > span { display: flex; align-items: center; gap: 7px; }
+.system-admin-ui.m3-shell .sa-chart-legend i { width: 10px; height: 10px; border-radius: 2px; background: var(--sa-green); }
+.system-admin-ui.m3-shell .sa-chart-legend > span:last-child i { background: #89ac96; }
+.system-admin-ui.m3-shell .sa-chart-weeks { display: grid; gap: 18px; }
+.system-admin-ui.m3-shell .sa-chart-week { display: grid; grid-template-columns: 110px minmax(0,1fr); align-items: center; gap: 18px; }
+.system-admin-ui.m3-shell .sa-chart-date { color: var(--sa-muted); font-size: 12px; }
+.system-admin-ui.m3-shell .sa-chart-bars { display: grid; gap: 6px; }
+.system-admin-ui.m3-shell .sa-chart-bars > div { display: grid; grid-template-columns: minmax(0,1fr) 40px; gap: 10px; align-items: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.system-admin-ui.m3-shell .sa-chart-track { height: 10px; border-radius: 3px; background: #f1f5f2; }
+.system-admin-ui.m3-shell .sa-chart-track > span { display: block; height: 100%; background: var(--sa-green); border-radius: 3px; }
+.system-admin-ui.m3-shell .sa-chart-bars > div:last-child .sa-chart-track > span { background: #89ac96; }
+@media (min-width: 1000px) {
+  .system-admin-ui.rf-shell--collapsed aside.m3-sidebar { padding: 20px 10px 16px; }
+  .system-admin-ui.rf-shell--collapsed .m3-sidebar-brand { padding-bottom: 20px; }
+}
+@media (max-width: 999px) {
+  .system-admin-ui.m3-shell .m3-topbar { padding: 10px 20px; }
+  .system-admin-ui.m3-shell .m3-content { padding: 24px 20px; }
+  .system-admin-ui.m3-shell .m3-sidebar { width: min(86vw,290px); }
+}
+@media (max-width: 600px) {
+  .system-admin-ui.m3-shell .m3-topbar { padding: 8px 12px; min-height: 60px; gap: 8px; }
+  .system-admin-ui.m3-shell .profile-dropdown-copy { display: none; }
+  .system-admin-ui.m3-shell .m3-content { padding: 20px 12px; }
+  .system-admin-ui.m3-shell :is(.m3-page-header,.m3-editor-header) { gap: 16px; }
+  .system-admin-ui.m3-shell .m3-admin-module-summary { grid-template-columns: 1fr; gap: 10px; }
+  .system-admin-ui.m3-shell .m3-admin-module-summary .m3-panel { padding: 16px; }
+  .system-admin-ui.m3-shell :is(.m3-record-card,.m3-panel,.m3-editor-card,.m3-detail-card,.admin-users-table-wrap,.create-school-admin-form,.m7-dashboard section) { padding: 16px; }
+  .system-admin-ui.m3-shell .m7-dashboard .m7-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .system-admin-ui.m3-shell .m7-card strong { font-size: 22px; }
+  .system-admin-ui.m3-shell .m7-card { padding: 12px; }
+  .system-admin-ui.m3-shell :is(.m7-dashboard,.admin-users-table-wrap) :is(th,td) { padding: 12px; }
+  .system-admin-ui.m3-shell .sa-chart-week { grid-template-columns: 82px minmax(0,1fr); gap: 8px; }
+  .system-admin-ui.m3-shell .m3-editor-metadata { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .system-admin-ui.m3-shell * { scroll-behavior: auto; transition: none; }
+}
+
+/* Shared Back navigation presentation; destinations and handlers stay in their pages. */
+.system-admin-ui.m3-shell :is(.m3-back-link,.m3-editor-back) {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  color: var(--sa-forest);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-decoration: none;
+}
+.system-admin-ui.m3-shell :is(.m3-back-link,.m3-editor-back) svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+}
+.system-admin-ui.m3-shell :is(.m3-back-link,.m3-editor-back):hover {
+  color: var(--sa-forest);
+  background: var(--sa-light);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.system-admin-ui.m3-shell :is(.m3-back-link,.m3-editor-back):focus-visible {
+  outline: 3px solid var(--sa-green);
+  outline-offset: 3px;
+}
+/* M3 editor: solid circular "Add Passage Below" button beside each passage card's upper-right edge (System Admin only). */
+.system-admin-ui .m3-collection-editor .m3-editor-passage { position: relative; }
+.system-admin-ui .sa-add-passage { position: absolute; top: 18px; left: calc(100% + 14px); display: inline-grid; place-items: center; width: 40px; height: 40px; min-width: 40px; min-height: 0; padding: 0; border-radius: 50%; border: 1px solid var(--sa-green); background: var(--sa-green); color: white; box-shadow: 0 2px 6px #123f3240; cursor: pointer; transition: background-color .15s, box-shadow .15s; }
+.system-admin-ui .sa-add-passage:focus-visible { background: var(--sa-forest); }
+.system-admin-ui .sa-add-passage:disabled { cursor: not-allowed; background: #e4e9e6; color: #3f4d46; border: 1px dashed #7a8a82; box-shadow: none; }
+.system-admin-ui .sa-add-passage-tooltip { position: absolute; top: calc(100% + 8px); right: 0; padding: 6px 10px; border-radius: 6px; background: var(--sa-forest); color: white; font-size: 12px; font-weight: 500; line-height: 1.3; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .12s; z-index: 3; }
+.system-admin-ui .sa-add-passage:focus-visible .sa-add-passage-tooltip { opacity: 1; visibility: visible; }
+@media (min-width: 768px) {
+  /* Room for the button beside the cards, so it never overlaps the card or leaves the page. */
+  .system-admin-ui .m3-collection-editor { box-sizing: border-box; padding-right: 58px; }
+}
+@media (max-width: 767px) {
+  /* Phones: no room beside the card, so the button sits inside it at the bottom-right; tooltip to its left. */
+  .system-admin-ui .sa-add-passage { position: relative; top: auto; left: auto; justify-self: end; }
+  .system-admin-ui .sa-add-passage-tooltip { top: 50%; right: calc(100% + 8px); transform: translateY(-50%); }
+}
+@media (pointer: coarse) { .system-admin-ui .sa-add-passage { width: 44px; height: 44px; min-width: 44px; } }
+@media (hover: hover) {
+  .system-admin-ui .sa-add-passage:hover:not(:disabled) { background: var(--sa-forest); border-color: var(--sa-forest); box-shadow: 0 3px 10px #123f3252; }
+  .system-admin-ui .sa-add-passage:hover .sa-add-passage-tooltip { opacity: 1; visibility: visible; }
+}
+
+/* Readability: darker secondary text, visible boundaries, tinted secondary sections, states not shown by colour alone. */
+.system-admin-ui.m3-shell .m3-content :is(h1,h2,h3,h4) { color: var(--sa-forest); }
+.system-admin-ui.m3-shell .m3-collection-editor label { color: #24423a; }
+.system-admin-ui.m3-shell :is(.m3-page-description,.m3-collection-editor .m3-editor-help,.m3-collection-editor .m3-editor-section-heading p,.m3-collection-editor .m3-editor-passage-status,.m3-collection-editor .m3-editor-review summary span,.m3-collection-editor .m3-editor-upload-name) { color: var(--sa-muted); }
+.system-admin-ui.m3-shell :is(.m3-collection-editor .m3-editor-help,.m3-collection-editor .m3-editor-section-heading p) { font-size: 13px; font-weight: 500; }
+.system-admin-ui.m3-shell .m3-collection-editor .m3-editor-card { border-color: var(--sa-card-border); }
+.system-admin-ui.m3-shell .m3-collection-editor .m3-editor-passage-heading { border-bottom-color: var(--sa-border); }
+.system-admin-ui.m3-shell .m3-collection-editor :is(.m3-editor-upload,.m3-editor-review) { background: var(--sa-tint); border-color: var(--sa-control-border); }
+.system-admin-ui.m3-shell .m3-collection-editor input[type=file]::file-selector-button { border-color: var(--sa-control-border); }
+.system-admin-ui.m3-shell .m3-collection-editor .m3-editor-footer { border-top-color: var(--sa-card-border); }
+/* Enabled vs disabled: disabled buttons turn grey with a dashed border and a not-allowed cursor (not opacity or colour alone). */
+.system-admin-ui.m3-shell :is(.m3-button,.m7-dashboard button,.create-school-admin-form button,.basa-settings-save,.admin-users-header button):disabled,
+.system-admin-ui.m3-shell .m3-collection-editor .m3-button:disabled {
+  opacity: 1; cursor: not-allowed; background: #e4e9e6; color: #3f4d46; border: 1px dashed #7a8a82; box-shadow: none;
+}
+.system-admin-ui.m3-shell .m3-collection-editor .m3-editor-upload-choose:has(input:disabled) { opacity: 1; cursor: not-allowed; background: #e4e9e6; color: #3f4d46; border: 1px dashed #7a8a82; }
+.system-admin-ui.m3-shell .m3-collection-editor .m3-editor-footer .m3-button--primary:not(:disabled) { box-shadow: 0 2px 6px #123f3233; }
+/* Errors: a bar and heavier text in addition to red. */
+.system-admin-ui.m3-shell :is(.m3-error-message,.m3-editor-upload-status--error,.m3-editor-publish-issues,.admin-users-message--error,.m7-error,.m3-feedback-banner--error,.m3-editor-recovery-warning) { border-left: 4px solid #9b3434; font-weight: 600; padding-left: 10px; }
+.system-admin-ui.m3-shell :is(input,select,textarea)[aria-invalid="true"] { border: 2px solid #9b3434; }

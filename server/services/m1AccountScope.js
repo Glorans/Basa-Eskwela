@@ -17,12 +17,16 @@ const SCOPES = Object.freeze({
   system_admin: Object.freeze({
     view: "all",
     deletable: Object.freeze(["general_user", "admin"]),
+    // F7 Deactivate/Reactivate: platform-level accounts only. Teachers and Students have no platform-wide rule, so
+    // they are left to the School Admin; System Admin accounts are never deactivated through User Management.
+    statusManageable: Object.freeze(["general_user", "admin"]),
     canCreateSchoolAdmin: true,
   }),
   // School level: only school-associated accounts. Never Independent Learners, administrators or unassigned accounts.
   admin: Object.freeze({
     view: SCHOOL_ROLES,
     deletable: SCHOOL_ROLES,
+    statusManageable: SCHOOL_ROLES,
     canCreateSchoolAdmin: false,
   }),
 });
@@ -47,6 +51,13 @@ function canDeleteAccount({ managerRole, managerId, targetRole, targetId }) {
   return scope.deletable.includes(targetRole);
 }
 
+/** F7: may this manager deactivate or reactivate the target? Never their own account; deny by default. */
+function canChangeAccountStatus({ managerRole, managerId, targetRole, targetId }) {
+  const scope = getAccountScope(managerRole);
+  if (!scope || !managerId || !targetId || managerId === targetId) return false;
+  return scope.statusManageable.includes(targetRole);
+}
+
 /** What the signed-in manager may do, sent to the browser so it shows only allowed actions. */
 function describePermissions(managerRole) {
   const scope = getAccountScope(managerRole);
@@ -55,8 +66,9 @@ function describePermissions(managerRole) {
     role: managerRole,
     visibleRoles: scope.view === "all" ? ["system_admin", "admin", "teacher", "student", "general_user"] : [...scope.view],
     deletableRoles: [...scope.deletable],
+    statusRoles: [...scope.statusManageable],
     canCreateSchoolAdmin: scope.canCreateSchoolAdmin,
   };
 }
 
-module.exports = { SCHOOL_ROLES, canDeleteAccount, canViewAccount, describePermissions, getAccountScope, isAccountManager };
+module.exports = { SCHOOL_ROLES, canChangeAccountStatus, canDeleteAccount, canViewAccount, describePermissions, getAccountScope, isAccountManager };

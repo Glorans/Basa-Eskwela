@@ -41,8 +41,8 @@ async function authorize(
   generating = false,
 ) {
   if (
-    !["teacher", "admin"].includes(requester.profile.role) ||
-    (generating && requester.profile.role !== "teacher")
+    !["teacher", "admin", "system_admin"].includes(requester.profile.role) ||
+    (generating && !["teacher", "system_admin"].includes(requester.profile.role))
   ) {
     throw new MaterialAuthorizationError(
       "Question sets are available only to authorized Teachers and Admins.",

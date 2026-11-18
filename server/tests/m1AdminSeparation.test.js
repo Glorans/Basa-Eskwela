@@ -120,7 +120,7 @@ test("School Admin lists Teachers and Students only; no query manipulation retur
     assert.deepEqual(list.json.users.map((u) => u.role).sort(), ["student", "teacher"]);
     assert.deepEqual(list.json.users.map((u) => u.email).sort(), ["sam@example.test", "tess@example.test"], "roles and emails shown");
     assert.equal(list.json.users.length, 2, "the count covers Teachers and Students only");
-    assert.deepEqual(list.json.permissions, { role: "admin", visibleRoles: ["teacher", "student"], deletableRoles: ["teacher", "student"], canCreateSchoolAdmin: false });
+    assert.deepEqual(list.json.permissions, { role: "admin", visibleRoles: ["teacher", "student"], deletableRoles: ["teacher", "student"], statusRoles: ["teacher", "student"], canCreateSchoolAdmin: false });
     assert.equal(leaksLearner(list.text), false);
     assert.equal(/Sys Admin|Other Sys|School Admin Two/.test(list.text), false, "no administrator accounts");
     for (const query of ["?role=general_user", "?search=iris", "?q=Indie", `?userId=${uuid(7)}`, `?id=${uuid(7)}`, "?page=2&perPage=1000", "?includeAll=true", "?scope=all"]) {
@@ -144,18 +144,18 @@ test("School Admin cannot retrieve, delete or probe an Independent Learner (or a
       answers.push(`${response.status} ${response.text}`);
     }
     assert.equal(new Set(answers).size, 1, "Independent Learner, School Admin, System Admin and missing IDs all get the same answer");
-    assert.match(answers[0], /^403 .*outside the accounts you can manage/);
+    assert.match(answers[0], /^410 .*Permanent account deletion is disabled/);
     assert.deepEqual(deletedAuthUsers, []);
     for (const id of [uuid(7), uuid(8), uuid(4), uuid(1), uuid(2)]) assert.ok(exists(db, id));
-    assert.equal((await call("school", "DELETE", `/api/admin/users/${uuid(3)}`)).status, 409, "not their own account");
+    assert.equal((await call("school", "DELETE", `/api/admin/users/${uuid(3)}`)).status, 410, "routine deletion is disabled, including their own account");
   });
 });
 
-test("School Admin deletes Teachers and Students, and cannot create School Admin or System Admin accounts", async () => {
+test("School Admin cannot permanently delete Teachers or Students, and cannot create School Admin or System Admin accounts", async () => {
   await serve(async ({ call, db, deletedAuthUsers }) => {
-    assert.equal((await call("school", "DELETE", `/api/admin/users/${uuid(5)}`)).status, 200);
-    assert.equal((await call("school", "DELETE", `/api/admin/users/${uuid(6)}`)).status, 200);
-    assert.deepEqual(deletedAuthUsers, [uuid(5), uuid(6)]);
+    assert.equal((await call("school", "DELETE", `/api/admin/users/${uuid(5)}`)).status, 410);
+    assert.equal((await call("school", "DELETE", `/api/admin/users/${uuid(6)}`)).status, 410);
+    assert.deepEqual(deletedAuthUsers, [], "deactivation replaced routine deletion");
     for (const body of [{ email: "new@school.test", fullName: "New Admin" }, { email: "x@school.test", fullName: "X Y", role: "system_admin" }]) {
       assert.equal((await call("school", "POST", "/api/admin/users/school-admins", body)).status, 403);
     }
@@ -194,13 +194,10 @@ test("System Admin manages Independent Learners and School Admins, never System 
     const list = await call("system", "GET", "/api/admin/users");
     assert.deepEqual(list.json.users.map((u) => u.role).sort(), ["admin", "admin", "general_user", "general_user", "student", "system_admin", "system_admin", "teacher"]);
     assert.deepEqual(list.json.permissions.deletableRoles, ["general_user", "admin"]);
-    assert.equal((await call("system", "DELETE", `/api/admin/users/${uuid(7)}`)).status, 200, "Independent Learner");
-    assert.equal((await call("system", "DELETE", `/api/admin/users/${uuid(4)}`)).status, 200, "School Admin");
-    assert.equal((await call("system", "DELETE", `/api/admin/users/${uuid(2)}`)).status, 409, "another System Admin");
-    assert.equal((await call("system", "DELETE", `/api/admin/users/${uuid(1)}`)).status, 409, "itself");
-    assert.equal((await call("system", "DELETE", `/api/admin/users/${uuid(5)}`)).status, 403, "Teachers belong to the School Admin");
-    assert.equal((await call("system", "DELETE", `/api/admin/users/${uuid(6)}`)).status, 403, "Students belong to the School Admin");
-    assert.deepEqual(deletedAuthUsers, [uuid(7), uuid(4)]);
+    for (const target of [7, 4, 2, 1, 5, 6]) {
+      assert.equal((await call("system", "DELETE", `/api/admin/users/${uuid(target)}`)).status, 410, `routine deletion disabled (${target})`);
+    }
+    assert.deepEqual(deletedAuthUsers, [], "no Auth user is ever deleted");
 
     const created = await call("system", "POST", "/api/admin/users/school-admins", { email: "Principal@School.test", fullName: "Pat Principal", role: "system_admin" });
     assert.equal(created.status, 201);
@@ -211,7 +208,10 @@ test("System Admin manages Independent Learners and School Admins, never System 
 
     // No System Admin access to School Admin (M2-M8) features.
     assert.equal((await call("system", "GET", "/api/admin/diagnostic-results")).status, 403);
-    assert.equal((await call("system", "GET", "/api/materials")).status, 403);
+    // M3 F8 (System Admin): its OWN uploaded materials only; another user's material never appears.
+    const ownMaterials = await call("system", "GET", "/api/materials");
+    assert.equal(ownMaterials.status, 200);
+    assert.ok(!JSON.stringify(ownMaterials.json).includes(TEACHER_MATERIAL), "no Teacher material in the System Admin list");
     assert.equal((await call("system", "GET", `/api/materials/${TEACHER_MATERIAL}`)).status, 403);
   });
 });
@@ -219,16 +219,17 @@ test("System Admin manages Independent Learners and School Admins, never System 
 test("Teachers, Students, Independent Learners and anonymous callers get no account-management data", async () => {
   await serve(async ({ call, deletedAuthUsers }) => {
     for (const who of ["teacher", "student", "learner"]) {
-      for (const [method, path, body] of [["GET", "/api/admin/users"], ["DELETE", `/api/admin/users/${uuid(8)}`],
+      for (const [method, path, body] of [["GET", "/api/admin/users"], ["PATCH", `/api/admin/users/${uuid(8)}/status`, { status: "inactive" }],
         ["POST", "/api/admin/users/school-admins", { email: "a@b.co", fullName: "A B" }], ["GET", "/api/admin/diagnostic-results"]]) {
         const response = await call(who, method, path, body);
         assert.equal(response.status, 403, `${who} ${method} ${path}`);
         assert.equal(leaksLearner(response.text), false);
       }
     }
-    for (const [method, path] of [["GET", "/api/admin/users"], ["DELETE", `/api/admin/users/${uuid(8)}`], ["GET", "/api/admin/diagnostic-results"]]) {
+    for (const [method, path] of [["GET", "/api/admin/users"], ["PATCH", `/api/admin/users/${uuid(8)}/status`], ["GET", "/api/admin/diagnostic-results"]]) {
       assert.equal((await call(null, method, path)).status, 401);
     }
+    assert.equal((await call(null, "DELETE", `/api/admin/users/${uuid(8)}`)).status, 410, "deletion is disabled for everyone");
     assert.deepEqual(deletedAuthUsers, []);
   });
 });

@@ -11,7 +11,7 @@ import type { M3Role } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
 
 interface MaterialDetailPageProps {
-  role: Extract<M3Role, "admin" | "teacher" | "general_user">;
+  role: Extract<M3Role, "admin" | "teacher" | "general_user" | "system_admin">;
 }
 
 export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
@@ -27,14 +27,14 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
   const root = getM3WorkspaceRoot(role);
   const canView = Boolean(material);
   const canGenerate = Boolean(
-    role === "teacher" &&
+    (role === "teacher" || role === "system_admin") &&
       material &&
       material.uploadedById === profile?.id &&
       material.processingStatus === "completed" &&
       material.contentText?.trim(),
   );
   const canDeleteSets = Boolean(
-    role === "teacher" && material && material.uploadedById === profile?.id,
+    (role === "teacher" || role === "system_admin") && material && material.uploadedById === profile?.id,
   );
   // Only the uploader corrects the language; Admin views but does not edit uploads.
   const canEditLanguage = Boolean(
@@ -57,8 +57,8 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
         <FileText size={36} />
         <h1>Material unavailable</h1>
         <p>This material does not exist or is unavailable to your account.</p>
-        <Link className="m3-button m3-button--primary" to={role === "admin" ? root : `${root}/materials`}>
-          Back to Materials
+        <Link className={role === "system_admin" ? "m3-back-link" : "m3-button m3-button--primary"} to={role === "admin" ? root : `${root}/materials`}>
+          {role === "system_admin" && <ArrowLeft size={17} aria-hidden="true" />} Back to Materials
         </Link>
       </div>
     );
@@ -146,7 +146,7 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
           materialId={material.id}
           language={material.languageCode}
           canEdit={canEditLanguage}
-          hasQuestionSets={role === "teacher"}
+          hasQuestionSets={role === "teacher" || role === "system_admin"}
           onChanged={refreshMaterials}
         />
 

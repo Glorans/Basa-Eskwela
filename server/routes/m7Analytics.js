@@ -1,6 +1,6 @@
 const express = require('express');
 const { authorizeOralReadingRequest, authorizeTeacherOralReadingRequest } = require('../services/oralReadingAttemptService');
-const { authorizeAdminRequest } = require('../services/adminUserService');
+const { authorizeAdminRequest, authorizeSystemAdminRequest } = require('../services/adminUserService');
 const { SupabaseAuthenticationError, SupabaseServerConfigurationError, getSupabaseAdmin } = require('../services/supabaseAdmin');
 const analytics = require('../services/m7Analytics');
 const router = express.Router();
@@ -69,5 +69,20 @@ router.post('/admin/students/:studentId/interventions',wrap(async req => {
 router.patch('/admin/students/:studentId/interventions/:id',wrap(async req => {
   const requester = await authorizeAdminRequest(req);
   return analytics.saveIntervention(requester.user.id,req.params.studentId,req.params.id,req.body,{ authorize: () => analytics.requireAdminStudent(req.params.studentId) });
+}));
+// ---- System Admin (M7 F2 platform overview, F4 Independent Learner performance). Read-only; System Admin only. ----
+// School Admin, Teacher and learner routes above are unchanged; /system and /admin/* stay School Admin only.
+const systemAdmin = () => require('../services/systemAdminAnalytics');
+router.get('/system-admin/overview',wrap(async req => {
+  await authorizeSystemAdminRequest(req);
+  return systemAdmin().platformOverview();
+}));
+router.get('/system-admin/independent-learners',wrap(async req => {
+  await authorizeSystemAdminRequest(req);
+  return systemAdmin().independentLearners();
+}));
+router.get('/system-admin/independent-learners/:learnerId',wrap(async req => {
+  await authorizeSystemAdminRequest(req);
+  return systemAdmin().independentLearnerDetail(req.params.learnerId);
 }));
 module.exports = router;

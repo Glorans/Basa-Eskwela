@@ -3,9 +3,9 @@ import { confirmReadFlow } from "../../../../components/ReadFlowDialog";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../../../auth/useAuth";
 import {
-  deleteManagedUser,
   getAdminUserError,
   getManagedAccounts,
+  setManagedUserStatus,
   type AccountPermissions,
   type ManagedUser,
 } from "../../services/adminUsers";
@@ -15,7 +15,8 @@ import {
   ROLE_LABELS,
 } from "../../utils/authOnboarding";
 import {
-  canDeleteManagedUser,
+  accountStatusView,
+  canChangeManagedUserStatus,
   filterManagedUsers,
   getManagedUserDisplayName,
   isPendingTeacher,
@@ -25,11 +26,12 @@ import {
 import "../../../../pages/admin/UserManagementPage.css";
 
 const NO_PERMISSIONS: AccountPermissions = {
-  role: "", visibleRoles: [], deletableRoles: [], canCreateSchoolAdmin: false,
+  role: "", visibleRoles: [], deletableRoles: [], statusRoles: [], canCreateSchoolAdmin: false,
 };
 
-// M1 F6 (view user roles) and F7 (delete user account) for the System Admin and the School Admin.
-// The server decides which accounts are listed and which may be deleted; this page only reflects it.
+// M1 F6 (view user roles) and F7 (deactivate/reactivate user account) for the System Admin and the School Admin.
+// Deactivation is reversible and keeps the account and its records. The server decides which accounts are listed
+// and which may be changed; this page only reflects it.
 export default function UserManagementPage() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -53,9 +55,9 @@ export default function UserManagementPage() {
   const filterRoles = APP_ROLES.filter((role) => permissions.visibleRoles === "all" || permissions.visibleRoles.includes(role));
   const isSchoolAdmin = permissions.role === "admin";
   const scopeNote = permissions.role === "system_admin"
-    ? "You can view every account. You can delete Independent Learner and School Admin accounts."
+    ? "You can view every account. You can deactivate and reactivate Independent Learner and School Admin accounts."
     : isSchoolAdmin
-      ? "You can view and delete Teacher and Student accounts."
+      ? "You can view, deactivate and reactivate Teacher and Student accounts."
       : "";
 
   async function loadUsers() {
@@ -77,12 +79,20 @@ export default function UserManagementPage() {
     void loadUsers();
   }, []);
 
-  async function handleDelete(user: ManagedUser) {
-    if (pendingUserId || !canDeleteManagedUser(permissions, user, currentUser?.id)) return;
+  async function handleStatusChange(user: ManagedUser) {
+    if (pendingUserId || !canChangeManagedUserStatus(permissions, user, currentUser?.id)) return;
+    const name = getManagedUserDisplayName(user);
+    const view = accountStatusView(user);
+    const deactivate = view.target === "inactive";
     const confirmed = await confirmReadFlow(
-      user.role === "admin"
-        ? "Are you sure you want to delete this School Admin account? They will lose all administrator access. This action cannot be undone."
-        : "Are you sure you want to delete this user account? This action cannot be undone.",
+      view.needsRetry
+        ? deactivate
+          ? `${name} is deactivated, but sign-in is not blocked yet. Block sign-in now? Their account and records are kept.`
+          : `${name} is active, but sign-in is still blocked. Restore sign-in now? Their account and records are kept.`
+        : deactivate
+          ? `Deactivate ${name}? They will be signed out and unable to sign in until an administrator reactivates the account. ${user.role === "admin" ? "They will lose administrator access while deactivated. " : ""}Their account, records and learning history are kept.`
+          : `Reactivate ${name}? They can sign in again with the same account, role and records.${user.role === "teacher" ? " Teacher verification is unchanged." : ""}`,
+      { confirm: view.action, cancel: "Cancel" },
     );
     if (!confirmed) return;
 
@@ -91,11 +101,13 @@ export default function UserManagementPage() {
     setSuccess("");
 
     try {
-      await deleteManagedUser(user.id);
-      setUsers((current) => current.filter((item) => item.id !== user.id));
-      setSuccess("User account deleted.");
-    } catch (deleteError) {
-      setError(getAdminUserError(deleteError));
+      const result = await setManagedUserStatus(user.id, deactivate ? "inactive" : "active");
+      setUsers((current) => current.map((item) => (item.id === user.id
+        ? { ...item, status: result.account.status, signInBlocked: result.account.status === "inactive" }
+        : item)));
+      setSuccess(deactivate ? `${name} was deactivated.` : `${name} was reactivated.`);
+    } catch (statusError) {
+      setError(getAdminUserError(statusError));
     } finally {
       setPendingUserId("");
     }
@@ -161,7 +173,7 @@ export default function UserManagementPage() {
               >
                 <option value="">All Statuses</option>
                 <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+                <option value="inactive">Deactivated</option>
               </select>
             </label>
 
@@ -197,7 +209,8 @@ export default function UserManagementPage() {
             <tbody>
               {filteredUsers.map((user) => {
                 const isSelf = user.id === currentUser?.id;
-                const canDelete = canDeleteManagedUser(permissions, user, currentUser?.id);
+                const canChangeStatus = canChangeManagedUserStatus(permissions, user, currentUser?.id);
+                const statusView = accountStatusView(user);
                 const isPending = user.id === pendingUserId;
                 const roleLabel = isAppRole(user.role)
                   ? ROLE_LABELS[user.role]
@@ -210,7 +223,11 @@ export default function UserManagementPage() {
                     <td>
                       <span className="admin-users-role-readonly">{roleLabel}</span>
                     </td>
-                    <td>{user.status || "\u2014"}</td>
+                    <td>
+                      <span className="admin-users-role-readonly" data-account-status={user.status === "inactive" ? "deactivated" : "active"}>
+                        {statusView.label}
+                      </span>
+                    </td>
                     <td>{new Date(user.createdAt).toLocaleDateString()}</td>
                     <td>{user.role === "teacher" ? user.teacherStatus ?? "Unavailable" : "Not required"}</td>
                     <td>
@@ -219,12 +236,13 @@ export default function UserManagementPage() {
                       )}
                       <button
                         type="button"
-                        className="admin-users-delete"
-                        disabled={!canDelete || isPending}
-                        title={canDelete ? undefined : "This account is outside the accounts you can delete."}
-                        onClick={() => void handleDelete(user)}
+                        className={statusView.target === "active" ? "admin-users-clear admin-users-reactivate" : "admin-users-delete admin-users-deactivate"}
+                        disabled={!canChangeStatus || isPending}
+                        title={canChangeStatus ? undefined : "This account is outside the accounts you can manage."}
+                        aria-label={`${statusView.action} ${getManagedUserDisplayName(user)}`}
+                        onClick={() => void handleStatusChange(user)}
                       >
-                        {isPending ? "Working…" : "Delete"}
+                        {isPending ? "Working…" : statusView.action}
                       </button>
                     </td>
                   </tr>

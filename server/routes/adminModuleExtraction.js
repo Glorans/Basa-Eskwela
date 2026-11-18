@@ -28,7 +28,7 @@ const {
 // authorized by the database when the draft is saved.
 function requireModuleAuthor(profile) {
   const approvedTeacher = profile?.role === "teacher" && profile?.teacher_status === "approved";
-  if (profile?.role !== "admin" && !approvedTeacher) {
+  if (!["admin", "system_admin"].includes(profile?.role) && !approvedTeacher) {
     throw new MaterialAuthorizationError(
       "Only an Admin or an approved Teacher may extract a file for a reading module.",
     );

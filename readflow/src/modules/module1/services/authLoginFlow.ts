@@ -3,6 +3,9 @@ import type { AuthProfile } from "./authProfile.ts";
 const LOGIN_FLOW_ERROR_MESSAGE =
   "We couldn't sign in or load your account. Please try again.";
 
+// M1 F7: Supabase Auth refuses a deactivated (banned) account with "user_banned".
+export const DEACTIVATED_ACCOUNT_MESSAGE = "This account has been deactivated. Contact your administrator.";
+
 interface PasswordSignInResult {
   data: { user: { id: string } | null };
   error: { message: string; code?: string } | null;
@@ -44,6 +47,9 @@ export async function runLoginFlow(
   }
 
   if (signInResult.error) {
+    if (signInResult.error.code === "user_banned" || /^user is banned$/i.test(signInResult.error.message)) {
+      throw new LoginFlowError(DEACTIVATED_ACCOUNT_MESSAGE, "user_banned");
+    }
     throw new LoginFlowError(signInResult.error.message, signInResult.error.code);
   }
 

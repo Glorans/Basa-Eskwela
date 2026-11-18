@@ -20,7 +20,7 @@ const MODULES = [
 ];
 
 type TrashRow = { id: string; title: string; statusBefore: string; trashedAt: string; trashedByName: string; everPublished: boolean; hasHistory: boolean };
-function mountList(workspace?: "admin" | "teacher", options: { trash?: TrashRow[] | null; restored?: string; modules?: typeof MODULES } = {}) {
+function mountList(workspace?: "admin" | "teacher" | "system_admin", options: { trash?: TrashRow[] | null; restored?: string; modules?: typeof MODULES } = {}) {
   const runtime = createHookRuntime(require("react"));
   const calls: string[] = [];
   const page = loadComponentModule(pageUrl, (id) => {
@@ -41,7 +41,7 @@ function mountList(workspace?: "admin" | "teacher", options: { trash?: TrashRow[
         republishModule: async (id: string) => { calls.push(`republish:${id}`); return "published"; } };
     }
     if (id.endsWith("/components/AdminCollectionEditor")) {
-      return { editorPaths: (w: string) => w === "teacher"
+      return { editorPaths: (w: string) => w === "system_admin" ? { list: "/system-admin/content", module: "/system-admin/content/modules" } : w === "teacher"
         ? { list: "/m3/teacher/content", module: "/m3/teacher/content" } : { list: "/m3/admin", module: "/m3/admin/modules" } };
     }
     if (id.endsWith("/ReadFlowDialog")) return { confirmReadFlow: async () => true };
@@ -119,7 +119,7 @@ test("Teacher routes live inside the approved-Teacher route group and reuse the 
   assert.match(app, /path="modules\/new"\n\s+element=\{<ModuleFormPage mode="create" \/>\}/);
 });
 
-function mountEditor(workspace: "admin" | "teacher", mode: "create" | "detail") {
+function mountEditor(workspace: "admin" | "teacher" | "system_admin", mode: "create" | "detail") {
   const runtime = createHookRuntime(require("react"));
   const revisionCalls: string[] = [];
   const editor = loadComponentModule(editorUrl, (id) => {
@@ -271,4 +271,71 @@ test("Publish Again confirmation explains learners will see it and that it is va
   const text = moduleRepublishMessage({ title: "Story" });
   assert.match(text, /^Publish "Story" again\?/);
   assert.match(text, /checked again before it is published/);
+});
+
+
+test("System Admin reuses the module list: create/view/edit links, difficulty organization and Trash deletion", async () => {
+  const m = mountList("system_admin");
+  await settle(m);
+  assert.deepEqual(m.titles(), ["My Easy Draft", "My Hard Story", "Someone Else"]);
+  const tree = m.render();
+  assert.equal(findAll(tree, n => n.props?.actions)[0].props.actions.props.to, "/system-admin/content/modules/new");
+  const links = findAll(tree, n => n.type === "a").map(n => n.props.to);
+  assert.ok(links.includes("/system-admin/content/modules/mine-draft/edit"));
+  assert.ok(links.includes("/system-admin/content/modules/mine-pub"));
+  findAll(m.select("Difficulty"), n => n.type === "select")[0].props.onChange({ target: { value: "Hard" } });
+  assert.deepEqual(m.titles(), ["My Hard Story"]);
+  findAll(m.render(), n => n.type === "button" && n.props["aria-label"] === "Delete My Hard Story")[0].props.onClick();
+  await settle(m);
+  assert.ok(m.calls.includes("trashModule:mine-pub"), "same history-preserving Trash action");
+});
+
+test("System Admin detail uses the existing editor and revision workflow with its own links", async () => {
+  const m = mountEditor("system_admin", "detail");
+  m.render(); await tick(); await tick();
+  const tree = m.render();
+  assert.equal(findAll(tree, n => n.props?.className === "m3-editor-back")[0].props.to, "/system-admin/content");
+  // No decorative workspace label: the module title is the page's only heading.
+  assert.doesNotMatch(textOf(tree), /Workspace/);
+  assert.equal(findAll(tree, n => n.props?.className === "m3-eyebrow").length, 0);
+  assert.deepEqual(m.revisionCalls, ["revisions"]);
+});
+
+test("System Admin routes stay in the System Admin guard and reuse all M3 screens", () => {
+  const app = read("App.tsx");
+  const block = app.slice(app.indexOf('<Route element={<RequireRole allowedRoles={["system_admin"]} />}>'), app.indexOf('{/* Admin (School Admin) routes */}'));
+  for (const route of ["content", "content/modules/new", "content/modules/:moduleId", "content/modules/:moduleId/edit", "content/materials", "content/materials/upload", "content/materials/:materialId", "content/materials/:materialId/question-sets/:setId", "content/materials/:materialId/question-sets/:setId/edit"]) assert.ok(block.includes(`path="${route}"`), route);
+  for (const component of ["Module3Page", "ModuleFormPage", "MaterialLibraryPage", "UploadMaterialPage", "MaterialDetailPage", "QuestionReviewPage"]) assert.ok(block.includes(`<${component}`));
+});
+
+test("System Admin editor: one circular Add Passage Below button per card inserts directly below that passage", async () => {
+  const m = mountEditor("system_admin", "create");
+  m.render(); await tick();
+  const view = () => {
+    const tree = m.render();
+    const cards = findAll(tree, n => n.type === "section" && n.props?.className === "m3-editor-card m3-editor-passage");
+    const titles = cards.map(card => findAll(card, n => n.type === "input" && n.props?.maxLength === 200)[0]);
+    const adds = findAll(tree, n => n.type === "button" && n.props?.className === "sa-add-passage");
+    return { tree, titles, adds };
+  };
+  let v = view();
+  assert.equal(v.adds.length, v.titles.length, "one add button per passage card");
+  assert.equal(findAll(v.tree, n => n.type === "button" && textOf(n).includes("+ Add Passage Below")).length, 0, "old rectangular button removed");
+  assert.equal(v.adds[0].props["aria-label"], "Add Passage Below");
+  assert.equal(textOf(v.adds[0]).trim(), "Add Passage Below", "tooltip text present for hover and focus");
+  v.titles[0].props.onChange({ target: { value: "First" } });
+  view().adds[0].props.onClick();
+  v = view(); v.titles[1].props.onChange({ target: { value: "Second" } });
+  view().adds[0].props.onClick();
+  assert.deepEqual(view().titles.map((t: any) => t.props.value), ["First", "", "Second"]);
+});
+
+test("School Admin and Teacher editors keep the original Add Passage Below button", async () => {
+  for (const workspace of ["admin", "teacher"] as const) {
+    const m = mountEditor(workspace, "create");
+    m.render(); await tick();
+    const tree = m.render();
+    assert.equal(findAll(tree, n => n.props?.className === "sa-add-passage").length, 0, workspace);
+    assert.ok(findAll(tree, n => n.type === "button" && textOf(n).includes("+ Add Passage Below")).length >= 1, workspace);
+  }
 });

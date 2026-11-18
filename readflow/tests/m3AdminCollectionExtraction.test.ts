@@ -42,8 +42,9 @@ function mount(
   extract: (input: { file: unknown; learningPathLanguage: string }) => Promise<unknown> = async () => ({ extractedText: "" }),
   confirm: (message: string) => boolean = () => true,
   userId = "admin-1",
-  options: { edit?: Record<string, any>; saveError?: Error; createError?: Error } = {},
+  options: { edit?: Record<string, any>; saveError?: Error; createError?: Error; workspace?: "admin" | "system_admin" } = {},
 ) {
+  const published: string[] = [];
   const saves: { title: string; passages: { id: string; passageText: string }[]; revision: number }[] = [];
   let serverCollection = options.edit ? structuredClone(options.edit) : null;
   const browserWindow = { ...listenerTarget(), location: { href: "http://app.test/m3/admin/modules/new", origin: "http://app.test", pathname: "/m3/admin/modules/new", search: "" } };
@@ -69,7 +70,7 @@ function mount(
           learningPathsLoading: false,
           learningPathsError: null,
           refreshModules: async () => {},
-          publishModule: async () => ({ ok: true }),
+          publishModule: async (id: string) => { published.push(id); return { ok: true }; },
         }),
       };
     }
@@ -115,7 +116,7 @@ function mount(
     return require(id);
   }, { window: browserWindow, document: browserDocument });
 
-  const render = () => runtime.render(editor.default, { mode: options.edit ? "edit" : "create" });
+  const render = () => runtime.render(editor.default, { mode: options.edit ? "edit" : "create", workspace: options.workspace });
   render(); // the first render shows the loading state; its effect creates the draft
   const labelled = (tree: unknown, label: string) =>
     findAll(tree, (node) => node.type === "label" && [node.props.children].flat()[0] === label)[0];
@@ -150,7 +151,7 @@ function mount(
     ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
   };
   const button = (label: string) => findAll(render(), (node) => node.type === "button" && textOf(node) === label)[0];
-  return { ui, extractCalls, drafts, chooseFile, choosePath, confirms, button, browserWindow, browserDocument, saves, server: () => serverCollection };
+  return { ui, published, extractCalls, drafts, chooseFile, choosePath, confirms, button, browserWindow, browserDocument, saves, server: () => serverCollection };
 }
 
 function assertEditable(textarea: any, fieldset: any) {
@@ -552,4 +553,28 @@ test("Edit and Create drafts for the same account stay separate", async () => {
   create.ui();
   assert.ok(localStorage.getItem(NEW_DRAFT_KEY));
   assert.equal(JSON.parse(localStorage.getItem(EDIT_KEY) ?? "null").passages[1].passageText, "Older unsaved one.", "the edit draft is untouched");
+});
+
+
+test("System Admin F1/F7 uses the same create form and saves extracted, reviewed passage text", async () => {
+  const m = mount(async () => ({ extractedText: "Extracted story." }), undefined, "system-1", { workspace: "system_admin" });
+  m.choosePath();
+  m.ui().titleInput.props.onChange({ target: { value: "System Module" } });
+  await m.chooseFile();
+  m.ui().textarea.props.onChange({ target: { value: "Reviewed story." } });
+  m.ui().saveDraft.props.onClick(); await tick();
+  assert.deepEqual(m.drafts, [{ title: "System Module", passageText: "Reviewed story." }]);
+  assert.equal(m.extractCalls.length, 1);
+});
+
+test("System Admin F3/F5 uses the same edit/save and explicit publishing workflow", async () => {
+  const m = mount(undefined, undefined, "system-1", { workspace: "system_admin", edit: SAVED });
+  await tick(); await tick();
+  m.ui().textarea.props.onChange({ target: { value: "Edited story." } });
+  m.ui().saveDraft.props.onClick(); await tick(); await tick();
+  assert.equal(m.saves[0].passages[0].passageText, "Edited story.");
+  assert.deepEqual(m.published, [], "saving must not publish automatically");
+  const publish = m.button("Publish Module"); assert.ok(publish); assert.ok(!publish.props.disabled);
+  publish.props.onClick(); await tick(); await tick();
+  assert.deepEqual(m.published, [m.server()!.id]);
 });
