@@ -1,5 +1,9 @@
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 const { getProfileDisplayName } = require("./profileNames");
+const { DIAGNOSTIC_ASSESSMENTS } = require("./diagnosticAssessments");
+
+const CODE_TITLES = new Map(Object.values(DIAGNOSTIC_ASSESSMENTS).map((a) => [`${a.id}@${a.version}`, a.title]));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // M2 F3: View Assessment Results and History. Read-only; scoring, classification, M3 placement, M7 and M8 are
 // untouched. Only these columns are read and only the mapped fields below are returned: transcripts, word-level
@@ -35,9 +39,45 @@ function toHistoryEntry(row) {
     readingLevel: row.reading_level,
     assessmentId: row.assessment_id ?? null,
     assessmentVersion: row.assessment_version ?? null,
+    // Initial: the code-defined diagnostic's title. Reassessment: the package title (added by withTitles).
+    // (an activated initial version, F6, gets its own title from withTitles)
+    assessmentTitle: row.assessment_type === "initial" ? CODE_TITLES.get(`${row.assessment_id}@${row.assessment_version}`) ?? null : null,
     // Rows written by the browser before server verification stay 'unverified' and are labelled as such.
     verified: row.verification_status === "server_verified",
   };
+}
+
+/**
+ * F8: reassessment rows store the package id as assessment_id. Their titles are read only when such rows exist, so
+ * databases without the reassessment foundation are never asked for the package tables. Only titles are read.
+ */
+async function withTitles(db, entries) {
+  entries = await withActivatedInitialTitles(db, entries);
+  const ids = [...new Set(entries.filter((e) => e.assessmentType === "reassessment" && UUID.test(e.assessmentId ?? ""))
+    .map((e) => e.assessmentId))];
+  if (!ids.length) return entries;
+  const titles = new Map();
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const { data, error } = await db.from("m2_assessment_packages").select("id, title").in("id", ids.slice(i, i + BATCH));
+    if (error) break; // titles are cosmetic: history still shows without them
+    for (const row of data ?? []) titles.set(row.id, row.title);
+  }
+  return entries.map((e) => (e.assessmentType === "reassessment" ? { ...e, assessmentTitle: titles.get(e.assessmentId) ?? null } : e));
+}
+
+/** Initial results taken on an activated version (not the built-in one): the version's passage title. Cosmetic. */
+async function withActivatedInitialTitles(db, entries) {
+  const pending = entries.filter((e) => e.assessmentType === "initial" && !e.assessmentTitle && e.assessmentId && e.assessmentVersion);
+  if (!pending.length) return entries;
+  const { data: packages, error } = await db.from("m2_assessment_packages").select("id, legacy_assessment_id")
+    .in("legacy_assessment_id", [...new Set(pending.map((e) => e.assessmentId))]);
+  if (error || !packages?.length) return entries;
+  const { data: versions, error: ve } = await db.from("m2_assessment_package_versions").select("package_id, version_label, passage_title")
+    .in("package_id", packages.map((p) => p.id));
+  if (ve) return entries;
+  const legacyOf = new Map(packages.map((p) => [p.id, p.legacy_assessment_id]));
+  const titles = new Map((versions ?? []).map((v) => [`${legacyOf.get(v.package_id)}@${v.version_label}`, v.passage_title]));
+  return entries.map((e) => (pending.includes(e) ? { ...e, assessmentTitle: titles.get(`${e.assessmentId}@${e.assessmentVersion}`) ?? null } : e));
 }
 
 /** Newest first; ties (same timestamp) keep a stable order by id. */
@@ -66,12 +106,13 @@ async function loadResultsFor(db, userIds) {
 /** Students and Independent Learners: the signed-in learner's own results only. */
 async function listOwnDiagnosticHistory(userId, { getAdmin = getSupabaseAdmin } = {}) {
   if (!userId) throw new DiagnosticHistoryError("Learner access is required.", 403);
+  const db = getAdmin();
   const rows = await selectRows(
-    getAdmin().from("diagnostic_results").select(HISTORY_COLUMNS).eq("user_id", userId),
+    db.from("diagnostic_results").select(HISTORY_COLUMNS).eq("user_id", userId),
     "your diagnostic results",
   );
   // Defense in depth: the query is already limited to this learner.
-  return rows.filter((row) => row.user_id === userId).map(toHistoryEntry).sort(newestFirst);
+  return (await withTitles(db, rows.filter((row) => row.user_id === userId).map(toHistoryEntry))).sort(newestFirst);
 }
 
 /**
@@ -119,12 +160,13 @@ async function listTeacherDiagnosticResults(teacherId, { getAdmin = getSupabaseA
   const students = profiles.filter((profile) => profile.role === "student" && roomsByStudent.has(profile.id));
   const allowed = new Set(students.map((student) => student.id));
   const resultsByStudent = new Map();
-  for (const row of await loadResultsFor(db, [...allowed])) {
-    if (!allowed.has(row.user_id)) continue;
+  const allowedRows = (await loadResultsFor(db, [...allowed])).filter((row) => allowed.has(row.user_id));
+  const titled = await withTitles(db, allowedRows.map(toHistoryEntry));
+  allowedRows.forEach((row, index) => {
     const list = resultsByStudent.get(row.user_id) ?? [];
-    list.push(toHistoryEntry(row));
+    list.push(titled[index]);
     resultsByStudent.set(row.user_id, list);
-  }
+  });
 
   return {
     students: students.map((student) => ({
@@ -136,8 +178,33 @@ async function listTeacherDiagnosticResults(teacherId, { getAdmin = getSupabaseA
   };
 }
 
+/**
+ * School Admin (single-school pilot): every Student account and their results. Independent Learners are excluded from
+ * school reporting. No school membership is invented: all Students belong to the one pilot school.
+ */
+async function listSchoolStudentResults({ getAdmin = getSupabaseAdmin } = {}) {
+  const db = getAdmin();
+  const profiles = (await selectRows(db.from("profiles").select("id, role, full_name, nickname").eq("role", "student"), "Student profiles"))
+    .filter((p) => p.role === "student");
+  const allowed = new Set(profiles.map((p) => p.id));
+  const rows = (await loadResultsFor(db, [...allowed])).filter((row) => allowed.has(row.user_id));
+  const titled = await withTitles(db, rows.map(toHistoryEntry));
+  const byStudent = new Map();
+  rows.forEach((row, index) => {
+    const list = byStudent.get(row.user_id) ?? [];
+    list.push(titled[index]);
+    byStudent.set(row.user_id, list);
+  });
+  return profiles.map((p) => ({
+    id: p.id,
+    name: getProfileDisplayName({ role: p.role, nickname: p.nickname, fullName: p.full_name }) || "Student",
+    results: (byStudent.get(p.id) ?? []).sort(newestFirst),
+  })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
 module.exports = {
   DiagnosticHistoryError,
+  listSchoolStudentResults,
   HISTORY_COLUMNS,
   listOwnDiagnosticHistory,
   listTeacherDiagnosticResults,

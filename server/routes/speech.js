@@ -91,6 +91,7 @@ function createSpeechRouter({
   transcribe,
   synthesize = synthesizeSpeech,
   receipts = createTranscriptReceiptService(),
+  resolveBinding,
   log = console.error,
 } = {}) {
   fs.mkdirSync(uploadDirectory, { recursive: true });
@@ -100,6 +101,7 @@ function createSpeechRouter({
   const { requireSpeechAccess } = createSpeechAccess({ authorize, rateLimits, now, log });
   const diagnosticAudioHandler = createDiagnosticAudioHandler({
     ...(transcribe ? { transcribe } : {}),
+    ...(resolveBinding ? { resolveBinding } : {}),
     receipts,
     log,
   });

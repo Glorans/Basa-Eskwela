@@ -26,6 +26,16 @@ const app = express();
 // Signs M2 transcripts at both Azure STT entry points and verifies them when
 // the diagnostic result is submitted (DIAGNOSTIC_RECEIPT_SECRET).
 const diagnosticReceipts = createTranscriptReceiptService();
+// M2 F8: one reassessment delivery service shared by the Student routes and the speech binding (receipts are bound
+// to the Student's own active assignment and exact package version).
+const reassessmentDelivery = require("./services/reassessmentDeliveryService").createReassessmentDeliveryService({
+  repository: require("./services/reassessmentDeliveryRepository").createSupabaseReassessmentDeliveryRepository(),
+  receipts: diagnosticReceipts,
+});
+// M2 F6: which initial diagnostic version learners take (built-in 3.0 unless a System Admin activated another).
+const initialDiagnostics = require("./services/initialDiagnosticService").createInitialDiagnosticService();
+const resolveDiagnosticBinding = require("./services/diagnosticBindingResolver")
+  .createDiagnosticBindingResolver({ getReassessments: () => reassessmentDelivery, initialAssessments: initialDiagnostics });
 
 app.use(
   cors({
@@ -54,6 +64,11 @@ app.use("/api/admin/modules", require("./routes/adminModulePassages").createAdmi
 app.use("/api/admin/diagnostic-results", adminDiagnosticResultsRouter);
 // M2 F3: learners' own diagnostic history and approved Teachers' enrolled Students (read-only).
 app.use("/api/diagnostic-history", require("./routes/diagnosticHistory").createDiagnosticHistoryRouter());
+// M2 F6 + F10: assessment packages (staff only; learner delivery unchanged).
+app.use("/api/assessment-packages", require("./routes/assessmentPackages").createAssessmentPackagesRouter());
+// M2 F9: classroom reassessment assignments (School Admin + approved Teachers). Refused by the database while the
+// official reassessment gate is OFF.
+app.use("/api/reassessments", require("./routes/reassessments").createReassessmentsRouter({ delivery: reassessmentDelivery }));
 app.use("/api/admin/users", adminUsersRouter);
 app.use("/api/account", require("./routes/accountInvitation").accountInvitationRouter);
 app.use("/api/admin/teacher-invitations", require("./routes/teacherInvitations").createTeacherInvitationsRouter());
@@ -71,15 +86,17 @@ app.use("/api/m8", require("./routes/m8Rewards").createM8RewardsRouter());
 app.use("/api/classrooms", require("./routes/studentClassrooms").createStudentClassroomsRouter());
 // POST /api/tts, /api/diagnostic/audio (M2 parts) and /api/read-aloud/audio (M5
 // whole recordings): authenticated, throttled Azure Speech.
-app.use(createSpeechRouter({ receipts: diagnosticReceipts }));
+app.use(createSpeechRouter({ receipts: diagnosticReceipts, resolveBinding: resolveDiagnosticBinding }));
 // POST /api/diagnostic/results: the only write path for M2 diagnostic results.
-app.use(createDiagnosticResultsRouter({ receipts: diagnosticReceipts }));
+app.use(createDiagnosticResultsRouter({ receipts: diagnosticReceipts, initialAssessments: initialDiagnostics }));
+// GET /api/diagnostic/initial/:language: the initial diagnostic version a learner takes now (F6), never answer keys.
+app.use(require("./routes/initialDiagnostic").createInitialDiagnosticRouter({ initialAssessments: initialDiagnostics }));
 // POST /api/diagnostic/practice: M2 F7 staff Practice Mode. Scores and returns; never stores anything.
 app.use(require("./routes/diagnosticPractice").createDiagnosticPracticeRouter({ receipts: diagnosticReceipts }));
 
 function startServer(port = process.env.PORT || 5000) {
   const server = createServer(app);
-  const speechSocket = attachDiagnosticSpeechSocket(server, { receipts: diagnosticReceipts });
+  const speechSocket = attachDiagnosticSpeechSocket(server, { receipts: diagnosticReceipts, resolveBinding: resolveDiagnosticBinding });
   const stopRiskWorker = require("./services/m7RiskWorker").startRiskWorker();
   server.once("close", stopRiskWorker);
   // Removes extracted uploads that were never saved (closed tabs, restarts); never saved materials.
