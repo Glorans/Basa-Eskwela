@@ -44,12 +44,9 @@ export function getReadingWords(text: string, language: DiagnosticLanguage = "en
 }
 
 function alignReadingWords(
-  expectedText: string,
-  transcript: string,
-  language: DiagnosticLanguage,
+  expectedWords: string[],
+  spokenWords: string[],
 ): ReadingWordAlignment[] {
-  const expectedWords = getReadingWords(expectedText, language);
-  const spokenWords = getReadingWords(transcript, language);
   const costs = Array.from({ length: expectedWords.length + 1 }, () =>
     Array<number>(spokenWords.length + 1).fill(0),
   );
@@ -139,15 +136,42 @@ function alignReadingWords(
   return alignment.reverse();
 }
 
+const countMiscues = (alignment: ReadingWordAlignment[]) =>
+  alignment.filter((word) => word.type !== "match").length;
+
+/**
+ * The displayed title is optional to read. Only a transcript that BEGINS with the whole title (normalized) is
+ * considered, and that prefix is set aside only when doing so leaves strictly fewer miscues. So the title can only
+ * remove its own words: title words elsewhere in the transcript, a partial title, or a passage that itself starts
+ * with the title's words are scored exactly as before. Without a title the result is unchanged (M5 passes none).
+ * Mirrors server/services/diagnosticScoring.js; tests/diagnosticTrustedScoring.test.js compares both.
+ */
+function alignWithOptionalTitle(expectedWords: string[], spokenWords: string[], titleWords: string[]) {
+  const alignment = alignReadingWords(expectedWords, spokenWords);
+  if (!titleWords.length || spokenWords.length <= titleWords.length
+    || !titleWords.every((word, index) => spokenWords[index] === word)) {
+    return { alignment, titleWordsExcluded: 0 };
+  }
+  const withoutTitle = alignReadingWords(expectedWords, spokenWords.slice(titleWords.length));
+  return countMiscues(withoutTitle) < countMiscues(alignment)
+    ? { alignment: withoutTitle, titleWordsExcluded: titleWords.length }
+    : { alignment, titleWordsExcluded: 0 };
+}
+
 export function calculateOralReadingMetrics(
   expectedText: string,
   transcript: string,
   recordingDurationSeconds?: number,
   language: DiagnosticLanguage = "en",
+  title = "",
 ): OralReadingMetrics {
   // transcript must be Google's completed FINAL output, never visual/interim state.
-  const alignment = alignReadingWords(expectedText, transcript, language);
-  const totalExpectedWords = getReadingWords(expectedText, language).length;
+  const expectedWords = getReadingWords(expectedText, language);
+  const titleWords = title ? getReadingWords(title, language) : [];
+  const { alignment, titleWordsExcluded } = alignWithOptionalTitle(
+    expectedWords, getReadingWords(transcript, language), titleWords,
+  );
+  const totalExpectedWords = expectedWords.length;
   const correctWords = alignment.filter((word) => word.type === "match").length;
   const substitutions = alignment.filter(
     (word) => word.type === "substitution",
@@ -192,6 +216,8 @@ export function calculateOralReadingMetrics(
     detectableMiscues,
     wordAccuracy,
     wordReadingScore,
+    // Only when a title was supplied (M2), so outputs without a title keep their exact shape.
+    ...(titleWords.length ? { titleWordsExcluded } : {}),
     ...(hasValidDuration
       ? {
           recordingDurationSeconds,

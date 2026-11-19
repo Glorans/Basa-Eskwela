@@ -40,6 +40,7 @@ test("server assessment copy matches the frontend identity, passage and answer k
     assert.equal(copy.assessmentType, frontend.assessmentType);
     assert.equal(copy.contentStatus, frontend.contentStatus);
     assert.deepEqual([...copy.paragraphs], [...frontend.passage.paragraphs]);
+    assert.equal(copy.title, frontend.passage.title, "the server's optional title is the title shown on screen");
     assert.equal(getDiagnosticPassageText(copy), data.getDiagnosticPassageText(frontend));
     assert.deepEqual(copy.questions.map((q) => ({ id: q.id, choiceIds: [...q.choiceIds], correctChoiceId: q.correctChoiceId })),
       frontend.questions.map((q) => ({ id: q.id, choiceIds: q.choices.map((c) => c.id), correctChoiceId: q.correctChoiceId })));
@@ -70,11 +71,15 @@ for (const language of ["en", "fil"]) {
     const words = scoring.getReadingWords(passageText, language);
     assert.equal(words.length, 60);
     let compared = 0;
-    for (const transcript of variants(words, language)) {
+    // The same variants, plus each one read after the displayed title (optional, never scored).
+    const all = variants(words, language);
+    for (const transcript of [...all, ...all.map((text) => `${assessment.title}. ${text}`)]) {
       assert.deepEqual(server.getReadingWords(transcript, language), scoring.getReadingWords(transcript, language));
       for (const duration of [undefined, 0, 37.5, 300]) {
         assert.deepEqual(server.calculateOralReadingMetrics(passageText, transcript, duration, language),
           scoring.calculateOralReadingMetrics(passageText, transcript, duration, language));
+        assert.deepEqual(server.calculateOralReadingMetrics(passageText, transcript, duration, language, assessment.title),
+          scoring.calculateOralReadingMetrics(passageText, transcript, duration, language, frontendAssessment.passage.title));
       }
       for (let correct = 0; correct <= 6; correct++) {
         const answers = Object.fromEntries(assessment.questions.map((q, index) =>
@@ -95,7 +100,7 @@ for (const language of ["en", "fil"]) {
         compared++;
       }
     }
-    assert.ok(compared > 200);
+    assert.ok(compared > 400);
   });
 }
 

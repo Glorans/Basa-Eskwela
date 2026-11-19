@@ -32,7 +32,8 @@ export function restorePassageReading(value: unknown, assessment: DiagnosticAsse
   return {
     language: assessment.language,
     transcription: { text, ...(typeof confidence === "number" && confidence >= 0 && confidence <= 1 ? { confidence } : {}) },
-    oralReadingMetrics: calculateOralReadingMetrics(getDiagnosticPassageText(assessment), text, duration, assessment.language),
+    // The displayed title is optional to read (never scored), matching the backend's authoritative scoring.
+    oralReadingMetrics: calculateOralReadingMetrics(getDiagnosticPassageText(assessment), text, duration, assessment.language, assessment.passage.title),
     transcriptReceipts,
   };
 }

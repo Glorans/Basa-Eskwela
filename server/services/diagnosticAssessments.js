@@ -21,6 +21,8 @@ const DIAGNOSTIC_ASSESSMENTS = Object.freeze({
     language: "en",
     assessmentType: "initial",
     contentStatus: "active",
+    // Shown above the story; reading it aloud is optional and never scored (not part of the passage or binding).
+    title: "Watering the School Garden",
     paragraphs: Object.freeze([
       "Mia walked to the school garden with her friend Ben.",
       "They hurried to water the tomato plants before the hot afternoon sun could dry the soil and harm the roots.",
@@ -34,6 +36,8 @@ const DIAGNOSTIC_ASSESSMENTS = Object.freeze({
     language: "fil",
     assessmentType: "initial",
     contentStatus: "active",
+    // Shown above the story; reading it aloud is optional and never scored (not part of the passage or binding).
+    title: "Si Lito at ang Mais",
     paragraphs: Object.freeze([
       "Maagang nagtungo si Lito sa bukid kasama ang lola niya.",
       "Magkasama nilang inani ang mga mais at agad inilagay ang mga ito sa basket bago bumuhos ang malakas na ulan.",

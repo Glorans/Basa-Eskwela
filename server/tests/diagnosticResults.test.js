@@ -13,7 +13,7 @@ const { createTranscriptReceiptService, DiagnosticReceiptError } = require("../s
 const {
   DIAGNOSTIC_ASSESSMENTS, getDiagnosticAssessmentBinding, getDiagnosticPassageText,
 } = require("../services/diagnosticAssessments");
-const { scoreDiagnostic, getReadingWords } = require("../services/diagnosticScoring");
+const { DIAGNOSTIC_SCORING_RULE, scoreDiagnostic, getReadingWords } = require("../services/diagnosticScoring");
 const { SupabaseAuthenticationError } = require("../services/supabaseAdmin");
 const { authorizeOralReadingRequest, authorizeOralReadingPracticeRequest } = require("../services/oralReadingAttemptService");
 const { testReceipts } = require("./fixtures/diagnosticTrust");
@@ -195,6 +195,35 @@ test("1/2/10. genuine EN and FIL submissions are scored on the server with the e
   // 3 miscues in 60 words = 95% -> Instructional; perfect Filipino reading -> Independent.
   assert.deepEqual(app.admin.rows.map((row) => [row.language, row.reading_level, row.difficulty_tier]),
     [["en", "Instructional", "Medium"], ["fil", "Independent", "Hard"]]);
+  // The SAVED metrics record the scoring rule, and 0 title words when no title was read.
+  assert.equal(DIAGNOSTIC_SCORING_RULE, "title-optional-v1");
+  assert.deepEqual(app.admin.rows.map((row) => [row.assessment_version, row.oral_reading_metrics.scoringRule, row.oral_reading_metrics.titleWordsExcluded]),
+    [["3.0", "title-optional-v1", 0], ["3.0", "title-optional-v1", 0]]);
+});
+
+test("a spoken story title is saved as excluded title words, never as reading errors (version stays 3.0)", async (t) => {
+  const app = await startApp(t);
+  for (const [language, recordingId] of [["en", RID], ["fil", RID_2]]) {
+    const assessment = DIAGNOSTIC_ASSESSMENTS[language];
+    const words = passageWords(language);
+    const parts = [`${assessment.title}. ${words.slice(0, 20).join(" ")}`, words.slice(20, 40).join(" "), words.slice(40).join(" ")];
+    const receipts = [];
+    for (const [index, text] of parts.entries()) {
+      const response = await app.upload("student", { language, recordingId, segmentIndex: index + 1, text });
+      assert.equal(response.status, 200);
+      receipts.push(response.json.transcription.receipt);
+    }
+    const response = await app.submit("student", body(language, receipts));
+    assert.equal(response.status, 201);
+  }
+  assert.deepEqual(app.admin.rows.map((row) => ({
+    language: row.language, version: row.assessment_version, orv: row.orv_score, level: row.reading_level,
+    rule: row.oral_reading_metrics.scoringRule, excluded: row.oral_reading_metrics.titleWordsExcluded,
+    insertions: row.oral_reading_metrics.insertions, titleKeptInTranscript: row.transcript.startsWith(DIAGNOSTIC_ASSESSMENTS[row.language].title),
+  })), [
+    { language: "en", version: "3.0", orv: 100, level: "Independent", rule: "title-optional-v1", excluded: 4, insertions: 0, titleKeptInTranscript: true },
+    { language: "fil", version: "3.0", orv: 100, level: "Independent", rule: "title-optional-v1", excluded: 5, insertions: 0, titleKeptInTranscript: true },
+  ]);
 });
 
 test("3. forged scores, levels, tiers and transcripts in the request are ignored", async (t) => {

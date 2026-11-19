@@ -78,6 +78,8 @@ export interface OralReadingMetrics {
   /** Literal aligned-match percentage; not the final Phil-IRI-aligned score. */
   wordAccuracy: number;
   wordReadingScore: number;
+  /** M2 only: spoken title words set aside before scoring (0 when the title was not read or not set aside). */
+  titleWordsExcluded?: number;
   readingSpeedWpm?: number;
   correctWordsPerMinute?: number;
   recordingDurationSeconds?: number;

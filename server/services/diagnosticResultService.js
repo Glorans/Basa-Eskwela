@@ -4,7 +4,7 @@ const {
   getDiagnosticAssessmentBinding,
   getDiagnosticPassageText,
 } = require("./diagnosticAssessments");
-const { getReadingWords, scoreDiagnostic } = require("./diagnosticScoring");
+const { DIAGNOSTIC_SCORING_RULE, getReadingWords, scoreDiagnostic } = require("./diagnosticScoring");
 const { DiagnosticReceiptError } = require("./diagnosticTranscriptReceipts");
 
 const INITIAL_ASSESSMENT_TYPE = "initial";
@@ -108,6 +108,8 @@ function buildVerifiedRow({ userId, assessment, reading, duration, score, now })
     oral_reading_metrics: {
       alignment: alignment.map((word) => ({ ...word })),
       ...counts,
+      // Which scoring rule produced this result (counts includes titleWordsExcluded, 0 when no title was read).
+      scoringRule: DIAGNOSTIC_SCORING_RULE,
       comprehensionAnswers: score.comprehensionAnswers,
       transcriptSource: reading.source,
       transcriptSegments: reading.segments,

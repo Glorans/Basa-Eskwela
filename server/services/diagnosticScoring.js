@@ -33,9 +33,7 @@ function getReadingWords(text, language = "en") {
   return normalizedText ? normalizedText.split(" ") : [];
 }
 
-function alignReadingWords(expectedText, transcript, language) {
-  const expectedWords = getReadingWords(expectedText, language);
-  const spokenWords = getReadingWords(transcript, language);
+function alignReadingWords(expectedWords, spokenWords) {
   const costs = Array.from({ length: expectedWords.length + 1 }, () =>
     Array(spokenWords.length + 1).fill(0));
 
@@ -92,9 +90,35 @@ function alignReadingWords(expectedText, transcript, language) {
   return alignment.reverse();
 }
 
-function calculateOralReadingMetrics(expectedText, transcript, recordingDurationSeconds, language = "en") {
-  const alignment = alignReadingWords(expectedText, transcript, language);
-  const totalExpectedWords = getReadingWords(expectedText, language).length;
+const countMiscues = (alignment) => alignment.filter((word) => word.type !== "match").length;
+
+// Saved with every new verified M2 result (oral_reading_metrics.scoringRule). Version 3.0 results saved before this
+// rule have no marker and scored a spoken title as insertions; the assessment version itself is unchanged.
+const DIAGNOSTIC_SCORING_RULE = "title-optional-v1";
+
+/**
+ * The displayed title is optional to read. Only a transcript that BEGINS with the whole title (normalized) is
+ * considered, and that prefix is set aside only when doing so leaves strictly fewer miscues. So the title can only
+ * remove its own words: title words elsewhere in the transcript, a partial title, or a passage that itself starts
+ * with the title's words are scored exactly as before. Without a title the result is unchanged (M5 passes none).
+ */
+function alignWithOptionalTitle(expectedWords, spokenWords, titleWords) {
+  const alignment = alignReadingWords(expectedWords, spokenWords);
+  if (!titleWords.length || spokenWords.length <= titleWords.length
+    || !titleWords.every((word, index) => spokenWords[index] === word)) {
+    return { alignment, titleWordsExcluded: 0 };
+  }
+  const withoutTitle = alignReadingWords(expectedWords, spokenWords.slice(titleWords.length));
+  return countMiscues(withoutTitle) < countMiscues(alignment)
+    ? { alignment: withoutTitle, titleWordsExcluded: titleWords.length }
+    : { alignment, titleWordsExcluded: 0 };
+}
+
+function calculateOralReadingMetrics(expectedText, transcript, recordingDurationSeconds, language = "en", title = "") {
+  const expectedWords = getReadingWords(expectedText, language);
+  const titleWords = title ? getReadingWords(title, language) : [];
+  const { alignment, titleWordsExcluded } = alignWithOptionalTitle(expectedWords, getReadingWords(transcript, language), titleWords);
+  const totalExpectedWords = expectedWords.length;
   const correctWords = alignment.filter((word) => word.type === "match").length;
   const substitutions = alignment.filter((word) => word.type === "substitution").length;
   const omissions = alignment.filter((word) => word.type === "omission").length;
@@ -119,6 +143,8 @@ function calculateOralReadingMetrics(expectedText, transcript, recordingDuration
     detectableMiscues,
     wordAccuracy,
     wordReadingScore,
+    // Only when a title was supplied (M2), so outputs without a title keep their exact shape.
+    ...(titleWords.length ? { titleWordsExcluded } : {}),
     ...(hasValidDuration
       ? {
           recordingDurationSeconds,
@@ -185,7 +211,7 @@ function scoreDiagnostic({ assessment, passageText, transcript, recordingDuratio
     }
   }
   const comprehensionAnswers = Object.fromEntries(assessment.questions.map((question) => [question.id, answers[question.id]]));
-  const oralReadingMetrics = calculateOralReadingMetrics(passageText, transcript, recordingDurationSeconds, assessment.language);
+  const oralReadingMetrics = calculateOralReadingMetrics(passageText, transcript, recordingDurationSeconds, assessment.language, assessment.title);
   const orvScore = oralReadingMetrics.wordReadingScore;
   const comprehensionScore = calculateComprehensionScore(comprehensionAnswers, assessment.questions);
   const readingLevel = classifyDiagnosticPlacement(orvScore, comprehensionScore).overallReadingLevel;
@@ -203,6 +229,7 @@ function scoreDiagnostic({ assessment, passageText, transcript, recordingDuratio
 
 module.exports = {
   DIAGNOSTIC_READING_LEVEL_THRESHOLDS,
+  DIAGNOSTIC_SCORING_RULE,
   assignDifficultyTier,
   calculateComprehensionScore,
   calculateOralReadingMetrics,
