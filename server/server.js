@@ -52,6 +52,8 @@ app.use("/api/materials", materialsRouter);
 app.use("/api/admin/modules", adminModuleExtractionRouter);
 app.use("/api/admin/modules", require("./routes/adminModulePassages").createAdminModulePassagesRouter());
 app.use("/api/admin/diagnostic-results", adminDiagnosticResultsRouter);
+// M2 F3: learners' own diagnostic history and approved Teachers' enrolled Students (read-only).
+app.use("/api/diagnostic-history", require("./routes/diagnosticHistory").createDiagnosticHistoryRouter());
 app.use("/api/admin/users", adminUsersRouter);
 app.use("/api/account", require("./routes/accountInvitation").accountInvitationRouter);
 app.use("/api/admin/teacher-invitations", require("./routes/teacherInvitations").createTeacherInvitationsRouter());

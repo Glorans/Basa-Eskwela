@@ -9,6 +9,9 @@ export interface AdminDiagnosticResult {
   learnerName: string;
   email: string | null;
   role: "student" | "general_user";
+  /** M2 F3: stored assessment type ("initial" today; "reassessment" once it exists) and version. */
+  assessmentType?: string;
+  assessmentVersion?: string | null;
   language: "en" | "fil";
   orvScore: number;
   comprehensionScore: number;

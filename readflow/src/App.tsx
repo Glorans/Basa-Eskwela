@@ -35,6 +35,8 @@ import Leaderboard from "./pages/Leaderboard";
 import IndependentLeaderboard from "./pages/IndependentLeaderboard";
 import MyBadges from "./pages/MyBadges";
 import AdminDiagnosticResultsPage from "./pages/admin/AdminDiagnosticResultsPage";
+import DiagnosticHistoryPage from "./modules/module2/pages/DiagnosticHistoryPage";
+import TeacherDiagnosticResultsPage from "./modules/module2/pages/TeacherDiagnosticResultsPage";
 
 import M3Layout from "./modules/module3/components/M3Layout";
 import Module3Page from "./modules/module3/pages/Module3Page";
@@ -184,6 +186,8 @@ function App() {
           <Route path="/dashboard" element={<BasaLayout />}>
             <Route index element={<StudentDashboard />} />
             <Route path="progress" element={<StudentProgressPage />} />
+            {/* M2 F3 - own diagnostic results and history */}
+            <Route path="assessment-history" element={<DiagnosticHistoryPage />} />
 
             <Route
               path="join-classroom"
@@ -524,6 +528,8 @@ function App() {
             />
 
             <Route path="student-support" element={<TeacherSupportPage />} />
+            {/* M2 F3 - diagnostic results of Students enrolled in this Teacher's Learning Rooms */}
+            <Route path="diagnostic-results" element={<TeacherDiagnosticResultsPage />} />
             <Route path="reports" element={<TeacherReportsPage />} />
             {/* M7 - Teacher Analytics */}
             <Route
@@ -631,6 +637,8 @@ function App() {
               path="progress"
               element={<StudentProgressPage role="general_user" />}
             />
+            {/* M2 F3 - own diagnostic results and history */}
+            <Route path="assessment-history" element={<DiagnosticHistoryPage />} />
 
             <Route
               path="badges"

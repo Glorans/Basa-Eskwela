@@ -1,4 +1,4 @@
-import { Archive, School, Home, BookOpen, Trophy, Award, Menu, X } from "lucide-react";
+import { Archive, School, Home, BookOpen, Trophy, Award, Menu, X, ClipboardList } from "lucide-react";
 import type useResponsiveSidebar from "../../hooks/useResponsiveSidebar";
 import { Link, NavLink } from "react-router-dom";
 import mascot from "../../assets/mascot.png";
@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { label: "Leaderboard", to: "/dashboard/leaderboard", icon: Trophy },
   { label: "Badges", to: "/dashboard/badges", icon: Award },
   { label: "Progress & Result", to: "/dashboard/progress", icon: BookOpen },
+  { label: "Assessment History", to: "/dashboard/assessment-history", icon: ClipboardList },
   { label: "Reading History", to: "/dashboard/reading-history", icon: BookOpen },
   { label: "Archived Rooms", to: "/dashboard/archived-learning-rooms", icon: Archive },
 ];

@@ -5,6 +5,7 @@ import {
   type AdminDiagnosticResult,
 } from "../../services/adminDiagnosticResults";
 import { ROLE_LABELS } from "../../modules/module1/utils/authOnboarding";
+import { assessmentTypeLabel, versionLabel } from "../../modules/module2/utils/diagnosticHistory";
 import {
   filterAdminDiagnosticResults,
   type DifficultyFilter,
@@ -82,7 +83,10 @@ export default function AdminDiagnosticResultsPage() {
       <header className="admin-users-header">
         <div>
           <h1>Diagnostic Results</h1>
-          <p>View completed Student reading diagnostics.</p>
+          <p>View Student reading diagnostic results and history, newest first. Search a name to see one Student&apos;s history.</p>
+          <p className="admin-diagnostic-scope-note">
+            Single-school setup: School Admins currently see all Students. Independent Learners are not shown.
+          </p>
         </div>
         <button type="button" onClick={() => void loadResults()} disabled={loading}>
           Refresh
@@ -168,12 +172,14 @@ export default function AdminDiagnosticResultsPage() {
                   <th>Learner Name</th>
                   <th>Email</th>
                   <th>Account Type</th>
+                  <th>Assessment</th>
                   <th>Language</th>
                   <th>ORV Score</th>
                   <th>Comprehension</th>
                   <th>WPM</th>
                   <th>Reading Level</th>
                   <th>Difficulty</th>
+                  <th>Version</th>
                   <th>Date Completed</th>
                 </tr>
               </thead>
@@ -183,6 +189,7 @@ export default function AdminDiagnosticResultsPage() {
                     <td>{result.learnerName || "\u2014"}</td>
                     <td>{result.email || "\u2014"}</td>
                     <td>{ROLE_LABELS[result.role]}</td>
+                    <td>{assessmentTypeLabel(result.assessmentType ?? "initial")}</td>
                     <td>{result.language === "fil" ? "Filipino" : result.language === "en" ? "English" : "Unavailable"}</td>
                     <td>{formatMetric(result.orvScore, "%")}</td>
                     <td>{formatMetric(result.comprehensionScore, "%")}</td>
@@ -192,12 +199,13 @@ export default function AdminDiagnosticResultsPage() {
                       {result.verificationStatus !== "server_verified" && <> (unverified)</>}
                     </td>
                     <td>{result.difficultyTier}</td>
+                    <td>{versionLabel(result.assessmentVersion)}</td>
                     <td>{formatCompletedAt(result.completedAt)}</td>
                   </tr>
                 ))}
                 {filteredResults.length === 0 && (
                   <tr>
-                    <td className="admin-users-empty" colSpan={10}>
+                    <td className="admin-users-empty" colSpan={12}>
                       {results.length === 0
                         ? "No diagnostic results found."
                         : "No diagnostic results match your filters."}

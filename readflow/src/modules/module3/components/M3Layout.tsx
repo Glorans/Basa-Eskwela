@@ -100,6 +100,8 @@ function getWorkspaceNavItems(role: M3Role) {
     items.push({ label: "Reading Practice", to: "/m3/teacher/practice", icon: Mic2, end: false });
 
     items.push({ label: "Student Support", to: "/m3/teacher/student-support", icon: ClipboardList, end: true });
+    // M2 F3: diagnostic results of Students enrolled in this Teacher's Learning Rooms.
+    items.push({ label: "Diagnostic Results", to: "/m3/teacher/diagnostic-results", icon: ClipboardList, end: true });
     items.push({ label: "Analytics", to: "/m3/teacher/analytics", icon: ChartNoAxesCombined, end: true });
     items.push({ label: "Reports", to: "/m3/teacher/reports", icon: ClipboardList, end: true });
     items.push({ label: "Archived Classrooms", to: "/m3/teacher/archived-classrooms", icon: Archive, end: true });
@@ -110,6 +112,8 @@ function getWorkspaceNavItems(role: M3Role) {
     items.push({ label: "Badges", to: "/m3/general/badges", icon: Award, end: true });
     items.push({ label: "Reading History", to: "/m3/general/reading-history", icon: Mic2, end: true });
     items.push({ label: "Progress & Result", to: "/m3/general/progress", icon: ChartNoAxesCombined, end: true });
+    // M2 F3: own diagnostic results and history.
+    items.push({ label: "Assessment History", to: "/m3/general/assessment-history", icon: ClipboardList, end: true });
   }
 
   return items;
