@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { useRef, useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { showReadFlowDialog } from "../../../../components/ReadFlowDialog";
 import { CONFIRMATION_METHODS, createSchoolAdmin, getAdminUserError } from "../../services/adminUsers";
 import {
   FULL_NAME_MAX_LENGTH,
@@ -11,6 +12,10 @@ import "../../../../pages/admin/UserManagementPage.css";
 import "./CreateSchoolAdminPage.css";
 
 type FieldErrors = Partial<Record<"email" | "fullName" | "reference" | "confirmationMethod" | "authorizingPosition" | "note", string>>;
+
+const SCHOOL_ACCOUNTS_PATH = "/system-admin/users?section=school";
+const INVITATION_SENT_TITLE = "Invitation sent";
+const INVITATION_SENT_MESSAGE = "The authorization was recorded and the invitation has been sent. The account will receive School Admin access only after the invitee accepts the invitation.";
 
 // M1 F8 (System Admin only). The System Admin records the authorization decision and sends an invitation. The
 // account gets NO School Admin access until the invitee accepts (enforced on the server and in the database).
@@ -25,11 +30,14 @@ export default function CreateSchoolAdminPage() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const navigate = useNavigate();
+  // Set from the first submit until the success modal closes: blocks a second send even within the same tick.
+  const busy = useRef(false);
+  const fullNameInput = useRef<HTMLInputElement>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting) return;
+    if (submitting || busy.current) return;
     const ref = reference.trim(), position = authorizingPosition.trim();
     const nextErrors: FieldErrors = {
       email: isValidSignupEmail(email) ? undefined : "Enter a valid email address.",
@@ -41,23 +49,35 @@ export default function CreateSchoolAdminPage() {
     };
     setErrors(nextErrors);
     setError("");
-    setSuccess("");
     if (Object.values(nextErrors).some(Boolean)) return;
 
+    busy.current = true;
     setSubmitting(true);
+    let sent = false;
     try {
-      const result = await createSchoolAdmin({
+      await createSchoolAdmin({
         email: normalizeAuthEmail(email),
         fullName: fullName.trim(),
         authorization: { reference: ref, confirmationMethod, authorizingPosition: position, note: note.trim() || undefined },
       });
-      setSuccess(result.message);
+      sent = true;
       setEmail(""); setFullName(""); setReference(""); setConfirmationMethod(""); setAuthorizingPosition(""); setNote("");
     } catch (createError) {
       setError(getAdminUserError(createError));
     } finally {
       setSubmitting(false);
     }
+    if (!sent) { busy.current = false; return; }
+    // Centered modal (shared native <dialog>: focus moves in, the page behind is inert, Escape = Close).
+    let viewAccounts = false;
+    try {
+      viewAccounts = await showReadFlowDialog(INVITATION_SENT_MESSAGE, "confirmation",
+        { title: INVITATION_SENT_TITLE, confirm: "View School Accounts", cancel: "Close" });
+    } finally {
+      busy.current = false;
+    }
+    if (viewAccounts) navigate(SCHOOL_ACCOUNTS_PATH);
+    else fullNameInput.current?.focus(); // Close or Escape: ready for the next invitation.
   }
 
   const field = (name: keyof FieldErrors) => ({
@@ -69,31 +89,25 @@ export default function CreateSchoolAdminPage() {
 
   return (
     <section className="admin-users-page create-school-admin-page">
-      <Link to="/system-admin/users?section=school">Back to School Accounts</Link>
+      <Link to={SCHOOL_ACCOUNTS_PATH}>Back to School Accounts</Link>
       <header className="admin-users-header">
         <div>
           <h1>Create School Admin</h1>
           <p>
-            Record your authorization decision, then send an invitation. The account gets School Admin access only after the
-            invitee opens the setup link from their email and sets a password. The invitation stays open for 7 days; each
-            emailed link may expire sooner, in which case you can resend it from School Accounts.
+            The new School Admin will receive an email to set up their account. Access will be granted only after the
+            invitation is accepted.
           </p>
         </div>
       </header>
 
       {error && <p className="admin-users-message admin-users-message--error" role="alert">{error}</p>}
-      {success && (
-        <p className="admin-users-message admin-users-message--success" role="status">
-          {success} <Link to="/system-admin/users?section=school">View in School Accounts</Link>
-        </p>
-      )}
 
       <form className="create-school-admin-form" onSubmit={(event) => void handleSubmit(event)} noValidate>
         <fieldset>
           <legend>Invitee</legend>
           <label>
             <span>Full name</span>
-            <input type="text" autoComplete="off" maxLength={FULL_NAME_MAX_LENGTH} value={fullName}
+            <input ref={fullNameInput} type="text" autoComplete="off" maxLength={FULL_NAME_MAX_LENGTH} value={fullName}
               onChange={(event) => setFullName(event.target.value)} {...field("fullName")} />
             {fieldError("fullName")}
           </label>
@@ -107,9 +121,8 @@ export default function CreateSchoolAdminPage() {
         <fieldset>
           <legend>Authorization record</legend>
           <p className="create-school-admin-hint">
-            Before inviting, confirm the request with the school through a channel you look up yourself (for example the
-            school&apos;s official phone number), not a contact supplied in the request. What you enter here is your recorded
-            decision. It is not proof of identity or school affiliation, and no documents are collected.
+            Record the basis for approving this School Admin invitation. This is an internal record of the System Admin’s
+            decision. The invitee will receive School Admin access only after accepting the invitation.
           </p>
           <label>
             <span>Position of the person who authorized the request</span>

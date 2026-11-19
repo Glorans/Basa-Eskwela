@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 type DialogKind = "confirmation" | "success" | "error" | "warning";
-export interface DialogLabels { confirm?: string; cancel?: string }
+export interface DialogLabels { confirm?: string; cancel?: string; title?: string }
 let dialogOpen = false;
 
 function Dialog({ message, kind, finish, labels }: { message: string; kind: DialogKind; finish: (value: boolean) => void; labels?: DialogLabels }) {
@@ -11,7 +11,7 @@ function Dialog({ message, kind, finish, labels }: { message: string; kind: Dial
   return <dialog ref={ref} aria-labelledby="readflow-dialog-title" aria-describedby="readflow-dialog-message"
     onCancel={event => { event.preventDefault(); finish(false); }}
     className="w-[min(92vw,28rem)] rounded-3xl border-0 bg-white p-6 text-[#173f3b] shadow-xl backdrop:bg-[#173f3b]/60">
-    <h2 id="readflow-dialog-title" className="text-xl font-extrabold">{kind === "confirmation" ? "Please confirm" : kind === "error" ? "Something went wrong" : kind === "success" ? "Success" : "Please check"}</h2>
+    <h2 id="readflow-dialog-title" className="text-xl font-extrabold">{labels?.title ?? (kind === "confirmation" ? "Please confirm" : kind === "error" ? "Something went wrong" : kind === "success" ? "Success" : "Please check")}</h2>
     <p id="readflow-dialog-message" className="my-5 whitespace-pre-wrap break-words">{message}</p>
     <div className="flex justify-end gap-3">
       {kind === "confirmation" && <button autoFocus className="rounded-xl bg-[#dce8e7] px-5 py-3 font-bold" onClick={() => finish(false)}>{labels?.cancel ?? "Cancel"}</button>}
