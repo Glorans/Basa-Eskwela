@@ -165,11 +165,17 @@ test("Deactivate needs confirmation: Cancel changes nothing", async () => {
   assert.equal(textOf(m.statusButton("t")), "Deactivate");
 });
 
-function mountCreate(createSchoolAdmin: (input: object) => Promise<object>) {
+type DialogCall = { message: string; kind: string; labels: { title?: string; confirm?: string; cancel?: string } };
+function mountCreate(createSchoolAdmin: (input: object) => Promise<object>, dialogAnswer: () => boolean = () => false) {
   const runtime = createHookRuntime(require("react"));
+  const dialogs: DialogCall[] = [];
+  const navigations: string[] = [];
   const page = loadComponentModule(new URL("../src/modules/module1/pages/admin/CreateSchoolAdminPage.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
-    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()] };
+    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()], useNavigate: () => (to: string) => navigations.push(to) };
+    if (id.endsWith("/components/ReadFlowDialog")) return {
+      showReadFlowDialog: async (message: string, kind: string, labels: DialogCall["labels"]) => { dialogs.push({ message, kind, labels }); return dialogAnswer(); },
+    };
     if (id.endsWith("/services/adminUsers")) return { createSchoolAdmin, getAdminUserError: (e: Error) => e.message,
       CONFIRMATION_METHODS: [["official_school_email", "Email from an official school address"], ["official_school_phone", "Call to the school's official phone number"]] };
     if (id.endsWith("/utils/authOnboarding")) return real("utils/authOnboarding.ts");
@@ -182,7 +188,8 @@ function mountCreate(createSchoolAdmin: (input: object) => Promise<object>) {
   const type = (index: number, value: string) => { inputs()[index].props.onChange({ target: { value } }); render(); };
   const choose = (value: string) => { findAll(render(), (n) => n.type === "select")[0].props.onChange({ target: { value } }); render(); };
   const submit = async () => { findAll(render(), (n) => n.type === "form")[0].props.onSubmit({ preventDefault() {} }); await settle(); };
-  return { render, settle, type, choose, submit, inputs, text: () => textOf(render()) };
+  const fill = () => { type(0, "Maria Santos"); type(1, "principal@school.example"); type(2, "School Principal"); type(3, "Request letter dated 2026-11-18"); choose("official_school_phone"); };
+  return { render, settle, type, choose, submit, inputs, fill, dialogs, navigations, text: () => textOf(render()) };
 }
 
 test("Create School Admin requires an authorization record, sends no role or password, and shows success or the server error", async () => {
@@ -202,7 +209,10 @@ test("Create School Admin requires an authorization record, sends no role or pas
   assert.match(m.text(), /Choose how you confirmed the request/);
   assert.match(m.text(), /Enter the position of the person who authorized it/);
   assert.equal(calls.length, 0);
-  assert.match(m.text(), /It is not proof of identity or school affiliation/, "a recorded decision, never shown as verification");
+  assert.equal(m.dialogs.length, 0, "no modal for validation errors");
+  assert.match(m.text(), /Record the basis for approving this School Admin invitation\. This is an internal record of the System Admin’s decision\. The invitee will receive School Admin access only after accepting the invitation\./);
+  assert.doesNotMatch(m.text(), /Before inviting, confirm the request|not proof of identity|no documents are collected/, "old helper text is gone");
+  assert.doesNotMatch(m.text(), /Supabase|SMTP|GoTrue/, "no provider names");
   assert.doesNotMatch(m.text(), /verified/i);
 
   m.type(0, "  Maria Santos ");
@@ -214,17 +224,57 @@ test("Create School Admin requires an authorization record, sends no role or pas
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ email: "principal@school.example", fullName: "Maria Santos",
     authorization: { reference: "Request letter dated 2026-11-18", confirmationMethod: "official_school_phone", authorizingPosition: "School Principal" } }],
     "no role, no password in the request");
-  assert.match(m.text(), /access only after the invitee accepts/);
   assert.equal(m.inputs()[0].props.value, "", "form clears after success");
+  assert.doesNotMatch(m.text(), /Authorization recorded and invitation sent|View in School Accounts/, "no inline success banner");
+  assert.equal(m.dialogs.length, 1, "a modal appears immediately after a successful send");
+  assert.deepEqual(JSON.parse(JSON.stringify(m.dialogs[0])), { kind: "confirmation",
+    message: "The authorization was recorded and the invitation has been sent. The account will receive School Admin access only after the invitee accepts the invitation.",
+    labels: { title: "Invitation sent", confirm: "View School Accounts", cancel: "Close" } });
+  assert.deepEqual(m.navigations, [], "Close (or Escape) stays on the page");
 
   fail = true;
-  m.type(0, "Maria Santos");
-  m.type(1, "principal@school.example");
-  m.type(2, "School Principal");
-  m.type(3, "Request letter dated 2026-11-18");
-  m.choose("official_school_phone");
+  m.fill();
   await m.submit();
   assert.match(m.text(), /already exists/);
+  assert.equal(m.dialogs.length, 1, "no success modal when the send fails");
+});
+
+test("Create School Admin success modal: View School Accounts goes to the School Accounts section; Close stays", async () => {
+  let answer = true;
+  const m = mountCreate(async () => ({ success: true, message: "server text is not shown" }), () => answer);
+  m.render();
+  m.fill();
+  await m.submit();
+  assert.equal(m.dialogs.length, 1);
+  assert.deepEqual(m.navigations, ["/system-admin/users?section=school"]);
+  answer = false;
+  m.fill();
+  await m.submit();
+  assert.equal(m.dialogs.length, 2);
+  assert.deepEqual(m.navigations, ["/system-admin/users?section=school"], "Close does not navigate");
+  assert.doesNotMatch(m.text(), /server text is not shown/);
+});
+
+test("Create School Admin: simplified introduction; two submits in the same tick send one invitation and open one modal", async () => {
+  const calls: object[] = [];
+  const m = mountCreate(async (input) => { calls.push(input); return { success: true, message: "ok" }; });
+  assert.match(m.text(), /The new School Admin will receive an email to set up their account\. Access will be granted only after the invitation is accepted\./);
+  assert.doesNotMatch(m.text(), /Record your authorization decision, then send an invitation|may expire sooner/);
+  m.fill();
+  const form = findAll(m.render(), (n) => n.type === "form")[0];
+  form.props.onSubmit({ preventDefault() {} });
+  form.props.onSubmit({ preventDefault() {} });
+  await m.settle();
+  assert.equal(calls.length, 1, "no duplicate invitation");
+  assert.equal(m.dialogs.length, 1, "one modal");
+});
+
+test("shared dialog: optional title label; native modal keeps focus handling and Escape-to-close", () => {
+  const dialog = src("components/ReadFlowDialog.tsx");
+  assert.match(dialog, /title\?: string/);
+  assert.match(dialog, /\{labels\?\.title \?\? \(kind === "confirmation" \? "Please confirm"/, "existing titles unchanged when no title is given");
+  assert.match(dialog, /showModal\(\)/, "native modal: centered, focus moves in and is trapped");
+  assert.match(dialog, /onCancel=\{event => \{ event\.preventDefault\(\); finish\(false\); \}\}/, "Escape resolves false (Close)");
 });
 
 test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4); School Admin keeps its routes", () => {
