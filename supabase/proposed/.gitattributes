@@ -1,0 +1,4 @@
+# These files restore or extend live M8 function bodies byte-for-byte; the live bodies contain CRLF line endings
+# while the new code uses LF. Line-ending conversion (core.autocrlf) would change the bodies and break their md5 checks.
+m2_m8_reassessment_safety_PROPOSED.sql -text
+m2_m8_reassessment_safety_ROLLBACK_PROPOSED.sql -text
