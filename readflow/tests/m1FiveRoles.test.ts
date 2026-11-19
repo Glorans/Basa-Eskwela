@@ -310,5 +310,7 @@ test("School Admin screens describe Teacher and Student scope only (no Independe
   const dashboard = src("pages/dashboard/AdminDashboard.tsx");
   assert.doesNotMatch(dashboard, /general_user|Independent Learner/, "no Independent Learner card or count");
   assert.match(src("modules/module7/components/AdminAnalyticsSections.tsx"), /Student readings and .* Student quizzes completed outside a classroom/);
-  assert.match(src("pages/admin/AdminDiagnosticResultsPage.tsx"), /View completed Student reading diagnostics/);
+  assert.match(src("pages/admin/AdminDiagnosticResultsPage.tsx"), /View Student reading diagnostic results and history/);
+  // M2 F3: the single-school scope is stated on the page.
+  assert.match(src("pages/admin/AdminDiagnosticResultsPage.tsx"), /School Admins currently see all Students\. Independent Learners are not shown\./);
 });

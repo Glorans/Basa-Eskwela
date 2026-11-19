@@ -1,0 +1,27 @@
+/* M2 F3 assessment history. Builds on the M7 page styles (.m7-page, .m7-scroll) used by Progress & Result. */
+.diagnostic-history { display: grid; gap: 16px; min-width: 0; }
+/* Language groups sit inside the page's white section: no second outer margin, and never wider than their parent. */
+.m7-page .diagnostic-history-language { margin: 0; padding: 16px; box-sizing: border-box; max-width: 100%; min-width: 0; }
+.diagnostic-history-language h3 { margin: 0 0 8px; font-size: 1.05rem; color: #265c47; }
+.diagnostic-history-empty { margin: 0; color: #4b5b6b; }
+/* Wrap only between words (the shared layout allows breaks anywhere, which split "Instructional" or "93.3 %"). */
+.diagnostic-history-table th, .diagnostic-history-table td { overflow-wrap: normal; word-break: normal; white-space: normal; }
+.diagnostic-history-level { font-weight: 700; }
+.diagnostic-history-level[data-level="Independent"] { color: #1f6b46; }
+.diagnostic-history-level[data-level="Instructional"] { color: #7a5a00; }
+.diagnostic-history-level[data-level="Frustration"] { color: #9b2c2c; }
+.diagnostic-history-note { color: #5f6b78; font-size: 0.9em; }
+.diagnostic-history-intro { margin-top: 0; color: #4b5b6b; }
+.diagnostic-history-search { display: grid; gap: 6px; max-width: 360px; font-weight: 600; }
+.diagnostic-history-search input { font: inherit; padding: 9px 12px; border: 1px solid #bdd8c7; border-radius: 10px; }
+
+/* Narrow screens: each assessment becomes a labelled card instead of a wide table row. */
+@media (max-width: 640px) {
+  .diagnostic-history-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .diagnostic-history-table, .diagnostic-history-table tbody, .diagnostic-history-table tr, .diagnostic-history-table td { display: block; width: 100%; }
+  .diagnostic-history-table tr { border: 1px solid #dbe9df; border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; background: #f8fbf8; box-sizing: border-box; }
+  .m7-page .diagnostic-history-language { padding: 12px; }
+  .diagnostic-history-table td { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 12px; row-gap: 2px; padding: 6px 0; border-bottom: 1px solid #edf2ee; text-align: right; }
+  .diagnostic-history-table td:last-child { border-bottom: 0; }
+  .diagnostic-history-table td::before { content: attr(data-label); flex: 0 0 auto; white-space: nowrap; font-weight: 600; color: #3d4a5a; text-align: left; }
+}

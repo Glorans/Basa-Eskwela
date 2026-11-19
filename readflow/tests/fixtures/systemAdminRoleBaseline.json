@@ -3,12 +3,12 @@
   "admin:rail": "338a94759d0d544e6a5eb281229a2dc1d675449a2c9c34e7bd47477213017545",
   "admin:mobile": "bdc929f45806bca5d0e7bd51fc9e728897e00315806feaa449fd64898191142d",
   "admin:drawer": "4b90afa0082903b84467bf1de21a10ae014feeba93ba5b4769d9833fbe90f0c2",
-  "teacher:desktop": "23cab5db47989b03071685cbe3947f3aaaaf72a7d1d28cc5a2c9328c962628fd",
-  "teacher:rail": "2ad2a8e2f2422c367eb0b90697c4501f52245743d1bcd7fefe1a1e72cdaf39b4",
-  "teacher:mobile": "c5ab4e795b9885f106770b619d1bc826d99c2062d473a91a249520bb249b544b",
-  "teacher:drawer": "dfc936acab919d353382f536e3db15157eb34ec52e1175a8bd79dc22e21251bd",
-  "general_user:desktop": "1e494c6d9e0952ab3d216b08a6b2365bca80f492c75640d82f90b49e33efed60",
-  "general_user:rail": "c5635d8a1d2133831792b28357063e9393eef15972fc514b15894421d637e85e",
-  "general_user:mobile": "7eada7ba2305cf4230cc7d6c9d3066cffca58938eecbfa9e932d52d4705f6312",
-  "general_user:drawer": "1cb0cad71ea8fb006784eab51523ade6f3ed47d5ada7d6bae43d778b29d3092b"
+  "teacher:desktop": "6e1db9ba398ec8c62fd9c0f22d3908321b72f8e2b171cc76bda057ca1dce2177",
+  "teacher:rail": "8b585358acc16d2723781f528c82d922ce3a50f567ab2fd04c7f3e225f2beac9",
+  "teacher:mobile": "32d0cbb460d7bb600d2f13668b39b0f8be169816daf21da9133a09444a8e9f14",
+  "teacher:drawer": "c8747fa2e91a49a6c2f38c7f39aa79cdee3d70e5fea366fc78bfd6bb5d8b1d58",
+  "general_user:desktop": "3ba9a485c4d8ddf880fd10f5572e940150605368e2c4ca87ec490fc4293d4358",
+  "general_user:rail": "596361196c38b2ef1454460e49014b302d84de939beec81eaf0fa1fab33a41d9",
+  "general_user:mobile": "deb1d4f2f46fadee4cc8808c02abf53cdbaa87f61a213112367fd2d98283ef4a",
+  "general_user:drawer": "1a63cde6896a701625edf3b5a8d88c6bce4f0372de023184f4565afc55e7b4bf"
 }

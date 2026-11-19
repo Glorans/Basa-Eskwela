@@ -139,6 +139,8 @@ test("profile loading resolves learner nicknames for both languages without muta
       { id: "student", email: "student@test", created_at: "2026-10-01" },
     ] }, error: null }) } },
     from(table) {
+      // Listing users as System Admin also reads the School Admin invitation records (#20): none in this test.
+      if (table === "m1_school_admin_invitations") return { select: async () => ({ data: [], error: null }) };
       assert.equal(table, "profiles");
       return {
         select(fields) {

@@ -160,7 +160,7 @@ test("Student sidebar order: Archived Rooms follows Reading History; Settings li
   const sidebar = read("components/basa/BasaSidebar.tsx");
   const labels = [...sidebar.slice(sidebar.indexOf("NAV_ITEMS"), sidebar.indexOf("];")).matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(labels, ["Dashboard", "Learning Rooms", "Reading Materials", "Leaderboard", "Badges", "Progress & Result",
-    "Reading History", "Archived Rooms"]);
+    "Assessment History", "Reading History", "Archived Rooms"]);
   assert.match(sidebar, /\{ label: "Archived Rooms", to: "\/dashboard\/archived-learning-rooms", icon: Archive \},/);
   assert.doesNotMatch(sidebar, /Archived Learning Rooms/);
   assert.match(read("App.tsx"), /path="archived-learning-rooms"\s+element=\{<StudentArchivedRoomsPage \/>\}/);

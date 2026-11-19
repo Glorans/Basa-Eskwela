@@ -9,15 +9,16 @@ const { canViewAccount } = require("./m1AccountScope");
 
 // Diagnostics belong to learners. Which learners a viewer sees follows the M1 account scope: a School Admin sees
 // Students only, never Independent Learners (Appendix N; the School Admin manages only Teachers and Students).
+// Single-school limitation: there is no school membership in the database, so a School Admin sees ALL Students.
 const DIAGNOSTIC_LEARNER_ROLES = new Set(["student", "general_user"]);
 
 async function listDiagnosticResultRows(supabase) {
   const { data, error } = await supabase
     .from("diagnostic_results")
     .select(
-      "id, user_id, assessment_type, language, orv_score, comprehension_score, reading_speed_wpm, reading_level, difficulty_tier, completed_at, verification_status",
+      "id, user_id, assessment_type, language, assessment_id, assessment_version, orv_score, comprehension_score, reading_speed_wpm, reading_level, difficulty_tier, completed_at, verification_status",
     )
-    .eq("assessment_type", "initial")
+    // M2 F3: every assessment type, so reassessments will appear in history when they exist (only 'initial' today).
     .order("completed_at", { ascending: false });
 
   if (error) {
@@ -53,6 +54,8 @@ async function listAdminDiagnosticResults(dependencies = {}, viewerRole) {
       learnerName: getProfileDisplayName(user),
       email: user.email,
       role: user.role,
+      assessmentType: row.assessment_type,
+      assessmentVersion: row.assessment_version ?? null,
       language: row.language,
       orvScore: row.orv_score,
       comprehensionScore: row.comprehension_score,

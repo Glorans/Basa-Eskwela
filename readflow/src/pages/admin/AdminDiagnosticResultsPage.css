@@ -1,10 +1,24 @@
 /* Fits the 1366 px laptop workspace; narrower screens scroll inside the table container. */
 .admin-diagnostic-results-table {
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 .admin-diagnostic-results-table th { white-space: normal; }
 
-.admin-diagnostic-results-table td:nth-child(n + 4):nth-child(-n + 6) {
+/* ORV, Comprehension and WPM (columns 6-8, after Name, Email, Account Type, Assessment and Language). */
+.admin-diagnostic-results-table td:nth-child(n + 6):nth-child(-n + 8) {
   font-variant-numeric: tabular-nums;
+}
+
+/* Wrap between words only; long email addresses (column 2) may still break anywhere. */
+.admin-diagnostic-results-table td:not(:nth-child(2)) {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* M2 F3: the single-school scope is stated, not implied. */
+.admin-diagnostic-scope-note {
+  margin-top: 4px;
+  font-size: 0.92rem;
+  color: #4b5b6b;
 }
