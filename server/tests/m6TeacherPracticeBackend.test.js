@@ -178,7 +178,7 @@ test("M6: Teacher practice refuses classroom, assignment and uploaded-material c
   }), (e) => e.statusCode === 403);
 });
 
-test("speech: approved Teachers reach M5 read-aloud transcription and TTS, never the M2 diagnostic upload", async (t) => {
+test("speech: approved Teachers reach M5 read-aloud transcription and TTS, and the M2 diagnostic upload only for F7 Practice Mode", async (t) => {
   const { speech } = load(t);
   const uploadDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "teacher-speech-"));
   t.after(() => fs.rmSync(uploadDirectory, { recursive: true, force: true }));
@@ -203,7 +203,10 @@ test("speech: approved Teachers reach M5 read-aloud transcription and TTS, never
   // Authorized requests without audio/text fail validation (400), proving the role check passed.
   assert.equal(await status("/api/read-aloud/audio", TEACHER), 400, "Teacher read-aloud transcription allowed");
   assert.equal(await status("/api/tts", TEACHER, { text: "", language: "en" }), 400, "Teacher TTS allowed");
-  assert.equal(await status("/api/diagnostic/audio", TEACHER), 403, "Teacher M2 diagnostic upload refused");
+  // M2 F7 Practice Mode: an approved Teacher passes the diagnostic upload's role check (400 = validation reached).
+  // Only DIAGNOSTIC parts are accepted for Teachers (plain transcription is refused: diagnosticPractice.test.js),
+  // and the official diagnostic result endpoint stays learner-only.
+  assert.equal(await status("/api/diagnostic/audio", TEACHER), 400, "approved Teacher reaches the diagnostic upload (Practice Mode)");
   for (const id of [PENDING, REJECTED]) {
     for (const route of ["/api/read-aloud/audio", "/api/tts", "/api/diagnostic/audio"]) {
       assert.equal(await status(route, id, route === "/api/tts" ? { text: "Hi", language: "en" } : undefined), 403, `${id} ${route}`);

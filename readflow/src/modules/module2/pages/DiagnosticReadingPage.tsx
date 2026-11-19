@@ -26,16 +26,22 @@ import type {
   DiagnosticQuestionsRouteState,
 } from "../types/diagnostic";
 import "./DiagnosticReadingPage.css";
+import PracticeModeBanner from "../components/PracticeModeBanner";
+import type { DiagnosticPracticeOptions } from "../types/diagnostic";
 
 type UploadStatus = "idle" | "uploading" | "success" | "error";
 
 interface DiagnosticReadingPageProps {
   assessment: DiagnosticAssessment;
+  /** M2 F7 staff Practice Mode. Omitted for the official learner diagnostic (unchanged). */
+  practice?: DiagnosticPracticeOptions;
 }
 
 export default function DiagnosticReadingPage({
   assessment,
+  practice,
 }: DiagnosticReadingPageProps) {
+  const basePath = practice?.basePath ?? "/diagnostic";
   const navigate = useNavigate();
   const t = (text: string) => diagnosticCopy(assessment.language, text);
   const diagnosticSession = useDiagnosticSession();
@@ -216,6 +222,7 @@ export default function DiagnosticReadingPage({
       className="diagnostic-reading-panel"
       labelledBy="diagnostic-reading-title"
     >
+      {practice && <PracticeModeBanner exitTo={practice.exitTo} />}
       <header className="diagnostic-reading-header">
         <h1 id="diagnostic-reading-title">{t("Read the Story Aloud")}</h1>
 
@@ -306,7 +313,7 @@ export default function DiagnosticReadingPage({
                 disabled={isUploading}
                 onClick={() => {
                   if (!currentResult) { void handleContinue(); return; }
-                  navigate(`/diagnostic/${assessment.language}/questions`);
+                  navigate(`${basePath}/${assessment.language}/questions`);
                 }}
               >
                 {isUploading

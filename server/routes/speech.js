@@ -10,7 +10,7 @@ const { synthesizeSpeech } = require("../services/azureSpeechService");
 const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { SpeechConfigurationError, SAFE_SPEECH_ERRORS } = require("../services/speechErrors");
 const { createSpeechAccess } = require("../services/speechAccess");
-const { authorizeReadingPracticeRequest } = require("../services/oralReadingAttemptService");
+const { authorizeDiagnosticSpeechRequest, authorizeReadingPracticeRequest } = require("../services/oralReadingAttemptService");
 const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
 
 // Words and short passages; Azure neural TTS is also capped at 1,000 characters
@@ -78,12 +78,14 @@ function createSpeechUpload(uploadDirectory) {
 // require an authenticated student, independent learner or admin; access is
 // checked and throttled before any upload is written or provider is called.
 // M5 read-aloud transcription and TTS (used by M5 feedback) also admit APPROVED Teachers
-// for reading practice; the M2 diagnostic upload keeps the original roles.
+// for reading practice. The M2 diagnostic upload admits learners (official diagnostic) and staff
+// (F7 Practice Mode: System Admin, School Admin, APPROVED Teachers); the official result endpoint stays learner-only.
 function createSpeechRouter({
   uploadDirectory = path.join(__dirname, "..", "uploads"),
   authorize,
   // An injected `authorize` (tests) keeps applying to every endpoint unless this is given too.
   authorizeReadAloud = authorize ?? ((req) => authorizeReadingPracticeRequest(req)),
+  authorizeDiagnosticAudio = authorize ?? ((req) => authorizeDiagnosticSpeechRequest(req)),
   rateLimits,
   now,
   transcribe,
@@ -191,7 +193,7 @@ function createSpeechRouter({
     }
   });
 
-  router.post("/api/diagnostic/audio", requireSpeechAccess("stt"), (req, res) => {
+  router.post("/api/diagnostic/audio", requireSpeechAccess("stt", { authorize: authorizeDiagnosticAudio }), (req, res) => {
     upload.single("audio")(req, res, (error) => diagnosticAudioHandler(req, res, error));
   });
 

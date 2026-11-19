@@ -74,6 +74,8 @@ app.use("/api/classrooms", require("./routes/studentClassrooms").createStudentCl
 app.use(createSpeechRouter({ receipts: diagnosticReceipts }));
 // POST /api/diagnostic/results: the only write path for M2 diagnostic results.
 app.use(createDiagnosticResultsRouter({ receipts: diagnosticReceipts }));
+// POST /api/diagnostic/practice: M2 F7 staff Practice Mode. Scores and returns; never stores anything.
+app.use(require("./routes/diagnosticPractice").createDiagnosticPracticeRouter({ receipts: diagnosticReceipts }));
 
 function startServer(port = process.env.PORT || 5000) {
   const server = createServer(app);

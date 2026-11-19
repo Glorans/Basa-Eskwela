@@ -287,7 +287,7 @@ test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4)
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Platform Analytics", "Independent Learners"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Platform Analytics", "Independent Learners", "Try Assessment"]);
 });
 
 test("security: no public System/School Admin registration, no role editing, no privileged keys in the frontend", () => {

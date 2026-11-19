@@ -13,8 +13,13 @@ const {
 const LEARNER_ROLES = Object.freeze(["student", "general_user"]);
 const SELF_PRACTICE_ROLES = Object.freeze([...LEARNER_ROLES, "admin"]);
 // M5/M6 reading practice also admits APPROVED Teachers (shared published catalog, own results only).
-// M2 diagnostic speech keeps SELF_PRACTICE_ROLES, so Teachers gain no diagnostic access.
+// M2 diagnostic speech uses DIAGNOSTIC_SPEECH_ROLES below (F7 Practice Mode adds staff there, not here).
 const READING_PRACTICE_ROLES = Object.freeze([...SELF_PRACTICE_ROLES, "teacher"]);
+// M2 F7 Practice Mode (Preview / Try Assessment): staff only. Teachers must be APPROVED (checked below).
+const DIAGNOSTIC_PRACTICE_ROLES = Object.freeze(["system_admin", "admin", "teacher"]);
+// M2 diagnostic SPEECH only (stream + upload fallback): learners for the official diagnostic, staff for Practice
+// Mode. Receipts are bound to the signed-in account; the official result endpoint still admits learners only.
+const DIAGNOSTIC_SPEECH_ROLES = Object.freeze([...LEARNER_ROLES, ...DIAGNOSTIC_PRACTICE_ROLES]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_RECORDING_SECONDS = 300;
 const MAX_TRANSCRIPT_LENGTH = 100000;
@@ -82,6 +87,16 @@ async function authorizeOralReadingPracticeRequest(req, dependencies = {}) {
 // Pending, rejected or other Teachers are refused here, before any module, attempt or speech call.
 async function authorizeReadingPracticeRequest(req, dependencies = {}) {
   return authorizeRequesterRole(req, dependencies, READING_PRACTICE_ROLES);
+}
+
+// M2 F7 practice scoring: System Admin, School Admin and APPROVED Teachers. Learners use the official diagnostic.
+async function authorizeDiagnosticPracticeRequest(req, dependencies = {}) {
+  return authorizeRequesterRole(req, dependencies, DIAGNOSTIC_PRACTICE_ROLES);
+}
+
+// M2 diagnostic speech (stream + upload): learners (official) and staff (Practice Mode). Not used by M5.
+async function authorizeDiagnosticSpeechRequest(req, dependencies = {}) {
+  return authorizeRequesterRole(req, dependencies, DIAGNOSTIC_SPEECH_ROLES);
 }
 
 // The UNVERIFIED "sub" claim of a bearer JWT, or null. Used only to start a profile read early;
@@ -865,6 +880,10 @@ module.exports = {
   authorizeOralReadingRequest,
   authorizeOralReadingPracticeRequest,
   authorizeReadingPracticeRequest,
+  authorizeDiagnosticPracticeRequest,
+  authorizeDiagnosticSpeechRequest,
+  DIAGNOSTIC_PRACTICE_ROLES,
+  DIAGNOSTIC_SPEECH_ROLES,
   claimedSubject,
   authorizeTeacherOralReadingRequest,
   isApprovedTeacher,

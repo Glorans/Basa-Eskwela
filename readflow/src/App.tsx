@@ -21,6 +21,9 @@ import {
 } from "./modules/module2/components/DiagnosticRoutes";
 import DiagnosticStartPage from "./modules/module2/pages/DiagnosticStartPage";
 import InitialDiagnosticGuard from "./modules/module2/components/InitialDiagnosticGuard";
+import { PracticeDiagnosticFlow, PracticeDiagnosticLanguageRoute } from "./modules/module2/components/PracticeDiagnosticRoutes";
+import PracticeStartPage from "./modules/module2/pages/PracticeStartPage";
+import { PRACTICE_STAFF_ROLES } from "./modules/module2/utils/practiceMode";
 
 import BasaLayout from "./components/basa/BasaLayout";
 import RequireAuth, { RequireRole } from "./components/auth/RequireAuth";
@@ -171,6 +174,16 @@ function App() {
               <Navigate to="/diagnostic/en/result" replace />
             }
           />
+        </Route>
+      </Route>
+
+      {/* M2 F7 - Preview / Try Assessment: staff Practice Mode. Scored by the server, never saved. */}
+      <Route element={<RequireRole allowedRoles={[...PRACTICE_STAFF_ROLES]} />}>
+        <Route element={<PracticeDiagnosticFlow />}>
+          <Route path="/practice/diagnostic" element={<PracticeStartPage />} />
+          <Route path="/practice/diagnostic/:language/reading" element={<PracticeDiagnosticLanguageRoute step="reading" />} />
+          <Route path="/practice/diagnostic/:language/questions" element={<PracticeDiagnosticLanguageRoute step="questions" />} />
+          <Route path="/practice/diagnostic/:language/result" element={<PracticeDiagnosticLanguageRoute step="result" />} />
         </Route>
       </Route>
 

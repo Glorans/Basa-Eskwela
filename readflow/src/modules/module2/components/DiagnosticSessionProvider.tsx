@@ -1,14 +1,16 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { useAuth } from "../../../auth/useAuth";
 import { supabase } from "../../../lib/supabaseClient";
-import { diagnosticSessionKey, recoverDiagnosticSession, serializeDiagnosticSession, type DiagnosticSession } from "../services/diagnosticSession";
+import {
+  diagnosticSessionKey, recoverDiagnosticSession, serializeDiagnosticSession, type DiagnosticSession, type DiagnosticSessionNamespace,
+} from "../services/diagnosticSession";
 import type { DiagnosticAssessment } from "../types/diagnostic";
 
-function createSessionStore(userId: string) {
+function createSessionStore(userId: string, namespace: DiagnosticSessionNamespace) {
   const memory = new Map<string, DiagnosticSession>();
   return {
     get(assessment: DiagnosticAssessment) {
-      const key = diagnosticSessionKey(userId, assessment);
+      const key = diagnosticSessionKey(userId, assessment, namespace);
       if (memory.has(key)) return memory.get(key)!;
       try {
         const session = recoverDiagnosticSession(sessionStorage.getItem(key), userId, assessment);
@@ -18,19 +20,19 @@ function createSessionStore(userId: string) {
       } catch { return null; }
     },
     save(assessment: DiagnosticAssessment, session: DiagnosticSession) {
-      const key = diagnosticSessionKey(userId, assessment);
+      const key = diagnosticSessionKey(userId, assessment, namespace);
       memory.set(key, session);
       try { sessionStorage.setItem(key, serializeDiagnosticSession(session, userId)); } catch { /* In-memory flow still works. */ }
     },
     clear(assessment: DiagnosticAssessment) {
-      const key = diagnosticSessionKey(userId, assessment);
+      const key = diagnosticSessionKey(userId, assessment, namespace);
       memory.delete(key);
       try { sessionStorage.removeItem(key); } catch { /* Storage may be disabled. */ }
     },
     clearAll() {
       memory.clear();
       try {
-        const prefix = `readflow:m2:${encodeURIComponent(userId)}:`;
+        const prefix = `readflow:${namespace}:${encodeURIComponent(userId)}:`;
         Object.keys(sessionStorage).filter(key => key.startsWith(prefix)).forEach(key => sessionStorage.removeItem(key));
       } catch { /* Storage may be disabled. */ }
     },
@@ -39,9 +41,9 @@ function createSessionStore(userId: string) {
 
 const SessionContext = createContext<ReturnType<typeof createSessionStore> | null>(null);
 
-export function DiagnosticSessionProvider({ children }: { children: ReactNode }) {
+export function DiagnosticSessionProvider({ children, namespace = "m2" }: { children: ReactNode; namespace?: DiagnosticSessionNamespace }) {
   const { user } = useAuth();
-  const store = useMemo(() => createSessionStore(user?.id ?? ""), [user?.id]);
+  const store = useMemo(() => createSessionStore(user?.id ?? "", namespace), [user?.id, namespace]);
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
       if (event === "SIGNED_OUT") store.clearAll();
