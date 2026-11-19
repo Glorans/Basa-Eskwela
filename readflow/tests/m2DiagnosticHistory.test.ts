@@ -129,16 +129,18 @@ test("learner page: loads own history; a failure shows a retry", async () => {
   assert.match(textOf(page.render()), /Assessment History/);
 });
 
-test("Teacher page: Students with their rooms; search filters by name; empty rooms explained", async () => {
+test("Teacher page: Students with their active rooms; search filters by name; empty state explained", async () => {
   const students = [
-    { id: "s1", name: "Ana", rooms: [{ id: "r1", name: "Grade 5 Mabini", archived: false }, { id: "r2", name: "Old Room", archived: true }], results: [entry("e1", "en", "2026-11-10T00:00:00Z")] },
-    { id: "s2", name: "Ben", rooms: [{ id: "r1", name: "Grade 5 Mabini", archived: false }], results: [] },
+    { id: "s1", name: "Ana", rooms: [{ id: "r1", name: "Grade 5 Mabini" }, { id: "r3", name: "Reading Club" }], results: [entry("e1", "en", "2026-11-10T00:00:00Z")] },
+    { id: "s2", name: "Ben", rooms: [{ id: "r1", name: "Grade 5 Mabini" }], results: [] },
   ];
   const page = mountPage("TeacherDiagnosticResultsPage.tsx", { getTeacherDiagnosticResults: async () => students, getDiagnosticHistoryError: () => "x" });
   page.render();
   await page.settle();
   let text = textOf(page.render());
-  assert.match(text, /Ana.*Grade 5 Mabini, Old Room \(archived\).*Ben/s);
+  assert.match(text, /Ana.*Grade 5 Mabini, Reading Club.*Ben/s);
+  assert.match(text, /currently enrolled in your active Learning Rooms/);
+  assert.doesNotMatch(text, /archived/i, "archived rooms are not shown or labelled");
   assert.match(text, /Showing 2 of 2 Students/);
   findAll(page.render(), (n) => n.type === "input")[0].props.onChange({ target: { value: "ben" } });
   await page.settle();
@@ -148,5 +150,5 @@ test("Teacher page: Students with their rooms; search filters by name; empty roo
   const empty = mountPage("TeacherDiagnosticResultsPage.tsx", { getTeacherDiagnosticResults: async () => [], getDiagnosticHistoryError: () => "x" });
   empty.render();
   await empty.settle();
-  assert.match(textOf(empty.render()), /No Students are enrolled in your Learning Rooms yet\./);
+  assert.match(textOf(empty.render()), /No Students are currently enrolled in your active Learning Rooms\./);
 });

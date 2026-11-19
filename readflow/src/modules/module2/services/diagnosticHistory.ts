@@ -21,7 +21,8 @@ export interface DiagnosticHistoryEntry {
 export interface TeacherDiagnosticStudent {
   id: string;
   name: string;
-  rooms: { id: string; name: string; archived: boolean }[];
+  /** The Teacher's active Learning Rooms this Student is currently enrolled in (archived rooms grant no access). */
+  rooms: { id: string; name: string }[];
   results: DiagnosticHistoryEntry[];
 }
 
@@ -35,7 +36,7 @@ export async function getMyDiagnosticHistory() {
   return response.data.results;
 }
 
-/** Approved Teachers: Students enrolled in the Teacher's own Learning Rooms. */
+/** Approved Teachers: Students currently enrolled in the Teacher's own active Learning Rooms. */
 export async function getTeacherDiagnosticResults() {
   const response = await api.get<{ success: true; students: TeacherDiagnosticStudent[] }>(
     "/api/diagnostic-history/teacher", { headers: await headers() },

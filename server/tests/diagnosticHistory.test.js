@@ -34,6 +34,7 @@ function fakeDb(tables) {
         select(cols) { columns = cols; selects.push([table, cols]); return query; },
         eq(column, value) { filters.push((row) => row[column] === value); return query; },
         in(column, values) { filters.push((row) => values.includes(row[column])); return query; },
+        is(column, value) { filters.push((row) => (value === null ? row[column] == null : row[column] === value)); return query; },
         order() { return query; },
         then(resolve, reject) {
           const rows = (tables[table] ?? []).filter((row) => filters.every((f) => f(row)));
@@ -101,6 +102,11 @@ test("Student: own results only, both languages, newest first, safe fields only"
   assertNoSecrets(results);
 });
 
+test("Student self-access is unchanged by room archiving: an archived-room Student still sees their own results", async () => {
+  const results = await listOwnDiagnosticHistory("s2", { getAdmin: () => fakeDb(TABLES) });
+  assert.deepEqual(results.map((r) => [r.id, r.verified]), [["d3", false]], "own row, unverified label kept");
+});
+
 test("Independent Learner: strictly their own results", async () => {
   const results = await listOwnDiagnosticHistory("il1", { getAdmin: () => fakeDb(TABLES) });
   assert.deepEqual(results.map((r) => r.id), ["d6", "d7"]);
@@ -108,17 +114,61 @@ test("Independent Learner: strictly their own results", async () => {
   assert.deepEqual(await listOwnDiagnosticHistory("nobody", { getAdmin: () => fakeDb(TABLES) }), [], "no invented records");
 });
 
-test("Teacher: only Students enrolled in their own rooms (active and archived); never other rooms, unenrolled Students or Independent Learners", async () => {
-  const data = await listTeacherDiagnosticResults("t1", { getAdmin: () => fakeDb(TABLES) });
-  assert.deepEqual(data.students.map((s) => s.id), ["s1", "s2"], "Ana and Ben only");
+const copyTables = () => structuredClone(TABLES);
+
+test("Teacher, ACTIVE enrollment: only Students currently enrolled in the Teacher's own active rooms", async () => {
+  const db = fakeDb(TABLES);
+  const data = await listTeacherDiagnosticResults("t1", { getAdmin: () => db });
+  assert.deepEqual(data.students.map((s) => s.id), ["s1"], "Ana only");
   const ana = data.students[0];
   assert.equal(ana.name, "Ana");
-  assert.deepEqual(ana.rooms, [{ id: "r1", name: "Grade 5 Mabini", archived: false }, { id: "r2", name: "Grade 5 Rizal (2025)", archived: true }]);
+  assert.deepEqual(ana.rooms, [{ id: "r1", name: "Grade 5 Mabini" }], "the archived room is not listed");
   assert.deepEqual(ana.results.map((r) => r.id), ["d2", "d1"], "newest first");
-  assert.equal(data.students[1].results[0].verified, false, "unverified historical rows are labelled, not hidden");
+  // The archive filter is part of the SERVER query, not only a later in-memory step.
+  assert.ok(db.selects.some(([table]) => table === "rooms"));
+  const ids = JSON.stringify(data);
+  for (const hidden of ["s2", "s3", "s4", "il1", "d3", "d4", "d5", "d6", "d7", "r2"]) assert.equal(ids.includes(`"${hidden}"`), false, hidden);
+  assertNoSecrets(data);
+});
+
+test("Teacher, ARCHIVED room: a Student enrolled only in an archived room gives no access, including to results completed after archiving", async () => {
+  const tables = copyTables();
+  tables.diagnostic_results.push(result("d8", "s2", "fil", "2026-11-18T01:00:00Z")); // new result after the room was archived
+  const data = await listTeacherDiagnosticResults("t1", { getAdmin: () => fakeDb(tables) });
+  assert.deepEqual(data.students.map((s) => s.id), ["s1"]);
+  assert.equal(JSON.stringify(data).includes('"d8"'), false);
+  // Every room archived: the Teacher sees no Students at all.
+  tables.rooms.find((room) => room.id === "r1").archived_at = "2026-11-15T00:00:00Z";
+  assert.deepEqual(await listTeacherDiagnosticResults("t1", { getAdmin: () => fakeDb(tables) }), { students: [] });
+});
+
+test("Teacher, archived-room filter is re-checked in code even if the query layer ignored it", async () => {
+  const db = fakeDb(TABLES);
+  const loose = { from: (table) => { const q = db.from(table); q.is = () => q; return q; } }; // a query layer that drops .is()
+  const data = await listTeacherDiagnosticResults("t1", { getAdmin: () => loose });
+  assert.deepEqual(data.students.map((s) => s.id), ["s1"]);
+  assert.deepEqual(data.students[0].rooms.map((r) => r.id), ["r1"]);
+});
+
+test("Teacher, RESTORED room: access returns only while the room is active again", async () => {
+  const tables = copyTables();
+  tables.rooms.find((room) => room.id === "r2").archived_at = null;
+  const data = await listTeacherDiagnosticResults("t1", { getAdmin: () => fakeDb(tables) });
+  assert.deepEqual(data.students.map((s) => s.id), ["s1", "s2"]);
+  assert.deepEqual(data.students[0].rooms.map((r) => r.id), ["r1", "r2"]);
+});
+
+test("Teacher, REMOVED enrollment: a Student removed from the active room is no longer visible", async () => {
+  const tables = copyTables();
+  tables.enrollments = tables.enrollments.filter((e) => !(e.room_id === "r1" && e.student_id === "s1")); // removal deletes the row
+  const data = await listTeacherDiagnosticResults("t1", { getAdmin: () => fakeDb(tables) });
+  assert.deepEqual(data.students.map((s) => s.id), [], "Ana now remains only in the archived room");
+});
+
+test("Teacher, UNRELATED enrollments: other Teachers' rooms, unenrolled Students and Independent Learners are never shown", async () => {
+  const data = await listTeacherDiagnosticResults("t1", { getAdmin: () => fakeDb(TABLES) });
   const ids = JSON.stringify(data);
   for (const hidden of ["s3", "s4", "il1", "d4", "d5", "d6", "d7"]) assert.equal(ids.includes(`"${hidden}"`), false, hidden);
-  assertNoSecrets(data);
 });
 
 test("Teacher with no rooms, or another Teacher, sees nothing of t1's Students", async () => {
@@ -196,7 +246,8 @@ test("GET /teacher: only approved Teachers; Students, Independent Learners, pend
   const get = await startRouter(t);
   const teacher = await get("/teacher", "teacher");
   assert.equal(teacher.status, 200);
-  assert.deepEqual(teacher.body.students.map((s) => s.id), ["s1", "s2"]);
+  assert.deepEqual(teacher.body.students.map((s) => s.id), ["s1"], "active-room enrollment only (s2 is only in an archived room)");
+  assert.deepEqual(teacher.body.students[0].rooms, [{ id: "r1", name: "Grade 5 Mabini" }]);
   assertNoSecrets(teacher.body);
   assert.equal((await get("/teacher")).status, 401);
   for (const token of ["student", "il", "pending", "admin", "sysadmin"]) assert.equal((await get("/teacher", token)).status, 403, token);

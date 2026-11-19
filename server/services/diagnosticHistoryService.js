@@ -75,17 +75,19 @@ async function listOwnDiagnosticHistory(userId, { getAdmin = getSupabaseAdmin } 
 }
 
 /**
- * Approved Teachers: Students enrolled in the Teacher's own Learning Rooms (including archived rooms, which stay
- * read-only and visible to their Teacher). Independent Learners, other Teachers' Students and unenrolled Students
- * are never included. Rooms are matched on rooms.teacher_id, the same ownership rule M4 and M7 use.
+ * Approved Teachers: Students with a CURRENT enrollment in one of the Teacher's own ACTIVE Learning Rooms
+ * (rooms.teacher_id = Teacher and rooms.archived_at IS NULL). Archived rooms grant no access: their enrollments are
+ * frozen by M4, so counting them would expose a former Student's new results indefinitely. A removed Student has no
+ * enrollment row. Independent Learners, other Teachers' Students and unenrolled Students are never included.
+ * (A Student hiding a room on their own side, m4_student_room_archives, does not end the Teacher's enrollment.)
  */
 async function listTeacherDiagnosticResults(teacherId, { getAdmin = getSupabaseAdmin } = {}) {
   if (!teacherId) throw new DiagnosticHistoryError("Approved Teacher access is required.", 403);
   const db = getAdmin();
   const rooms = (await selectRows(
-    db.from("rooms").select("id, room_name, teacher_id, archived_at").eq("teacher_id", teacherId),
+    db.from("rooms").select("id, room_name, teacher_id, archived_at").eq("teacher_id", teacherId).is("archived_at", null),
     "your Learning Rooms",
-  )).filter((room) => room.teacher_id === teacherId);
+  )).filter((room) => room.teacher_id === teacherId && room.archived_at == null); // re-checked in code
   if (!rooms.length) return { students: [] };
 
   const roomById = new Map(rooms.map((room) => [room.id, room]));
@@ -102,7 +104,7 @@ async function listTeacherDiagnosticResults(teacherId, { getAdmin = getSupabaseA
     const room = roomById.get(enrollment.room_id);
     if (!room) continue;
     const list = roomsByStudent.get(enrollment.student_id) ?? [];
-    list.push({ id: room.id, name: room.room_name, archived: Boolean(room.archived_at) });
+    list.push({ id: room.id, name: room.room_name });
     roomsByStudent.set(enrollment.student_id, list);
   }
   const candidateIds = [...roomsByStudent.keys()];

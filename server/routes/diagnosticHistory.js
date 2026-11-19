@@ -8,7 +8,7 @@ const { listOwnDiagnosticHistory, listTeacherDiagnosticResults } = require("../s
 
 // M2 F3 (read-only). Roles come from the server-side profile, never from the browser:
 //   GET /me       Students and Independent Learners: their own results.
-//   GET /teacher  Approved Teachers: Students enrolled in their own Learning Rooms.
+//   GET /teacher  Approved Teachers: Students currently enrolled in their own ACTIVE (not archived) Learning Rooms.
 // School Admin keeps /api/admin/diagnostic-results. System Admin has no F3 access (Appendix N).
 function createDiagnosticHistoryRouter({
   authorizeLearner = (req) => authorizeOralReadingRequest(req),
