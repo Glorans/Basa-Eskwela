@@ -49,6 +49,8 @@ function getNavItems(role: ShellRole) {
       { label: "Independent Learners", to: "/system-admin/independent-learners", icon: UserRound, end: true },
       // Appendix N M2 F7: try the initial diagnostic in Practice Mode (never saved).
       { label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false },
+      // Appendix N M2 F6 + F10: initial diagnostic and Independent Learner reassessment packages.
+      { label: "Assessment Packages", to: "/system-admin/assessment-packages", icon: ClipboardList, end: false },
     ];
   }
   return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
@@ -75,6 +77,10 @@ function getWorkspaceNavItems(role: M3Role) {
       },
       // M2 F7: try the initial diagnostic in Practice Mode (never saved).
       { label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false },
+      // M2 F10: school reassessment packages and review of Teacher packages.
+      { label: "Reassessment Packages", to: "/admin/assessment-packages", icon: ClipboardList, end: false },
+      // M2 F9: assign classroom reassessments.
+      { label: "Reassessment Assignments", to: "/admin/reassessment-assignments", icon: ClipboardList, end: true },
       { label: "Learning Rooms", to: "/admin/learning-rooms", icon: School, end: false },
     ];
   }
@@ -108,6 +114,10 @@ function getWorkspaceNavItems(role: M3Role) {
     items.push({ label: "Diagnostic Results", to: "/m3/teacher/diagnostic-results", icon: ClipboardList, end: true });
     // M2 F7: try the initial diagnostic in Practice Mode (never saved).
     items.push({ label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false });
+    // M2 F10: the Teacher's own private reassessment packages.
+    items.push({ label: "Reassessment Packages", to: "/m3/teacher/assessment-packages", icon: ClipboardList, end: false });
+    // M2 F9: assign own reassessment packages in own active rooms.
+    items.push({ label: "Reassessment Assignments", to: "/m3/teacher/reassessment-assignments", icon: ClipboardList, end: true });
     items.push({ label: "Analytics", to: "/m3/teacher/analytics", icon: ChartNoAxesCombined, end: true });
     items.push({ label: "Reports", to: "/m3/teacher/reports", icon: ClipboardList, end: true });
     items.push({ label: "Archived Classrooms", to: "/m3/teacher/archived-classrooms", icon: Archive, end: true });
@@ -120,6 +130,8 @@ function getWorkspaceNavItems(role: M3Role) {
     items.push({ label: "Progress & Result", to: "/m3/general/progress", icon: ChartNoAxesCombined, end: true });
     // M2 F3: own diagnostic results and history.
     items.push({ label: "Assessment History", to: "/m3/general/assessment-history", icon: ClipboardList, end: true });
+    // M2 F8: centrally approved reassessments the Independent Learner can start.
+    items.push({ label: "My Reassessments", to: "/m3/general/reassessments", icon: ClipboardList, end: true });
   }
 
   return items;

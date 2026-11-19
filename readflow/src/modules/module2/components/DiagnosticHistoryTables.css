@@ -25,3 +25,8 @@
   .diagnostic-history-table td:last-child { border-bottom: 0; }
   .diagnostic-history-table td::before { content: attr(data-label); flex: 0 0 auto; white-space: nowrap; font-weight: 600; color: #3d4a5a; text-align: left; }
 }
+
+/* M2 F5 reading progress (reuses the history card and table styles). */
+.reading-progress-current { margin: 0 0 4px; font-weight: 600; }
+.reading-progress-change { margin: 0 0 8px; color: #3d4a5a; }
+.reading-progress-section { display: grid; gap: 12px; margin-bottom: 20px; }

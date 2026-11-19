@@ -281,13 +281,13 @@ test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4)
   const app = src("App.tsx");
   const block = app.slice(app.indexOf('allowedRoles={["system_admin"]}'), app.indexOf("{/* Admin (School Admin) routes */}"));
   assert.match(block, /path="\/system-admin" element=\{<M3Layout role="system_admin" \/>\}/);
-  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "users", "school-admins/new", "analytics", "independent-learners", "settings"]);
+  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "users", "school-admins/new", "analytics", "independent-learners", "assessment-packages", "assessment-packages/:packageId", "settings"]);
   assert.equal((app.match(/allowedRoles=\{\["system_admin"\]\}/g) ?? []).length, 1, "System Admin has its own route guard");
   assert.match(app, /<Route element=\{<RequireRole allowedRoles=\{\["admin"\]\} \/>\}>\s*<Route\s+path="\/m3\/admin"/);
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Platform Analytics", "Independent Learners", "Try Assessment"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Platform Analytics", "Independent Learners", "Try Assessment", "Assessment Packages"]);
 });
 
 test("security: no public System/School Admin registration, no role editing, no privileged keys in the frontend", () => {

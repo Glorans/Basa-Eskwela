@@ -93,6 +93,7 @@ function mountQuestions(practice: unknown) {
     if (id.endsWith("/services/diagnosticPassage")) return { createPassageDiagnosticResult: () => localResult() };
     if (id.endsWith("/services/diagnosticDatabase")) return { DiagnosticDatabaseError: class extends Error {}, saveInitialDiagnosticResult: async () => { calls.push("OFFICIAL SAVE"); return { result: { language: "en" } }; } };
     if (id.endsWith("/services/diagnosticPractice")) return { DiagnosticPracticeError: class extends Error {}, scoreDiagnosticPractice: async () => { calls.push("practice score"); return serverResult(); } };
+    if (id.endsWith("/services/studentReassessments")) return { StudentReassessmentError: class extends Error {}, submitReassessmentResult: async () => { calls.push("REASSESSMENT SAVE"); return {}; } };
     if (id.endsWith("/services/diagnosticScoreAudit")) return { logDiagnosticScoreAudit: () => calls.push("audit") };
     if (id.endsWith("/services/diagnosticScoring")) return {};
     if (id.endsWith("/data/diagnosticData")) return { getDiagnosticPassageText: () => "synthetic passage" };
@@ -132,7 +133,7 @@ test("questions page without Practice Mode is the unchanged official flow (offic
 
 test("reading page: Practice Mode banner and practice paths; official paths unchanged without it", () => {
   const reading = src("modules/module2/pages/DiagnosticReadingPage.tsx");
-  assert.match(reading, /const basePath = practice\?\.basePath \?\? "\/diagnostic";/);
+  assert.match(reading, /const basePath = practice\?\.basePath \?\? reassessment\?\.basePath \?\? "\/diagnostic";/);
   assert.match(reading, /navigate\(`\$\{basePath\}\/\$\{assessment\.language\}\/questions`\)/);
   assert.match(reading, /\{practice && <PracticeModeBanner exitTo=\{practice\.exitTo\} \/>\}/);
   assert.doesNotMatch(reading, /navigate\(`\/diagnostic\//, "no hard-coded official path left in the shared reading page");

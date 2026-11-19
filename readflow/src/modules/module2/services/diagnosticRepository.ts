@@ -2,6 +2,7 @@ import type { Difficulty, ReadingLevel } from "../../../data/dashboardData";
 import type { Database, Json } from "../../../lib/database.types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { diagnosticAssessmentRegistry, getRequiredDiagnosticLanguages, isDiagnosticLanguage } from "../data/diagnosticData.ts";
+import { FIRST_OFFICIAL_INITIAL_VERSION, INITIAL_DIAGNOSTIC_LINEAGE, initialVersionNumber } from "../data/permanentInitialAssessments.ts";
 import type {
   DiagnosticLanguage,
   DiagnosticResult,
@@ -17,6 +18,14 @@ const INITIAL_ASSESSMENT_TYPE = "initial" as const;
 const SERVER_VERIFIED = "server_verified" as const;
 type DiagnosticResultDatabaseRow =
   Database["public"]["Tables"]["diagnostic_results"]["Row"];
+
+/** An official initial result: server-verified, of the language's initial lineage, version 3.0 or later (never v2.0). */
+function isOfficialInitialRow(row: Pick<DiagnosticResultDatabaseRow, "language" | "assessment_id" | "assessment_version" | "verification_status"> & { assessment_type?: string | null }) {
+  if (row.verification_status !== SERVER_VERIFIED || (row.assessment_type !== undefined && row.assessment_type !== INITIAL_ASSESSMENT_TYPE)) return false;
+  if (!isDiagnosticLanguage(row.language)) return false;
+  return row.assessment_id === INITIAL_DIAGNOSTIC_LINEAGE[row.language]
+    && initialVersionNumber(row.assessment_version) >= FIRST_OFFICIAL_INITIAL_VERSION;
+}
 
 export type DiagnosticSaveErrorCode =
   | "AUTH_REQUIRED"
@@ -301,8 +310,9 @@ export function createDiagnosticRepository(
     throw toSaveError(response);
   }
 
-  // Learner/Module 3 retrieval selects only the active version. Historical rows
-  // remain available through the existing admin results API and database.
+  // Learner/Module 3 retrieval: the official initial result for the language, i.e. the active version or a
+  // permanently valid one (PERMANENT_INITIAL_ASSESSMENTS), preferring the active version. Historical rows remain
+  // available through the existing admin results API and database.
   async function getInitialDiagnosticResult(language: DiagnosticLanguage = "en"): Promise<SavedDiagnosticResult | null> {
     const userId = await getAuthenticatedUserId();
     const { data, error } = await supabase
@@ -311,10 +321,7 @@ export function createDiagnosticRepository(
       .eq("user_id", userId)
       .eq("assessment_type", INITIAL_ASSESSMENT_TYPE)
       .eq("language", language)
-      .eq("assessment_id", diagnosticAssessmentRegistry[language]!.id)
-      .eq("assessment_version", diagnosticAssessmentRegistry[language]!.version)
-      .eq("verification_status", SERVER_VERIFIED)
-      .maybeSingle();
+      .eq("verification_status", SERVER_VERIFIED);
 
     if (error) {
       throw new DiagnosticDatabaseError(
@@ -322,24 +329,21 @@ export function createDiagnosticRepository(
       );
     }
 
-    return data ? mapDatabaseRow(data) : null;
+    const rows = ((data ?? []) as DiagnosticResultDatabaseRow[]).filter((row) => isOfficialInitialRow(row));
+    const active = diagnosticAssessmentRegistry[language];
+    const preferred = rows.find((row) => row.assessment_id === active?.id && row.assessment_version === active?.version)
+      ?? [...rows].sort((a, b) => String(b.verified_at ?? "").localeCompare(String(a.verified_at ?? "")))[0];
+    return preferred ? mapDatabaseRow(preferred) : null;
   }
 
   async function getCompletedDiagnosticLanguages(): Promise<DiagnosticLanguage[]> {
     const userId = await getAuthenticatedUserId();
     const { data, error } = await supabase.from("diagnostic_results")
-      .select("language, assessment_id, assessment_version").eq("user_id", userId).eq("assessment_type", INITIAL_ASSESSMENT_TYPE)
+      .select("language, assessment_id, assessment_version, verification_status").eq("user_id", userId).eq("assessment_type", INITIAL_ASSESSMENT_TYPE)
       .eq("verification_status", SERVER_VERIFIED);
     if (error) throw new DiagnosticDatabaseError("We couldn't check your diagnostic status. Please try again.");
-    return (data ?? []).flatMap(row => {
-      if (!isDiagnosticLanguage(row.language)) return [];
-      const active = diagnosticAssessmentRegistry[row.language];
-      return active?.contentStatus === "active"
-        && row.language === active.language
-        && row.assessment_id === active.id
-        && row.assessment_version === active.version
-        ? [row.language] : [];
-    });
+    // Completion is permanent: the active version OR a permanently valid one (a newer version never forces a retake).
+    return [...new Set((data ?? []).flatMap(row => (isDiagnosticLanguage(row.language) && isOfficialInitialRow(row) ? [row.language] : [])))];
   }
 
   async function hasCompletedInitialDiagnostic(language?: DiagnosticLanguage): Promise<boolean> {

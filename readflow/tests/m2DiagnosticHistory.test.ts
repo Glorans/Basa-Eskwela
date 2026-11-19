@@ -97,13 +97,20 @@ test("tables: empty languages say so, and nothing is invented", () => {
   assert.match(textOf(mountTables([], "student")), /No English diagnostic completed yet\..*No Filipino diagnostic completed yet\./s);
 });
 
-function mountPage(path: string, service: Record<string, unknown>) {
+const NO_PROGRESS = { en: { language: "en", current: null }, fil: { language: "fil", current: null } };
+const PROGRESS_STUB = {
+  getMyReadingProgress: async () => NO_PROGRESS,
+  getTeacherReadingProgress: async () => [],
+};
+function mountPage(path: string, service: Record<string, unknown>, progressService: Record<string, unknown> = PROGRESS_STUB) {
   const runtime = createHookRuntime(require("react"));
   const mod = loadComponentModule(new URL(`../src/modules/module2/pages/${path}`, import.meta.url), (id) => {
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     if (id.endsWith("/services/diagnosticHistory")) return service;
+    if (id.endsWith("/services/readingProgress")) return progressService;
     if (id.endsWith("/components/DiagnosticHistoryTables")) return { default: () => null };
+    if (id.endsWith("/components/ReadingProgressPanel")) return { default: () => null };
     return require(id);
   });
   const render = () => runtime.render(mod.default, {});

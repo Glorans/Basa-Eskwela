@@ -11,6 +11,7 @@ import {
   type DifficultyFilter,
   type ReadingLevelFilter,
 } from "./diagnosticResultFilters";
+import SchoolReadingProgressSection from "../../modules/module2/components/SchoolReadingProgressSection";
 import "./UserManagementPage.css";
 import "./AdminDiagnosticResultsPage.css";
 
@@ -92,6 +93,9 @@ export default function AdminDiagnosticResultsPage() {
           Refresh
         </button>
       </header>
+
+      {/* M2 F5: official reading progress per Student (School Admin only; IL excluded by the server). */}
+      <SchoolReadingProgressSection />
 
       {error && (
         <p className="admin-users-message admin-users-message--error" role="alert">

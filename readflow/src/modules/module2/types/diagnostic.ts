@@ -102,6 +102,13 @@ export interface DiagnosticPracticeOptions {
   exitTo: string;
 }
 
+/** M2 F8 Student reassessment: the assignment being taken, where its screens live and where "Back" returns to. */
+export interface DiagnosticReassessmentOptions {
+  assignmentId: string;
+  basePath: string;
+  exitTo: string;
+}
+
 /**
  * Frontend representation of a diagnostic_results record.
  * Optional values stay unavailable until a real scoring/STT source provides them.
