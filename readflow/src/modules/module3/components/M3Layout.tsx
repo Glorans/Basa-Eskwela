@@ -47,6 +47,8 @@ function getNavItems(role: ShellRole) {
       // Appendix N M7 for the System Admin: F2 (system-wide dashboard) and F4 (Independent Learner performance).
       { label: "Platform Analytics", to: "/system-admin/analytics", icon: ChartNoAxesCombined, end: true },
       { label: "Independent Learners", to: "/system-admin/independent-learners", icon: UserRound, end: true },
+      // Appendix N M2 F7: try the initial diagnostic in Practice Mode (never saved).
+      { label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false },
     ];
   }
   return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
@@ -71,6 +73,8 @@ function getWorkspaceNavItems(role: M3Role) {
         icon: ClipboardList,
         end: true,
       },
+      // M2 F7: try the initial diagnostic in Practice Mode (never saved).
+      { label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false },
       { label: "Learning Rooms", to: "/admin/learning-rooms", icon: School, end: false },
     ];
   }
@@ -102,6 +106,8 @@ function getWorkspaceNavItems(role: M3Role) {
     items.push({ label: "Student Support", to: "/m3/teacher/student-support", icon: ClipboardList, end: true });
     // M2 F3: diagnostic results of Students enrolled in this Teacher's Learning Rooms.
     items.push({ label: "Diagnostic Results", to: "/m3/teacher/diagnostic-results", icon: ClipboardList, end: true });
+    // M2 F7: try the initial diagnostic in Practice Mode (never saved).
+    items.push({ label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false });
     items.push({ label: "Analytics", to: "/m3/teacher/analytics", icon: ChartNoAxesCombined, end: true });
     items.push({ label: "Reports", to: "/m3/teacher/reports", icon: ClipboardList, end: true });
     items.push({ label: "Archived Classrooms", to: "/m3/teacher/archived-classrooms", icon: Archive, end: true });

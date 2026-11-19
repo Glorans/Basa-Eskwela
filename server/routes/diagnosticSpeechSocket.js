@@ -1,5 +1,5 @@
 const { WebSocketServer, WebSocket } = require("ws");
-const { authorizeOralReadingPracticeRequest } = require("../services/oralReadingAttemptService");
+const { authorizeDiagnosticSpeechRequest, authorizeOralReadingPracticeRequest } = require("../services/oralReadingAttemptService");
 const { SPEECH_STREAM_SESSION_LIMIT, createRequestLimiter } = require("../services/speechAccess");
 const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
 const { getDiagnosticAssessmentBinding } = require("../services/diagnosticAssessments");
@@ -16,9 +16,12 @@ const REJECTION = Object.freeze({
 });
 
 function attachDiagnosticSpeechSocket(server, {
-  // Same Supabase token check and roles as the speech HTTP endpoints (student,
-  // general_user, admin). Teachers and accounts without a role are rejected.
-  authorize = (token) => authorizeOralReadingPracticeRequest({ get: () => `Bearer ${token}` }),
+  // M5 voice-follow streams (no `diagnostic`): student, general_user, admin, as before.
+  authorize,
+  // M2 diagnostic streams (`diagnostic` named): learners (official) and staff for F7 Practice Mode (System Admin,
+  // School Admin, APPROVED Teachers). Receipts are bound to the account; official saving stays learner-only.
+  // An injected `authorize` (tests) applies to both unless this is given too.
+  authorizeDiagnostic = authorize ?? ((token) => authorizeDiagnosticSpeechRequest({ get: () => `Bearer ${token}` })),
   createSession = createDiagnosticSpeechSession,
   allowedOrigins = (process.env.DIAGNOSTIC_WS_ORIGINS || "http://localhost:5173,http://127.0.0.1:5173")
     .split(",").map((origin) => origin.trim()),
@@ -26,6 +29,7 @@ function attachDiagnosticSpeechSocket(server, {
   receipts = createTranscriptReceiptService(),
   now = Date.now,
 } = {}) {
+  const authorizeStream = authorize ?? ((token) => authorizeOralReadingPracticeRequest({ get: () => `Bearer ${token}` }));
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16384, perMessageDeflate: false });
   // In-memory, per backend instance: user id -> the connection holding the live stream.
   const activeStreams = new Map();
@@ -85,7 +89,7 @@ function attachDiagnosticSpeechSocket(server, {
           reject(); return;
         }
         configuring = true;
-        const requester = await authorize(message.accessToken);
+        const requester = await (message.diagnostic !== undefined ? authorizeDiagnostic : authorizeStream)(message.accessToken);
         if (closed || ws.readyState !== WebSocket.OPEN) return;
         clearTimeout(configTimer);
         // M2 names its diagnostic and gets a signed transcript; M5 voice-follow

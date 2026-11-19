@@ -1,0 +1,18 @@
+/* M2 F7 Practice Mode start and result screens (inside the shared diagnostic layout). */
+/* Same title style as the official reading screen. */
+.practice-diagnostic-header h1 { margin: 0 0 8px; color: #10231f; font-size: clamp(1.9rem, 3.1vw, 2.5rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.025em; }
+.practice-diagnostic-header p { margin: 0 0 16px; line-height: 1.5; }
+.practice-diagnostic-languages { list-style: none; display: grid; gap: 12px; padding: 0; margin: 0 0 12px; }
+.practice-diagnostic-language { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; box-sizing: border-box; text-decoration: none; }
+.practice-diagnostic-language small { font-weight: 600; opacity: 0.85; }
+.practice-diagnostic-note { color: #4b5b6b; font-size: 0.92rem; }
+.practice-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 0 16px; }
+.practice-result-grid > div { border: 1px solid #dbe9df; border-radius: 14px; padding: 12px 14px; background: #f8fbf8; }
+.practice-result-grid dt { font-weight: 700; color: #3d4a5a; }
+.practice-result-grid dd { margin: 4px 0 0; font-size: 1.5rem; font-weight: 700; color: #265c47; display: flex; flex-direction: column; }
+.practice-result-grid dd small { font-size: 0.85rem; font-weight: 600; color: #4b5b6b; }
+.practice-result-details h2 { font-size: 1.05rem; margin: 12px 0 6px; }
+.practice-result-details ul, .practice-result-questions { margin: 0; padding-left: 20px; line-height: 1.6; }
+.practice-result-questions li[data-correct="false"] { color: #9b2c2c; }
+.practice-result-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.practice-result-actions a { text-decoration: none; text-align: center; }

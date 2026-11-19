@@ -10,8 +10,11 @@ export interface DiagnosticSession {
   questionIndex: number;
 }
 
-export function diagnosticSessionKey(userId: string, assessment: DiagnosticAssessment) {
-  return `readflow:m2:${encodeURIComponent(userId)}:${assessment.language}:${encodeURIComponent(assessment.id)}:${encodeURIComponent(assessment.version)}`;
+/** "m2" = the official diagnostic; "m2-practice" = F7 staff Practice Mode, so the two drafts can never mix. */
+export type DiagnosticSessionNamespace = "m2" | "m2-practice";
+
+export function diagnosticSessionKey(userId: string, assessment: DiagnosticAssessment, namespace: DiagnosticSessionNamespace = "m2") {
+  return `readflow:${namespace}:${encodeURIComponent(userId)}:${assessment.language}:${encodeURIComponent(assessment.id)}:${encodeURIComponent(assessment.version)}`;
 }
 
 export function recoverDiagnosticSession(raw: string | null, userId: string, assessment: DiagnosticAssessment, now = Date.now()): DiagnosticSession | null {

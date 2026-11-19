@@ -11,8 +11,11 @@ import {
 } from "../services/diagnosticScoring";
 import { DiagnosticDatabaseError, saveInitialDiagnosticResult } from "../services/diagnosticDatabase";
 import { logDiagnosticScoreAudit } from "../services/diagnosticScoreAudit";
+import { DiagnosticPracticeError, scoreDiagnosticPractice } from "../services/diagnosticPractice";
+import PracticeModeBanner from "../components/PracticeModeBanner";
 import type {
   DiagnosticAssessment,
+  DiagnosticPracticeOptions,
   DiagnosticResult,
 } from "../types/diagnostic";
 import "./DiagnosticQuestionsPage.css";
@@ -31,11 +34,15 @@ function shuffleChoiceOrder(assessment: DiagnosticAssessment) {
 
 interface DiagnosticQuestionsPageProps {
   assessment: DiagnosticAssessment;
+  /** M2 F7 staff Practice Mode: scored by the practice endpoint and never saved. Omitted for the official diagnostic. */
+  practice?: DiagnosticPracticeOptions;
 }
 
 export default function DiagnosticQuestionsPage({
   assessment,
+  practice,
 }: DiagnosticQuestionsPageProps) {
+  const basePath = practice?.basePath ?? "/diagnostic";
   const navigate = useNavigate();
   const t = (text: string) => diagnosticCopy(assessment.language, text);
   const diagnosticSession = useDiagnosticSession();
@@ -66,7 +73,7 @@ export default function DiagnosticQuestionsPage({
     if (session) diagnosticSession.save(assessment, { ...session, answers, questionIndex: currentQuestionIndex });
   }, [session, diagnosticSession, assessment, answers, currentQuestionIndex]);
 
-  if (!reading || !session) return <Navigate to={`/diagnostic/${assessment.language}/reading`} replace />;
+  if (!reading || !session) return <Navigate to={`${basePath}/${assessment.language}/reading`} replace />;
 
   if (!currentQuestion) {
     return (
@@ -110,6 +117,28 @@ export default function DiagnosticQuestionsPage({
     saving.current = true;
     setIsSaving(true);
     setSaveError(null);
+
+    if (practice) {
+      // M2 F7: the practice endpoint scores with the official rubric and returns the result. Nothing is saved, so
+      // there is no history, placement, analytics or reward update. Staff may practise again afterwards.
+      try {
+        const practiceResult = await scoreDiagnosticPractice(result);
+        if (!mounted.current) return;
+        diagnosticSession.clear(assessment);
+        navigate(`${basePath}/${assessment.language}/result`, { state: { practiceResult } });
+      } catch (error) {
+        if (!mounted.current) return;
+        if (error instanceof DiagnosticPracticeError && error.code === "READING_NOT_VERIFIED") {
+          diagnosticSession.clear(assessment);
+          setPendingResult(null);
+        }
+        setSaveError(error instanceof Error ? error.message : "We couldn't score this practice attempt. Please try again.");
+      } finally {
+        saving.current = false;
+        if (mounted.current) setIsSaving(false);
+      }
+      return;
+    }
 
     try {
       const savedResult = await saveInitialDiagnosticResult(result);
@@ -158,7 +187,8 @@ export default function DiagnosticQuestionsPage({
       className="diagnostic-questions-panel"
       labelledBy="diagnostic-questions-title"
     >
-      <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`/diagnostic/${assessment.language}/reading`)}>{t("Back to the story")}</button>
+      {practice && <PracticeModeBanner exitTo={practice.exitTo} />}
+      <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`${basePath}/${assessment.language}/reading`)}>{t("Back to the story")}</button>
       <header className="diagnostic-questions-header">
         <h1 id="diagnostic-questions-title">{t("Answer the Questions")}</h1>
         <p>{t("Choose the best answer. Take your time!")}</p>
@@ -212,13 +242,21 @@ export default function DiagnosticQuestionsPage({
           disabled={!selectedChoiceId || isSaving}
           onClick={() => void continueAssessment()}
         >
-          {isSaving
-            ? t("Saving Result...")
-            : saveError
-              ? t("Try Saving Again")
-              : isFinalQuestion
-                ? t("View Result")
-                : t("Next")}
+          {practice
+            ? isSaving
+              ? "Scoring practice..."
+              : saveError
+                ? "Try Scoring Again"
+                : isFinalQuestion
+                  ? "View Practice Result"
+                  : t("Next")
+            : isSaving
+              ? t("Saving Result...")
+              : saveError
+                ? t("Try Saving Again")
+                : isFinalQuestion
+                  ? t("View Result")
+                  : t("Next")}
         </button>
       </div>
     </DiagnosticLayout>

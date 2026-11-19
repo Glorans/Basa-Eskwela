@@ -11,6 +11,9 @@ const UPLOAD_TOO_LARGE_CODES = new Set(["LIMIT_FILE_SIZE", "LIMIT_FIELD_VALUE"])
 const UNAVAILABLE_MESSAGE = "Speech processing is temporarily unavailable. Please try again later.";
 
 const DIAGNOSTIC_FIELDS = ["recordingId", "segmentIndex", "assessmentId", "assessmentVersion"];
+// Roles first admitted here by M2 F7 Practice Mode (System Admin, approved Teachers) may upload DIAGNOSTIC parts only,
+// never plain (non-diagnostic) transcription. Roles that could upload before F7 keep their previous behavior.
+const DIAGNOSTIC_ONLY_ROLES = new Set(["system_admin", "teacher"]);
 
 // M2 diagnostic parts name the active diagnostic, their recording and their
 // position; M5 read-alouds send none of these and receive no receipt.
@@ -54,6 +57,9 @@ function createDiagnosticAudioHandler({ transcribe = transcribeWav, remove = unl
             ? "This diagnostic was updated. Please reload the page and start again."
             : "Audio upload failed. Please try recording again.",
         });
+      }
+      if (!segment && DIAGNOSTIC_ONLY_ROLES.has(res.locals?.speechRequester?.profile?.role)) {
+        return res.status(403).json({ success: false, code: "DIAGNOSTIC_ONLY", message: "This upload is available for the diagnostic assessment only." });
       }
       // A diagnostic part that cannot be signed would be unusable, so the paid
       // provider is not called for it.

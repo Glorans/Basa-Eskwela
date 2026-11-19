@@ -96,6 +96,12 @@ export interface DiagnosticQuestionsRouteState {
 
 export type DiagnosticVerificationStatus = "unverified" | "server_verified";
 
+/** M2 F7 staff Practice Mode: where the practice routes live and where "Exit practice" returns to. */
+export interface DiagnosticPracticeOptions {
+  basePath: string;
+  exitTo: string;
+}
+
 /**
  * Frontend representation of a diagnostic_results record.
  * Optional values stay unavailable until a real scoring/STT source provides them.
