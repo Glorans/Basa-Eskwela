@@ -273,7 +273,10 @@ test("draft content is normalized: ids by position, choices a-d, unknown types a
   assert.deepEqual(content, { passageTitle: "Title", paragraphs: ["One."], questions: [{ id: "q1", type: "", prompt: "P",
     choices: [{ id: "a", label: "A" }, { id: "b", label: "" }, { id: "c", label: "" }, { id: "d", label: "D" }], correctChoiceId: null }] });
   assert.ok(result.versions[0].issues.length > 0, "structural issues are reported for the draft");
-  await refused(service.updateDraft(as("teacher"), pkgId, vId, { content: { ...COMPLETE, questions: [...COMPLETE.questions, question(7, "literal")] } }), 400);
+  // Drafts hold up to 8 questions (the editor's 5–8 range); the database still decides what may be submitted.
+  const eight = [...COMPLETE.questions, question(7, "literal"), question(8, "critical")];
+  await service.updateDraft(as("teacher"), pkgId, vId, { content: { ...COMPLETE, questions: eight } });
+  await refused(service.updateDraft(as("teacher"), pkgId, vId, { content: { ...COMPLETE, questions: [...eight, question(9, "literal")] } }), 400);
   await refused(service.updateDraft(as("teacher"), pkgId, vId, { content: { ...COMPLETE, passageTitle: "x".repeat(201) } }), 400);
   await refused(service.updateDraft(as("teacher"), pkgId, "not-a-uuid", { content: COMPLETE }), 404);
 });

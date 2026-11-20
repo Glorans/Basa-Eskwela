@@ -5,6 +5,7 @@ const { createRequestLimiter } = require("../services/speechAccess");
 const { DiagnosticReceiptConfigurationError, createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
 const { DiagnosticSubmissionError } = require("../services/diagnosticResultService");
 const { createDiagnosticPracticeService } = require("../services/diagnosticPracticeService");
+const { createPracticeVersionService } = require("../services/practiceVersionService");
 
 // Staff may practise repeatedly; this only bounds automated misuse.
 const DIAGNOSTIC_PRACTICE_RATE_LIMIT = Object.freeze({ limit: 30, windowMs: 10 * 60 * 1000 });
@@ -33,7 +34,8 @@ function sendPracticeError(res, error, log) {
 function createDiagnosticPracticeRouter({
   receipts = createTranscriptReceiptService(),
   authorize = (req) => authorizeDiagnosticPracticeRequest(req),
-  service = createDiagnosticPracticeService({ receipts }),
+  practiceVersions = createPracticeVersionService(),
+  service = createDiagnosticPracticeService({ receipts, practiceVersions }),
   rateLimit = DIAGNOSTIC_PRACTICE_RATE_LIMIT,
   now = Date.now,
   log = console.error,
@@ -55,7 +57,19 @@ function createDiagnosticPracticeRouter({
       return res.status(429).json({ success: false, code: "PRACTICE_RATE_LIMITED", message: "Too many practice attempts. Please wait a few minutes, then try again." });
     }
     try {
-      return res.status(200).json({ success: true, result: service.scorePractice(requester, req.body ?? {}) });
+      return res.status(200).json({ success: true, result: await service.scorePractice(requester, req.body ?? {}) });
+    } catch (error) {
+      return sendPracticeError(res, error, log);
+    }
+  });
+
+  // M2 F7: the passage and questions (no answer keys) of an authored Initial Diagnostic version this staff member may
+  // practise. Only the System Admin can see Initial Diagnostic packages; drafts and unpublished versions are refused.
+  router.get("/api/diagnostic/practice/versions/:versionId", async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    try {
+      const requester = await authorize(req);
+      return res.status(200).json({ success: true, data: await practiceVersions.getContent(requester, req.params.versionId) });
     } catch (error) {
       return sendPracticeError(res, error, log);
     }

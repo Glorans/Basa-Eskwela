@@ -76,7 +76,7 @@ function normalizeContent(input) {
     fail(`The passage has at most ${LIMITS.paragraphs} paragraphs.`, 400);
   }
   const paragraphs = input.paragraphs.map((p, i) => text(p, LIMITS.paragraph, `Paragraph ${i + 1}`));
-  if (!Array.isArray(input.questions) || input.questions.length > 6) fail("A package has at most 6 questions.", 400);
+  if (!Array.isArray(input.questions) || input.questions.length > 8) fail("A package has at most 8 questions.", 400);
   const questions = input.questions.map((q, i) => {
     if (!q || typeof q !== "object") fail(`Question ${i + 1} is invalid.`, 400);
     const type = QUESTION_TYPES.includes(q.type) ? q.type : "";
@@ -275,8 +275,10 @@ function createAssessmentPackageService({ repository, now = () => new Date() } =
         canManage: activation.installed && policy.canImportInitial(profile) && !pkg.archived_at,
         activeVersionId: activation.activeVersionId,
       };
+      // F6 (approved 2026-11-20): a published, authored version can be activated by a System Admin without a recorded
+      // educator endorsement (m2_initial_activation_no_endorsement). Endorsement still applies to reassessment (F10).
       for (const d of detailed) {
-        d.canActivate = summary.activation.canManage && d.status === "published" && d.source === "authored" && d.educatorEndorsed && !d.activeForLearners;
+        d.canActivate = summary.activation.canManage && d.status === "published" && d.source === "authored" && !d.activeForLearners;
       }
     }
     if (pkg.scope === "teacher" && profile.role === "admin") summary.ownerName = pkg.owner_id ? who(pkg.owner_id) : "Removed account";
@@ -499,7 +501,8 @@ function createAssessmentPackageService({ repository, now = () => new Date() } =
   }
 
   /**
-   * F6: make a published, educator-endorsed version of the initial diagnostic the one learners take (System Admin only),
+   * F6: make a published version of the initial diagnostic the one learners take (System Admin only; no educator
+   * endorsement needed since m2_initial_activation_no_endorsement),
    * or return the language to the built-in 3.0 (versionId null). The caller names the version it expects to replace,
    * so two System Admins cannot overwrite each other. The database re-checks every rule (m2_activate_initial_version).
    */

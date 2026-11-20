@@ -1,6 +1,7 @@
 // M2 F6: which INITIAL diagnostic learners take, per language, and which versions the server still accepts.
 //   * Built-in (default): the code-defined version 3.0 (DIAGNOSTIC_ASSESSMENTS). Nothing changes until a System Admin
-//     explicitly activates a published, educator-endorsed version (m2_initial_activation, m2_initial_activation_PROPOSED).
+//     explicitly activates a published version (m2_initial_activation_PROPOSED; no educator endorsement needed since
+//     m2_initial_activation_no_endorsement_PROPOSED).
 //   * Activated: a version of the language's initial lineage (the package holding the imported 3.0). Its results are
 //     stored with the lineage id (e.g. grade5-en-passage-v3) and the version label (e.g. 4.0).
 //   * A version replaced less than 24 hours ago (the reading-receipt lifetime) is still accepted, so a learner who was

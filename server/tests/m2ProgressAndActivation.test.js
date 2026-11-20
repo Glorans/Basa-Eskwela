@@ -114,7 +114,7 @@ const NEW_KEYS = ["c", "d", "b", "a", "c", "d"];
 const NEW_QUESTIONS = ["literal", "literal", "inferential", "inferential", "inferential", "critical"].map((type, i) => ({
   id: `new-q${i + 1}`, type, prompt: `New question ${i + 1}?`, correctChoiceId: NEW_KEYS[i], choices: ["a", "b", "c", "d"].map((c) => ({ id: c, label: `Option ${c}` })) }));
 
-async function f6Setup() {
+async function f6Setup({ endorse = true, noEndorsementRule = false } = {}) {
   const d = new PGlite();
   await d.exec(LIVE_FIXTURE);
   for (const [id, role] of [[SA, "system_admin"], [ADMIN, "admin"]]) {
@@ -123,6 +123,7 @@ async function f6Setup() {
   }
   await d.exec(sql("m2_assessment_packages_PROPOSED.sql"));
   await d.exec(sql("m2_initial_activation_PROPOSED.sql"));
+  if (noEndorsementRule) await d.exec(sql("m2_initial_activation_no_endorsement_PROPOSED.sql"));
   // The English lineage: the imported 3.0 plus a synthetic, published, endorsed 4.0.
   const code = DIAGNOSTIC_ASSESSMENTS.en;
   const { rows: [p] } = await d.query(`insert into m2_assessment_packages(kind, audience, scope, owner_id, language, title, legacy_assessment_id) values ('initial','all_learners','platform',$1,'en','Initial',$2) returning id`, [SA, code.id]);
@@ -133,7 +134,7 @@ async function f6Setup() {
     values ($1, 2, '4.0', $2, 'The Mango Seed', $3, $4) returning id`, [p.id, SA, JSON.stringify(NEW_PARAGRAPHS), JSON.stringify(NEW_QUESTIONS)]);
   await d.query(`update m2_assessment_package_versions set status = 'in_review', submitted_by = $2 where id = $1`, [v.id, SA]);
   await d.query(`update m2_assessment_package_versions set status = 'approved', reviewed_by = $2, educator_review_attestation = 'Library' where id = $1`, [v.id, SA]);
-  await d.query(`insert into m2_assessment_educator_reviews(version_id, reviewer_name, reviewer_qualification, reviewed_on, passage_suitable, questions_sound,
+  if (endorse) await d.query(`insert into m2_assessment_educator_reviews(version_id, reviewer_name, reviewer_qualification, reviewed_on, passage_suitable, questions_sound,
     answer_keys_correct, language_accurate, outcome, recorded_by) values ($1, 'R', 'Grade 5 English teacher (stated)', current_date, true, true, true, true, 'endorsed', $2)`, [v.id, SA]);
   await d.query("select m2_publish_assessment_version($1, $2)", [v.id, SA]);
   await d.exec("set role service_role");
@@ -264,6 +265,29 @@ test("F6 delivery route: learners only; never answer keys; the server chooses th
   assert.equal((await get("student", "/api/diagnostic/initial/en?version=7.0")).status, 409);
   for (const role of ["teacher", "admin", "system_admin"]) assert.equal((await get(role, "/api/diagnostic/initial/en")).status, 403, role);
   assert.equal((await get("student", "/api/diagnostic/initial/es")).status, 400);
+});
+
+test("F6 without educator endorsement (approved local rule): a published version is eligible and activates; a draft never does", async () => {
+  const { createAssessmentPackageService } = require("../services/assessmentPackageService");
+  const { createSupabaseAssessmentPackageRepository } = require("../services/assessmentPackageRepository");
+  const ctx = await f6Setup({ endorse: false, noEndorsementRule: true });
+  const service = createAssessmentPackageService({ repository: createSupabaseAssessmentPackageRepository({ getAdmin: () => ctx.supa }) });
+  const sa = { user: { id: SA }, profile: { role: "system_admin" } };
+  const before = await service.getPackage(sa, ctx.packageId);
+  assert.deepEqual(before.versions.map((v) => [v.versionLabel, v.educatorEndorsed, v.canActivate]), [["4.0", false, true], ["3.0", false, false]],
+    "the published 4.0 is eligible without an endorsement; the built-in 3.0 is restored, not activated");
+  const draft = await service.createVersion(sa, ctx.packageId, {});
+  const draftVersion = draft.versions.find((v) => v.status === "draft");
+  assert.equal(draftVersion.canActivate, false, "a draft can never be activated");
+  await assert.rejects(service.setActiveInitialVersion(sa, ctx.packageId, draftVersion.id, { expectedActiveVersionId: null }), (e) => e.statusCode === 409,
+    "the database refuses a draft as well");
+  await assert.rejects(service.setActiveInitialVersion({ user: { id: ADMIN }, profile: { role: "admin" } }, ctx.packageId, ctx.versionId, {}),
+    (e) => e.statusCode === 404 || e.statusCode === 403, "School Admins cannot activate");
+  const after = await service.setActiveInitialVersion(sa, ctx.packageId, ctx.versionId, { expectedActiveVersionId: null });
+  assert.equal(after.package.activation.activeVersionId, ctx.versionId);
+  await ctx.d.exec("reset role");
+  assert.equal((await ctx.d.query("select count(*)::int n from m2_assessment_educator_reviews")).rows[0].n, 0, "no review or endorsement is fabricated");
+  assert.equal((await ctx.d.query("select count(*)::int n from m2_initial_activation_events")).rows[0].n, 1, "the change is recorded");
 });
 
 test("F6 package service: System Admin only; shows the active version; stale expected version refused; return to built-in", async () => {

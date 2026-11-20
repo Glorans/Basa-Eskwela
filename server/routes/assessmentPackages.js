@@ -58,7 +58,7 @@ function createAssessmentPackagesRouter({
     service.updateDraft(requester, req.params.id, req.params.versionId, req.body ?? {})));
   router.delete("/:id/versions/:versionId", handle((requester, req) =>
     service.deleteDraft(requester, req.params.id, req.params.versionId)));
-  // F6: activate a published, endorsed initial version, or return to the built-in 3.0 (System Admin only).
+  // F6: activate a published initial version, or return to the built-in 3.0 (System Admin only).
   router.post("/:id/versions/:versionId/activate", handle((requester, req) =>
     service.setActiveInitialVersion(requester, req.params.id, req.params.versionId, req.body ?? {})));
   router.post("/:id/activation/built-in", handle((requester, req) =>
