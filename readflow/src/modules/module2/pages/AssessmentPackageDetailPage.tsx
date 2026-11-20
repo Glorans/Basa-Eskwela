@@ -34,6 +34,7 @@ import { confirmReadFlow } from "../../../components/ReadFlowDialog";
 import { useAssessmentLeaveGuard } from "../hooks/useAssessmentLeaveGuard";
 import { passageToText, textToPassage, assessmentRequirements } from "../services/assessmentEditor";
 import InitialDiagnosticEditor, { INITIAL_LIST_PATH } from "../components/InitialDiagnosticEditor";
+import ReassessmentPackageEditor from "../components/ReassessmentPackageEditor";
 import { ArrowLeft } from "lucide-react";
 import "../../module7/m7.css";
 import "./AssessmentPackages.css";
@@ -96,6 +97,11 @@ export default function AssessmentPackageDetailPage({ role }: { role: Assessment
   // M2 F6/F7: the System Admin's Initial Diagnostic has its own three-tab editor at this same route.
   if (role === "system_admin" && detail?.package.category === "initial") {
     return <InitialDiagnosticEditor key={detail.package.id} detail={detail} siblings={siblings} onDetail={setDetail} />;
+  }
+  // M2 F10: the System Admin's central Independent Learner reassessment packages use the same layout (F10 rules kept).
+  // School Admin and Teacher reassessment packages keep the editor below.
+  if (role === "system_admin" && detail?.package.category === "independent") {
+    return <ReassessmentPackageEditor key={detail.package.id} detail={detail} onDetail={setDetail} />;
   }
   return <main className="m7-page m2-packages-page">
     {role === "system_admin"

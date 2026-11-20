@@ -145,6 +145,7 @@ function loadDetailModule(runtime: ReturnType<typeof createHookRuntime>, getPack
     if (id === "lucide-react") return { ArrowLeft: "ArrowLeft" };
     // The System Admin's Initial Diagnostic editor is tested on its own (m2InitialDiagnosticEditor.test.ts).
     if (id.endsWith("/components/InitialDiagnosticEditor")) return { default: "InitialDiagnosticEditor", INITIAL_LIST_PATH: "/system-admin/assessment/initial" };
+    if (id.endsWith("/components/ReassessmentPackageEditor")) return { default: "ReassessmentPackageEditor" };
     if (id.endsWith("/services/assessmentPackages")) {
       const actual = loadService([]);
       return { ...actual, getAssessmentPackage: getPackage, listAssessmentPackages: async () => ({ packages: [], capabilities: { create: [], importInitial: [] } }) };
@@ -249,17 +250,23 @@ test("detail page: a System Admin's initial diagnostic opens the Initial Diagnos
   assert.equal(typeof tree.props.onDetail, "function");
 });
 
-test("detail page: other packages keep their editor; the System Admin back link uses the shared style", async () => {
+test("detail page: a System Admin's Independent Learner reassessment opens the F10 editor; School Admin and Teacher packages keep theirs", async () => {
   const runtime = createHookRuntime(require("react"));
-  const mod = loadDetailModule(runtime, async () => ({
+  const sa = loadDetailModule(runtime, async () => ({
     package: packageSummary({ manage: true, review: true, publish: true }, { category: "independent" }), versions: [versionDetail()] }));
-  runtime.render(mod.default, { role: "system_admin" });
-  for (let i = 0; i < 4; i++) { await tick(); runtime.render(mod.default, { role: "system_admin" }); }
-  const tree = runtime.render(mod.default, { role: "system_admin" });
-  const back = findAll(tree, (n) => n.type === "Link" && n.props.className === "m3-back-link")[0];
-  assert.equal(back.props.to, "/system-admin/assessment/reassessment");
-  assert.match(textOf(back), /Back to Reassessment/);
-  assert.equal(findAll(back, (n) => n.type === "ArrowLeft").length, 1, "one arrow icon");
+  runtime.render(sa.default, { role: "system_admin" });
+  for (let i = 0; i < 4; i++) { await tick(); runtime.render(sa.default, { role: "system_admin" }); }
+  const delegated = runtime.render(sa.default, { role: "system_admin" });
+  assert.equal(delegated.type, "ReassessmentPackageEditor");
+  assert.equal(delegated.props.detail.package.category, "independent");
+
+  const runtime2 = createHookRuntime(require("react"));
+  const admin = loadDetailModule(runtime2, async () => ({
+    package: packageSummary({ manage: true, review: true, publish: true }, { category: "school" }), versions: [versionDetail()] }));
+  runtime2.render(admin.default, { role: "admin" });
+  for (let i = 0; i < 4; i++) { await tick(); runtime2.render(admin.default, { role: "admin" }); }
+  const tree = runtime2.render(admin.default, { role: "admin" });
+  assert.notEqual(tree.type, "ReassessmentPackageEditor", "School Admin F10 is not redesigned yet");
   assert.ok(findAll(tree, (n) => n.props?.role === "tab").length >= 1, "the existing package editor still renders");
 });
 
