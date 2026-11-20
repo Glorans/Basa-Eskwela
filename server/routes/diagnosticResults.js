@@ -46,7 +46,8 @@ function sendDiagnosticError(res, error, log) {
 function createDiagnosticResultsRouter({
   receipts = createTranscriptReceiptService(),
   authorize = (req) => authorizeOralReadingRequest(req),
-  service = createDiagnosticResultService({ receipts }),
+  initialAssessments,
+  service = createDiagnosticResultService({ receipts, ...(initialAssessments ? { initialAssessments } : {}) }),
   rateLimit = DIAGNOSTIC_SUBMISSION_RATE_LIMIT,
   now = Date.now,
   log = console.error,

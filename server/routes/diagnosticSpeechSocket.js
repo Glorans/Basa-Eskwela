@@ -2,7 +2,7 @@ const { WebSocketServer, WebSocket } = require("ws");
 const { authorizeDiagnosticSpeechRequest, authorizeOralReadingPracticeRequest } = require("../services/oralReadingAttemptService");
 const { SPEECH_STREAM_SESSION_LIMIT, createRequestLimiter } = require("../services/speechAccess");
 const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
-const { getDiagnosticAssessmentBinding } = require("../services/diagnosticAssessments");
+const { createDiagnosticBindingResolver } = require("../services/diagnosticBindingResolver");
 const {
   createDiagnosticSpeechSession, developmentLog, SAFE_STREAM_ERROR,
 } = require("../services/diagnosticSpeechStream");
@@ -27,6 +27,8 @@ function attachDiagnosticSpeechSocket(server, {
     .split(",").map((origin) => origin.trim()),
   sessionLimit = SPEECH_STREAM_SESSION_LIMIT,
   receipts = createTranscriptReceiptService(),
+  // M2 binding: the code-defined diagnostic (unchanged) or an F8 reassessment assignment of the signed-in Student.
+  resolveBinding = createDiagnosticBindingResolver(),
   now = Date.now,
 } = {}) {
   const authorizeStream = authorize ?? ((token) => authorizeOralReadingPracticeRequest({ get: () => `Bearer ${token}` }));
@@ -98,9 +100,11 @@ function attachDiagnosticSpeechSocket(server, {
         // browser falls back to the recording upload, which fails closed too.
         let binding = null;
         if (message.diagnostic !== undefined) {
-          binding = getDiagnosticAssessmentBinding(
-            message.language, message.diagnostic?.assessmentId, message.diagnostic?.assessmentVersion,
-          );
+          binding = await resolveBinding({
+            requester, language: message.language,
+            assessmentId: message.diagnostic?.assessmentId, assessmentVersion: message.diagnostic?.assessmentVersion,
+          });
+          if (closed || ws.readyState !== WebSocket.OPEN) return;
           if (!binding) { reject(); return; }
           receipts.assertConfigured();
         }

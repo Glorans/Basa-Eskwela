@@ -9,6 +9,7 @@ const {
   scoreDiagnostic,
 } = require("./diagnosticScoring");
 const { DiagnosticSubmissionError, resolveDuration, verifyReading } = require("./diagnosticResultService");
+const { PRACTICE_VERSION_PREFIX, isPracticeVersionAssessmentId } = require("./practiceVersionService");
 
 // M2 F7 Preview / Try Assessment (Practice Mode) for staff.
 // Scores a staff practice attempt with the SAME server-verified reading receipts and the SAME authoritative scorer
@@ -19,13 +20,23 @@ const { DiagnosticSubmissionError, resolveDuration, verifyReading } = require(".
 
 const finiteOrNull = (value) => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
-function createDiagnosticPracticeService({ receipts } = {}) {
+function createDiagnosticPracticeService({ receipts, practiceVersions = null } = {}) {
   if (!receipts) throw new Error("A transcript receipt service is required.");
 
-  function scorePractice(requester, body) {
-    const userId = requester?.user?.id;
-    if (!userId) throw new DiagnosticSubmissionError(403, "PRACTICE_FORBIDDEN", "Practice Mode is available to staff accounts only.");
-    const language = body?.language;
+  /**
+   * The assessment to score and its receipt binding. A "m2-practice-version:<id>" id is an authored Initial Diagnostic
+   * version: it is re-loaded and re-authorised here (never trusted from the browser) and scored with its OWN passage
+   * and keys. Any other id is the built-in diagnostic, exactly as before.
+   */
+  async function practiceTarget(requester, body, language) {
+    if (isPracticeVersionAssessmentId(body.assessmentId)) {
+      if (!practiceVersions) throw new DiagnosticSubmissionError(503, "PRACTICE_UNAVAILABLE", "Version practice is not available.");
+      const { assessment, binding } = await practiceVersions.load(requester, body.assessmentId.slice(PRACTICE_VERSION_PREFIX.length));
+      if (assessment.language !== language || body.assessmentVersion !== assessment.version) {
+        throw new DiagnosticSubmissionError(409, "ASSESSMENT_CHANGED", "This assessment was updated. Please reload it and start again.");
+      }
+      return { assessment, binding, passageText: assessment.paragraphs.join(" ") };
+    }
     const assessment = getActiveDiagnosticAssessment(language);
     if (!assessment || assessment.contentStatus !== "active") {
       throw new DiagnosticSubmissionError(400, "INVALID_ASSESSMENT", "This assessment is not available.");
@@ -33,6 +44,18 @@ function createDiagnosticPracticeService({ receipts } = {}) {
     if (body.assessmentId !== assessment.id || body.assessmentVersion !== assessment.version) {
       throw new DiagnosticSubmissionError(409, "ASSESSMENT_CHANGED", "This assessment was updated. Please reload it and start again.");
     }
+    return {
+      assessment,
+      binding: getDiagnosticAssessmentBinding(language, assessment.id, assessment.version),
+      passageText: getDiagnosticPassageText(assessment),
+    };
+  }
+
+  async function scorePractice(requester, body) {
+    const userId = requester?.user?.id;
+    if (!userId) throw new DiagnosticSubmissionError(403, "PRACTICE_FORBIDDEN", "Practice Mode is available to staff accounts only.");
+    const language = body?.language;
+    const { assessment, binding, passageText } = await practiceTarget(requester, body ?? {}, language);
     const answers = body.answers;
     if (!answers || typeof answers !== "object" || Array.isArray(answers)
       || assessment.questions.some((question) => !question.choiceIds.includes(answers[question.id]))) {
@@ -40,13 +63,13 @@ function createDiagnosticPracticeService({ receipts } = {}) {
     }
 
     // Same proof as the official diagnostic: transcript receipts issued by this server to THIS account for this
-    // assessment. Client-supplied scores, levels and transcripts are never read.
-    const binding = getDiagnosticAssessmentBinding(language, assessment.id, assessment.version);
+    // assessment (and, for a version practice, this exact version). Client-supplied scores, levels and transcripts are
+    // never read.
     const reading = verifyReading({ tokens: body.transcriptReceipts, userId, language, binding, receiptService: receipts });
     const duration = resolveDuration(reading, body.recordingDurationSeconds);
     const score = scoreDiagnostic({
       assessment,
-      passageText: getDiagnosticPassageText(assessment),
+      passageText,
       transcript: reading.text,
       recordingDurationSeconds: duration.seconds,
       answers,
@@ -64,6 +87,7 @@ function createDiagnosticPracticeService({ receipts } = {}) {
       language,
       assessmentId: assessment.id,
       assessmentVersion: assessment.version,
+      passageTitle: assessment.title,
       scoringRule: DIAGNOSTIC_SCORING_RULE,
       wordRecognitionScore: score.orvScore,
       comprehensionScore: score.comprehensionScore,

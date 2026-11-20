@@ -15,6 +15,8 @@ export interface DiagnosticHistoryEntry {
   readingLevel: ReadingLevel;
   assessmentId: string | null;
   assessmentVersion: string | null;
+  /** The diagnostic or reassessment title (null when not recorded). */
+  assessmentTitle?: string | null;
   verified: boolean;
 }
 

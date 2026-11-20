@@ -100,6 +100,15 @@ export type DiagnosticVerificationStatus = "unverified" | "server_verified";
 export interface DiagnosticPracticeOptions {
   basePath: string;
   exitTo: string;
+  /** Text of the Exit link (e.g. "Back to Package"); the banner's default wording when omitted. */
+  exitLabel?: string;
+}
+
+/** M2 F8 Student reassessment: the assignment being taken, where its screens live and where "Back" returns to. */
+export interface DiagnosticReassessmentOptions {
+  assignmentId: string;
+  basePath: string;
+  exitTo: string;
 }
 
 /**

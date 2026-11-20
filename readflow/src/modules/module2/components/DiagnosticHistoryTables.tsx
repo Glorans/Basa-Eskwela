@@ -42,7 +42,10 @@ export default function DiagnosticHistoryTables({ results, owner = "self", idPre
                 <tbody>
                   {entries.map((entry) => (
                     <tr key={entry.id}>
-                      <td data-label="Assessment">{assessmentTypeLabel(entry.assessmentType)}</td>
+                      <td data-label="Assessment">
+                        {assessmentTypeLabel(entry.assessmentType)}
+                        {entry.assessmentTitle && <span className="diagnostic-history-note"> · {entry.assessmentTitle}</span>}
+                      </td>
                       <td data-label="Date Completed">{formatCompletedDate(entry.completedAt)}</td>
                       <td data-label="Word Recognition">{formatScore(entry.wordRecognitionScore)}</td>
                       <td data-label="Comprehension">{formatScore(entry.comprehensionScore)}</td>

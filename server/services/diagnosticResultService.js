@@ -1,11 +1,10 @@
 const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
   getActiveDiagnosticAssessment,
-  getDiagnosticAssessmentBinding,
-  getDiagnosticPassageText,
 } = require("./diagnosticAssessments");
 const { DIAGNOSTIC_SCORING_RULE, getReadingWords, scoreDiagnostic } = require("./diagnosticScoring");
 const { DiagnosticReceiptError } = require("./diagnosticTranscriptReceipts");
+const { createCodeOnlyInitialDiagnostics } = require("./initialDiagnosticService");
 
 const INITIAL_ASSESSMENT_TYPE = "initial";
 const VERIFICATION_METHOD = "server_stt_receipt_v1";
@@ -128,6 +127,9 @@ function createDiagnosticResultService({
   receipts,
   getAdmin = getSupabaseAdmin,
   now = () => new Date().toISOString(),
+  // M2 F6: which initial diagnostic versions are accepted. Default: the code-defined version only (unchanged behaviour);
+  // server.js passes the activation-aware service (initialDiagnosticService).
+  initialAssessments = createCodeOnlyInitialDiagnostics(),
 } = {}) {
   if (!receipts) throw new Error("A transcript receipt service is required.");
 
@@ -157,11 +159,13 @@ function createDiagnosticResultService({
   async function submitInitialDiagnostic(requester, body) {
     const userId = requester.user.id;
     const language = body?.language;
-    const assessment = getActiveDiagnosticAssessment(language);
-    if (!assessment || assessment.contentStatus !== "active") {
+    const builtIn = getActiveDiagnosticAssessment(language);
+    if (!builtIn || builtIn.contentStatus !== "active") {
       throw new DiagnosticSubmissionError(400, "INVALID_ASSESSMENT", "This diagnostic is not available.");
     }
-    if (body.assessmentId !== assessment.id || body.assessmentVersion !== assessment.version) {
+    // The exact version delivered: the active one, or one replaced within the reading-receipt lifetime.
+    const assessment = await initialAssessments.resolve(language, body.assessmentId, body.assessmentVersion);
+    if (!assessment) {
       throw new DiagnosticSubmissionError(409, "ASSESSMENT_CHANGED", "This diagnostic was updated. Please reload it and start again.");
     }
     const answers = body.answers;
@@ -171,16 +175,20 @@ function createDiagnosticResultService({
     }
 
     // Client-supplied scores, levels, tiers and transcripts are never read.
-    const binding = getDiagnosticAssessmentBinding(language, assessment.id, assessment.version);
+    const binding = initialAssessments.binding(assessment);
     const reading = verifyReading({ tokens: body.transcriptReceipts, userId, language, binding, receiptService: receipts });
     const supabase = getAdmin();
     const existing = await findVerified(supabase, userId, assessment);
     if (existing) return resolveExisting(existing, reading.recordingId);
+    // One official initial diagnostic per language: a learner who completed another version never takes this one.
+    if (await initialAssessments.hasOtherOfficialInitial(supabase, userId, language, assessment)) {
+      throw new DiagnosticSubmissionError(409, "DIAGNOSTIC_ALREADY_COMPLETED", "This diagnostic is already completed.");
+    }
 
     const duration = resolveDuration(reading, body.recordingDurationSeconds);
     const score = scoreDiagnostic({
       assessment,
-      passageText: getDiagnosticPassageText(assessment),
+      passageText: assessment.paragraphs.join(" "),
       transcript: reading.text,
       recordingDurationSeconds: duration.seconds,
       answers,
@@ -192,6 +200,9 @@ function createDiagnosticResultService({
       // A concurrent submission won the one verified row for this version.
       const winner = await findVerified(supabase, userId, assessment);
       if (winner) return resolveExisting(winner, reading.recordingId);
+      if (await initialAssessments.hasOtherOfficialInitial(supabase, userId, language, assessment)) {
+        throw new DiagnosticSubmissionError(409, "DIAGNOSTIC_ALREADY_COMPLETED", "This diagnostic is already completed.");
+      }
       // Otherwise this recording already produced another verified result.
       throw rejectReading();
     }

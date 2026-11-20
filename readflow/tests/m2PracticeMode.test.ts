@@ -25,9 +25,14 @@ test("routes: Practice Mode is for System Admin, School Admin and Teacher only; 
   assert.deepEqual([...real("modules/module1/utils/authOnboarding.ts").DIAGNOSTIC_LEARNER_ROLES], ["student", "general_user"]);
 });
 
-test("navigation: Try Assessment for System Admin, School Admin and Teacher; never for Students or Independent Learners", () => {
+test("navigation: no standalone Try Assessment; F7 Initial Diagnostic practice stays on the School Admin Diagnostic Results only", () => {
   const layout = src("modules/module3/components/M3Layout.tsx");
-  assert.equal((layout.match(/label: "Try Assessment", to: "\/practice\/diagnostic"/g) ?? []).length, 3);
+  assert.doesNotMatch(layout, /label: "Try Assessment"/);
+  assert.match(src("pages/admin/AdminDiagnosticResultsPage.tsx"), /<TryInitialDiagnosticLink \/>/);
+  assert.doesNotMatch(src("modules/module2/pages/TeacherDiagnosticResultsPage.tsx"), /TryInitialDiagnosticLink/, "removed for Teachers (decision 2026-11-21)");
+  const link = src("modules/module2/components/TryInitialDiagnosticLink.tsx");
+  assert.match(link, /to="\/practice\/diagnostic" state=\{\{ practiceExitTo: pathname \}\}/);
+  assert.match(src("modules/module2/utils/practiceMode.ts"), /role === "admin" \? "\/admin\/diagnostic-results" : null/, "Exit Practice may return there");
   const general = layout.slice(layout.indexOf('if (role === "general_user")'));
   assert.doesNotMatch(general.slice(0, general.indexOf("return items")), /Try Assessment/);
   assert.doesNotMatch(src("components/basa/BasaSidebar.tsx"), /Try Assessment|practice\/diagnostic/);
@@ -93,6 +98,7 @@ function mountQuestions(practice: unknown) {
     if (id.endsWith("/services/diagnosticPassage")) return { createPassageDiagnosticResult: () => localResult() };
     if (id.endsWith("/services/diagnosticDatabase")) return { DiagnosticDatabaseError: class extends Error {}, saveInitialDiagnosticResult: async () => { calls.push("OFFICIAL SAVE"); return { result: { language: "en" } }; } };
     if (id.endsWith("/services/diagnosticPractice")) return { DiagnosticPracticeError: class extends Error {}, scoreDiagnosticPractice: async () => { calls.push("practice score"); return serverResult(); } };
+    if (id.endsWith("/services/studentReassessments")) return { StudentReassessmentError: class extends Error {}, submitReassessmentResult: async () => { calls.push("REASSESSMENT SAVE"); return {}; } };
     if (id.endsWith("/services/diagnosticScoreAudit")) return { logDiagnosticScoreAudit: () => calls.push("audit") };
     if (id.endsWith("/services/diagnosticScoring")) return {};
     if (id.endsWith("/data/diagnosticData")) return { getDiagnosticPassageText: () => "synthetic passage" };
@@ -132,9 +138,9 @@ test("questions page without Practice Mode is the unchanged official flow (offic
 
 test("reading page: Practice Mode banner and practice paths; official paths unchanged without it", () => {
   const reading = src("modules/module2/pages/DiagnosticReadingPage.tsx");
-  assert.match(reading, /const basePath = practice\?\.basePath \?\? "\/diagnostic";/);
-  assert.match(reading, /navigate\(`\$\{basePath\}\/\$\{assessment\.language\}\/questions`\)/);
-  assert.match(reading, /\{practice && <PracticeModeBanner exitTo=\{practice\.exitTo\} \/>\}/);
+  assert.match(reading, /const basePath = practice\?\.basePath \?\? reassessment\?\.basePath \?\? "\/diagnostic";/);
+  assert.match(reading, /navigate\(`\$\{basePath\}\/\$\{assessment\.language\}\/questions`,/);
+  assert.match(reading, /<PracticeModeBanner exitTo=\{practice\.exitTo\} exitLabel=\{practice\.exitLabel\} \/>/);
   assert.doesNotMatch(reading, /navigate\(`\/diagnostic\//, "no hard-coded official path left in the shared reading page");
 });
 

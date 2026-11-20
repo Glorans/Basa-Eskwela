@@ -15,7 +15,7 @@ export default function PracticeStartPage() {
 
   return (
     <DiagnosticLayout className="practice-diagnostic-panel" labelledBy="practice-start-title">
-      <PracticeModeBanner exitTo={practice.exitTo} />
+      <PracticeModeBanner exitTo={practice.exitTo} exitLabel={practice.exitLabel} />
       <header className="practice-diagnostic-header">
         <h1 id="practice-start-title">Try the Diagnostic Assessment</h1>
         <p>
@@ -27,7 +27,7 @@ export default function PracticeStartPage() {
       <ul className="practice-diagnostic-languages" aria-label="Choose a language">
         {options.map(({ language, label, assessment }) => (
           <li key={language}>
-            <Link className="diagnostic-primary-button practice-diagnostic-language" to={`${PRACTICE_BASE_PATH}/${language}/reading`}>
+            <Link className="diagnostic-primary-button practice-diagnostic-language" to={`${PRACTICE_BASE_PATH}/${language}/reading`} state={{ practiceExitTo: practice.exitTo }}>
               <span>Practise in {label}</span>
               <small>{assessment!.passage.title} · Version {assessment!.version}</small>
             </Link>

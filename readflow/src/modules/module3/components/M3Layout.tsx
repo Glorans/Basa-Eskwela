@@ -1,3 +1,4 @@
+import AssessmentNavigation from "../../module2/components/AssessmentNavigation";
 import useResponsiveSidebar from "../../../hooks/useResponsiveSidebar";
 import "../../../styles/responsive-shell.css";
 import {
@@ -47,12 +48,16 @@ function getNavItems(role: ShellRole) {
       // Appendix N M7 for the System Admin: F2 (system-wide dashboard) and F4 (Independent Learner performance).
       { label: "Platform Analytics", to: "/system-admin/analytics", icon: ChartNoAxesCombined, end: true },
       { label: "Independent Learners", to: "/system-admin/independent-learners", icon: UserRound, end: true },
-      // Appendix N M2 F7: try the initial diagnostic in Practice Mode (never saved).
-      { label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false },
+      // Appendix N M2 F6/F7/F10: the expandable Assessment group (AssessmentNavigation) follows these items.
+      // F7 Try Assessment is opened from the Initial Diagnostic's built-in version 3.0.
+
     ];
   }
   return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
 }
+
+/** Marks where the expandable M2 Assessment group is rendered (School Admin and Teacher). Never a route. */
+const ASSESSMENT_GROUP = "m2:assessment-group";
 
 function getWorkspaceNavItems(role: M3Role) {
   if (role === "admin") {
@@ -73,8 +78,9 @@ function getWorkspaceNavItems(role: M3Role) {
         icon: ClipboardList,
         end: true,
       },
-      // M2 F7: try the initial diagnostic in Practice Mode (never saved).
-      { label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false },
+      // M2: expandable Assessment group (AssessmentNavigation): Packages (F10) and Assignments (F9). F7 Try the
+      // Initial Diagnostic is opened from Diagnostic Results.
+      { label: "Assessment", to: ASSESSMENT_GROUP, icon: ClipboardList, end: true },
       { label: "Learning Rooms", to: "/admin/learning-rooms", icon: School, end: false },
     ];
   }
@@ -106,8 +112,9 @@ function getWorkspaceNavItems(role: M3Role) {
     items.push({ label: "Student Support", to: "/m3/teacher/student-support", icon: ClipboardList, end: true });
     // M2 F3: diagnostic results of Students enrolled in this Teacher's Learning Rooms.
     items.push({ label: "Diagnostic Results", to: "/m3/teacher/diagnostic-results", icon: ClipboardList, end: true });
-    // M2 F7: try the initial diagnostic in Practice Mode (never saved).
-    items.push({ label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false });
+    // M2: expandable Assessment group (AssessmentNavigation): own Packages (F10) and Assignments (F9). F7 Try the
+    // Initial Diagnostic is opened from Diagnostic Results.
+    items.push({ label: "Assessment", to: ASSESSMENT_GROUP, icon: ClipboardList, end: true });
     items.push({ label: "Analytics", to: "/m3/teacher/analytics", icon: ChartNoAxesCombined, end: true });
     items.push({ label: "Reports", to: "/m3/teacher/reports", icon: ClipboardList, end: true });
     items.push({ label: "Archived Classrooms", to: "/m3/teacher/archived-classrooms", icon: Archive, end: true });
@@ -120,6 +127,8 @@ function getWorkspaceNavItems(role: M3Role) {
     items.push({ label: "Progress & Result", to: "/m3/general/progress", icon: ChartNoAxesCombined, end: true });
     // M2 F3: own diagnostic results and history.
     items.push({ label: "Assessment History", to: "/m3/general/assessment-history", icon: ClipboardList, end: true });
+    // M2 F8: centrally approved reassessments the Independent Learner can start.
+    items.push({ label: "My Reassessments", to: "/m3/general/reassessments", icon: ClipboardList, end: true });
   }
 
   return items;
@@ -196,7 +205,10 @@ export default function M3Layout({ role }: M3LayoutProps) {
           </div>
 
           <nav className="m3-sidebar-nav rf-sidebar-scroll" aria-label={`${ROLE_LABELS[role]} navigation`}>
-            {navItems.map(({ label, to, icon: Icon, end }) => (
+            {navItems.map(({ label, to, icon: Icon, end }) => to === ASSESSMENT_GROUP ? (
+              <AssessmentNavigation key={to} role={role === "admin" ? "admin" : "teacher"}
+                onExpand={() => { if (!sidebar.expanded) sidebar.toggle(); }} onNavigate={() => sidebar.close()} />
+            ) : (
               <NavLink
                 key={to}
                 to={to}
@@ -210,6 +222,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
                 <span className="rf-nav-label">{label}</span>
               </NavLink>
             ))}
+            {role === "system_admin" && <AssessmentNavigation onExpand={() => { if (!sidebar.expanded) sidebar.toggle(); }} onNavigate={() => sidebar.close()} />}
           </nav>
         </div>
 

@@ -10,8 +10,12 @@ export interface DiagnosticSession {
   questionIndex: number;
 }
 
-/** "m2" = the official diagnostic; "m2-practice" = F7 staff Practice Mode, so the two drafts can never mix. */
-export type DiagnosticSessionNamespace = "m2" | "m2-practice";
+/**
+ * "m2" = the official initial diagnostic; "m2-practice" = F7 staff Practice Mode; "m2-reassessment" = F8 Student
+ * reassessments; "m2-reassessment-independent" = F8 Independent Learner reassessments (both keyed by the assignment's
+ * own assessment id and version), so the drafts can never mix.
+ */
+export type DiagnosticSessionNamespace = "m2" | "m2-practice" | "m2-reassessment" | "m2-reassessment-independent";
 
 export function diagnosticSessionKey(userId: string, assessment: DiagnosticAssessment, namespace: DiagnosticSessionNamespace = "m2") {
   return `readflow:${namespace}:${encodeURIComponent(userId)}:${assessment.language}:${encodeURIComponent(assessment.id)}:${encodeURIComponent(assessment.version)}`;

@@ -12,10 +12,12 @@ import {
 import { DiagnosticDatabaseError, saveInitialDiagnosticResult } from "../services/diagnosticDatabase";
 import { logDiagnosticScoreAudit } from "../services/diagnosticScoreAudit";
 import { DiagnosticPracticeError, scoreDiagnosticPractice } from "../services/diagnosticPractice";
+import { StudentReassessmentError, submitReassessmentResult } from "../services/studentReassessments";
 import PracticeModeBanner from "../components/PracticeModeBanner";
 import type {
   DiagnosticAssessment,
   DiagnosticPracticeOptions,
+  DiagnosticReassessmentOptions,
   DiagnosticResult,
 } from "../types/diagnostic";
 import "./DiagnosticQuestionsPage.css";
@@ -36,13 +38,16 @@ interface DiagnosticQuestionsPageProps {
   assessment: DiagnosticAssessment;
   /** M2 F7 staff Practice Mode: scored by the practice endpoint and never saved. Omitted for the official diagnostic. */
   practice?: DiagnosticPracticeOptions;
+  /** M2 F8: a Student's assigned reassessment, scored and saved by the reassessment endpoint (never the initial one). */
+  reassessment?: DiagnosticReassessmentOptions;
 }
 
 export default function DiagnosticQuestionsPage({
   assessment,
   practice,
+  reassessment,
 }: DiagnosticQuestionsPageProps) {
-  const basePath = practice?.basePath ?? "/diagnostic";
+  const basePath = practice?.basePath ?? reassessment?.basePath ?? "/diagnostic";
   const navigate = useNavigate();
   const t = (text: string) => diagnosticCopy(assessment.language, text);
   const diagnosticSession = useDiagnosticSession();
@@ -73,7 +78,7 @@ export default function DiagnosticQuestionsPage({
     if (session) diagnosticSession.save(assessment, { ...session, answers, questionIndex: currentQuestionIndex });
   }, [session, diagnosticSession, assessment, answers, currentQuestionIndex]);
 
-  if (!reading || !session) return <Navigate to={`${basePath}/${assessment.language}/reading`} replace />;
+  if (!reading || !session) return <Navigate to={`${basePath}/${assessment.language}/reading`} state={practice ? { practiceExitTo: practice.exitTo } : undefined} replace />;
 
   if (!currentQuestion) {
     return (
@@ -125,7 +130,7 @@ export default function DiagnosticQuestionsPage({
         const practiceResult = await scoreDiagnosticPractice(result);
         if (!mounted.current) return;
         diagnosticSession.clear(assessment);
-        navigate(`${basePath}/${assessment.language}/result`, { state: { practiceResult } });
+        navigate(`${basePath}/${assessment.language}/result`, { state: { practiceResult, practiceExitTo: practice.exitTo } });
       } catch (error) {
         if (!mounted.current) return;
         if (error instanceof DiagnosticPracticeError && error.code === "READING_NOT_VERIFIED") {
@@ -133,6 +138,34 @@ export default function DiagnosticQuestionsPage({
           setPendingResult(null);
         }
         setSaveError(error instanceof Error ? error.message : "We couldn't score this practice attempt. Please try again.");
+      } finally {
+        saving.current = false;
+        if (mounted.current) setIsSaving(false);
+      }
+      return;
+    }
+
+    if (reassessment) {
+      // M2 F8: the server scores with the assigned version's stored answer keys and records the official result.
+      try {
+        const reassessmentResult = await submitReassessmentResult(reassessment.assignmentId, result);
+        if (!mounted.current) return;
+        diagnosticSession.clear(assessment);
+        navigate(`${basePath}/${assessment.language}/result`, { state: { reassessmentResult } });
+      } catch (error) {
+        if (!mounted.current) return;
+        const code = error instanceof StudentReassessmentError ? error.code : undefined;
+        if (code === "ASSIGNMENT_COMPLETED") {
+          diagnosticSession.clear(assessment);
+          navigate(`${basePath}/${assessment.language}/result`, { replace: true });
+          return;
+        }
+        if (code === "READING_NOT_VERIFIED" || code === "NO_SPEECH") {
+          diagnosticSession.clear(assessment);
+          setPendingResult(null);
+        }
+        const message = (error as { message?: unknown } | null)?.message;
+        setSaveError(typeof message === "string" && message ? message : "We couldn't save your result. Please try again.");
       } finally {
         saving.current = false;
         if (mounted.current) setIsSaving(false);
@@ -187,8 +220,8 @@ export default function DiagnosticQuestionsPage({
       className="diagnostic-questions-panel"
       labelledBy="diagnostic-questions-title"
     >
-      {practice && <PracticeModeBanner exitTo={practice.exitTo} />}
-      <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`${basePath}/${assessment.language}/reading`)}>{t("Back to the story")}</button>
+      {practice && <PracticeModeBanner exitTo={practice.exitTo} exitLabel={practice.exitLabel} />}
+      <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`${basePath}/${assessment.language}/reading`, { state: practice ? { practiceExitTo: practice.exitTo } : undefined })}>{t("Back to the story")}</button>
       <header className="diagnostic-questions-header">
         <h1 id="diagnostic-questions-title">{t("Answer the Questions")}</h1>
         <p>{t("Choose the best answer. Take your time!")}</p>

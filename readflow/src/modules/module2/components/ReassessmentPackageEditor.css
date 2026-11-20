@@ -1,0 +1,15 @@
+/* M2 F10 reassessment editor (System Admin, School Admin, Teacher): only what differs from the shared F6 editor styles (InitialDiagnosticEditor.css). */
+/* Five fixed actions: one row on desktop, two per row on phones; positions never change. */
+.m2-id-slots.m2-rp-slots { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 640px) { .m2-id-slots.m2-rp-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Phones: the action bar would cover too much of the screen if the bar stayed fixed, so it sits at the end of the page. */
+@media (max-width: 640px) { .m2-id-page .m2-id-bar:has(.m2-rp-slots) { position: static; border-radius: 12px; box-shadow: none; } }
+.m2-rp-details { border: 1px solid #d8e2dc; border-radius: 10px; padding: 10px 14px; background: #fbfdfc; }
+.m2-rp-details > summary { cursor: pointer; font-weight: 700; color: #23443a; }
+.m2-rp-details[open] > summary { margin-bottom: 10px; }
+.m2-rp-details > summary:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 3px; }
+.m2-rp-history h4 { margin: 12px 0 6px; }
+.m2-id-dialog input:not([type="checkbox"]):not([type="radio"]) { box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #b9c7c0; border-radius: 8px; font: inherit; }
+/* Phones: a long one-line question preview must not widen the question list (ellipsis instead). F10 pages only. */
+.m2-id-page:has(.m2-rp-slots) .m2-id-questions { grid-template-columns: minmax(0, 1fr); }
+.m2-id-page:has(.m2-rp-slots) .m2-editor-question { min-width: 0; }

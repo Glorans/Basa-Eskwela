@@ -76,14 +76,14 @@ test("unchanged: M5 self-practice speech roles and the OFFICIAL diagnostic (lear
 
 // ---------- Scoring: same server rubric, nothing stored ----------
 for (const language of ["en", "fil"]) {
-  test(`${language}: practice uses the official server scorer and classification, and is labelled practice and unsaved`, () => {
+  test(`${language}: practice uses the official server scorer and classification, and is labelled practice and unsaved`, async () => {
     const receipts = testReceipts();
     const service = createDiagnosticPracticeService({ receipts });
     const a = DIAGNOSTIC_ASSESSMENTS[language];
     const passage = getDiagnosticPassageText(a);
     const words = getReadingWords(passage, language);
     const transcript = `${a.title}. ${words.map((w, i) => (i === 5 || i === 30 ? `zz${w}` : w)).join(" ")}`;
-    const result = service.scorePractice({ user: { id: "teacher-1" } }, body(language, readingFor(receipts, "teacher-1", language, transcript), 5));
+    const result = await service.scorePractice({ user: { id: "teacher-1" } }, body(language, readingFor(receipts, "teacher-1", language, transcript), 5));
     const official = scoreDiagnostic({ assessment: a, passageText: passage, transcript, recordingDurationSeconds: 40, answers: body(language, [], 5).answers });
     assert.equal(result.practice, true);
     assert.equal(result.saved, false);
@@ -99,16 +99,19 @@ for (const language of ["en", "fil"]) {
   });
 }
 
-test("practice cannot be scored with another account's reading receipts, or for a stale assessment, or with missing answers", () => {
+test("practice cannot be scored with another account's reading receipts, or for a stale assessment, or with missing answers", async () => {
   const receipts = testReceipts();
   const service = createDiagnosticPracticeService({ receipts });
   const transcript = getDiagnosticPassageText(DIAGNOSTIC_ASSESSMENTS.en);
   const others = readingFor(receipts, "student-1", "en", transcript);
-  assert.throws(() => service.scorePractice({ user: { id: "teacher-1" } }, body("en", others)), (e) => e.code === "READING_NOT_VERIFIED");
+  await assert.rejects(service.scorePractice({ user: { id: "teacher-1" } }, body("en", others)), (e) => e.code === "READING_NOT_VERIFIED");
   const own = readingFor(receipts, "teacher-1", "en", transcript);
-  assert.throws(() => service.scorePractice({ user: { id: "teacher-1" } }, { ...body("en", own), assessmentVersion: "2.0" }), (e) => e.code === "ASSESSMENT_CHANGED");
-  assert.throws(() => service.scorePractice({ user: { id: "teacher-1" } }, { ...body("en", own), answers: {} }), (e) => e.code === "INVALID_ANSWERS");
-  assert.throws(() => service.scorePractice({ user: { id: "teacher-1" } }, body("en", readingFor(receipts, "teacher-1", "fil", transcript))), (e) => e.code === "READING_NOT_VERIFIED", "receipts are bound to the language/assessment");
+  await assert.rejects(service.scorePractice({ user: { id: "teacher-1" } }, { ...body("en", own), assessmentVersion: "2.0" }), (e) => e.code === "ASSESSMENT_CHANGED");
+  await assert.rejects(service.scorePractice({ user: { id: "teacher-1" } }, { ...body("en", own), answers: {} }), (e) => e.code === "INVALID_ANSWERS");
+  await assert.rejects(service.scorePractice({ user: { id: "teacher-1" } }, body("en", readingFor(receipts, "teacher-1", "fil", transcript))), (e) => e.code === "READING_NOT_VERIFIED", "receipts are bound to the language/assessment");
+  // Without the version practice service, a version id is refused (never scored as the built-in).
+  await assert.rejects(service.scorePractice({ user: { id: "teacher-1" } }, { ...body("en", own), assessmentId: "m2-practice-version:00000000-0000-4000-8000-000000000001" }),
+    (e) => e.code === "PRACTICE_UNAVAILABLE");
 });
 
 test("the practice service and route have no database access: no Supabase client, no insert/update/upsert", () => {

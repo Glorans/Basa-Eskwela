@@ -93,11 +93,12 @@ test("Student: own results only, both languages, newest first, safe fields only"
   const db = fakeDb(TABLES);
   const results = await listOwnDiagnosticHistory("s1", { getAdmin: () => db });
   assert.deepEqual(results.map((r) => [r.id, r.language]), [["d2", "fil"], ["d1", "en"]]);
-  assert.deepEqual(Object.keys(results[0]).sort(), ["assessmentId", "assessmentType", "assessmentVersion", "comprehensionScore",
+  assert.deepEqual(Object.keys(results[0]).sort(), ["assessmentId", "assessmentTitle", "assessmentType", "assessmentVersion", "comprehensionScore",
     "completedAt", "id", "language", "readingLevel", "verified", "wordRecognitionScore"].sort());
   assert.deepEqual(results[1], {
     id: "d1", assessmentType: "initial", language: "en", completedAt: "2026-11-10T01:00:00Z", wordRecognitionScore: 91.67,
     comprehensionScore: 83.33, readingLevel: "Instructional", assessmentId: "grade5-en-passage-v3", assessmentVersion: "3.0", verified: true,
+    assessmentTitle: "Watering the School Garden",
   });
   assertNoSecrets(results);
 });
@@ -258,4 +259,27 @@ test("server failures return a generic message without internal details", async 
   const response = await get("/me", "student");
   assert.equal(response.status, 500);
   assert.equal(response.body.message, "Unable to load diagnostic results.");
+});
+
+test("F8: reassessment results appear in history with their package title; initial rows keep the code title; no package table is read without reassessments", async () => {
+  const pkgId = "11111111-1111-4111-8111-111111111111";
+  const tables = {
+    diagnostic_results: [
+      result("i1", "s1", "en", "2026-11-01T00:00:00Z"),
+      result("r1", "s1", "en", "2026-11-20T00:00:00Z", { assessment_type: "reassessment", assessment_id: pkgId, assessment_version: "1.0", reading_level: "Independent" }),
+      result("r2", "s2", "en", "2026-11-20T00:00:00Z", { assessment_type: "reassessment", assessment_id: pkgId, assessment_version: "1.0" }),
+    ],
+    m2_assessment_packages: [{ id: pkgId, title: "River check", paragraphs: "SECRET PASSAGE", questions: [{ correctChoiceId: "b" }] }],
+  };
+  const db = fakeDb(tables);
+  const results = await listOwnDiagnosticHistory("s1", { getAdmin: () => db });
+  assert.deepEqual(results.map((r) => [r.id, r.assessmentType, r.assessmentTitle, r.readingLevel]),
+    [["r1", "reassessment", "River check", "Independent"], ["i1", "initial", "Watering the School Garden", "Instructional"]]);
+  assert.deepEqual(db.selects.filter(([t]) => t === "m2_assessment_packages"), [["m2_assessment_packages", "id, title"]], "only titles are read");
+  for (const field of SECRET_FIELDS) assert.doesNotMatch(JSON.stringify(results), new RegExp(field));
+  assert.doesNotMatch(JSON.stringify(results), /SECRET PASSAGE/);
+
+  const initialOnly = fakeDb({ diagnostic_results: [result("i1", "s1", "en", "2026-11-01T00:00:00Z")] });
+  await listOwnDiagnosticHistory("s1", { getAdmin: () => initialOnly });
+  assert.equal(initialOnly.selects.some(([t]) => t === "m2_assessment_packages"), false, "databases without the foundation are never asked for packages");
 });

@@ -21,7 +21,7 @@ import {
 } from "./modules/module2/components/DiagnosticRoutes";
 import DiagnosticStartPage from "./modules/module2/pages/DiagnosticStartPage";
 import InitialDiagnosticGuard from "./modules/module2/components/InitialDiagnosticGuard";
-import { PracticeDiagnosticFlow, PracticeDiagnosticLanguageRoute } from "./modules/module2/components/PracticeDiagnosticRoutes";
+import { PracticeDiagnosticFlow, PracticeDiagnosticLanguageRoute, PracticeVersionRoute } from "./modules/module2/components/PracticeDiagnosticRoutes";
 import PracticeStartPage from "./modules/module2/pages/PracticeStartPage";
 import { PRACTICE_STAFF_ROLES } from "./modules/module2/utils/practiceMode";
 
@@ -40,6 +40,12 @@ import MyBadges from "./pages/MyBadges";
 import AdminDiagnosticResultsPage from "./pages/admin/AdminDiagnosticResultsPage";
 import DiagnosticHistoryPage from "./modules/module2/pages/DiagnosticHistoryPage";
 import TeacherDiagnosticResultsPage from "./modules/module2/pages/TeacherDiagnosticResultsPage";
+import AssessmentPackagesPage from "./modules/module2/pages/AssessmentPackagesPage";
+import AssessmentPackageDetailPage from "./modules/module2/pages/AssessmentPackageDetailPage";
+import ReassessmentAssignmentsPage from "./modules/module2/pages/ReassessmentAssignmentsPage";
+import StudentReassessmentsPage from "./modules/module2/pages/StudentReassessmentsPage";
+import { ReassessmentFlow, ReassessmentStepRoute } from "./modules/module2/components/ReassessmentRoutes";
+import { REASSESSMENT_LEARNER_ROLES } from "./modules/module2/utils/reassessmentPaths";
 
 import M3Layout from "./modules/module3/components/M3Layout";
 import Module3Page from "./modules/module3/pages/Module3Page";
@@ -177,6 +183,15 @@ function App() {
         </Route>
       </Route>
 
+      {/* M2 F8 - Complete Reassessment: the learner's own assignment (Student: classroom; Independent Learner: self-started), full screen. */}
+      <Route element={<RequireRole allowedRoles={[...REASSESSMENT_LEARNER_ROLES]} />}>
+        <Route element={<ReassessmentFlow />}>
+          <Route path="/reassessments/:assignmentId/:language/reading" element={<ReassessmentStepRoute step="reading" />} />
+          <Route path="/reassessments/:assignmentId/:language/questions" element={<ReassessmentStepRoute step="questions" />} />
+          <Route path="/reassessments/:assignmentId/:language/result" element={<ReassessmentStepRoute step="result" />} />
+        </Route>
+      </Route>
+
       {/* M2 F7 - Preview / Try Assessment: staff Practice Mode. Scored by the server, never saved. */}
       <Route element={<RequireRole allowedRoles={[...PRACTICE_STAFF_ROLES]} />}>
         <Route element={<PracticeDiagnosticFlow />}>
@@ -184,6 +199,10 @@ function App() {
           <Route path="/practice/diagnostic/:language/reading" element={<PracticeDiagnosticLanguageRoute step="reading" />} />
           <Route path="/practice/diagnostic/:language/questions" element={<PracticeDiagnosticLanguageRoute step="questions" />} />
           <Route path="/practice/diagnostic/:language/result" element={<PracticeDiagnosticLanguageRoute step="result" />} />
+          {/* One authored Initial Diagnostic version (System Admin; the server checks access and version status). */}
+          <Route path="/practice/diagnostic/version/:versionId/:language/reading" element={<PracticeVersionRoute step="reading" />} />
+          <Route path="/practice/diagnostic/version/:versionId/:language/questions" element={<PracticeVersionRoute step="questions" />} />
+          <Route path="/practice/diagnostic/version/:versionId/:language/result" element={<PracticeVersionRoute step="result" />} />
         </Route>
       </Route>
 
@@ -201,6 +220,8 @@ function App() {
             <Route path="progress" element={<StudentProgressPage />} />
             {/* M2 F3 - own diagnostic results and history */}
             <Route path="assessment-history" element={<DiagnosticHistoryPage />} />
+            {/* M2 F8 - reassessments assigned by the Student's teacher */}
+            <Route path="reassessments" element={<StudentReassessmentsPage />} />
 
             <Route
               path="join-classroom"
@@ -297,6 +318,11 @@ function App() {
             <Route path="school-admins/new" element={<CreateSchoolAdminPage />} />
             <Route path="analytics" element={<SystemAdminOverviewPage />} />
             <Route path="independent-learners" element={<SystemAdminLearnerPerformancePage />} />
+            {/* M2 F6 + F10 - initial diagnostic and Independent Learner reassessment packages */}
+            <Route path="assessment-packages" element={<AssessmentPackagesPage role="system_admin" />} />
+            <Route path="assessment/initial" element={<AssessmentPackagesPage key="initial" role="system_admin" section="initial" />} />
+            <Route path="assessment/reassessment" element={<AssessmentPackagesPage key="reassessment" role="system_admin" section="independent" />} />
+            <Route path="assessment-packages/:packageId" element={<AssessmentPackageDetailPage role="system_admin" />} />
             <Route path="content" element={<Module3Page workspace="system_admin" />} />
             <Route path="content/modules/new" element={<ModuleFormPage mode="create" workspace="system_admin" />} />
             <Route path="content/modules/:moduleId" element={<ModuleFormPage mode="detail" workspace="system_admin" />} />
@@ -414,6 +440,11 @@ function App() {
               path="diagnostic-results"
               element={<AdminDiagnosticResultsPage />}
             />
+            {/* M2 F10 - school reassessment packages and review of Teacher packages */}
+            <Route path="assessment-packages" element={<AssessmentPackagesPage role="admin" />} />
+            <Route path="assessment-packages/:packageId" element={<AssessmentPackageDetailPage role="admin" />} />
+            {/* M2 F9 - assign classroom reassessments (single-school pilot) */}
+            <Route path="reassessment-assignments" element={<ReassessmentAssignmentsPage role="admin" />} />
 
             <Route
               path="learning-rooms"
@@ -543,6 +574,11 @@ function App() {
             <Route path="student-support" element={<TeacherSupportPage />} />
             {/* M2 F3 - diagnostic results of Students enrolled in this Teacher's Learning Rooms */}
             <Route path="diagnostic-results" element={<TeacherDiagnosticResultsPage />} />
+            {/* M2 F10 - the Teacher's own private reassessment packages */}
+            <Route path="assessment-packages" element={<AssessmentPackagesPage role="teacher" />} />
+            <Route path="assessment-packages/:packageId" element={<AssessmentPackageDetailPage role="teacher" />} />
+            {/* M2 F9 - assign the Teacher's own reassessment packages in own active rooms */}
+            <Route path="reassessment-assignments" element={<ReassessmentAssignmentsPage role="teacher" />} />
             <Route path="reports" element={<TeacherReportsPage />} />
             {/* M7 - Teacher Analytics */}
             <Route
@@ -652,6 +688,8 @@ function App() {
             />
             {/* M2 F3 - own diagnostic results and history */}
             <Route path="assessment-history" element={<DiagnosticHistoryPage />} />
+            {/* M2 F8 - Independent Learner reassessments (centrally approved packages, self-started) */}
+            <Route path="reassessments" element={<StudentReassessmentsPage audience="independent" />} />
 
             <Route
               path="badges"

@@ -27,7 +27,7 @@ import type {
 } from "../types/diagnostic";
 import "./DiagnosticReadingPage.css";
 import PracticeModeBanner from "../components/PracticeModeBanner";
-import type { DiagnosticPracticeOptions } from "../types/diagnostic";
+import type { DiagnosticPracticeOptions, DiagnosticReassessmentOptions } from "../types/diagnostic";
 
 type UploadStatus = "idle" | "uploading" | "success" | "error";
 
@@ -35,13 +35,16 @@ interface DiagnosticReadingPageProps {
   assessment: DiagnosticAssessment;
   /** M2 F7 staff Practice Mode. Omitted for the official learner diagnostic (unchanged). */
   practice?: DiagnosticPracticeOptions;
+  /** M2 F8: a Student's assigned reassessment (same screen; receipts are bound to the assignment by the server). */
+  reassessment?: DiagnosticReassessmentOptions;
 }
 
 export default function DiagnosticReadingPage({
   assessment,
   practice,
+  reassessment,
 }: DiagnosticReadingPageProps) {
-  const basePath = practice?.basePath ?? "/diagnostic";
+  const basePath = practice?.basePath ?? reassessment?.basePath ?? "/diagnostic";
   const navigate = useNavigate();
   const t = (text: string) => diagnosticCopy(assessment.language, text);
   const diagnosticSession = useDiagnosticSession();
@@ -222,7 +225,7 @@ export default function DiagnosticReadingPage({
       className="diagnostic-reading-panel"
       labelledBy="diagnostic-reading-title"
     >
-      {practice && <PracticeModeBanner exitTo={practice.exitTo} />}
+      {practice && <><PracticeModeBanner exitTo={practice.exitTo} exitLabel={practice.exitLabel} /><p className="practice-diagnostic-note">{assessment.language === "fil" ? "Filipino" : "English"} · Version {assessment.version}</p></>}
       <header className="diagnostic-reading-header">
         <h1 id="diagnostic-reading-title">{t("Read the Story Aloud")}</h1>
 
@@ -313,7 +316,7 @@ export default function DiagnosticReadingPage({
                 disabled={isUploading}
                 onClick={() => {
                   if (!currentResult) { void handleContinue(); return; }
-                  navigate(`${basePath}/${assessment.language}/questions`);
+                  navigate(`${basePath}/${assessment.language}/questions`, { state: practice ? { practiceExitTo: practice.exitTo } : undefined });
                 }}
               >
                 {isUploading

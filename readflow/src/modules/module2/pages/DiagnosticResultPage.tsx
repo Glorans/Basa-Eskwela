@@ -234,8 +234,11 @@ export default function DiagnosticResultPage({ language = "en" }: { language?: D
     ? classifyDiagnosticPlacement(result.orvScore!, result.comprehensionScore!)
     : undefined;
   const miscues = result.oralReadingMetrics?.detectableMiscues;
-  const questionCount = diagnosticAssessmentRegistry[result.language]?.questions.length ?? 6;
-  const correctAnswers = typeof result.comprehensionScore === "number" && Number.isFinite(result.comprehensionScore)
+  // Saved answers belong to the historical attempt, unlike today's registry.
+  const savedQuestionCount = Object.keys(result.comprehensionAnswers ?? {}).length;
+  const builtIn = diagnosticAssessmentRegistry[result.language];
+  const questionCount = savedQuestionCount || (builtIn && result.assessmentId === builtIn.id && result.assessmentVersion === builtIn.version ? builtIn.questions.length : 0);
+  const correctAnswers = questionCount > 0 && typeof result.comprehensionScore === "number" && Number.isFinite(result.comprehensionScore)
     ? Math.round((result.comprehensionScore / 100) * questionCount)
     : undefined;
   const cards = [

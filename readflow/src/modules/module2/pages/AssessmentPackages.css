@@ -1,0 +1,157 @@
+/* M2 F6 + F10 assessment packages (staff pages). Follows the M2 F3 / M7 page conventions. */
+.m2-packages-page { display: grid; gap: 16px; min-width: 0; }
+.m2-packages-page h1, .m2-packages-page h2 { margin: 0; }
+.m2-packages-intro { margin: 0; color: #4b5b6b; }
+.m2-packages-notice { margin: 0; padding: 12px 14px; border-left: 4px solid #2f7d5b; background: #f1f8f4; color: #23443a; border-radius: 6px; }
+.m2-packages-panel { display: grid; gap: 12px; padding: 16px; border: 1px solid #d8e2dc; border-radius: 10px; background: #fff; min-width: 0; }
+.m2-packages-form, .m2-packages-editor, .m2-packages-review { display: grid; gap: 12px; max-width: 760px; }
+.m2-packages-form label, .m2-packages-editor label, .m2-packages-review label, .m2-packages-inline label { display: grid; gap: 4px; font-weight: 600; }
+.m2-packages-form input, .m2-packages-form select, .m2-packages-editor input, .m2-packages-editor select,
+.m2-packages-editor textarea, .m2-packages-review textarea, .m2-packages-inline input {
+  font: inherit; font-weight: 400; padding: 8px 10px; border: 1px solid #b9c7c0; border-radius: 6px; box-sizing: border-box; width: 100%;
+}
+.m2-packages-editor fieldset { display: grid; gap: 10px; border: 1px solid #d8e2dc; border-radius: 8px; padding: 12px; margin: 0; min-width: 0; }
+.m2-packages-editor legend { font-weight: 700; padding: 0 4px; }
+.m2-packages-paragraph { display: grid; gap: 6px; }
+.m2-packages-paragraph > button { justify-self: start; }
+.m2-packages-choice { display: grid; grid-template-columns: minmax(150px, auto) 1fr; gap: 8px; align-items: end; }
+.m2-packages-editor .m2-packages-correct { display: flex; gap: 6px; align-items: center; font-weight: 400; }
+.m2-packages-editor .m2-packages-correct input { width: auto; }
+.m2-packages-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.m2-packages-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.m2-packages-danger { background: #9b2c2c; color: #fff; }
+.m2-packages-error { color: #9b2c2c; margin: 0; }
+.m2-packages-error ul, .m2-packages-issues ul { margin: 4px 0 0; padding-left: 20px; }
+.m2-packages-issues { padding: 10px 12px; background: #fff8e6; border: 1px solid #e8d49a; border-radius: 6px; }
+.m2-packages-issues p { margin: 0; font-weight: 600; }
+.m2-packages-empty, .m2-packages-meta, .m2-packages-fixed { margin: 0; color: #5f6b78; }
+.m2-packages-meta { font-size: 0.9em; }
+.m2-packages-table-wrap { overflow-x: auto; max-width: 100%; }
+.m2-packages-table { width: 100%; border-collapse: collapse; }
+.m2-packages-table th, .m2-packages-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e3e9e5; vertical-align: top; }
+.m2-packages-tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #eef1f4; color: #3b4a59; font-size: 0.8em; }
+.m2-packages-status { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 0.8em; font-weight: 600; background: #eef1f4; color: #3b4a59; }
+.m2-packages-status[data-status="in_review"] { background: #fff3d6; color: #7a5a00; }
+.m2-packages-status[data-status="approved"] { background: #e3f0ff; color: #1f4f8a; }
+.m2-packages-status[data-status="published"] { background: #e2f4ea; color: #1f6b46; }
+.m2-packages-status[data-status="retired"] { background: #f0f0f0; color: #5f6b78; }
+.m2-packages-facts { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
+.m2-packages-facts dt { font-size: 0.85em; color: #5f6b78; }
+.m2-packages-facts dd { margin: 0; overflow-wrap: anywhere; }
+.m2-packages-version { border: 1px solid #d8e2dc; border-radius: 8px; padding: 10px 12px; background: #fff; }
+.m2-packages-version summary { cursor: pointer; font-weight: 600; }
+.m2-packages-version[open] { display: grid; gap: 10px; }
+.m2-packages-content h3 { margin: 0 0 6px; }
+.m2-packages-content ol { padding-left: 20px; }
+.m2-packages-choices { list-style: none; padding-left: 0; margin: 4px 0 10px; }
+.m2-packages-choices li[data-correct="true"] { font-weight: 700; color: #1f6b46; }
+.m2-packages-reviews { display: grid; gap: 8px; padding: 12px; border: 1px dashed #c9d6cf; border-radius: 8px; }
+.m2-packages-reviews h3 { margin: 0; font-size: 1rem; }
+.m2-packages-review-list { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.m2-packages-review-list > li[data-outcome="endorsed"] > p:first-child strong { color: #1f6b46; }
+.m2-packages-review-list > li[data-outcome="changes_requested"] > p:first-child strong { color: #7a5a00; }
+.m2-packages-review-form { display: grid; gap: 10px; max-width: 640px; }
+.m2-packages-review-form label { display: grid; gap: 4px; font-weight: 600; }
+.m2-packages-review-form input:not([type="checkbox"]), .m2-packages-review-form select, .m2-packages-review-form textarea {
+  font: inherit; font-weight: 400; padding: 8px 10px; border: 1px solid #b9c7c0; border-radius: 6px; box-sizing: border-box; width: 100%;
+}
+.m2-packages-review-form fieldset { border: 1px solid #d8e2dc; border-radius: 8px; padding: 10px; margin: 0; display: grid; gap: 6px; }
+.m2-packages-review-form .m2-packages-correct { display: flex; gap: 6px; align-items: center; font-weight: 400; }
+/* M2 F9 reassessment assignments */
+.m2-f9-students { border: 1px solid #d8e2dc; border-radius: 8px; padding: 12px; margin: 0; display: grid; gap: 6px; min-width: 0; }
+.m2-f9-students legend { font-weight: 700; padding: 0 4px; }
+.m2-f9-students .m2-packages-correct { display: flex; gap: 6px; align-items: center; font-weight: 400; }
+.m2-f9-roster { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; max-height: 320px; overflow-y: auto; }
+.m2-f9-success { margin: 0; color: #1f6b46; font-weight: 600; }
+.m2-f9-list-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; justify-content: space-between; }
+.m2-f9-list-head label { display: grid; gap: 4px; font-weight: 600; }
+.m2-f9-list-head select { font: inherit; padding: 6px 8px; border: 1px solid #b9c7c0; border-radius: 6px; }
+.m2-packages-unavailable summary { cursor: pointer; color: #4b5b6b; }
+.m2-packages-unavailable ul { margin: 6px 0 0; padding-left: 20px; color: #4b5b6b; }
+.m2-f9-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* M2 F8 Student reassessments */
+.m2-student-reassessments { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.m2-student-reassessments h3 { margin: 0; font-size: 1.1rem; }
+.m2-student-start { justify-self: start; display: inline-block; padding: 10px 18px; border-radius: 999px; background: #2f7d5b; color: #fff;
+  font-weight: 700; text-decoration: none; }
+button.m2-student-start { border: 0; cursor: pointer; font: inherit; font-weight: 700; }
+button.m2-student-start:disabled { opacity: 0.7; cursor: default; }
+.m2-student-languages { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.m2-student-start:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 2px; }
+@media (max-width: 640px) {
+  .m2-packages-choice { grid-template-columns: 1fr; }
+}
+.m2-packages-note { margin: 0 0 8px; color: #4b5b6b; }
+.m2-packages-activation { margin: 12px 0 16px; padding: 12px 16px; border: 1px solid #dbe9df; border-radius: 12px; background: #f8fbf8; }
+.m2-packages-activation h2 { margin: 0 0 6px; font-size: 1.05rem; }
+
+/* M2 assessment editor; hidden tab panels stay mounted to retain unsaved work. */
+.m2-packages-page [hidden] { display: none !important; }
+.m2-editor-header { display: grid; gap: 12px; }
+.m2-editor-back { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 10px 16px; border: 1px solid #b9c7c0; border-radius: 10px; color: #23443a; background: #f1f8f4; font-weight: 700; text-decoration: none; }
+.m2-editor-selection { display: grid; gap: 5px; max-width: 480px; font-weight: 700; }
+.m2-editor-selection select { width: 100%; min-width: 0; padding: 10px; border-radius: 8px; border: 1px solid #b9c7c0; font: inherit; }
+.m2-editor-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 6px; background: #eef5f1; border-radius: 12px; }
+.m2-editor-tabs button { min-height: 48px; padding: 10px; background: transparent; border: 0; border-radius: 8px; color: #23443a; font: inherit; font-weight: 700; }
+.m2-editor-tabs button[aria-selected="true"] { background: #23443a; color: white; }
+.m2-packages-page button:focus-visible, .m2-packages-page summary:focus-visible, .m2-editor-back:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 3px; }
+.m2-editor-fields { display: grid; gap: 12px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.m2-editor-fields label { display: grid; gap: 6px; font-weight: 700; }
+.m2-editor-fields input:not([type="radio"]), .m2-editor-fields textarea, .m2-editor-fields select { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; padding: 10px 12px; border: 1px solid #b9c7c0; border-radius: 8px; }
+.m2-editor-fields textarea { line-height: 1.7; resize: vertical; }
+.m2-editor-question { border: 1px solid #d8e2dc; border-radius: 10px; padding: 14px; }
+.m2-editor-question summary { cursor: pointer; font-weight: 700; overflow-wrap: anywhere; }
+.m2-editor-question[open] summary { margin-bottom: 16px; }
+.m2-editor-question-preview { display: block; font-weight: 400; color: #5f6b78; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 6px; }
+.m2-editor-add { justify-self: start; }
+.m2-editor-versions { list-style: none; padding: 0; display: grid; gap: 12px; }
+.m2-editor-versions li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.m2-editor-toolbar { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px; background: #fff; border: 1px solid #b9c7c0; border-radius: 12px; box-shadow: 0 4px 18px #23443a22; }
+.m2-editor-toolbar > span { margin-right: auto; }
+.m2-editor-story p, .m2-packages-content > p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.m2-editor-message { white-space: pre-line; }
+.m2-editor-success { color: #1f6b46; padding: 10px 14px; background: #e2f4ea; border-radius: 8px; }
+.m2-editor-checklist { padding-left: 22px; line-height: 1.8; }
+@media (max-width: 640px) { .m2-editor-tabs { grid-template-columns: 1fr 1fr; } .m2-editor-toolbar { bottom: 0; } .m2-editor-toolbar button { flex: 1 1 40%; } .m2-editor-toolbar > span { flex-basis: 100%; } }
+
+.m2-assessment-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 20px; }
+.m2-assessment-cards a { display: grid; gap: 10px; padding: 24px; border: 1px solid #c8dbcf; border-radius: 14px; color: #23443a; text-decoration: none; background: #f5faf7; }
+.m2-assessment-cards strong { font-size: 1.3rem; }
+.m2-language-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.m2-language-tabs a { padding: 8px 20px; border: 1px solid #b9c7c0; border-radius: 8px; color: #23443a; text-decoration: none; font-weight: 700; }
+.m2-language-tabs a[aria-current="page"] { background: #23443a; color: white; }
+.m2-content-preview { padding: 16px; border: 1px solid #d8e2dc; border-radius: 10px; }
+.m2-content-preview summary { cursor: pointer; font-weight: 700; }
+
+/* F9 student selection: each radio button and checkbox sits on the same row as its label; names never wrap letter by
+   letter; the eligibility reason sits right under the Student it explains. Overrides the form's width:100% inputs. */
+.m2-f9-students { gap: 8px; }
+.m2-f9-modes { display: grid; gap: 4px; }
+.m2-packages-form .m2-f9-choice { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; font-weight: 400;
+  min-width: 0; cursor: pointer; justify-self: start; max-width: 100%; }
+.m2-packages-form .m2-f9-choice input[type="radio"], .m2-packages-form .m2-f9-choice input[type="checkbox"] {
+  width: 18px; height: 18px; flex: 0 0 18px; margin: 0; padding: 0; border-radius: 0; }
+.m2-f9-choice > span { min-width: 0; overflow-wrap: break-word; word-break: normal; }
+.m2-f9-roster { gap: 2px; border-top: 1px solid #e4ebe7; padding-top: 6px; }
+.m2-f9-roster li { display: grid; gap: 2px; padding: 6px 8px; border-radius: 6px; min-width: 0; }
+.m2-f9-roster li:hover { background: #f5f9f6; }
+.m2-f9-roster li[data-ineligible] .m2-f9-name { color: #5f6b78; }
+.m2-f9-reason { padding-left: 26px; color: #5f6b78; font-size: .9em; overflow-wrap: break-word; }
+.m2-f9-choice input:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 2px; }
+/* Phones: a long option (e.g. a room name with its Teacher) must not widen the form or the page; the select shrinks
+   and truncates instead. Same single column as before. */
+.m2-packages-page { min-width: 0; }
+.m2-packages-page.m7-page { grid-template-columns: minmax(0, 1fr); }
+.m2-packages-form { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.m2-packages-form select { min-width: 0; text-overflow: ellipsis; }
+/* The visually hidden "Actions" header is absolutely positioned; keep it inside the table's own scroll area so it can
+   never widen the page on phones. */
+.m2-packages-table-wrap { position: relative; }
+/* Phones: Existing Assignments as stacked cards (label above value) instead of a sideways-scrolling table. */
+@media (max-width: 640px) {
+  .m2-f9-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .m2-f9-table, .m2-f9-table tbody, .m2-f9-table tr, .m2-f9-table td { display: block; width: 100%; box-sizing: border-box; }
+  .m2-f9-table tr { border: 1px solid #d8e2dc; border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
+  .m2-f9-table td { border: 0; padding: 3px 0; overflow-wrap: anywhere; }
+  .m2-f9-table td[data-label]::before { content: attr(data-label); display: block; font-size: .8em; font-weight: 700; color: #5f6b78; }
+}

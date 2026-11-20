@@ -271,3 +271,6 @@
   background: transparent;
   box-shadow: none;
 }
+
+/* Preserve complete-story line breaks inside stored M2 paragraphs. */
+.diagnostic-story-content > p { white-space: pre-wrap; }

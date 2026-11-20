@@ -3,7 +3,7 @@ const { getSpeechLanguageCode } = require("../services/diagnosticLanguage");
 const { transcribeWav } = require("../services/azureSpeechService");
 const { getSpeechErrorResponse, SpeechTranscriptionError } = require("../services/speechErrors");
 const { isUuid } = require("../services/diagnosticTranscriptReceipts");
-const { getDiagnosticAssessmentBinding } = require("../services/diagnosticAssessments");
+const { createDiagnosticBindingResolver } = require("../services/diagnosticBindingResolver");
 const { MAX_SEGMENTS } = require("../services/diagnosticResultService");
 
 // Multer limit codes. Size limits are 413; count limits mean a malformed request.
@@ -17,21 +17,26 @@ const DIAGNOSTIC_ONLY_ROLES = new Set(["system_admin", "teacher"]);
 
 // M2 diagnostic parts name the active diagnostic, their recording and their
 // position; M5 read-alouds send none of these and receive no receipt.
-// Returns null for an M5 request.
-function readDiagnosticSegment(body) {
+// Returns null for an M5 request. The binding is the code-defined diagnostic (unchanged) or, for an F8 reassessment,
+// the signed-in Student's own active assignment (re-checked by the delivery service).
+async function readDiagnosticSegment(body, requester, resolveBinding) {
   if (DIAGNOSTIC_FIELDS.every((field) => body?.[field] === undefined)) return null;
   const segmentIndex = Number(body.segmentIndex);
   if (!isUuid(body.recordingId) || !/^\d{1,2}$/.test(String(body.segmentIndex))
     || segmentIndex < 1 || segmentIndex > MAX_SEGMENTS) {
     return { invalid: true };
   }
-  const binding = getDiagnosticAssessmentBinding(body.language, body.assessmentId, body.assessmentVersion);
+  const binding = await resolveBinding({
+    requester, language: body.language, assessmentId: body.assessmentId, assessmentVersion: body.assessmentVersion,
+  });
   if (!binding) return { invalid: true, stale: true };
   return { recordingId: body.recordingId.toLowerCase(), segmentIndex, binding };
 }
 
 /** Only Module 2's synchronous fallback owns these temporary uploads. */
-function createDiagnosticAudioHandler({ transcribe = transcribeWav, remove = unlink, receipts, log = console.error } = {}) {
+function createDiagnosticAudioHandler({
+  transcribe = transcribeWav, remove = unlink, receipts, log = console.error, resolveBinding = createDiagnosticBindingResolver(),
+} = {}) {
   return async function diagnosticAudio(req, res, uploadError) {
     try {
       if (UPLOAD_TOO_LARGE_CODES.has(uploadError?.code)) {
@@ -48,7 +53,7 @@ function createDiagnosticAudioHandler({ transcribe = transcribeWav, remove = unl
       let languageCode;
       try { languageCode = getSpeechLanguageCode(req.body?.language); }
       catch { return res.status(400).json({ success: false, message: "Language must be either 'en' or 'fil'." }); }
-      const segment = readDiagnosticSegment(req.body);
+      const segment = await readDiagnosticSegment(req.body, res.locals?.speechRequester, resolveBinding);
       if (segment?.invalid) {
         return res.status(400).json({
           success: false,
