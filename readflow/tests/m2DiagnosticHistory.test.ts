@@ -64,6 +64,7 @@ test("navigation: learner and Teacher entries; the services call only the F3 end
 function mountTables(results: unknown[], owner = "self") {
   const runtime = createHookRuntime(require("react"));
   const mod = loadComponentModule(new URL("../src/modules/module2/components/DiagnosticHistoryTables.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     if (id.endsWith("/utils/diagnosticHistory")) return require(new URL("../src/modules/module2/utils/diagnosticHistory.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
@@ -105,6 +106,7 @@ const PROGRESS_STUB = {
 function mountPage(path: string, service: Record<string, unknown>, progressService: Record<string, unknown> = PROGRESS_STUB) {
   const runtime = createHookRuntime(require("react"));
   const mod = loadComponentModule(new URL(`../src/modules/module2/pages/${path}`, import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     if (id.endsWith("/services/diagnosticHistory")) return service;
@@ -136,26 +138,9 @@ test("learner page: loads own history; a failure shows a retry", async () => {
   assert.match(textOf(page.render()), /Assessment History/);
 });
 
-test("Teacher page: Students with their active rooms; search filters by name; empty state explained", async () => {
-  const students = [
-    { id: "s1", name: "Ana", rooms: [{ id: "r1", name: "Grade 5 Mabini" }, { id: "r3", name: "Reading Club" }], results: [entry("e1", "en", "2026-11-10T00:00:00Z")] },
-    { id: "s2", name: "Ben", rooms: [{ id: "r1", name: "Grade 5 Mabini" }], results: [] },
-  ];
-  const page = mountPage("TeacherDiagnosticResultsPage.tsx", { getTeacherDiagnosticResults: async () => students, getDiagnosticHistoryError: () => "x" });
-  page.render();
-  await page.settle();
-  let text = textOf(page.render());
-  assert.match(text, /Ana.*Grade 5 Mabini, Reading Club.*Ben/s);
-  assert.match(text, /currently enrolled in your active Learning Rooms/);
-  assert.doesNotMatch(text, /archived/i, "archived rooms are not shown or labelled");
-  assert.match(text, /Showing 2 of 2 Students/);
-  findAll(page.render(), (n) => n.type === "input")[0].props.onChange({ target: { value: "ben" } });
-  await page.settle();
-  text = textOf(page.render());
-  assert.match(text, /Showing 1 of 2 Students/);
-  assert.doesNotMatch(text, /Ana/);
-  const empty = mountPage("TeacherDiagnosticResultsPage.tsx", { getTeacherDiagnosticResults: async () => [], getDiagnosticHistoryError: () => "x" });
-  empty.render();
-  await empty.settle();
-  assert.match(textOf(empty.render()), /No Students are currently enrolled in your active Learning Rooms\./);
+test("Teacher page: the shared class view; empty state explained; no Initial Diagnostic practice link", () => {
+  const page = readFileSync(new URL("../src/modules/module2/pages/TeacherDiagnosticResultsPage.tsx", import.meta.url), "utf8");
+  assert.match(page, /emptyMessage="No Students are currently enrolled in your active Learning Rooms\."/);
+  assert.doesNotMatch(page, /TryInitialDiagnosticLink/);
+  // Rooms, search and history behaviour: m2ClassReadingResults.test.ts
 });

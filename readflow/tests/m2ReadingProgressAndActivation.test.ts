@@ -33,6 +33,7 @@ const lang = (language: "en" | "fil", extra: Record<string, unknown> = {}) => ({
 function renderPanel(props: Record<string, unknown>) {
   const runtime = createHookRuntime(require("react"));
   const mod = loadComponentModule(new URL("../src/modules/module2/components/ReadingProgressPanel.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     return require(id.endsWith("/utils/diagnosticHistory") ? new URL("../src/modules/module2/utils/diagnosticHistory.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1") : id);
@@ -73,6 +74,7 @@ test("F5 panel: initial only and initial + reassessments; placement note shown; 
 function mountPage(url: string, stubs: Record<string, Record<string, unknown>>, props: Record<string, unknown> = {}) {
   const runtime = createHookRuntime(require("react"));
   const mod = loadComponentModule(new URL(url, import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     for (const [suffix, value] of Object.entries(stubs)) if (id.endsWith(suffix)) return value;
@@ -102,26 +104,11 @@ test("F5 learner page: own progress and history; link to Assessment History; no 
   assert.doesNotMatch(text, /Teacher|Learning Room|rank|compare/i);
 });
 
-test("F5 Teacher page: progress per Student matched by id; searchable; F3 active-room wording kept", async () => {
-  const students = [
-    { id: "s1", name: "Ana", rooms: [{ id: "r1", name: "Grade 5 Mabini" }], results: [] },
-    { id: "s2", name: "Ben", rooms: [{ id: "r1", name: "Grade 5 Mabini" }], results: [] },
-  ];
-  const progress = (level: string) => ({ en: lang("en", { current: { readingLevel: level, source: "initial", completedAt: "", rule: "initial" } }), fil: lang("fil") });
-  const page = mountPage("../src/modules/module2/pages/TeacherDiagnosticResultsPage.tsx", {
-    "/services/diagnosticHistory": { getTeacherDiagnosticResults: async () => students, getDiagnosticHistoryError: () => "x" },
-    "/services/readingProgress": { getTeacherReadingProgress: async () => [
-      { id: "s2", name: "Ben", progress: progress("Independent") }, { id: "s1", name: "Ana", progress: progress("Frustration") }] },
-  });
-  page.render();
-  await settle(page.render);
-  let tree = page.render();
-  assert.deepEqual(page.panels(tree).map((p) => p.progress.en.current.readingLevel), ["Frustration", "Independent"]);
-  assert.match(textOf(tree), /currently enrolled in your active Learning Rooms.*official results only/s);
-  findAll(tree, (n) => n.type === "input")[0].props.onChange({ target: { value: "ben" } });
-  await settle(page.render);
-  tree = page.render();
-  assert.match(textOf(tree), /Showing 1 of 2 Students/);
+test("F5 Teacher page: the shared class view with the Teacher's progress list (official results, active rooms)", () => {
+  const page = src("modules/module2/pages/TeacherDiagnosticResultsPage.tsx");
+  assert.match(page, /<ClassReadingResults load=\{getTeacherReadingProgress\}/);
+  assert.match(page, /currently enrolled in your active Learning Rooms/);
+  // Behaviour (filters, pagination, history, Back): m2ClassReadingResults.test.ts
 });
 
 test("F5 School Admin section: every Student listed with English and Filipino separately; searchable; never practice or XP", async () => {
@@ -150,7 +137,7 @@ test("F5 School Admin section: every Student listed with English and Filipino se
 
 test("F5 wiring: School Admin page only (not System Admin); service calls the three server routes", () => {
   const adminPage = src("pages/admin/AdminDiagnosticResultsPage.tsx");
-  assert.match(adminPage, /<SchoolReadingProgressSection \/>/);
+  assert.match(adminPage, /<ClassReadingResults load=\{getSchoolReadingProgress\}/);
   const app = src("App.tsx").replace(/\r\n/g, "\n");
   const sa = app.slice(app.indexOf('<RequireRole allowedRoles={["system_admin"]} />'));
   assert.doesNotMatch(sa.slice(0, sa.indexOf("</Route>\n        </Route>")), /AdminDiagnosticResultsPage|DiagnosticHistoryPage|TeacherDiagnosticResultsPage/);
@@ -199,6 +186,7 @@ function mountDetail(detail: unknown, calls: unknown[][], dialog: { asked: strin
   const runtime = createHookRuntime(require("react"));
   let current = detail as any;
   const mod = loadComponentModule(new URL("../src/modules/module2/components/InitialDiagnosticEditor.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id.endsWith("/utils/initialDiagnosticLabels")) return require(new URL("../src/modules/module2/utils/initialDiagnosticLabels.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};

@@ -110,7 +110,8 @@ test("Admin diagnostic search matches the displayed nickname", async () => {
   assert.deepEqual(filterAdminDiagnosticResults(results, {
     searchQuery: "  MARiel ", readingLevel: "", difficulty: "",
   }).map(result => result.id), ["student-result"]);
+  // The School Admin page now uses the shared class view (official results, displayed names from the server).
   const page = await readSource("../src/pages/admin/AdminDiagnosticResultsPage.tsx");
-  assert.ok(page.includes('result.learnerName || "\\u2014"'));
+  assert.ok(page.includes("<ClassReadingResults load={getSchoolReadingProgress}"));
   assert.ok(!page.includes("result.fullName"));
 });
