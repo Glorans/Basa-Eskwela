@@ -75,6 +75,15 @@ const select = async (view: ReturnType<typeof mount>, id: string) => {
   await settle(view.render);
 };
 const describedBy = (tree: any, b: any) => textOf(findAll(tree, (n) => n.props?.id === b.props["aria-describedby"])[0] ?? "");
+// Unavailable actions stay in place as aria-disabled buttons (still reachable by keyboard).
+const isOff = (b: any) => b.props["aria-disabled"] === true || b.props.disabled === true;
+const SLOT_ORDER = ["create", "edit", "preview", "publish", "activate", "try"];
+/** The six action slots of the bar, in order: [slot key, label, enabled, reason]. */
+const slots = (tree: any) => findAll(bar(tree), (n) => n.props?.className === "m2-id-slot").map((s: any) => {
+  const control = findAll(s, (n) => n.type === "button" || n.type === "Link")[0];
+  return [s.props["data-slot"], textOf(control), control.type === "Link" || !isOff(control), textOf(findAll(s, (n) => n.props?.className === "m2-id-slot-reason")[0])];
+});
+const slot = (tree: any, key: string) => slots(tree).find((x: any) => x[0] === key);
 
 test("three tabs only; no educator-review, submit-for-review or policy text in the Initial Diagnostic editor", () => {
   const tree = mount({ package: pkg(), versions: [v4(), builtIn()] }).render();
@@ -111,32 +120,76 @@ test("one back link to the Initial Diagnostic list, with a single arrow icon; la
     [["English", "/system-admin/assessment-packages/p1", "page"], ["Filipino", "/system-admin/assessment-packages/p2", null]]);
 });
 
-test("Draft 5.0: Edit/Save Draft, Preview and Publish Version in the bar; no Activate or functional Try Assessment", () => {
-  const view = mount({ package: pkg(), versions: [v5(), v4(), builtIn()] });
-  let actions = bar(view.render());
-  assert.ok(button(actions, /^Edit Draft$/));
-  assert.ok(button(actions, /^Preview$/));
-  assert.equal(button(actions, /^Publish Version$/).props.disabled, false, "a complete, saved draft can be published");
-  assert.equal(button(actions, /Activate for Learners/), undefined, "drafts are published first");
-  assert.equal(button(actions, /Try Assessment/), undefined);
-  assert.equal(findAll(actions, (n) => n.type === "Link").length, 0);
+test("the same six actions, in the same order, for every version in English AND Filipino (the five screenshot cases)", async () => {
+  const filPkg = pkg({ id: "p2", language: "fil", activeVersion: "4.0", activation: { available: true, canManage: true, activeVersionId: "v4" } });
+  const cases: [string, any, string][] = [
+    ["English 5.0 draft", { package: pkg(), versions: [v5(), v4({ canActivate: true }), builtIn()] }, "v5"],
+    ["English 4.0 published", { package: pkg(), versions: [v5(), v4({ canActivate: true }), builtIn()] }, "v4"],
+    ["English 3.0 active", { package: pkg(), versions: [v5(), v4({ canActivate: true }), builtIn()] }, "v3"],
+    ["Filipino 4.0 published + active", { package: filPkg, versions: [v4({ activeForLearners: true }), builtIn({ activeForLearners: false })] }, "v4"],
+    ["Filipino 3.0 retired", { package: filPkg, versions: [v4({ activeForLearners: true }), builtIn({ activeForLearners: false })] }, "v3"],
+  ];
+  const layouts: Record<string, any[]> = {};
+  for (const [name, detail, id] of cases) {
+    const view = mount(detail);
+    await select(view, id);
+    layouts[name] = slots(view.render());
+    assert.deepEqual(layouts[name].map((x) => x[0]), SLOT_ORDER, `${name}: same six positions`);
+  }
+  const at = (name: string) => Object.fromEntries(layouts[name].map(([k, label, enabled, reason]) => [k, [label, enabled, reason]]));
+  assert.deepEqual(at("English 5.0 draft"), {
+    create: ["Create New Version", false, "This version is already a draft."], edit: ["Edit Draft", true, ""], preview: ["Preview", true, ""],
+    publish: ["Publish Version", true, ""], activate: ["Activate for Learners", false, "Publish this version before activating it."],
+    try: ["Try Assessment", false, "Publish this version to try it. Drafts can be previewed only."] });
+  assert.deepEqual(at("English 4.0 published"), {
+    create: ["Create New Version", false, "Draft 5.0 already exists."], edit: ["Edit Draft", false, "Published versions cannot be edited."], preview: ["Preview", true, ""],
+    publish: ["Publish Version", false, "Already published."], activate: ["Activate for Learners", true, ""], try: ["Try Assessment", true, ""] });
+  assert.deepEqual(at("English 3.0 active"), {
+    create: ["Create New Version", false, "Draft 5.0 already exists."], edit: ["Edit Draft", false, "Retired versions cannot be edited."], preview: ["Preview", true, ""],
+    publish: ["Publish Version", false, "Retired versions cannot be published again."], activate: ["Already Active", false, "This is the active version for new English learners."],
+    try: ["Try Assessment", true, ""] });
+  assert.deepEqual(at("Filipino 4.0 published + active"), {
+    create: ["Create New Version", true, ""], edit: ["Edit Draft", false, "Published versions cannot be edited."], preview: ["Preview", true, ""],
+    publish: ["Publish Version", false, "Already published."], activate: ["Already Active", false, "This is the active version for new Filipino learners."],
+    try: ["Try Assessment", true, ""] });
+  assert.deepEqual(at("Filipino 3.0 retired"), {
+    create: ["Create New Version", true, ""], edit: ["Edit Draft", false, "Retired versions cannot be edited."], preview: ["Preview", true, ""],
+    publish: ["Publish Version", false, "Retired versions cannot be published again."], activate: ["Activate for Learners", true, ""], try: ["Try Assessment", true, ""] });
+  // Same status, same layout, whatever the language: English 4.0 (published) vs Filipino 4.0 (published) differ only by Active.
+  assert.deepEqual(at("English 4.0 published").edit, at("Filipino 4.0 published + active").edit);
+  assert.deepEqual(at("English 4.0 published").publish, at("Filipino 4.0 published + active").publish);
 });
 
-test("Published 4.0 (inactive): Activate for Learners for THIS version, real reason when blocked; Try Assessment opens 4.0 itself", async () => {
-  // No educator endorsement is needed: a published 4.0 the server marks eligible is enabled, endorsed or not.
+test("no 'Edit Draft 5.0' on another version: Edit Draft is for the selected draft; 'Open Existing Draft 5.0' navigates to it", async () => {
+  const view = mount({ package: pkg(), versions: [v5(), v4(), builtIn()] });
+  await select(view, "v4");
+  let tree = view.render();
+  assert.equal(buttons(tree).find((b) => /Edit Draft \d/.test(textOf(b))), undefined, "the bar never names another version");
+  const edit = button(bar(tree), /^Edit Draft$/);
+  assert.equal(isOff(edit), true);
+  edit.props.onClick();
+  await settle(view.render);
+  assert.equal(findAll(view.render(), (n) => n.type === "textarea").length, 0, "pressing a greyed-out Edit Draft does nothing");
+  const openDraft = button(tree, /^Open Existing Draft 5\.0$/);
+  assert.ok(openDraft, "a clearly labelled link in the version-management area");
+  assert.equal(findAll(bar(tree), (n) => n === openDraft).length, 0, "it is not part of the action bar");
+  openDraft.props.onClick();
+  await settle(view.render);
+  tree = view.render();
+  assert.match(textOf(bar(tree)), /Selected: Version 5\.0 · Draft/, "it only selects the draft");
+  assert.equal(findAll(tree, (n) => n.type === "textarea").length, 0, "selecting does not start editing");
+  assert.equal(isOff(button(bar(tree), /^Edit Draft$/)), false);
+});
+
+test("Published 4.0 (inactive): Activate for Learners acts on 4.0 with a confirmation naming language and version; Try Assessment opens 4.0", async () => {
   let view = mount({ package: pkg(), versions: [v5(), v4({ canActivate: true, educatorEndorsed: false }), builtIn()] }, { answers: [false, true] });
   await select(view, "v4");
   let tree = view.render();
-  let actions = bar(tree);
-  assert.equal(button(actions, /^Activate for Learners$/).props.disabled, false);
   assert.doesNotMatch(textOf(tree), /endorsement/i, "no endorsement warning anywhere on the page");
-  const link = findAll(actions, (n) => n.type === "Link" && textOf(n) === "Try Assessment")[0];
+  const link = findAll(bar(tree), (n) => n.type === "Link" && textOf(n) === "Try Assessment")[0];
   assert.equal(link.props.to, "/practice/diagnostic/version/v4/en/reading", "practises 4.0, never the built-in 3.0");
   assert.deepEqual(plain(link.props.state), { practiceExitTo: "/system-admin/assessment-packages/p1" });
-  assert.ok(button(actions, /^Edit Draft 5\.0$/), "edits go to the existing draft, never to 4.0");
-  assert.equal(button(actions, /^Publish Version$/), undefined);
-  assert.equal(button(actions, /Return Learners|Already Active/), undefined);
-  button(actions, /^Activate for Learners$/).props.onClick();
+  button(bar(tree), /^Activate for Learners$/).props.onClick();
   await settle(view.render);
   assert.equal(view.calls.length, 0, "declined in the confirmation dialog");
   assert.match(view.asked[0], /^Activate English version 4\.0 for new learners\? It replaces the active version 3\.0 for new English learners\./, "names the language and version");
@@ -145,43 +198,20 @@ test("Published 4.0 (inactive): Activate for Learners for THIS version, real rea
   await settle(view.render);
   assert.deepEqual(plain(view.calls), [["activate", "p1", "v4", null]]);
 
-  // When activation really is blocked, the actual reason is shown beside the visible, disabled button.
+  // When activation really is blocked, the actual reason is shown under the greyed-out button.
   view = mount({ package: pkg({ activation: { available: false, canManage: true, activeVersionId: null } }), versions: [v5(), v4({ canActivate: false }), builtIn()] });
   await select(view, "v4");
-  tree = view.render();
-  const blocked = button(bar(tree), /^Activate for Learners$/);
-  assert.equal(blocked.props.disabled, true);
-  assert.equal(describedBy(tree, blocked), "Activation is not installed in this database.");
+  assert.deepEqual(slot(view.render(), "activate"), ["activate", "Activate for Learners", false, "Activation is not installed in this database."]);
 });
 
-test("built-in 3.0 that learners take: Already Active (not an activation or restore button); Try Assessment opens the built-in practice", async () => {
-  const view = mount({ package: pkg(), versions: [v5(), v4(), builtIn()] });
-  await select(view, "v3");
-  const tree = view.render();
-  const actions = bar(tree);
-  const active = button(actions, /^Already Active$/);
-  assert.equal(active.props.disabled, true);
-  assert.equal(describedBy(tree, active), "This is the active version for new English learners.");
-  assert.equal(button(actions, /Activate for Learners|Return Learners/), undefined);
-  const link = findAll(actions, (n) => n.type === "Link" && textOf(n) === "Try Assessment")[0];
-  assert.equal(link.props.to, "/practice/diagnostic/en/reading");
-});
-
-test("Filipino 4.0 active: selecting 3.0 offers Activate for Learners (restores the built-in, confirmed); selecting 4.0 shows Already Active", async () => {
+test("Filipino 3.0 retired: Activate for Learners uses the existing return-to-built-in action (confirmed); 4.0 shows Already Active", async () => {
   const filPkg = pkg({ language: "fil", activeVersion: "4.0", activation: { available: true, canManage: true, activeVersionId: "v4" } });
   const view = mount({ package: filPkg, versions: [v4({ activeForLearners: true }), builtIn({ activeForLearners: false })] }, { answers: [false, true] });
-  let tree = view.render();
-  let actions = bar(tree);
-  assert.match(textOf(actions), /Selected: Version 4\.0 · Published · Active.*Active Version/s);
-  assert.equal(button(actions, /^Already Active$/).props.disabled, true);
-  assert.equal(button(actions, /Activate for Learners|Return Learners/), undefined, "no unrelated restore button on 4.0");
+  assert.match(textOf(bar(view.render())), /Selected: Version 4\.0 · Published · Active.*Active Version/s);
   await select(view, "v3");
-  tree = view.render();
-  actions = bar(tree);
-  assert.match(textOf(actions), /Selected: Version 3\.0 · Retired(?! · Active).*Active: Version 4\.0/s);
-  const activate = button(actions, /^Activate for Learners$/);
-  assert.equal(activate.props.disabled, false, "3.0 is activated from 3.0 itself");
-  activate.props.onClick();
+  const tree = view.render();
+  assert.match(textOf(bar(tree)), /Selected: Version 3\.0 · Retired(?! · Active).*Active: Version 4\.0/s);
+  button(bar(tree), /^Activate for Learners$/).props.onClick();
   await settle(view.render);
   assert.equal(view.calls.length, 0, "declined");
   assert.match(view.asked[0], /^Activate Filipino version 3\.0 \(built-in\) for new learners\? It replaces the active version 4\.0 for new Filipino learners\./);
@@ -190,20 +220,20 @@ test("Filipino 4.0 active: selecting 3.0 offers Activate for Learners (restores 
   assert.deepEqual(plain(view.calls), [["builtin", "p1", "v4"]], "the existing, authorised return-to-built-in action with the expected active version");
 });
 
-test("retired authored versions and drafts are never activatable; drafts and retired versions are not practised", async () => {
+test("greyed-out actions never act; retired authored versions cannot be activated or practised; Delete Draft is in its own area", async () => {
   const view = mount({ package: pkg(), versions: [v5(), version("v41", "4.1"), v4({ status: "retired" }), builtIn()] });
   await select(view, "v4");
   let tree = view.render();
-  const retired = button(bar(tree), /^Activate for Learners$/);
-  assert.equal(retired.props.disabled, true);
-  assert.equal(describedBy(tree, retired), "Only the published version can be activated.");
-  const tryRetired = button(bar(tree), /^Try Assessment$/);
-  assert.equal(tryRetired.props.disabled, true);
-  assert.equal(describedBy(tree, tryRetired), "Retired versions cannot be practised.");
+  assert.deepEqual(slot(tree, "activate"), ["activate", "Activate for Learners", false, "Only the published version can be activated."]);
+  assert.deepEqual(slot(tree, "try"), ["try", "Try Assessment", false, "Retired versions cannot be practised."]);
+  for (const b of findAll(bar(tree), (n) => n.type === "button" && n.props["aria-disabled"] === true)) b.props.onClick();
+  await settle(view.render);
+  assert.deepEqual(view.calls, [], "no request from a greyed-out action");
   await select(view, "v5");
   tree = view.render();
-  assert.equal(button(bar(tree), /Activate for Learners|Already Active/), undefined, "drafts cannot be activated");
-  assert.equal(findAll(bar(tree), (n) => n.type === "Link").length, 0, "drafts are preview-only");
+  const danger = findAll(tree, (n) => n.props?.className === "m2-id-danger-zone")[0];
+  assert.ok(button(danger, /^Delete Draft$/), "Delete Draft sits in the separate clean-up area");
+  assert.equal(button(bar(tree), /Delete Draft/), undefined, "never in the action bar");
   const { tryAssessment } = view.mod;
   assert.deepEqual(plain(tryAssessment(pkg(), version("vr", "4.2", { status: "in_review" }))), { reason: "Publish this version to try it. Drafts can be previewed only." });
   assert.deepEqual(plain(tryAssessment(pkg(), version("va", "4.3", { status: "retired", activeForLearners: true }))), { to: "/practice/diagnostic/version/va/en/reading" },
@@ -215,7 +245,7 @@ test("missing requirements are listed, never a silent failure; unsaved changes c
   let view = mount({ package: pkg(), versions: [incomplete, v4(), builtIn()] });
   let tree = view.render();
   let publish = button(bar(tree), /^Publish Version$/);
-  assert.equal(publish.props.disabled, true);
+  assert.equal(isOff(publish), true);
   assert.match(describedBy(tree, publish), /requirements missing/);
   assert.match(textOf(tree), /Before publishing version 5\.0:.*Add exactly 6 comprehension questions\./s, "the database's own rule is shown");
   button(bar(tree), /What's missing\?/).props.onClick();
@@ -227,7 +257,7 @@ test("missing requirements are listed, never a silent failure; unsaved changes c
   findAll(view.render(), (n) => n.type === "textarea")[0].props.onChange({ target: { value: `${STORY.paragraphs[0]}\n\nChanged.` } });
   tree = view.render();
   publish = button(bar(tree), /^Publish Version$/);
-  assert.equal(publish.props.disabled, true);
+  assert.equal(isOff(publish), true);
   assert.equal(describedBy(tree, publish), "Save your changes before publishing.");
   assert.match(textOf(bar(tree)), /Unsaved changes/);
   assert.equal(button(bar(tree), /^Save Draft$/).props.disabled, false);
@@ -261,7 +291,7 @@ test("Publish Version: one confirmation for the whole version, the System Admin'
 test("published version: Create New Version copies the SELECTED version; nothing is edited in place", async () => {
   const view = mount({ package: pkg(), versions: [v4(), builtIn()] });
   const tree = view.render();
-  assert.equal(button(tree, /^Edit Draft/), undefined, "a published version has no edit action");
+  assert.equal(isOff(button(bar(tree), /^Edit Draft$/)), true, "a published version cannot be edited (greyed out, in place)");
   assert.equal(findAll(tree, (n) => n.type === "textarea" || n.type === "input").length, 0, "nothing is editable");
   button(bar(tree), /^Create New Version$/).props.onClick();
   await tick();

@@ -281,7 +281,12 @@ test("F6 page: after activation a System Admin can return to 3.0; without manage
   render();
   await settle(render);
   tree = render();
-  assert.equal(findAll(tree, (n) => n.type === "button" && /Activate|Return Learners|Already Active/.test(textOf(n))).length, 0);
+  // The activation slot keeps its place but nothing in it can be used without manage rights.
+  const activationControls = findAll(tree, (n) => n.type === "button" && /Activate|Return Learners|Already Active/.test(textOf(n)));
+  assert.ok(activationControls.every((b) => b.props["aria-disabled"] === true || b.props.disabled === true), "no usable activation control");
+  for (const b of activationControls) b.props.onClick();
+  await settle(render);
+  assert.deepEqual(calls, [["builtin", "p1", "v4"]], "no further activation request");
 });
 
 // Phase 8 regression: a failed delivery must never silently substitute the bundled 3.0 (it may not be the active version).

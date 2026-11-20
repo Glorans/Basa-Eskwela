@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import {
@@ -164,8 +164,7 @@ export default function InitialDiagnosticEditor({ detail, siblings, onDetail }: 
     if (created) { setDirty(false); setSelectedId(created.id); setEditing(true); setTab((t) => (t === 0 ? 1 : t)); }
   };
   const editDraft = async () => {
-    if (!draft) return;
-    if (draft.id !== selected.id) { if (!await guardUnsaved()) return; setDirty(false); setSelectedId(draft.id); }
+    if (!isDraft || !perms.manage) return;
     setEditing(true);
     setTab((t) => (t === 0 ? 1 : t));
   };
@@ -220,12 +219,45 @@ export default function InitialDiagnosticEditor({ detail, siblings, onDetail }: 
   const practice = tryAssessment(pkg, selected);
 
   const reason = (id: string, text: string) => (text ? <span id={id} className="m2-id-reason">{text}</span> : null);
+
+  /**
+   * The SAME six actions, in the SAME order and positions, for every selected version in both languages. An action
+   * that does not apply stays in place, greyed out (aria-disabled, still reachable by keyboard) with a short reason.
+   */
+  type Slot = { key: string; label: string; enabled: boolean; reason: string; onClick?: () => void; to?: string; primary?: boolean; pressed?: boolean; extra?: ReactNode };
+  const languageName = LANGUAGE_LABELS[pkg.language];
+  const off = (why: string) => ({ enabled: false, reason: why });
+  const on = (onClick: () => void) => ({ enabled: true, reason: "", onClick });
+  const wait = busy ? off("Please wait.") : null;
+  const notDraftReason = selected.status === "published" ? "Published versions cannot be edited."
+    : selected.status === "retired" ? "Retired versions cannot be edited." : "Submitted versions cannot be edited.";
+  const slots: Slot[] = [
+    { key: "create", label: "Create New Version", ...(!perms.manage ? off("You cannot create versions.")
+      : isDraft ? off("This version is already a draft.")
+      : open ? off(open.status === "draft" ? `Draft ${open.versionLabel} already exists.` : `Version ${open.versionLabel} is being published.`)
+      : wait ?? on(() => void createVersion())) },
+    { key: "edit", label: "Edit Draft", pressed: editable, ...(!perms.manage ? off("You cannot edit this version.")
+      : !isDraft ? off(notDraftReason) : editable ? off("Editing now.") : wait ?? on(() => void editDraft())) },
+    { key: "preview", label: "Preview", ...on(() => setPreview("passage")) },
+    { key: "publish", label: "Publish Version", primary: true,
+      ...(!canPublishFlow ? off(selected.status === "published" ? "Already published."
+          : selected.status === "retired" ? "Retired versions cannot be published again." : "You cannot publish this version.")
+        : publishReason ? off(publishReason) : on(openPublish)),
+      extra: canPublishFlow && blockers.length > 0 && !dirty
+        ? <button type="button" className="m2-id-link" aria-expanded={showMissing} aria-controls="m2-id-missing"
+            onClick={() => setShowMissing((v) => !v)}>{showMissing ? "Hide" : "What's missing?"}</button> : undefined },
+    activation.kind === "active"
+      ? { key: "activate", label: "Already Active", ...off(`This is the active version for new ${languageName} learners.`) }
+      : { key: "activate", label: "Activate for Learners", primary: true,
+          ...(activation.kind === "none" ? off(pkg.activation?.canManage ? "Publish this version before activating it." : "You cannot activate versions.")
+            : !activation.enabled ? off(activation.reason) : dirty ? off("Save or discard your changes first.") : wait ?? on(() => void activate())) },
+    { key: "try", label: "Try Assessment", ...("to" in practice ? { enabled: true, reason: "", to: practice.to } : off(practice.reason)) },
+  ];
   const actionBar = (
     <div className="m2-id-bar" role="region" aria-label="Version actions">
       <div className="m2-id-bar-status">
         <span className="m2-id-chip m2-id-chip--selected">Selected: Version {selected.versionLabel} · {versionStateLabel(selected.status, selected.activeForLearners)}</span>
         <span className="m2-id-chip">{selected.activeForLearners ? "Active Version" : `Active: Version ${learnersTake}`}</span>
-        {(editable || dirty) && <span className="m2-id-chip" role="status">{busy ? "Saving…" : dirty ? "Unsaved changes" : "All changes saved"}</span>}
       </div>
       {error && <div role="alert" className="m2-id-bar-error m2-editor-message">{error}</div>}
       {notice && !error && <p role="status" className="m2-id-bar-notice">{notice}</p>}
@@ -233,33 +265,26 @@ export default function InitialDiagnosticEditor({ detail, siblings, onDetail }: 
         <p>Before publishing version {selected.versionLabel}:</p>
         <ul>{blockers.map((issue) => <li key={issue}>{issue}</li>)}</ul>
       </div>}
-      <div className="m2-id-bar-actions">
-        {isDraft && perms.manage && (editable
-          ? <span className="m2-id-action"><button type="button" disabled={busy || !dirty || Boolean(saveReason)} aria-describedby={saveReason ? "m2-id-save-reason" : undefined}
-              onClick={() => void save()}>Save Draft</button>{reason("m2-id-save-reason", saveReason)}</span>
-          : <button type="button" disabled={busy} onClick={() => void editDraft()}>Edit Draft</button>)}
-        {!isDraft && draft && perms.manage && <button type="button" disabled={busy} onClick={() => void editDraft()}>Edit Draft {draft.versionLabel}</button>}
-        {!isDraft && !open && perms.manage && <button type="button" disabled={busy} onClick={() => void createVersion()}>Create New Version</button>}
-        <button type="button" onClick={() => setPreview("passage")}>Preview</button>
-        {canPublishFlow && <span className="m2-id-action">
-          <button type="button" className="m2-id-primary" disabled={Boolean(publishReason)} aria-describedby={publishReason ? "m2-id-publish-reason" : undefined}
-            onClick={openPublish}>Publish Version</button>
-          {reason("m2-id-publish-reason", publishReason)}
-          {blockers.length > 0 && !dirty && <button type="button" className="m2-id-link" aria-expanded={showMissing} aria-controls="m2-id-missing"
-            onClick={() => setShowMissing((v) => !v)}>{showMissing ? "Hide" : "What's missing?"}</button>}
-        </span>}
-        {selected.status === "in_review" && perms.review && <button type="button" disabled={busy} onClick={() => void returnToDraft()}>Return to Draft</button>}
-        {activation.kind === "active" && <button type="button" disabled aria-describedby="m2-id-activate-reason">Already Active</button>}
-        {activation.kind === "active" && reason("m2-id-activate-reason", `This is the active version for new ${LANGUAGE_LABELS[pkg.language]} learners.`)}
-        {activation.kind === "activate" && <span className="m2-id-action">
-          <button type="button" className={activation.enabled ? "m2-id-primary" : undefined} disabled={!activation.enabled || busy || dirty}
-            aria-describedby={activation.reason ? "m2-id-activate-reason" : undefined} onClick={() => void activate()}>Activate for Learners</button>
-          {reason("m2-id-activate-reason", activation.reason)}
-        </span>}
-        {!isDraft && ("to" in practice
-          ? <Link className="m2-id-button" to={practice.to} state={{ practiceExitTo: `${PACKAGE_PATH}/${pkg.id}` }}>Try Assessment</Link>
-          : <span className="m2-id-action"><button type="button" disabled aria-describedby="m2-id-try-reason">Try Assessment</button>{reason("m2-id-try-reason", practice.reason)}</span>)}
-        {editable && <button type="button" disabled={busy} onClick={() => void doneEditing()}>{dirty ? "Cancel Editing" : "Done Editing"}</button>}
+      {editable && <div className="m2-id-edit-row" aria-label="Editing">
+        <span className="m2-id-chip" role="status">{busy ? "Saving…" : dirty ? "Unsaved changes" : "All changes saved"}</span>
+        <span className="m2-id-action"><button type="button" disabled={busy || !dirty || Boolean(saveReason)} aria-describedby={saveReason ? "m2-id-save-reason" : undefined}
+          onClick={() => void save()}>Save Draft</button>{reason("m2-id-save-reason", saveReason)}</span>
+        <button type="button" disabled={busy} onClick={() => void doneEditing()}>{dirty ? "Cancel Editing" : "Done Editing"}</button>
+      </div>}
+      <div className="m2-id-slots">
+        {slots.map((slot) => {
+          const reasonId = `m2-id-slot-${slot.key}-reason`;
+          return <div key={slot.key} className="m2-id-slot" data-slot={slot.key}>
+            {slot.to && slot.enabled
+              ? <Link className="m2-id-button" to={slot.to} state={{ practiceExitTo: `${PACKAGE_PATH}/${pkg.id}` }}>{slot.label}</Link>
+              : <button type="button" className={slot.primary && slot.enabled ? "m2-id-primary" : undefined}
+                  aria-disabled={slot.enabled ? undefined : true} aria-pressed={slot.key === "edit" ? Boolean(slot.pressed) : undefined}
+                  aria-describedby={slot.reason ? reasonId : undefined}
+                  onClick={() => { if (slot.enabled) slot.onClick?.(); }}>{slot.label}</button>}
+            <span id={reasonId} className="m2-id-slot-reason">{slot.reason}</span>
+            {slot.extra}
+          </div>;
+        })}
       </div>
     </div>
   );
@@ -310,8 +335,13 @@ export default function InitialDiagnosticEditor({ detail, siblings, onDetail }: 
         </dl>
         {canPublishFlow && blockers.length > 0 && <div className="m2-packages-issues" role="status"><p>Before publishing version {selected.versionLabel}:</p>
           <ul>{blockers.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
-        {isDraft && perms.manage && <div className="m2-id-actions">
-          <button type="button" className="m2-packages-danger" disabled={busy} onClick={() => void removeDraft()}>Delete Draft</button>
+        {open && open.id !== selected.id && <p className="m2-id-open-draft">
+          <button type="button" className="m2-id-link" disabled={busy} onClick={() => void choose(open.id)}>
+            {open.status === "draft" ? `Open Existing Draft ${open.versionLabel}` : `Open Version ${open.versionLabel} (being published)`}</button>
+        </p>}
+        {((isDraft && perms.manage) || (selected.status === "in_review" && perms.review)) && <div className="m2-id-danger-zone" aria-label="Draft clean-up">
+          {isDraft && perms.manage && <button type="button" className="m2-packages-danger" disabled={busy} onClick={() => void removeDraft()}>Delete Draft</button>}
+          {selected.status === "in_review" && perms.review && <button type="button" disabled={busy} onClick={() => void returnToDraft()}>Return to Draft</button>}
         </div>}
         <h3>Versions</h3>
         <table className="m2-id-versions">

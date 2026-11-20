@@ -77,3 +77,32 @@
 .m2-id-passage-issues { margin: 0; padding: 8px 12px 8px 30px; border-radius: 8px; background: #fff8e6; color: #5a4300; }
 .m2-id-active-tag { background: #23443a; color: #fff; font-weight: 700; }
 .m2-id-version-facts { margin: 4px 0 6px; }
+
+/* Six fixed action slots: same order and position for every version and language. Unavailable actions stay in place,
+   greyed out (aria-disabled keeps them reachable by keyboard), with a reserved line for the reason, so nothing shifts. */
+.m2-id-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px 10px; align-items: start; }
+.m2-id-slot { display: grid; gap: 4px; align-content: start; min-width: 0; }
+.m2-id-slot > button, .m2-id-slot > a { width: 100%; justify-content: center; text-align: center; box-sizing: border-box; }
+.m2-id-page .m2-id-slot > button[aria-disabled="true"] { opacity: .5; cursor: not-allowed; background: #eef1f4; border-color: #d3dae0; color: #3b4a59; }
+.m2-id-page .m2-id-slot > button[aria-pressed="true"] { opacity: 1; background: #fff8e6; border-color: #e0c27a; color: #5a4300; }
+.m2-id-slot-reason { min-height: 2.6em; color: #5f6b78; font-size: .78rem; line-height: 1.3; overflow-wrap: anywhere; }
+.m2-id-slot .m2-id-link { justify-self: start; min-height: 0; padding: 0; font-size: .8rem; }
+.m2-id-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #fff8e6; }
+.m2-id-open-draft { margin: 0; }
+.m2-id-danger-zone { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px dashed #e3c4c4; }
+@media (max-width: 900px) { .m2-id-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .m2-id-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
+  .m2-id-slot-reason { min-height: 0; }
+}
+
+/* Phones: the tab panels may shrink to the screen; the version table wraps instead of widening the page. */
+.m2-id-page [role="tabpanel"] { grid-template-columns: minmax(0, 1fr); }
+.m2-id-versions { table-layout: fixed; }
+.m2-id-versions th, .m2-id-versions td { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .m2-id-versions th, .m2-id-versions td { padding: 6px 4px; font-size: .88rem; }
+  .m2-id-versions th:first-child, .m2-id-versions td:first-child { width: 3.2em; }
+  .m2-id-versions th:last-child, .m2-id-versions td:last-child { width: 4.8em; }
+  .m2-id-versions td:last-child button { min-height: 36px; padding: 4px 8px; }
+}
