@@ -30,7 +30,7 @@
   "modules/module2/components/DiagnosticProgress.css": "0868b23bded791e1a4ac50d388e8b10694c996a16fd532eef48c615722d8a550",
   "modules/module2/components/InitialDiagnosticGuard.css": "3ab61aa22913dd6f47962e4185e7493e66ff7dcc35cfc737502bb9d2c6e9c1b7",
   "modules/module2/pages/DiagnosticQuestionsPage.css": "9369f6e03037251e378f56177e61fd2c2e0096e9cc39ae3d08bb6e947a9af227",
-  "modules/module2/pages/DiagnosticReadingPage.css": "a652f2f04937284a92d79dd90e53ab1d4eb386a030f28dc17337ddbeb47b3814",
+  "modules/module2/pages/DiagnosticReadingPage.css": "4b530e997153efd4a81e93998f848ad53ec88a3c77f9e181030c9d301cb91c3b",
   "modules/module2/pages/DiagnosticResultPage.css": "97fb7e6cfb710a5a97c50df1dc4197c346e2e5485b60bf10d85117715b3ee249",
   "modules/module2/pages/DiagnosticStartPage.css": "8533f114122ef82a054e05c09f0df73c11258fb4048e84cd2ca59a93b8173434",
   "modules/module3/components/AdminCollectionEditor.css": "07071b2063f9b16b55d31246bf234e44f131933d9ed4ba99e87c7586c8ee99e9",

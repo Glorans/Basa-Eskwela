@@ -36,7 +36,8 @@ test("routes: packages live only inside the System Admin, School Admin and Teach
 
 test("navigation: one entry each for System Admin, School Admin and Teacher; none for learners", () => {
   const layout = src("modules/module3/components/M3Layout.tsx");
-  assert.equal((layout.match(/label: "Assessment Packages", to: "\/system-admin\/assessment-packages"/g) ?? []).length, 1);
+  assert.match(layout, /role === "system_admin" && <AssessmentNavigation/);
+  assert.doesNotMatch(layout, /label: "Assessment Packages"/);
   assert.equal((layout.match(/label: "Reassessment Packages", to: "\/admin\/assessment-packages"/g) ?? []).length, 1);
   assert.equal((layout.match(/label: "Reassessment Packages", to: "\/m3\/teacher\/assessment-packages"/g) ?? []).length, 1);
   const general = layout.slice(layout.indexOf('if (role === "general_user")'));
@@ -85,15 +86,32 @@ test("service: paths are encoded; server messages and structural issues reach th
   assert.equal(calls[0][1], "/api/assessment-packages/p%2F1/versions/v%3F1/submit");
 });
 
-test("editor content always has 6 question slots with choices a-d", () => {
+test("editor content keeps the saved question set (no padding) with choices a-d", () => {
   const { toEditableContent } = loadService([]);
   const content = toEditableContent({ passageTitle: "T", paragraphs: [], questions: [{ id: "q1", type: "literal", prompt: "P",
     correctChoiceId: "c", choices: [{ id: "c", label: "C" }] }] });
   assert.deepEqual(plain(content.paragraphs), [""]);
-  assert.equal(content.questions.length, 6);
+  assert.equal(content.questions.length, 1, "authors add question slots explicitly");
   assert.deepEqual(plain(content.questions[0].choices.map((c: any) => [c.id, c.label])), [["a", ""], ["b", ""], ["c", "C"], ["d", ""]]);
   assert.equal(content.questions[0].correctChoiceId, "c");
-  assert.equal(content.questions[5].correctChoiceId, null);
+});
+
+test("complete-story editor: untouched passages stay byte-identical; blank lines split paragraphs; 5–8 questions", () => {
+  const { passageToText, textToPassage, assessmentRequirements } = real("modules/module2/services/assessmentEditor.ts");
+  const legacy = ["  Ana walked.", "She ran.\nHome."];
+  assert.deepEqual(plain(textToPassage(passageToText(legacy), legacy)), legacy, "an unedited legacy array is kept exactly");
+  assert.deepEqual(plain(textToPassage("\n\nOne.\r\n\r\nTwo\nlines.\n\n")), ["One.", "Two\nlines."], "no empty paragraphs at the ends");
+  assert.deepEqual(plain(textToPassage("A.\n\n\nB.")), ["A.\n\n\nB."], "longer blank-line runs stay inside one paragraph");
+  const q = (type: string) => ({ id: type, type, prompt: "P", correctChoiceId: "a", choices: ["a", "b", "c", "d"].map((id) => ({ id, label: id })) });
+  const words = Array.from({ length: 25 }, (_, i) => `w${i}`).join(" ");
+  const base = { passageTitle: "T", paragraphs: [words] };
+  const five = [q("literal"), q("inferential"), q("critical"), q("literal"), q("literal")];
+  assert.deepEqual(plain(assessmentRequirements({ ...base, questions: five })), []);
+  assert.deepEqual(plain(assessmentRequirements({ ...base, questions: [...five, ...five.slice(0, 3)] })), [], "8 is allowed");
+  assert.ok(assessmentRequirements({ ...base, questions: five.slice(0, 4) }).includes("Include 5–8 comprehension questions."));
+  assert.ok(assessmentRequirements({ ...base, questions: [...five, ...five] }).includes("Include 5–8 comprehension questions."));
+  assert.ok(assessmentRequirements({ ...base, questions: [q("literal"), q("literal"), q("literal"), q("literal"), q("inferential")] })
+    .includes("Include at least one critical question."));
 });
 
 const versionDetail = (overrides: Record<string, unknown> = {}) => ({
@@ -112,29 +130,39 @@ const packageSummary = (permissions: Record<string, boolean>, overrides: Record<
   permissions: { view: true, manage: false, review: false, publish: false, ...permissions }, ...overrides,
 });
 
-function loadDetailModule(runtime: ReturnType<typeof createHookRuntime>, getPackage: () => Promise<unknown>) {
+// Confirmations use the app dialog: each call records its message and takes the next queued answer (default: confirm).
+type Dialog = { asked: string[]; answers: boolean[] };
+function loadDetailModule(runtime: ReturnType<typeof createHookRuntime>, getPackage: () => Promise<unknown>, dialog: Dialog = { asked: [], answers: [] }) {
   return loadComponentModule(new URL("../src/modules/module2/pages/AssessmentPackageDetailPage.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/utils/initialDiagnosticLabels")) return require(new URL("../src/modules/module2/utils/initialDiagnosticLabels.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
+    if (id.endsWith("/hooks/useAssessmentLeaveGuard")) return { useAssessmentLeaveGuard: () => {} };
     if (id === "react-router-dom") return { Link: "Link", useParams: () => ({ packageId: "p1" }) };
+    if (id.includes("ReadFlowDialog")) return { confirmReadFlow: async (message: string) => { dialog.asked.push(message); return dialog.answers.shift() ?? true; } };
+    if (id.endsWith("/hooks/useAssessmentLeaveGuard")) return { useAssessmentLeaveGuard: () => {} };
+    if (id.endsWith("/services/assessmentEditor")) return real("modules/module2/services/assessmentEditor.ts");
+    if (id === "lucide-react") return { ArrowLeft: "ArrowLeft" };
+    // The System Admin's Initial Diagnostic editor is tested on its own (m2InitialDiagnosticEditor.test.ts).
+    if (id.endsWith("/components/InitialDiagnosticEditor")) return { default: "InitialDiagnosticEditor", INITIAL_LIST_PATH: "/system-admin/assessment/initial" };
     if (id.endsWith("/services/assessmentPackages")) {
       const actual = loadService([]);
-      return { ...actual, getAssessmentPackage: getPackage };
+      return { ...actual, getAssessmentPackage: getPackage, listAssessmentPackages: async () => ({ packages: [], capabilities: { create: [], importInitial: [] } }) };
     }
     if (id.endsWith("./AssessmentPackagesPage")) return { ASSESSMENT_PACKAGE_PATHS: { system_admin: "/sa", admin: "/admin/assessment-packages", teacher: "/t" } };
     return require(id);
   });
 }
 
-function renderWorking(props: Record<string, unknown>) {
+function renderWorking(props: Record<string, unknown>, dialog: Dialog = { asked: [], answers: [] }) {
   const runtime = createHookRuntime(require("react"));
-  const mod = loadDetailModule(runtime, async () => ({}));
+  const mod = loadDetailModule(runtime, async () => ({}), dialog);
   const actions: unknown[] = [];
   const all = {
     busy: false, confirming: "", setConfirming: () => {}, onSave: async () => true, onDelete: async () => true,
     onAction: async (...args: unknown[]) => { actions.push(args); return true; }, ...props,
   };
-  return { render: () => runtime.render(mod.WorkingVersion, all), actions };
+  return { render: () => runtime.render(mod.WorkingVersion, all), actions, dialog };
 }
 const buttons = (tree: any) => findAll(tree, (n) => n.type === "button");
 const button = (tree: any, label: RegExp) => buttons(tree).find((b) => label.test(textOf(b)));
@@ -144,21 +172,28 @@ test("detail: the owner edits a draft; Submit is blocked by structural issues; t
   const tree = view.render();
   assert.ok(button(tree, /Save Draft/).props.disabled, "nothing to save yet");
   assert.ok(button(tree, /Submit for Review/).props.disabled, "issues block submission");
-  assert.match(textOf(tree), /Add exactly 6 comprehension questions\./);
+  assert.match(textOf(tree), /Add exactly 6 comprehension questions\./, "the database's own validation is shown");
   assert.match(textOf(tree), /structure only[\s\S]*educator review/);
-  assert.equal(findAll(tree, (n) => n.type === "fieldset").length, 7, "passage + 6 questions");
-  assert.equal(findAll(tree, (n) => n.type === "input" && n.props.type === "radio").length, 24, "one correct answer per question");
+  assert.equal(findAll(tree, (n) => n.type === "fieldset").length, 2, "passage + the one saved question (no padding)");
+  assert.equal(findAll(tree, (n) => n.type === "input" && n.props.type === "radio").length, 4, "one correct answer per question");
+  assert.equal(findAll(tree, (n) => n.type === "textarea").length, 2, "complete-story textarea + question text");
+  button(tree, /Add Question/).props.onClick();
+  const added = view.render();
+  assert.equal(findAll(added, (n) => n.type === "input" && n.props.type === "radio").length, 8, "a slot is added explicitly");
+  assert.equal(button(added, /Save Draft/).props.disabled, false, "the change can be saved");
 });
 
 test("detail: a School Admin sees a Teacher's draft read-only and cannot edit it", () => {
   const view = renderWorking({ version: versionDetail(), detail: { package: packageSummary({ review: true, publish: true }), versions: [] } });
   const tree = view.render();
   assert.equal(button(tree, /Save Draft/), undefined);
-  assert.equal(findAll(tree, (n) => n.type === "ContentView" || n.type?.name === "ContentView").length, 1);
+  assert.equal(button(tree, /Add Question|Remove Question|Delete Draft/), undefined);
+  assert.equal(findAll(tree, (n) => n.type === "textarea" || n.type === "input").length, 0, "nothing is editable");
+  assert.match(textOf(tree), /Ana walked\./);
   assert.match(textOf(tree), /still being written/);
 });
 
-test("detail: library approval needs a statement; return needs a note; Teachers only see 'waiting for review'", () => {
+test("detail: library approval needs a statement; return needs a note; Teachers only see 'waiting for review'", async () => {
   const inReview = versionDetail({ status: "in_review", issues: [], contentSha256: "a".repeat(64) });
   const reviewer = renderWorking({ version: inReview, detail: { package: packageSummary({ review: true, publish: true }), versions: [] } });
   let tree = reviewer.render();
@@ -170,6 +205,7 @@ test("detail: library approval needs a statement; return needs a note; Teachers 
   tree = reviewer.render();
   assert.equal(button(tree, /Approve for Library/).props.disabled, false);
   button(tree, /Approve for Library/).props.onClick();
+  await tick();
   assert.deepEqual(plain(reviewer.actions), [["approve", { attestation: "Reviewed by the Grade 5 English coordinator.", note: "" }]]);
 
   const owner = renderWorking({ version: inReview, detail: { package: packageSummary({ manage: true, publish: true }), versions: [] } });
@@ -178,35 +214,53 @@ test("detail: library approval needs a statement; return needs a note; Teachers 
   assert.match(textOf(tree), /Waiting for review\. Your School Admin reviews Teacher packages\./);
 });
 
-test("detail: publishing needs a confirmation and explains that the previous version is kept", () => {
-  const confirms: string[] = [];
+test("detail: publishing needs a confirmation and explains that the previous version is kept", async () => {
   const approved = versionDetail({ status: "approved", issues: [], contentSha256: "b".repeat(64), educatorReviewAttestation: "Reviewed" });
-  const view = renderWorking({ version: approved, setConfirming: (v: string) => confirms.push(v),
-    detail: { package: packageSummary({ manage: true, publish: true }, { publishedVersion: "1.0", category: "initial" }), versions: [] } });
+  const view = renderWorking({ version: approved,
+    detail: { package: packageSummary({ manage: true, publish: true }, { publishedVersion: "1.0", category: "initial" }), versions: [] } },
+  { asked: [], answers: [false] });
   const tree = view.render();
-  button(tree, /Publish Version 1\.0 in Library/).props.onClick();
-  assert.deepEqual(confirms, ["publish"]);
+  button(tree, /Publish Version 1\.0 in Library/).props.onClick(); // declined in the dialog
+  await tick();
+  assert.equal(view.dialog.asked.length, 1);
+  assert.match(view.dialog.asked[0], /does not activate it for learners/);
   assert.equal(view.actions.length, 0, "nothing is published before confirmation");
+  button(view.render(), /Publish Version 1\.0 in Library/).props.onClick(); // confirmed
+  await tick();
+  assert.deepEqual(plain(view.actions), [["publish", null]]);
   assert.match(textOf(tree), /replaces version 1\.0 there; it is kept unchanged as a retired version/);
   assert.match(textOf(tree), /Publishing does not change what learners take: the current initial diagnostic stays active/);
 });
 
-test("detail page: loads the package and shows the delivered version for the initial diagnostic", async () => {
+test("detail page: a System Admin's initial diagnostic opens the Initial Diagnostic editor at the same route", async () => {
   const runtime = createHookRuntime(require("react"));
   const imported = versionDetail({ id: "v3", versionLabel: "3.0", status: "published", source: "code_import", issues: [] });
-  const mod = loadDetailModule(runtime, async () => ({
+  const detail = {
     package: packageSummary({ manage: true, review: true, publish: true }, { category: "initial", publishedVersion: "4.0", activeVersion: "3.0",
       delivery: { source: "code", assessmentId: "grade5-en-passage-v3", version: "3.0", activationAvailable: false } }),
     versions: [imported],
-  }));
+  };
+  const mod = loadDetailModule(runtime, async () => detail);
   runtime.render(mod.default, { role: "system_admin" });
   for (let i = 0; i < 4; i++) { await tick(); runtime.render(mod.default, { role: "system_admin" }); }
   const tree = runtime.render(mod.default, { role: "system_admin" });
-  const text = textOf(tree);
-  assert.match(text, /Published in libraryVersion 4\.0/);
-  assert.match(text, /Active for learner assessmentVersion 3\.0 \(the current initial diagnostic\)/);
-  assert.ok(button(tree, /New Version/), "a new version can be started from the published one");
-  assert.equal(button(tree, /Archive Package/), undefined, "the initial package is never archived");
+  assert.equal(tree.type, "InitialDiagnosticEditor");
+  assert.equal(tree.props.detail.package.id, "p1");
+  assert.equal(typeof tree.props.onDetail, "function");
+});
+
+test("detail page: other packages keep their editor; the System Admin back link uses the shared style", async () => {
+  const runtime = createHookRuntime(require("react"));
+  const mod = loadDetailModule(runtime, async () => ({
+    package: packageSummary({ manage: true, review: true, publish: true }, { category: "independent" }), versions: [versionDetail()] }));
+  runtime.render(mod.default, { role: "system_admin" });
+  for (let i = 0; i < 4; i++) { await tick(); runtime.render(mod.default, { role: "system_admin" }); }
+  const tree = runtime.render(mod.default, { role: "system_admin" });
+  const back = findAll(tree, (n) => n.type === "Link" && n.props.className === "m3-back-link")[0];
+  assert.equal(back.props.to, "/system-admin/assessment/reassessment");
+  assert.match(textOf(back), /Back to Reassessment/);
+  assert.equal(findAll(back, (n) => n.type === "ArrowLeft").length, 1, "one arrow icon");
+  assert.ok(findAll(tree, (n) => n.props?.role === "tab").length >= 1, "the existing package editor still renders");
 });
 
 test("content view marks the correct answer (staff-only page)", () => {
@@ -221,8 +275,10 @@ test("content view marks the correct answer (staff-only page)", () => {
 test("list page: Teachers create only private packages; the notice says learners are not affected", async () => {
   const runtime = createHookRuntime(require("react"));
   const mod = loadComponentModule(new URL("../src/modules/module2/pages/AssessmentPackagesPage.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/utils/initialDiagnosticLabels")) return require(new URL("../src/modules/module2/utils/initialDiagnosticLabels.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
+    if (id.endsWith("/hooks/useAssessmentLeaveGuard")) return { useAssessmentLeaveGuard: () => {} };
     if (id === "react-router-dom") return { Link: "Link", useNavigate: () => () => {} };
     if (id.endsWith("/services/assessmentPackages")) {
       return { ...loadService([]), listAssessmentPackages: async () => ({ packages: [], capabilities: { create: ["teacher"], importInitial: [] } }) };
@@ -236,6 +292,7 @@ test("list page: Teachers create only private packages; the notice says learners
   assert.match(text, /Only you and your School Admin can see them/);
   assert.match(text, /"Published in library" is not the same as "Active for learner assessment"/);
   assert.match(text, /Official use will require a documented educator endorsement/);
+  assert.doesNotMatch(text, /Reassessment delivery remains subject to its existing policy/);
   assert.match(text, /Package type: Teacher reassessment \(private\)/);
   assert.equal(findAll(tree, (n) => n.type === "select").length, 1, "language only; the package type is fixed");
   assert.equal(button(tree, /Import/), undefined);

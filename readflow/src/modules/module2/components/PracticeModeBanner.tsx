@@ -9,7 +9,8 @@ export default function PracticeModeBanner({ exitTo }: { exitTo: string }) {
       <span className="practice-mode-banner__text">
         Results are not saved, are not official and do not affect any learner.
       </span>
-      <Link className="practice-mode-banner__exit" to={exitTo}>Exit practice</Link>
+      <Link className="practice-mode-banner__exit" to={exitTo}>{exitTo.startsWith("/system-admin/assessment-packages/") ? "Back to Initial Diagnostic"
+        : exitTo.includes("/assessment-packages/") ? "Back to Assessment" : "Exit practice"}</Link>
     </div>
   );
 }

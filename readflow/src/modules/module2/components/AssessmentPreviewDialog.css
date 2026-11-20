@@ -1,0 +1,70 @@
+/* M2 F6 learner preview dialog. Learner styles come from the diagnostic pages; this file only frames them. */
+.m2-preview-dialog {
+  width: min(94vw, 860px);
+  max-height: 92dvh;
+  padding: 0;
+  border: 0;
+  border-radius: 20px;
+  background: #fffaf0;
+  color: #173f3b;
+  box-shadow: 0 18px 50px #0f2f2a55;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.m2-preview-dialog:not([open]) { display: none; }
+.m2-preview-dialog::backdrop { background: #173f3b99; }
+.m2-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #e3e8e2;
+}
+.m2-preview-bar h2 { margin: 0; font-size: 1rem; font-weight: 700; }
+.m2-preview-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid #b9c7c0;
+  border-radius: 10px;
+  background: #fff;
+  color: #173f3b;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+/* Scrolling happens inside the dialog, never on the page behind it. */
+.m2-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: clamp(16px, 3vw, 28px);
+  font-family: "Nunito", system-ui, sans-serif;
+}
+.m2-preview-heading { margin: 0 0 16px; text-align: center; color: #004a4d; font-family: "Fredoka", "Nunito", sans-serif; font-size: 1.35rem; font-weight: 600; }
+.m2-preview-story { max-height: none; }
+.m2-preview-note { margin: 14px 0 0; text-align: center; color: #5f6b78; font-size: .9rem; }
+.m2-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  background: #fff;
+  border-top: 1px solid #e3e8e2;
+}
+.m2-preview-actions button { min-width: 140px; }
+.m2-preview-close:focus-visible, .m2-preview-actions button:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 3px; }
+/* A short slide between screens, like moving from one question to the next. */
+.m2-preview-slide { animation: m2-preview-in .22s ease-out; }
+@keyframes m2-preview-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .m2-preview-slide { animation: none; } }
+@media (max-width: 640px) {
+  .m2-preview-dialog { width: 100vw; max-width: 100vw; max-height: 100dvh; border-radius: 0; }
+  .m2-preview-actions button { flex: 1 1 40%; min-width: 0; }
+}

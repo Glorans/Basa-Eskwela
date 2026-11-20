@@ -193,12 +193,21 @@ test("F6 wiring: learner routes ask the server; F7 Practice Mode keeps the built
   assert.match(routes, /role="alert"[\s\S]*Try Again/, "a load failure is shown with Try Again");
 });
 
-function mountDetail(detail: unknown, calls: unknown[][]) {
+// Confirmations use the app dialog: each call records its message and takes the next queued answer (default: confirm).
+// M2 F6: the System Admin's Initial Diagnostic is managed in its own editor (same route as before).
+function mountDetail(detail: unknown, calls: unknown[][], dialog: { asked: string[]; answers: boolean[] } = { asked: [], answers: [] }) {
   const runtime = createHookRuntime(require("react"));
-  const mod = loadComponentModule(new URL("../src/modules/module2/pages/AssessmentPackageDetailPage.tsx", import.meta.url), (id) => {
+  let current = detail as any;
+  const mod = loadComponentModule(new URL("../src/modules/module2/components/InitialDiagnosticEditor.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/utils/initialDiagnosticLabels")) return require(new URL("../src/modules/module2/utils/initialDiagnosticLabels.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
-    if (id === "react-router-dom") return { Link: "Link", useParams: () => ({ packageId: "p1" }) };
+    if (id === "react-router-dom") return { Link: "Link" };
+    if (id === "lucide-react") return { ArrowLeft: "ArrowLeft" };
+    if (id.endsWith("/AssessmentPreviewDialog")) return { default: "AssessmentPreviewDialog" };
+    if (id.includes("ReadFlowDialog")) return { confirmReadFlow: async (message: string) => { dialog.asked.push(message); return dialog.answers.shift() ?? true; } };
+    if (id.endsWith("/hooks/useAssessmentLeaveGuard")) return { useAssessmentLeaveGuard: () => {} };
+    if (id.endsWith("/services/assessmentEditor")) return require(new URL("../src/modules/module2/services/assessmentEditor.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id.endsWith("/services/assessmentPackages")) {
       const actual = loadComponentModule(new URL("../src/modules/module2/services/assessmentPackages.ts", import.meta.url), (inner) => {
         if (inner === "axios") return { default: { isAxiosError: () => false } };
@@ -210,10 +219,9 @@ function mountDetail(detail: unknown, calls: unknown[][]) {
         activateInitialVersion: async (...args: unknown[]) => { calls.push(["activate", ...args]); return detail; },
         returnToBuiltInInitial: async (...args: unknown[]) => { calls.push(["builtin", ...args]); return detail; } };
     }
-    if (id.endsWith("./AssessmentPackagesPage")) return { ASSESSMENT_PACKAGE_PATHS: { system_admin: "/sa", admin: "/a", teacher: "/t" } };
     return require(id);
   });
-  return () => runtime.render(mod.default, { role: "system_admin" });
+  return () => runtime.render(mod.default, { detail: current, siblings: [], onDetail: (next: unknown) => { current = next; } });
 }
 const version = (id: string, label: string, extra: Record<string, unknown>) => ({
   id, versionNumber: Number(label[0]), versionLabel: label, status: "published", source: "authored", createdAt: "", submittedAt: null, reviewedAt: null,
@@ -228,23 +236,25 @@ const initialPkg = (activation: Record<string, unknown>, activeVersion: string) 
 
 test("F6 System Admin page: shows the active version; Activate needs a confirmation and sends the version it replaces", async () => {
   const calls: unknown[][] = [];
+  const dialog = { asked: [] as string[], answers: [false] };
   const detail = { package: initialPkg({ available: true, canManage: true, activeVersionId: null }, "3.0"), versions: [
     version("v4", "4.0", { canActivate: true }), version("v3", "3.0", { source: "code_import", activeForLearners: true }) ] };
-  const render = mountDetail(detail, calls);
+  const render = mountDetail(detail, calls, dialog);
   render();
   await settle(render);
   let tree = render();
-  assert.match(textOf(tree), /New learners take the built-in initial diagnostic \(version 3\.0\)\..*Publishing a version never changes this/s);
-  assert.match(textOf(tree), /Version 3\.0.*Built-in diagnostic.*Active for learners/s);
+  assert.match(textOf(tree), /Active versionVersion 3\.0/);
+  assert.match(textOf(tree), /Version 3\.0 — Published · Active/, "published AND active, both shown");
   const label = (re: RegExp) => findAll(tree, (n) => n.type === "button" && re.test(textOf(n)))[0];
   assert.equal(findAll(tree, (n) => n.type === "button" && /Activate for Learners/.test(textOf(n))).length, 1, "only the eligible version");
-  assert.equal(findAll(tree, (n) => n.type === "button" && /Return to Built-in/.test(textOf(n))).length, 0, "already on the built-in version");
-  label(/Activate for Learners/).props.onClick();
+  assert.equal(findAll(tree, (n) => n.type === "button" && /Return Learners to 3\.0/.test(textOf(n))).length, 0, "already on the built-in version");
+  label(/Activate for Learners/).props.onClick(); // declined in the dialog
   await settle(render);
-  tree = render();
   assert.equal(calls.length, 0, "nothing happens without confirmation");
-  assert.match(textOf(tree), /Learners who already completed the initial\s+diagnostic keep their result and are not asked to retake it/);
-  label(/Confirm Activation/).props.onClick();
+  assert.match(dialog.asked[0], /Learners who already completed the initial\s+diagnostic keep their result and are not asked to retake it/);
+  assert.match(dialog.asked[0], /up to 24 hours/);
+  tree = render();
+  label(/Activate for Learners/).props.onClick(); // confirmed
   await settle(render);
   assert.deepEqual(calls, [["activate", "p1", "v4", null]]);
 });
@@ -257,10 +267,13 @@ test("F6 page: after activation a System Admin can return to 3.0; without manage
   render();
   await settle(render);
   let tree = render();
-  assert.match(textOf(tree), /New learners take version 4\.0 \(activated by a System Admin\)\./);
-  findAll(tree, (n) => n.type === "button" && /Return to Built-in 3\.0/.test(textOf(n)))[0].props.onClick();
+  assert.match(textOf(tree), /Active versionVersion 4\.0/);
+  assert.equal(findAll(tree, (n) => n.type === "button" && /^Already Active$/.test(textOf(n))).length, 1, "the active 4.0 is not re-activated");
+  // 3.0 is activated from 3.0 itself (the existing return-to-built-in action), confirmed in the dialog.
+  findAll(tree, (n) => n.type === "select")[0].props.onChange({ target: { value: "v3" } });
   await settle(render);
-  findAll(render(), (n) => n.type === "button" && /Confirm Return/.test(textOf(n)))[0].props.onClick();
+  tree = render();
+  findAll(tree, (n) => n.type === "button" && /^Activate for Learners$/.test(textOf(n)))[0].props.onClick();
   await settle(render);
   assert.deepEqual(calls, [["builtin", "p1", "v4"]]);
   const readOnly = { ...active, package: initialPkg({ available: true, canManage: false, activeVersionId: "v4" }, "4.0") };
@@ -268,7 +281,7 @@ test("F6 page: after activation a System Admin can return to 3.0; without manage
   render();
   await settle(render);
   tree = render();
-  assert.equal(findAll(tree, (n) => n.type === "button" && /Activate|Return to Built-in/.test(textOf(n))).length, 0);
+  assert.equal(findAll(tree, (n) => n.type === "button" && /Activate|Return Learners|Already Active/.test(textOf(n))).length, 0);
 });
 
 // Phase 8 regression: a failed delivery must never silently substitute the bundled 3.0 (it may not be the active version).

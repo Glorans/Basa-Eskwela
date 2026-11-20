@@ -1,0 +1,8 @@
+.m2-assessment-nav > button { width: 100%; border: 0; font: inherit; cursor: pointer; text-align: left; }
+.m2-assessment-nav > button > svg:last-child { margin-left: auto; transition: transform .15s; }
+.m2-assessment-nav > button[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.m2-assessment-nav [hidden] { display: none; }
+.m2-assessment-subitem { margin: 4px 0 4px 16px; padding-left: 18px; border-left: 2px solid #bad5c6; font-size: .9rem; }
+.m2-assessment-nav a:focus-visible, .m2-assessment-nav button:focus-visible { outline: 3px solid #327651; outline-offset: 2px; }
+
+@media (min-width: 1000px) { .rf-shell--collapsed .m2-assessment-nav #m2-assessment-submenu { display: none; } .rf-shell--collapsed .m2-assessment-nav > button > svg:last-child { display: none; } }

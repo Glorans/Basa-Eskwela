@@ -78,7 +78,7 @@ export default function DiagnosticQuestionsPage({
     if (session) diagnosticSession.save(assessment, { ...session, answers, questionIndex: currentQuestionIndex });
   }, [session, diagnosticSession, assessment, answers, currentQuestionIndex]);
 
-  if (!reading || !session) return <Navigate to={`${basePath}/${assessment.language}/reading`} replace />;
+  if (!reading || !session) return <Navigate to={`${basePath}/${assessment.language}/reading`} state={practice ? { practiceExitTo: practice.exitTo } : undefined} replace />;
 
   if (!currentQuestion) {
     return (
@@ -130,7 +130,7 @@ export default function DiagnosticQuestionsPage({
         const practiceResult = await scoreDiagnosticPractice(result);
         if (!mounted.current) return;
         diagnosticSession.clear(assessment);
-        navigate(`${basePath}/${assessment.language}/result`, { state: { practiceResult } });
+        navigate(`${basePath}/${assessment.language}/result`, { state: { practiceResult, practiceExitTo: practice.exitTo } });
       } catch (error) {
         if (!mounted.current) return;
         if (error instanceof DiagnosticPracticeError && error.code === "READING_NOT_VERIFIED") {
@@ -221,7 +221,7 @@ export default function DiagnosticQuestionsPage({
       labelledBy="diagnostic-questions-title"
     >
       {practice && <PracticeModeBanner exitTo={practice.exitTo} />}
-      <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`${basePath}/${assessment.language}/reading`)}>{t("Back to the story")}</button>
+      <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`${basePath}/${assessment.language}/reading`, { state: practice ? { practiceExitTo: practice.exitTo } : undefined })}>{t("Back to the story")}</button>
       <header className="diagnostic-questions-header">
         <h1 id="diagnostic-questions-title">{t("Answer the Questions")}</h1>
         <p>{t("Choose the best answer. Take your time!")}</p>

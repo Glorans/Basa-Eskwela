@@ -61,13 +61,16 @@ export default function PracticeResultPage({ language, practice }: { language: D
               ))}
             </ol>
           </section>
-          <p className="practice-diagnostic-note">Assessment version {result.assessmentVersion}.</p>
+          <p className="practice-diagnostic-note">{languageLabel} · Version {result.assessmentVersion}{result.passageTitle ? ` · ${result.passageTitle}` : ""}</p>
         </>
       )}
 
       <div className="practice-result-actions">
-        <Link className="diagnostic-primary-button" to={`${PRACTICE_BASE_PATH}/${language}/reading`}>Practise again</Link>
-        <Link className="diagnostic-recording-secondary-button" to={PRACTICE_BASE_PATH}>Choose a language</Link>
+        <Link className="diagnostic-primary-button" to={`${practice.basePath}/${language}/reading`} state={{ practiceExitTo: practice.exitTo }}>Practise again</Link>
+        {/* A version practice is for one language and version only; the built-in practice offers both languages. */}
+        {practice.basePath === PRACTICE_BASE_PATH
+          ? <Link className="diagnostic-recording-secondary-button" to={PRACTICE_BASE_PATH} state={{ practiceExitTo: practice.exitTo }}>Choose a language</Link>
+          : <Link className="diagnostic-recording-secondary-button" to={practice.exitTo}>Back to Initial Diagnostic</Link>}
       </div>
     </DiagnosticLayout>
   );

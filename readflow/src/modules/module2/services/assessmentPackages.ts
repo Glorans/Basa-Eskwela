@@ -213,11 +213,9 @@ export const EMPTY_QUESTION = (): PackageQuestion => ({
   choices: (["a", "b", "c", "d"] as ChoiceId[]).map((id) => ({ id, label: "" })),
 });
 
-/** Editor state: always 6 question slots, so drafts can be filled in any order. */
+/** Preserve the saved question set; authors add slots explicitly. */
 export function toEditableContent(content: PackageContent): PackageContent {
-  const questions = Array.from({ length: 6 }, (_, i) => {
-    const q = content.questions[i];
-    if (!q) return EMPTY_QUESTION();
+  const questions = content.questions.map((q) => {
     return {
       ...q,
       choices: (["a", "b", "c", "d"] as ChoiceId[]).map((id) => ({ id, label: q.choices.find((c) => c.id === id)?.label ?? "" })),

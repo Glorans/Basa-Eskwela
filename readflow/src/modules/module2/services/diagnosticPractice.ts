@@ -11,6 +11,8 @@ export interface DiagnosticPracticeResult {
   language: "en" | "fil";
   assessmentId: string;
   assessmentVersion: string;
+  /** The practised passage's title (version practice and built-in). */
+  passageTitle?: string;
   scoringRule: string;
   wordRecognitionScore: number;
   comprehensionScore: number;

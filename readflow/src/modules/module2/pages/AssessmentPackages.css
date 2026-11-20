@@ -84,3 +84,41 @@ button.m2-student-start:disabled { opacity: 0.7; cursor: default; }
 .m2-packages-note { margin: 0 0 8px; color: #4b5b6b; }
 .m2-packages-activation { margin: 12px 0 16px; padding: 12px 16px; border: 1px solid #dbe9df; border-radius: 12px; background: #f8fbf8; }
 .m2-packages-activation h2 { margin: 0 0 6px; font-size: 1.05rem; }
+
+/* M2 assessment editor; hidden tab panels stay mounted to retain unsaved work. */
+.m2-packages-page [hidden] { display: none !important; }
+.m2-editor-header { display: grid; gap: 12px; }
+.m2-editor-back { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 10px 16px; border: 1px solid #b9c7c0; border-radius: 10px; color: #23443a; background: #f1f8f4; font-weight: 700; text-decoration: none; }
+.m2-editor-selection { display: grid; gap: 5px; max-width: 480px; font-weight: 700; }
+.m2-editor-selection select { width: 100%; min-width: 0; padding: 10px; border-radius: 8px; border: 1px solid #b9c7c0; font: inherit; }
+.m2-editor-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 6px; background: #eef5f1; border-radius: 12px; }
+.m2-editor-tabs button { min-height: 48px; padding: 10px; background: transparent; border: 0; border-radius: 8px; color: #23443a; font: inherit; font-weight: 700; }
+.m2-editor-tabs button[aria-selected="true"] { background: #23443a; color: white; }
+.m2-packages-page button:focus-visible, .m2-packages-page summary:focus-visible, .m2-editor-back:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 3px; }
+.m2-editor-fields { display: grid; gap: 12px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.m2-editor-fields label { display: grid; gap: 6px; font-weight: 700; }
+.m2-editor-fields input:not([type="radio"]), .m2-editor-fields textarea, .m2-editor-fields select { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; padding: 10px 12px; border: 1px solid #b9c7c0; border-radius: 8px; }
+.m2-editor-fields textarea { line-height: 1.7; resize: vertical; }
+.m2-editor-question { border: 1px solid #d8e2dc; border-radius: 10px; padding: 14px; }
+.m2-editor-question summary { cursor: pointer; font-weight: 700; overflow-wrap: anywhere; }
+.m2-editor-question[open] summary { margin-bottom: 16px; }
+.m2-editor-question-preview { display: block; font-weight: 400; color: #5f6b78; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 6px; }
+.m2-editor-add { justify-self: start; }
+.m2-editor-versions { list-style: none; padding: 0; display: grid; gap: 12px; }
+.m2-editor-versions li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.m2-editor-toolbar { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px; background: #fff; border: 1px solid #b9c7c0; border-radius: 12px; box-shadow: 0 4px 18px #23443a22; }
+.m2-editor-toolbar > span { margin-right: auto; }
+.m2-editor-story p, .m2-packages-content > p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.m2-editor-message { white-space: pre-line; }
+.m2-editor-success { color: #1f6b46; padding: 10px 14px; background: #e2f4ea; border-radius: 8px; }
+.m2-editor-checklist { padding-left: 22px; line-height: 1.8; }
+@media (max-width: 640px) { .m2-editor-tabs { grid-template-columns: 1fr 1fr; } .m2-editor-toolbar { bottom: 0; } .m2-editor-toolbar button { flex: 1 1 40%; } .m2-editor-toolbar > span { flex-basis: 100%; } }
+
+.m2-assessment-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 20px; }
+.m2-assessment-cards a { display: grid; gap: 10px; padding: 24px; border: 1px solid #c8dbcf; border-radius: 14px; color: #23443a; text-decoration: none; background: #f5faf7; }
+.m2-assessment-cards strong { font-size: 1.3rem; }
+.m2-language-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.m2-language-tabs a { padding: 8px 20px; border: 1px solid #b9c7c0; border-radius: 8px; color: #23443a; text-decoration: none; font-weight: 700; }
+.m2-language-tabs a[aria-current="page"] { background: #23443a; color: white; }
+.m2-content-preview { padding: 16px; border: 1px solid #d8e2dc; border-radius: 10px; }
+.m2-content-preview summary { cursor: pointer; font-weight: 700; }

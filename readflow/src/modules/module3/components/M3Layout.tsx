@@ -1,3 +1,4 @@
+import AssessmentNavigation from "../../module2/components/AssessmentNavigation";
 import useResponsiveSidebar from "../../../hooks/useResponsiveSidebar";
 import "../../../styles/responsive-shell.css";
 import {
@@ -47,10 +48,9 @@ function getNavItems(role: ShellRole) {
       // Appendix N M7 for the System Admin: F2 (system-wide dashboard) and F4 (Independent Learner performance).
       { label: "Platform Analytics", to: "/system-admin/analytics", icon: ChartNoAxesCombined, end: true },
       { label: "Independent Learners", to: "/system-admin/independent-learners", icon: UserRound, end: true },
-      // Appendix N M2 F7: try the initial diagnostic in Practice Mode (never saved).
-      { label: "Try Assessment", to: "/practice/diagnostic", icon: BookOpenCheck, end: false },
-      // Appendix N M2 F6 + F10: initial diagnostic and Independent Learner reassessment packages.
-      { label: "Assessment Packages", to: "/system-admin/assessment-packages", icon: ClipboardList, end: false },
+      // Appendix N M2 F6/F7/F10: the expandable Assessment group (AssessmentNavigation) follows these items.
+      // F7 Try Assessment is opened from the Initial Diagnostic's built-in version 3.0.
+
     ];
   }
   return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
@@ -222,6 +222,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
                 <span className="rf-nav-label">{label}</span>
               </NavLink>
             ))}
+            {role === "system_admin" && <AssessmentNavigation onExpand={() => { if (!sidebar.expanded) sidebar.toggle(); }} onNavigate={() => sidebar.close()} />}
           </nav>
         </div>
 

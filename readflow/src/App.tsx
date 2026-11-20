@@ -21,7 +21,7 @@ import {
 } from "./modules/module2/components/DiagnosticRoutes";
 import DiagnosticStartPage from "./modules/module2/pages/DiagnosticStartPage";
 import InitialDiagnosticGuard from "./modules/module2/components/InitialDiagnosticGuard";
-import { PracticeDiagnosticFlow, PracticeDiagnosticLanguageRoute } from "./modules/module2/components/PracticeDiagnosticRoutes";
+import { PracticeDiagnosticFlow, PracticeDiagnosticLanguageRoute, PracticeVersionRoute } from "./modules/module2/components/PracticeDiagnosticRoutes";
 import PracticeStartPage from "./modules/module2/pages/PracticeStartPage";
 import { PRACTICE_STAFF_ROLES } from "./modules/module2/utils/practiceMode";
 
@@ -199,6 +199,10 @@ function App() {
           <Route path="/practice/diagnostic/:language/reading" element={<PracticeDiagnosticLanguageRoute step="reading" />} />
           <Route path="/practice/diagnostic/:language/questions" element={<PracticeDiagnosticLanguageRoute step="questions" />} />
           <Route path="/practice/diagnostic/:language/result" element={<PracticeDiagnosticLanguageRoute step="result" />} />
+          {/* One authored Initial Diagnostic version (System Admin; the server checks access and version status). */}
+          <Route path="/practice/diagnostic/version/:versionId/:language/reading" element={<PracticeVersionRoute step="reading" />} />
+          <Route path="/practice/diagnostic/version/:versionId/:language/questions" element={<PracticeVersionRoute step="questions" />} />
+          <Route path="/practice/diagnostic/version/:versionId/:language/result" element={<PracticeVersionRoute step="result" />} />
         </Route>
       </Route>
 
@@ -316,6 +320,8 @@ function App() {
             <Route path="independent-learners" element={<SystemAdminLearnerPerformancePage />} />
             {/* M2 F6 + F10 - initial diagnostic and Independent Learner reassessment packages */}
             <Route path="assessment-packages" element={<AssessmentPackagesPage role="system_admin" />} />
+            <Route path="assessment/initial" element={<AssessmentPackagesPage key="initial" role="system_admin" section="initial" />} />
+            <Route path="assessment/reassessment" element={<AssessmentPackagesPage key="reassessment" role="system_admin" section="independent" />} />
             <Route path="assessment-packages/:packageId" element={<AssessmentPackageDetailPage role="system_admin" />} />
             <Route path="content" element={<Module3Page workspace="system_admin" />} />
             <Route path="content/modules/new" element={<ModuleFormPage mode="create" workspace="system_admin" />} />

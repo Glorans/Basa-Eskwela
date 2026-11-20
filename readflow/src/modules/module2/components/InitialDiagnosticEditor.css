@@ -1,0 +1,79 @@
+/* M2 F6 System Admin Initial Diagnostic editor. Shared package styles come from AssessmentPackages.css and m7.css. */
+.m2-id-page { display: grid; gap: 16px; align-content: start; }
+.m2-id-header { display: grid; gap: 12px; }
+.m2-id-header h1 { margin: 0; font-size: clamp(1.5rem, 2.4vw, 1.9rem); font-weight: 800; color: #173f3b; }
+.m2-id-facts { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0; }
+.m2-id-facts div { display: grid; gap: 2px; }
+.m2-id-facts dt { color: #5f6b78; font-size: .85rem; }
+.m2-id-facts dd { margin: 0; font-weight: 700; }
+.m2-id-select { display: grid; gap: 6px; max-width: 420px; font-weight: 700; }
+.m2-id-select select { width: 100%; min-width: 0; padding: 10px; border: 1px solid #b9c7c0; border-radius: 8px; font: inherit; }
+.m2-id-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.m2-id-page [role="tabpanel"] { display: grid; gap: 12px; }
+.m2-id-page [role="tabpanel"][hidden] { display: none; }
+.m2-id-version-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.m2-id-version-head h2 { margin: 0; font-size: 1.2rem; }
+.m2-id-version-head .m2-packages-status, .m2-id-version-head .m2-packages-tag { margin-left: 0; }
+.m2-id-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.m2-id-page button, .m2-id-button { min-height: 42px; font-weight: 700; }
+.m2-id-button {
+  display: inline-flex; align-items: center; padding: 8px 12px; border: 1px solid #bdd8c7; border-radius: 9px;
+  background: #e5f1e8; color: #245d46; text-decoration: none;
+}
+.m2-id-page button.m2-id-primary, .m2-id-dialog button.m2-id-primary { background: #23443a; border-color: #23443a; color: #fff; }
+.m2-id-page button:disabled { cursor: not-allowed; }
+.m2-id-button:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 3px; }
+.m2-id-versions { width: 100%; border-collapse: collapse; }
+.m2-id-versions th, .m2-id-versions td { padding: 8px 10px; border-bottom: 1px solid #e3e8e2; text-align: left; }
+.m2-id-versions tr[aria-current="true"] { background: #f1f8f4; }
+.m2-id-versions .m2-packages-status { margin-left: 0; }
+.m2-id-questions { display: grid; gap: 10px; }
+.m2-id-dialog { width: min(92vw, 30rem); padding: 24px; border: 0; border-radius: 20px; color: #173f3b; box-shadow: 0 18px 50px #0f2f2a55; }
+.m2-id-dialog::backdrop { background: #173f3b99; }
+.m2-id-dialog h2 { margin: 0 0 12px; font-size: 1.2rem; }
+.m2-id-dialog label { display: grid; gap: 6px; margin-top: 12px; font-weight: 700; }
+.m2-id-dialog textarea { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #b9c7c0; border-radius: 8px; font: inherit; }
+.m2-id-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.m2-id-dialog button { min-height: 42px; padding: 8px 16px; border: 1px solid #bdd8c7; border-radius: 9px; background: #e5f1e8; color: #245d46; font: inherit; font-weight: 700; cursor: pointer; }
+.m2-id-dialog button:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 3px; }
+@media (max-width: 640px) {
+  .m2-id-tabs { grid-template-columns: 1fr; }
+  .m2-id-actions > * { flex: 1 1 45%; justify-content: center; }
+  .m2-id-versions th:nth-child(3), .m2-id-versions td:nth-child(3) { display: none; }
+}
+
+/* One action bar for the selected version, on every tab. It sticks to the bottom of the viewport while content
+   scrolls; the page keeps room below the last section so the bar never covers it. */
+.m2-id-page { padding-bottom: 24px; }
+.m2-id-bar {
+  position: sticky; bottom: 0; z-index: 6; display: grid; gap: 8px; padding: 12px 14px;
+  background: #ffffff; border: 1px solid #b9c7c0; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 18px #23443a22;
+}
+.m2-id-bar-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.m2-id-chip { display: inline-block; padding: 3px 10px; border-radius: 999px; background: #eef1f4; color: #3b4a59; font-size: .85rem; font-weight: 700; }
+.m2-id-chip--selected { background: #23443a; color: #fff; }
+.m2-id-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.m2-id-action { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.m2-id-reason { color: #7a3b00; font-size: .85rem; font-weight: 600; }
+.m2-id-page button.m2-id-link { min-height: 0; padding: 4px 6px; border: 0; background: transparent; color: #1f4f8a; text-decoration: underline; font-weight: 700; }
+.m2-id-bar-error { color: #8a1c1c; background: #fdecec; border-radius: 8px; padding: 8px 12px; }
+.m2-id-bar-notice { margin: 0; color: #1f6b46; background: #e2f4ea; border-radius: 8px; padding: 8px 12px; }
+.m2-id-missing { max-height: 30vh; overflow-y: auto; padding: 8px 12px; background: #fff8e6; border-radius: 8px; }
+.m2-id-missing p { margin: 0 0 4px; font-weight: 700; }
+.m2-id-missing ul { margin: 0; padding-left: 20px; }
+@media (max-width: 640px) {
+  .m2-id-bar { padding: 10px; gap: 6px; border-radius: 12px 12px 0 0; }
+  .m2-id-bar-actions > button, .m2-id-bar-actions > a, .m2-id-action { flex: 1 1 45%; }
+  .m2-id-action > button { flex: 1 1 100%; }
+  .m2-id-reason { flex-basis: 100%; }
+  .m2-id-chip { font-size: .78rem; }
+}
+
+/* Passage limits (shown before typing), the live counter and plain-language messages. Nothing is ever cut. */
+.m2-id-limits { margin: 0; color: #3b4a59; font-size: .9rem; }
+.m2-id-counter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; border-radius: 8px; background: #e2f4ea; color: #1f6b46; font-size: .92rem; }
+.m2-id-counter[data-state="below"] { background: #fff8e6; color: #7a5a00; }
+.m2-id-counter[data-state="over"] { background: #fdecec; color: #8a1c1c; }
+.m2-id-passage-issues { margin: 0; padding: 8px 12px 8px 30px; border-radius: 8px; background: #fff8e6; color: #5a4300; }
+.m2-id-active-tag { background: #23443a; color: #fff; font-weight: 700; }
+.m2-id-version-facts { margin: 4px 0 6px; }
