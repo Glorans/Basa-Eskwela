@@ -18,6 +18,8 @@ import {
 } from "../services/reassessments";
 import "../../module7/m7.css";
 import "./AssessmentPackages.css";
+import AssessmentBackButton from "../components/AssessmentBackButton";
+import { getRoleHomePath } from "../../module1/utils/authOnboarding";
 
 const LANGUAGE = { en: "English", fil: "Filipino" } as const;
 /** The server's explanation when there is one, otherwise a plain fallback. */
@@ -143,11 +145,12 @@ export default function ReassessmentAssignmentsPage({ role }: { role: "admin" | 
 
   return (
     <main className="m7-page m2-packages-page">
+      <AssessmentBackButton fallback={getRoleHomePath(role)} />
       <h1>Reassessment Assignments</h1>
       <p className="m2-packages-intro">
         {role === "teacher"
-          ? "Assign your published, educator-endorsed reassessment packages to Students in your active Learning Rooms."
-          : "Assign school reassessment packages to Students in active Learning Rooms. A Teacher's package can be used only in that Teacher's rooms."}
+          ? "Assign your published reassessment packages to Students in your active Learning Rooms."
+          : "Assign school reassessment packages to Students in active Learning Rooms."}
       </p>
       {!loading && !loadError && !enabled && (
         <p className="m2-packages-notice" role="note">
@@ -206,24 +209,27 @@ export default function ReassessmentAssignmentsPage({ role }: { role: "admin" | 
                 {roster && pkg && (
                   <fieldset className="m2-f9-students">
                     <legend>Students currently enrolled ({roster.length})</legend>
-                    <label className="m2-packages-correct">
-                      <input type="radio" name="f9-mode" checked={mode === "selected"} onChange={() => setMode("selected")} />
-                      <span>Selected Students</span>
-                    </label>
-                    <label className="m2-packages-correct">
-                      <input type="radio" name="f9-mode" checked={mode === "all_eligible"} onChange={() => setMode("all_eligible")} />
-                      <span>All eligible Students enrolled now ({eligibleStudents.length})</span>
-                    </label>
+                    <div className="m2-f9-modes" role="radiogroup" aria-label="Who to assign">
+                      <label className="m2-f9-choice">
+                        <input type="radio" name="f9-mode" checked={mode === "selected"} onChange={() => setMode("selected")} />
+                        <span>Selected Students</span>
+                      </label>
+                      <label className="m2-f9-choice">
+                        <input type="radio" name="f9-mode" checked={mode === "all_eligible"} onChange={() => setMode("all_eligible")} />
+                        <span>All eligible Students enrolled now ({eligibleStudents.length})</span>
+                      </label>
+                    </div>
                     {roster.length === 0 ? <p className="m2-packages-empty">No Students are enrolled in this room.</p> : (
                       <ul className="m2-f9-roster">
                         {roster.map((s) => (
-                          <li key={s.id}>
-                            <label className="m2-packages-correct">
+                          <li key={s.id} data-ineligible={s.reason ? "true" : undefined}>
+                            <label className="m2-f9-choice">
                               <input type="checkbox" disabled={mode === "all_eligible" || Boolean(s.reason)}
+                                aria-describedby={s.reason ? `f9-reason-${s.id}` : undefined}
                                 checked={mode === "all_eligible" ? !s.reason : selected.includes(s.id)} onChange={() => toggle(s.id)} />
-                              <span>{s.name}</span>
+                              <span className="m2-f9-name">{s.name}</span>
                             </label>
-                            {s.reason && <span className="m2-packages-meta"> {s.reason}</span>}
+                            {s.reason && <span id={`f9-reason-${s.id}`} className="m2-f9-reason">{s.reason}</span>}
                           </li>
                         ))}
                       </ul>
@@ -260,7 +266,7 @@ export default function ReassessmentAssignmentsPage({ role }: { role: "admin" | 
 
           <section aria-labelledby="f9-list">
             <div className="m2-f9-list-head">
-              <h2 id="f9-list">Assignments</h2>
+              <h2 id="f9-list">Existing Assignments</h2>
               <label>
                 <span>Status</span>
                 <select value={statusFilter} onChange={(event) => {
@@ -278,7 +284,7 @@ export default function ReassessmentAssignmentsPage({ role }: { role: "admin" | 
             {tableError && <p role="alert" className="m2-packages-error">{tableError}</p>}
             {assignments.length === 0 ? <p className="m2-packages-empty">No assignments yet.</p> : (
               <div className="m2-packages-table-wrap">
-                <table className="m2-packages-table">
+                <table className="m2-packages-table m2-f9-table">
                   <thead>
                     <tr>
                       <th scope="col">Student</th>
@@ -293,12 +299,12 @@ export default function ReassessmentAssignmentsPage({ role }: { role: "admin" | 
                   <tbody>
                     {assignments.map((a) => (
                       <tr key={a.id}>
-                        <td>{a.studentName}</td>
-                        <td>{a.packageTitle} · {LANGUAGE[a.language]}{a.versionLabel ? ` · Version ${a.versionLabel}` : ""}</td>
-                        <td>{a.roomName}</td>
-                        <td>{formatManilaDate(a.assignedAt)}<span className="m2-packages-meta"> by {a.assignedBy}</span></td>
-                        <td>{a.dueAt ? formatManilaDate(a.dueAt) : "None"}</td>
-                        <td>
+                        <td data-label="Student">{a.studentName}</td>
+                        <td data-label="Package">{a.packageTitle} · {LANGUAGE[a.language]}{a.versionLabel ? ` · Version ${a.versionLabel}` : ""}</td>
+                        <td data-label="Learning Room">{a.roomName}</td>
+                        <td data-label="Assigned">{formatManilaDate(a.assignedAt)}<span className="m2-packages-meta"> by {a.assignedBy}</span></td>
+                        <td data-label="Due">{a.dueAt ? formatManilaDate(a.dueAt) : "None"}</td>
+                        <td data-label="Status">
                           <span className="m2-packages-status" data-status={a.status === "active" ? "approved" : a.status === "completed" ? "published" : "retired"}>
                             {STATUS[a.status]}
                           </span>

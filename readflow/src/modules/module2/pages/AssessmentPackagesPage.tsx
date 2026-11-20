@@ -17,6 +17,8 @@ import { INITIAL_STATUS_LABELS, initialAssessmentName } from "../utils/initialDi
 import type { DiagnosticLanguage } from "../types/diagnostic";
 import "../../module7/m7.css";
 import "./AssessmentPackages.css";
+import AssessmentBackButton from "../components/AssessmentBackButton";
+import { getRoleHomePath } from "../../module1/utils/authOnboarding";
 
 export type AssessmentPackageRole = "system_admin" | "admin" | "teacher";
 
@@ -29,17 +31,17 @@ export const ASSESSMENT_PACKAGE_PATHS: Record<AssessmentPackageRole, string> = {
 const PAGE_COPY: Record<AssessmentPackageRole, { title: string; intro: string; groups: PackageCategory[] }> = {
   system_admin: {
     title: "Assessment Packages",
-    intro: "Manage the initial diagnostic for all learners and the centrally approved reassessment packages for Independent Learners.",
+    intro: "Manage the initial diagnostic for all learners and the central reassessment packages for Independent Learners.",
     groups: ["initial", "independent"],
   },
   admin: {
     title: "Reassessment Packages",
-    intro: "Manage the school's classroom reassessment packages and review the packages Teachers submit.",
-    groups: ["school", "teacher"],
+    intro: "Create and publish the school's classroom reassessment packages.",
+    groups: ["school"],
   },
   teacher: {
     title: "Reassessment Packages",
-    intro: "Create private reassessment packages for Students in your Learning Rooms. Only you and your School Admin can see them.",
+    intro: "Create and publish private reassessment packages for Students in your Learning Rooms. Only you can see and change them.",
     groups: ["teacher"],
   },
 };
@@ -117,6 +119,7 @@ export default function AssessmentPackagesPage({ role, section }: { role: Assess
   return (
     <main className="m7-page m2-packages-page">
       {section && <Link className="m3-back-link" to={basePath}><ArrowLeft size={17} aria-hidden="true" /> Back to Assessment</Link>}
+      {role !== "system_admin" && <AssessmentBackButton fallback={getRoleHomePath(role)} />}
       <h1>{landing ? "Assessment" : copy.title}</h1>
       {landing && <div className="m2-assessment-cards">
         <Link to="/system-admin/assessment/initial"><strong>Initial Diagnostic</strong><span>Manage the English and Filipino initial diagnostics.</span></Link>
@@ -128,9 +131,8 @@ export default function AssessmentPackagesPage({ role, section }: { role: Assess
       {!landing && <p className="m2-packages-intro">{copy.intro}</p>}
       {/* System Admin pages keep only actionable text; School Admin and Teacher pages keep their notice. */}
       {role !== "system_admin" && <p className="m2-packages-notice" role="note">
-        "Published in library" is not the same as "Active for learner assessment". Learners continue to take the current
-        initial diagnostic (version 3.0), reassessment is not available to learners yet, and existing results and
-        reading levels are not changed. Official use will require a documented educator endorsement.
+        Publishing a version does not assign it. Assign published packages to Students in Reassessment Assignments;
+        Students take them only while reassessment is turned on. Existing results and reading levels are not changed.
       </p>}
 
       {loading && <p role="status">Loading assessment packages...</p>}

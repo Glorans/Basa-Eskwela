@@ -68,6 +68,7 @@ function mountEditor(detail: unknown) {
   const runtime = createHookRuntime(require("react"));
   let current = detail as any;
   const mod = loadComponentModule(new URL("../src/modules/module2/components/InitialDiagnosticEditor.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     if (id === "react-router-dom") return { Link: "Link" };
@@ -144,6 +145,7 @@ test("Initial Diagnostic list: consistent assessment names (not passage titles) 
       latestVersion: { id: "r1", versionNumber: 1, versionLabel: "1.0", status: "published", source: "authored", createdAt: "" } },
   ];
   const mod = loadComponentModule(new URL("../src/modules/module2/pages/AssessmentPackagesPage.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     if (id === "lucide-react") return { ArrowLeft: "ArrowLeft" };

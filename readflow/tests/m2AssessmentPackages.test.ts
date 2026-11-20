@@ -34,12 +34,18 @@ test("routes: packages live only inside the System Admin, School Admin and Teach
   assert.doesNotMatch(general, /AssessmentPackage/);
 });
 
-test("navigation: one entry each for System Admin, School Admin and Teacher; none for learners", () => {
+test("navigation: Assessment group for System Admin (Initial Diagnostic, Reassessment), School Admin and Teacher (Packages); none for learners", () => {
   const layout = src("modules/module3/components/M3Layout.tsx");
+  const nav = src("modules/module2/components/AssessmentNavigation.tsx");
+  // School Admin and Teacher: one expandable Assessment group each (Packages, Assignments); System Admin keeps its own.
+  assert.equal((layout.match(/label: "Assessment", to: ASSESSMENT_GROUP/g) ?? []).length, 2);
   assert.match(layout, /role === "system_admin" && <AssessmentNavigation/);
+  assert.match(layout, /<AssessmentNavigation key=\{to\} role=\{role === "admin" \? "admin" : "teacher"\}/);
+  assert.doesNotMatch(layout, /label: "Reassessment (Packages|Assignments)"|label: "Try Assessment"/, "no separate sidebar entries any more");
   assert.doesNotMatch(layout, /label: "Assessment Packages"/);
-  assert.equal((layout.match(/label: "Reassessment Packages", to: "\/admin\/assessment-packages"/g) ?? []).length, 1);
-  assert.equal((layout.match(/label: "Reassessment Packages", to: "\/m3\/teacher\/assessment-packages"/g) ?? []).length, 1);
+  assert.equal((nav.match(/label: "Packages", to: "\/admin\/assessment-packages"/g) ?? []).length, 1);
+  assert.equal((nav.match(/label: "Packages", to: "\/m3\/teacher\/assessment-packages"/g) ?? []).length, 1);
+  assert.match(nav, /\["initial", "Initial Diagnostic"\], \["reassessment", "Reassessment"\]/, "System Admin keeps its two items");
   const general = layout.slice(layout.indexOf('if (role === "general_user")'));
   assert.doesNotMatch(general.slice(0, general.indexOf("return items")), /Packages/);
   assert.doesNotMatch(src("components/basa/BasaSidebar.tsx"), /assessment-packages|Packages/);
@@ -51,6 +57,7 @@ function loadService(calls: [string, string, unknown][], respond: (method: strin
     return respond(method, url);
   }]));
   return loadComponentModule(new URL("../src/modules/module2/services/assessmentPackages.ts", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "axios") return { default: { isAxiosError: (e: { isAxiosError?: boolean }) => Boolean(e?.isAxiosError) } };
     if (id.endsWith("/services/api")) return { default: client };
     if (id.endsWith("/services/authHeaders")) return { getSessionAuthHeaders: async () => ({ Authorization: "Bearer synthetic" }) };
@@ -134,6 +141,7 @@ const packageSummary = (permissions: Record<string, boolean>, overrides: Record<
 type Dialog = { asked: string[]; answers: boolean[] };
 function loadDetailModule(runtime: ReturnType<typeof createHookRuntime>, getPackage: () => Promise<unknown>, dialog: Dialog = { asked: [], answers: [] }) {
   return loadComponentModule(new URL("../src/modules/module2/pages/AssessmentPackageDetailPage.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id.endsWith("/utils/initialDiagnosticLabels")) return require(new URL("../src/modules/module2/utils/initialDiagnosticLabels.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
@@ -250,7 +258,7 @@ test("detail page: a System Admin's initial diagnostic opens the Initial Diagnos
   assert.equal(typeof tree.props.onDetail, "function");
 });
 
-test("detail page: a System Admin's Independent Learner reassessment opens the F10 editor; School Admin and Teacher packages keep theirs", async () => {
+test("detail page: every role's reassessment packages open the F10 editor (System Admin, School Admin school, Teacher own)", async () => {
   const runtime = createHookRuntime(require("react"));
   const sa = loadDetailModule(runtime, async () => ({
     package: packageSummary({ manage: true, review: true, publish: true }, { category: "independent" }), versions: [versionDetail()] }));
@@ -260,14 +268,19 @@ test("detail page: a System Admin's Independent Learner reassessment opens the F
   assert.equal(delegated.type, "ReassessmentPackageEditor");
   assert.equal(delegated.props.detail.package.category, "independent");
 
-  const runtime2 = createHookRuntime(require("react"));
-  const admin = loadDetailModule(runtime2, async () => ({
-    package: packageSummary({ manage: true, review: true, publish: true }, { category: "school" }), versions: [versionDetail()] }));
-  runtime2.render(admin.default, { role: "admin" });
-  for (let i = 0; i < 4; i++) { await tick(); runtime2.render(admin.default, { role: "admin" }); }
-  const tree = runtime2.render(admin.default, { role: "admin" });
-  assert.notEqual(tree.type, "ReassessmentPackageEditor", "School Admin F10 is not redesigned yet");
-  assert.ok(findAll(tree, (n) => n.props?.role === "tab").length >= 1, "the existing package editor still renders");
+  assert.equal(delegated.props.variant, undefined, "System Admin keeps the default (system) editor");
+
+  const open = async (role: string, category: string, perms: Record<string, boolean>) => {
+    const rt = createHookRuntime(require("react"));
+    const mod = loadDetailModule(rt, async () => ({ package: packageSummary(perms, { category }), versions: [versionDetail()] }));
+    rt.render(mod.default, { role });
+    for (let i = 0; i < 4; i++) { await tick(); rt.render(mod.default, { role }); }
+    return rt.render(mod.default, { role });
+  };
+  const school = await open("admin", "school", { manage: true, review: false, publish: true });
+  assert.deepEqual([school.type, school.props.variant], ["ReassessmentPackageEditor", "school"]);
+  const teacher = await open("teacher", "teacher", { manage: true, review: false, publish: true });
+  assert.deepEqual([teacher.type, teacher.props.variant], ["ReassessmentPackageEditor", "teacher"]);
 });
 
 test("content view marks the correct answer (staff-only page)", () => {
@@ -282,6 +295,7 @@ test("content view marks the correct answer (staff-only page)", () => {
 test("list page: Teachers create only private packages; the notice says learners are not affected", async () => {
   const runtime = createHookRuntime(require("react"));
   const mod = loadComponentModule(new URL("../src/modules/module2/pages/AssessmentPackagesPage.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id.endsWith("/utils/initialDiagnosticLabels")) return require(new URL("../src/modules/module2/utils/initialDiagnosticLabels.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
@@ -296,9 +310,9 @@ test("list page: Teachers create only private packages; the notice says learners
   for (let i = 0; i < 4; i++) { await tick(); runtime.render(mod.default, { role: "teacher" }); }
   const tree = runtime.render(mod.default, { role: "teacher" });
   const text = textOf(tree);
-  assert.match(text, /Only you and your School Admin can see them/);
-  assert.match(text, /"Published in library" is not the same as "Active for learner assessment"/);
-  assert.match(text, /Official use will require a documented educator endorsement/);
+  assert.match(text, /Only you can see and change them/);
+  assert.match(text, /Publishing a version does not assign it/);
+  assert.doesNotMatch(text, /endorse|School Admin can see/i);
   assert.doesNotMatch(text, /Reassessment delivery remains subject to its existing policy/);
   assert.match(text, /Package type: Teacher reassessment \(private\)/);
   assert.equal(findAll(tree, (n) => n.type === "select").length, 1, "language only; the package type is fixed");

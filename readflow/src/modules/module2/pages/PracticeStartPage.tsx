@@ -15,7 +15,7 @@ export default function PracticeStartPage() {
 
   return (
     <DiagnosticLayout className="practice-diagnostic-panel" labelledBy="practice-start-title">
-      <PracticeModeBanner exitTo={practice.exitTo} />
+      <PracticeModeBanner exitTo={practice.exitTo} exitLabel={practice.exitLabel} />
       <header className="practice-diagnostic-header">
         <h1 id="practice-start-title">Try the Diagnostic Assessment</h1>
         <p>

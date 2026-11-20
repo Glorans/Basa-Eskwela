@@ -27,7 +27,7 @@ export default function PracticeResultPage({ language, practice }: { language: D
 
   return (
     <DiagnosticLayout className="practice-diagnostic-panel" labelledBy="practice-result-title">
-      <PracticeModeBanner exitTo={practice.exitTo} />
+      <PracticeModeBanner exitTo={practice.exitTo} exitLabel={practice.exitLabel} />
       <header className="practice-diagnostic-header">
         <h1 id="practice-result-title">Practice Result · {languageLabel}</h1>
         <p>This practice score was calculated with the official scoring rules. It was not saved and is not an official reading level.</p>
@@ -70,7 +70,7 @@ export default function PracticeResultPage({ language, practice }: { language: D
         {/* A version practice is for one language and version only; the built-in practice offers both languages. */}
         {practice.basePath === PRACTICE_BASE_PATH
           ? <Link className="diagnostic-recording-secondary-button" to={PRACTICE_BASE_PATH} state={{ practiceExitTo: practice.exitTo }}>Choose a language</Link>
-          : <Link className="diagnostic-recording-secondary-button" to={practice.exitTo}>Back to Initial Diagnostic</Link>}
+          : <Link className="diagnostic-recording-secondary-button" to={practice.exitTo}>{practice.exitLabel ?? "Back to Initial Diagnostic"}</Link>}
       </div>
     </DiagnosticLayout>
   );

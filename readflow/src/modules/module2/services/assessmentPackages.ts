@@ -120,7 +120,8 @@ export interface PackageList {
 
 export interface PackageDetail { package: PackageSummary; versions: VersionDetail[] }
 
-export type VersionAction = "submit" | "return" | "approve" | "publish" | "retire";
+/** "reopen": F10 only — move a version left "Submitted" by the earlier review workflow back to draft. */
+export type VersionAction = "submit" | "return" | "approve" | "publish" | "retire" | "reopen";
 
 export class AssessmentPackageRequestError extends Error {
   issues: string[];

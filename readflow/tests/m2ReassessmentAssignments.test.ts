@@ -21,12 +21,18 @@ test("routes: the assignment page exists only for School Admin and Teacher", () 
   assert.doesNotMatch(app.slice(app.indexOf('<RequireRole allowedRoles={["general_user"]} />')), /ReassessmentAssignments/);
 });
 
-test("navigation: one entry each for School Admin and Teacher; none for System Admin or learners", () => {
+test("navigation: Assessment > Assignments for School Admin and Teacher; none for System Admin or learners", () => {
   const layout = src("modules/module3/components/M3Layout.tsx");
-  assert.equal((layout.match(/label: "Reassessment Assignments", to: "\/admin\/reassessment-assignments"/g) ?? []).length, 1);
-  assert.equal((layout.match(/label: "Reassessment Assignments", to: "\/m3\/teacher\/reassessment-assignments"/g) ?? []).length, 1);
+  const nav = src("modules/module2/components/AssessmentNavigation.tsx");
+  // School Admin and Teacher: one expandable Assessment group each (Packages, Assignments); System Admin keeps its own.
+  assert.equal((layout.match(/label: "Assessment", to: ASSESSMENT_GROUP/g) ?? []).length, 2);
+  assert.match(layout, /role === "system_admin" && <AssessmentNavigation/);
+  assert.match(layout, /<AssessmentNavigation key=\{to\} role=\{role === "admin" \? "admin" : "teacher"\}/);
+  assert.doesNotMatch(layout, /label: "Reassessment (Packages|Assignments)"|label: "Try Assessment"/, "no separate sidebar entries any more");
+  assert.equal((nav.match(/label: "Assignments", to: "\/admin\/reassessment-assignments"/g) ?? []).length, 1);
+  assert.equal((nav.match(/label: "Assignments", to: "\/m3\/teacher\/reassessment-assignments"/g) ?? []).length, 1);
   const sa = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf('return [{ label: "Dashboard"'));
-  assert.doesNotMatch(sa, /Reassessment Assignments/);
+  assert.doesNotMatch(sa, /Assignments|reassessment-assignments/);
   const general = layout.slice(layout.indexOf('if (role === "general_user")'));
   assert.doesNotMatch(general.slice(0, general.indexOf("return items")), /Reassessment Assignments|Reassessment Packages|reassessment-assignments/,
     "Independent Learners get no staff assignment or package entries");
@@ -42,6 +48,7 @@ function loadService(calls: [string, string, unknown][], respond: (method: strin
     return respond(method, url, a);
   }]));
   return loadComponentModule(new URL("../src/modules/module2/services/reassessments.ts", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "axios") return { default: { isAxiosError: (e: { isAxiosError?: boolean }) => Boolean(e?.isAxiosError) } };
     if (id.endsWith("/services/api")) return { default: client };
     if (id.endsWith("/services/authHeaders")) return { getSessionAuthHeaders: async () => ({ Authorization: "Bearer synthetic" }) };
@@ -85,7 +92,7 @@ test("dates: stored instants are shown in Philippine time; the earliest due date
 
 const ROOM = { id: "room-a", name: "Room A", subject: "en" };
 const READY = { packageId: "p1", versionId: "v1", versionLabel: "1.0", title: "River Story", category: "teacher", language: "en", eligible: true, reason: null };
-const UNENDORSED = { packageId: "p2", versionId: "v2", versionLabel: "1.0", title: "Draft Story", category: "teacher", language: "en", eligible: false, reason: "No documented educator endorsement" };
+const UNENDORSED = { packageId: "p2", versionId: "v2", versionLabel: "1.0", title: "Draft Story", category: "teacher", language: "en", eligible: false, reason: "Not published in the library" };
 const ASSIGNMENT = { id: "a1", status: "active", language: "en", packageTitle: "River Story", versionLabel: "1.0", roomId: "room-a", roomName: "Room A",
   studentId: "s1", studentName: "Ana", assignedBy: "Teacher One", assignedAt: "2026-11-19T02:00:00Z", dueAt: "2026-11-25T15:59:59Z",
   completedAt: null, cancelledAt: null, cancelledBy: null, cancelReason: null };
@@ -96,6 +103,7 @@ function mountPage({ enabled = true, rooms = [ROOM], packages = [READY, UNENDORS
   const calls: unknown[][] = [];
   const real = loadService([]);
   const mod = loadComponentModule(new URL("../src/modules/module2/pages/ReassessmentAssignmentsPage.tsx", import.meta.url), (id) => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     if (id.endsWith("/services/reassessments")) return {
@@ -141,16 +149,16 @@ test("Teacher flow: room -> only eligible packages offered, reasons for the rest
   const page = mountPage();
   page.render();
   let tree = await page.settle();
-  assert.match(textOf(tree), /Assign your published, educator-endorsed reassessment packages/);
+  assert.match(textOf(tree), /Assign your published reassessment packages/);
   select(tree, 0).props.onChange({ target: { value: "room-a" } });
   tree = await page.settle();
   const options = findAll(select(tree, 1), (n) => n.type === "option").map((o) => textOf(o));
   assert.deepEqual(options, ["Choose a package", "River Story · English · Version 1.0"], "ineligible packages are not selectable");
   assert.match(textOf(tree), /1 package not available/);
-  assert.match(textOf(tree), /Draft Story: No documented educator endorsement/);
+  assert.match(textOf(tree), /Draft Story: Not published in the library/);
   select(tree, 1).props.onChange({ target: { value: "v1" } });
   tree = await page.settle();
-  assert.match(textOf(tree), /Ana Already has an active English reassessment/);
+  assert.match(textOf(tree), /Anas*Already has an active English reassessment/, "the reason sits right under the Student");
   const boxes = findAll(tree, (n) => n.type === "input" && n.props.type === "checkbox");
   assert.equal(boxes[0].props.disabled, true, "an ineligible Student cannot be selected");
   boxes[1].props.onChange(); tree = page.render();

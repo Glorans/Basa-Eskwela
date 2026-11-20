@@ -3,11 +3,15 @@ import api from "../../../services/api";
 import { getSessionAuthHeaders } from "../../../services/authHeaders";
 import type { DiagnosticAssessment, DiagnosticLanguage } from "../types/diagnostic";
 
-/** M2 F7: the identity prefix the server uses for practising an authored Initial Diagnostic version. */
+/** M2 F7/F10: the identity prefix the server uses for practising one package version (never a learner or reassessment id). */
 export const PRACTICE_VERSION_PREFIX = "m2-practice-version:";
+
+export type PracticePackageCategory = "initial" | "independent" | "school" | "teacher";
 
 export interface PracticeVersion {
   packageId: string;
+  /** Which kind of package the version belongs to (decides where Exit Practice returns). */
+  packageCategory: PracticePackageCategory;
   versionId: string;
   activeForLearners: boolean;
   assessment: DiagnosticAssessment;
@@ -22,6 +26,7 @@ export class PracticeVersionError extends Error {
 
 interface ServerContent {
   packageId: string;
+  packageCategory?: PracticePackageCategory;
   versionId: string;
   activeForLearners: boolean;
   assessment: {
@@ -45,8 +50,11 @@ export async function getPracticeVersion(versionId: string): Promise<PracticeVer
     if (!a || a.id !== `${PRACTICE_VERSION_PREFIX}${versionId}` || !a.passage?.paragraphs?.length || !a.questions?.length) {
       throw new PracticeVersionError("This version could not be loaded for practice.");
     }
+    const packageCategory = data.packageCategory ?? "initial";
+    const initial = packageCategory === "initial";
     return {
       packageId: data.packageId,
+      packageCategory,
       versionId: data.versionId,
       activeForLearners: data.activeForLearners,
       assessment: {
@@ -54,8 +62,8 @@ export async function getPracticeVersion(versionId: string): Promise<PracticeVer
         title: a.title,
         gradeLevel: 5,
         language: a.language,
-        assessmentType: "initial",
-        sourceLabel: "Initial diagnostic practice",
+        assessmentType: initial ? "initial" : "reassessment",
+        sourceLabel: initial ? "Initial diagnostic practice" : "Reassessment practice",
         sourceUrl: "",
         version: a.version,
         contentStatus: "active",

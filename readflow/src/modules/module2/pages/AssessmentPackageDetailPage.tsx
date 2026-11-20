@@ -99,9 +99,15 @@ export default function AssessmentPackageDetailPage({ role }: { role: Assessment
     return <InitialDiagnosticEditor key={detail.package.id} detail={detail} siblings={siblings} onDetail={setDetail} />;
   }
   // M2 F10: the System Admin's central Independent Learner reassessment packages use the same layout (F10 rules kept).
-  // School Admin and Teacher reassessment packages keep the editor below.
   if (role === "system_admin" && detail?.package.category === "independent") {
     return <ReassessmentPackageEditor key={detail.package.id} detail={detail} onDetail={setDetail} />;
+  }
+  // M2 F10 (final workflow): School Admin school packages and Teachers' own private packages use the same editor.
+  if (role === "admin" && detail?.package.category === "school") {
+    return <ReassessmentPackageEditor key={detail.package.id} detail={detail} onDetail={setDetail} variant="school" />;
+  }
+  if (role === "teacher" && detail?.package.category === "teacher") {
+    return <ReassessmentPackageEditor key={detail.package.id} detail={detail} onDetail={setDetail} variant="teacher" />;
   }
   return <main className="m7-page m2-packages-page">
     {role === "system_admin"

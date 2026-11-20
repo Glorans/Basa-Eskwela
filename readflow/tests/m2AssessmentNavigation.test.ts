@@ -10,6 +10,7 @@ test("Assessment submenu toggles, highlights a legacy detail URL, and retains di
   let pathname = "/system-admin/assessment-packages/package-1";
   let category = "initial";
   const mod = loadComponentModule(source("components/AssessmentNavigation.tsx"), id => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return runtime.react;
     if (id.endsWith(".css")) return {};
     if (id === "lucide-react") return { ClipboardList: "Icon", ChevronDown: "Icon" };
@@ -28,6 +29,36 @@ test("Assessment submenu toggles, highlights a legacy detail URL, and retains di
   assert.equal(findAll(tree, n => n.type === "button")[0].props["aria-expanded"], true);
 });
 
+test("School Admin and Teacher: Assessment > Packages, Assignments; open on their pages, current item highlighted", async () => {
+  for (const [role, root, pkgPath, asgPath] of [["admin", "/admin", "/admin/assessment-packages", "/admin/reassessment-assignments"],
+    ["teacher", "/m3/teacher", "/m3/teacher/assessment-packages", "/m3/teacher/reassessment-assignments"]] as const) {
+    const runtime = createHookRuntime(require("react"));
+    let pathname = `${root}/dashboard`;
+    let lookups = 0;
+    const mod = loadComponentModule(source("components/AssessmentNavigation.tsx"), id => {
+      if (id === "react") return runtime.react;
+      if (id.endsWith(".css")) return {};
+      if (id === "lucide-react") return { ClipboardList: "Icon", ChevronDown: "Icon" };
+      if (id === "react-router-dom") return { Link: "Link", useLocation: () => ({ pathname }) };
+      if (id.endsWith("/services/assessmentPackages")) return { getAssessmentPackage: async () => { lookups += 1; return { package: { category: "school" } }; } };
+      return require(id);
+    });
+    const render = () => runtime.render(mod.default, { role, onNavigate() {}, onExpand() {} });
+    render(); await tick(); let tree = render();
+    const links = () => findAll(tree, n => n.type === "Link");
+    assert.deepEqual(links().map(l => [textOf(l), l.props.to]), [["Packages", pkgPath], ["Assignments", asgPath]], role);
+    assert.equal(findAll(tree, n => n.props.id === "m2-assessment-submenu")[0].props.hidden, true, "closed outside its pages");
+    findAll(tree, n => n.type === "button")[0].props.onClick(); tree = render();
+    assert.equal(findAll(tree, n => n.type === "button")[0].props["aria-expanded"], true, "the button opens it");
+    for (const [path, active] of [[pkgPath, pkgPath], [`${pkgPath}/abc`, pkgPath], [asgPath, asgPath]]) {
+      pathname = path; render(); await tick(); tree = render();
+      assert.equal(findAll(tree, n => n.props.id === "m2-assessment-submenu")[0].props.hidden, false, `${path}: stays open`);
+      assert.deepEqual(links().filter(l => l.props["aria-current"] === "page").map(l => l.props.to), [active], path);
+    }
+    assert.equal(lookups, 0, "no package lookups outside the System Admin group");
+  }
+});
+
 test("dedicated lists separate assessment types and filter language without changing records", async () => {
   for (const section of ["initial", "independent"]) {
     const runtime = createHookRuntime(require("react"));
@@ -38,6 +69,7 @@ test("dedicated lists separate assessment types and filter language without chan
       { id: "reassessment-en", category: "independent", language: "en", title: "Central English" },
     ];
     const mod = loadComponentModule(source("pages/AssessmentPackagesPage.tsx"), id => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id.endsWith("/utils/initialDiagnosticLabels")) return require(new URL("../src/modules/module2/utils/initialDiagnosticLabels.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
       if (id === "react") return runtime.react;
       if (id.endsWith(".css")) return {};
@@ -74,6 +106,11 @@ test("practice return destination is retained only for the signed-in staff role'
     ["admin", "/admin/assessment-packages/p3", "/admin/assessment-packages/p3"],
     ["teacher", "/system-admin/assessment-packages/p1", "/home"],
     ["system_admin", "https://example.com", "/home"],
+    // F7 entry point for School Admins and Teachers: Exit Practice returns to their own Diagnostic Results.
+    ["admin", "/admin/diagnostic-results", "/admin/diagnostic-results"],
+    ["teacher", "/m3/teacher/diagnostic-results", "/home"], // Teachers no longer start F7 from Diagnostic Results
+    ["teacher", "/admin/diagnostic-results", "/home"],
+    ["system_admin", "/admin/diagnostic-results", "/home"],
   ]) {
     const mod = loadComponentModule(source("utils/practiceMode.ts"), id => {
       if (id === "react-router-dom") return { useLocation: () => ({ state: { practiceExitTo: path } }) };
@@ -93,6 +130,7 @@ test("unsaved edits block navigation until discard is confirmed and register rel
   const navigator = { push: (path: string) => visits.push(path), replace: (path: string) => visits.push(path) };
   const listeners = new Map();
   const mod = loadComponentModule(source("hooks/useAssessmentLeaveGuard.ts"), id => {
+    if (id.endsWith("/AssessmentBackButton")) return { default: "AssessmentBackButton" }; if (id.endsWith("/TryInitialDiagnosticLink")) return { default: "TryInitialDiagnosticLink" }; if (id.endsWith("module1/utils/authOnboarding")) return require(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     if (id === "react") return { ...runtime.react, useContext: () => ({ navigator }) };
     if (id === "react-router-dom") return { UNSAFE_NavigationContext: {} };
     if (id.endsWith("/components/ReadFlowDialog")) return { confirmReadFlow: async () => allow };

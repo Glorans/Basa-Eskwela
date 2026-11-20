@@ -225,7 +225,7 @@ export default function DiagnosticReadingPage({
       className="diagnostic-reading-panel"
       labelledBy="diagnostic-reading-title"
     >
-      {practice && <><PracticeModeBanner exitTo={practice.exitTo} /><p className="practice-diagnostic-note">{assessment.language === "fil" ? "Filipino" : "English"} · Version {assessment.version}</p></>}
+      {practice && <><PracticeModeBanner exitTo={practice.exitTo} exitLabel={practice.exitLabel} /><p className="practice-diagnostic-note">{assessment.language === "fil" ? "Filipino" : "English"} · Version {assessment.version}</p></>}
       <header className="diagnostic-reading-header">
         <h1 id="diagnostic-reading-title">{t("Read the Story Aloud")}</h1>
 

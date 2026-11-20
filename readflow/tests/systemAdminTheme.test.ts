@@ -40,8 +40,28 @@ const fingerprint=(tree:any)=>createHash('sha256').update(JSON.stringify(normali
 const fixtureUrl=new URL('./fixtures/systemAdminRoleBaseline.json',import.meta.url);
 // Frozen from the pre-redesign worktree snapshot; not regenerated from current source.
 const baseline=JSON.parse(readFileSync(fixtureUrl,'utf8'));
+// M2 (2026-11-21): School Admin and Teacher replaced three sidebar links (Try Assessment, Reassessment Packages,
+// Reassessment Assignments) with ONE expandable Assessment group. To keep the frozen baseline meaningful, the group is
+// swapped back for those three links before comparing: everything else in the shell must still match exactly.
+const LEGACY_ASSESSMENT_LINKS: Record<string, [string, string, string, boolean][]> = {
+ admin: [['Try Assessment','/practice/diagnostic','BookOpenCheck',false],['Reassessment Packages','/admin/assessment-packages','ClipboardList',false],['Reassessment Assignments','/admin/reassessment-assignments','ClipboardList',true]],
+ teacher: [['Try Assessment','/practice/diagnostic','BookOpenCheck',false],['Reassessment Packages','/m3/teacher/assessment-packages','ClipboardList',false],['Reassessment Assignments','/m3/teacher/reassessment-assignments','ClipboardList',true]],
+};
+function withLegacyAssessmentLinks(tree:any, role:string){
+ const links=LEGACY_ASSESSMENT_LINKS[role]; if(!links)return tree;
+ const template=findAll(tree,n=>n.type==='NavLink')[0];
+ const legacy=links.map(([label,to,icon,end])=>({type:template.type,props:{...template.props,to,end,'aria-label':label,title:label,
+  children:[{type:icon,props:{...template.props.children[0].props}},{type:'span',props:{...template.props.children[1].props,children:label}}]}}));
+ let swapped=0;
+ const walk=(value:any):any=>{
+  if(Array.isArray(value))return value.flatMap(v=>v?.type==='AssessmentNavigation'&&v.props?.role===role?(swapped++,legacy):[walk(v)]);
+  if(value&&typeof value==='object'&&value.type)return {type:value.type,props:Object.fromEntries(Object.entries(value.props).map(([k,v])=>[k,k==='ref'?v:walk(v)]))};
+  return value;
+ };
+ const result=walk(tree); assert.equal(swapped,1,`${role}: exactly one Assessment group`); return result;
+}
 for(const role of ['admin','teacher','general_user']) for(const [label,mobile,open,collapsed] of [['desktop',false,false,false],['rail',false,false,true],['mobile',true,false,false],['drawer',true,true,false]] as const)
- test(`${role} ${label}: rendered shell matches pre-redesign snapshot`,()=>assert.equal(fingerprint(mount(role,mobile,open,collapsed).tree),baseline[`${role}:${label}`]));
+ test(`${role} ${label}: rendered shell matches pre-redesign snapshot`,()=>assert.equal(fingerprint(withLegacyAssessmentLinks(mount(role,mobile,open,collapsed).tree,role)),baseline[`${role}:${label}`]));
 
 test('System Admin alone opts into the theme, with existing Settings, Logout and all navigation targets',()=>{
  const {tree,calls}=mount('system_admin');

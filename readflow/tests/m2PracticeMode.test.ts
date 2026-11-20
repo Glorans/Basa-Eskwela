@@ -25,9 +25,14 @@ test("routes: Practice Mode is for System Admin, School Admin and Teacher only; 
   assert.deepEqual([...real("modules/module1/utils/authOnboarding.ts").DIAGNOSTIC_LEARNER_ROLES], ["student", "general_user"]);
 });
 
-test("navigation: standalone Try Assessment remains for School Admin and Teacher; System Admin uses eligible versions", () => {
+test("navigation: no standalone Try Assessment; F7 Initial Diagnostic practice stays on the School Admin Diagnostic Results only", () => {
   const layout = src("modules/module3/components/M3Layout.tsx");
-  assert.equal((layout.match(/label: "Try Assessment", to: "\/practice\/diagnostic"/g) ?? []).length, 2);
+  assert.doesNotMatch(layout, /label: "Try Assessment"/);
+  assert.match(src("pages/admin/AdminDiagnosticResultsPage.tsx"), /<TryInitialDiagnosticLink \/>/);
+  assert.doesNotMatch(src("modules/module2/pages/TeacherDiagnosticResultsPage.tsx"), /TryInitialDiagnosticLink/, "removed for Teachers (decision 2026-11-21)");
+  const link = src("modules/module2/components/TryInitialDiagnosticLink.tsx");
+  assert.match(link, /to="\/practice\/diagnostic" state=\{\{ practiceExitTo: pathname \}\}/);
+  assert.match(src("modules/module2/utils/practiceMode.ts"), /role === "admin" \? "\/admin\/diagnostic-results" : null/, "Exit Practice may return there");
   const general = layout.slice(layout.indexOf('if (role === "general_user")'));
   assert.doesNotMatch(general.slice(0, general.indexOf("return items")), /Try Assessment/);
   assert.doesNotMatch(src("components/basa/BasaSidebar.tsx"), /Try Assessment|practice\/diagnostic/);
@@ -135,7 +140,7 @@ test("reading page: Practice Mode banner and practice paths; official paths unch
   const reading = src("modules/module2/pages/DiagnosticReadingPage.tsx");
   assert.match(reading, /const basePath = practice\?\.basePath \?\? reassessment\?\.basePath \?\? "\/diagnostic";/);
   assert.match(reading, /navigate\(`\$\{basePath\}\/\$\{assessment\.language\}\/questions`,/);
-  assert.match(reading, /<PracticeModeBanner exitTo=\{practice\.exitTo\} \/>/);
+  assert.match(reading, /<PracticeModeBanner exitTo=\{practice\.exitTo\} exitLabel=\{practice\.exitLabel\} \/>/);
   assert.doesNotMatch(reading, /navigate\(`\/diagnostic\//, "no hard-coded official path left in the shared reading page");
 });
 

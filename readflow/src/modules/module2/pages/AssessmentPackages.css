@@ -122,3 +122,36 @@ button.m2-student-start:disabled { opacity: 0.7; cursor: default; }
 .m2-language-tabs a[aria-current="page"] { background: #23443a; color: white; }
 .m2-content-preview { padding: 16px; border: 1px solid #d8e2dc; border-radius: 10px; }
 .m2-content-preview summary { cursor: pointer; font-weight: 700; }
+
+/* F9 student selection: each radio button and checkbox sits on the same row as its label; names never wrap letter by
+   letter; the eligibility reason sits right under the Student it explains. Overrides the form's width:100% inputs. */
+.m2-f9-students { gap: 8px; }
+.m2-f9-modes { display: grid; gap: 4px; }
+.m2-packages-form .m2-f9-choice { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; font-weight: 400;
+  min-width: 0; cursor: pointer; justify-self: start; max-width: 100%; }
+.m2-packages-form .m2-f9-choice input[type="radio"], .m2-packages-form .m2-f9-choice input[type="checkbox"] {
+  width: 18px; height: 18px; flex: 0 0 18px; margin: 0; padding: 0; border-radius: 0; }
+.m2-f9-choice > span { min-width: 0; overflow-wrap: break-word; word-break: normal; }
+.m2-f9-roster { gap: 2px; border-top: 1px solid #e4ebe7; padding-top: 6px; }
+.m2-f9-roster li { display: grid; gap: 2px; padding: 6px 8px; border-radius: 6px; min-width: 0; }
+.m2-f9-roster li:hover { background: #f5f9f6; }
+.m2-f9-roster li[data-ineligible] .m2-f9-name { color: #5f6b78; }
+.m2-f9-reason { padding-left: 26px; color: #5f6b78; font-size: .9em; overflow-wrap: break-word; }
+.m2-f9-choice input:focus-visible { outline: 3px solid #1f4f8a; outline-offset: 2px; }
+/* Phones: a long option (e.g. a room name with its Teacher) must not widen the form or the page; the select shrinks
+   and truncates instead. Same single column as before. */
+.m2-packages-page { min-width: 0; }
+.m2-packages-page.m7-page { grid-template-columns: minmax(0, 1fr); }
+.m2-packages-form { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.m2-packages-form select { min-width: 0; text-overflow: ellipsis; }
+/* The visually hidden "Actions" header is absolutely positioned; keep it inside the table's own scroll area so it can
+   never widen the page on phones. */
+.m2-packages-table-wrap { position: relative; }
+/* Phones: Existing Assignments as stacked cards (label above value) instead of a sideways-scrolling table. */
+@media (max-width: 640px) {
+  .m2-f9-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .m2-f9-table, .m2-f9-table tbody, .m2-f9-table tr, .m2-f9-table td { display: block; width: 100%; box-sizing: border-box; }
+  .m2-f9-table tr { border: 1px solid #d8e2dc; border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
+  .m2-f9-table td { border: 0; padding: 3px 0; overflow-wrap: anywhere; }
+  .m2-f9-table td[data-label]::before { content: attr(data-label); display: block; font-size: .8em; font-weight: 700; color: #5f6b78; }
+}

@@ -220,7 +220,7 @@ export default function DiagnosticQuestionsPage({
       className="diagnostic-questions-panel"
       labelledBy="diagnostic-questions-title"
     >
-      {practice && <PracticeModeBanner exitTo={practice.exitTo} />}
+      {practice && <PracticeModeBanner exitTo={practice.exitTo} exitLabel={practice.exitLabel} />}
       <button type="button" className="diagnostic-recording-secondary-button" disabled={isSaving || pendingResult !== null} onClick={() => navigate(`${basePath}/${assessment.language}/reading`, { state: practice ? { practiceExitTo: practice.exitTo } : undefined })}>{t("Back to the story")}</button>
       <header className="diagnostic-questions-header">
         <h1 id="diagnostic-questions-title">{t("Answer the Questions")}</h1>
