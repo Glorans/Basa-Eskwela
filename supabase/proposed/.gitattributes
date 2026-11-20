@@ -11,3 +11,6 @@ m2_initial_activation_no_endorsement_ROLLBACK_PROPOSED.sql -text
 # database's body has CRLF line endings, which these files keep inside the function body.
 m2_flexible_questions_PROPOSED.sql -text
 m2_flexible_questions_ROLLBACK_PROPOSED.sql -text
+# F10 direct publishing replaces and restores four live function bodies byte-for-byte (CRLF in the local test database).
+m2_f10_direct_publish_PROPOSED.sql -text
+m2_f10_direct_publish_ROLLBACK_PROPOSED.sql -text
