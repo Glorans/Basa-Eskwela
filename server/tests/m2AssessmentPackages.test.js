@@ -13,6 +13,10 @@ const { DIAGNOSTIC_ASSESSMENTS } = require("../services/diagnosticAssessments");
 const policy = require("../services/assessmentPackagePolicy");
 
 const PROPOSAL = readFileSync(resolve(__dirname, "../../supabase/proposed/m2_assessment_packages_PROPOSED.sql"), "utf8");
+const sql = (f) => readFileSync(resolve(__dirname, "../../supabase/proposed", f), "utf8");
+const FOUNDATION = sql("m2_reassessment_foundation_PROPOSED.sql");
+const F10 = sql("m2_f10_direct_publish_PROPOSED.sql");
+const { LIVE_FIXTURE } = require("../../supabase/tests/fixtures/liveDiagnosticFixture.cjs");
 const uid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const PEOPLE = {
   sa: { id: uid(1), role: "system_admin", full_name: "Sys Admin" },
@@ -77,6 +81,23 @@ async function setup() {
   return { d, service: createAssessmentPackageService({ repository: pgliteRepository(d) }) };
 }
 
+/** The live table shapes plus the packages, reassessment foundation and F10 direct-publish proposals (F10 tests). */
+async function setupF10() {
+  const d = new PGlite();
+  await d.exec(LIVE_FIXTURE);
+  for (const p of Object.values(PEOPLE)) {
+    await d.query("insert into auth.users values ($1)", [p.id]);
+    await d.query("insert into profiles(id, role, teacher_status, full_name, nickname) values ($1, $2, $3, $4, $5)",
+      [p.id, p.role, p.teacher_status ?? null, p.full_name ?? null, p.nickname ?? null]);
+  }
+  await d.exec(PROPOSAL);
+  await d.exec(FOUNDATION);
+  await d.exec(F10);
+  return { d, service: createAssessmentPackageService({ repository: pgliteRepository(d) }) };
+}
+const F10_REVIEW = { reviewerName: "Ms. Santos", reviewerQualification: "Teacher (stated)", reviewedOn: "2026-11-18", passageSuitable: true,
+  questionsSound: true, answerKeysCorrect: true, languageAccurate: true, outcome: "endorsed", notes: "" };
+
 const refused = (promise, status, pattern) => assert.rejects(promise, (error) => {
   assert.equal(error.statusCode, status, `${error.message}`);
   if (pattern) assert.match(error.message, pattern);
@@ -132,7 +153,7 @@ test("each role creates only its own category; nobody creates an initial package
   assert.equal((await create("sa", "independent")).package.category, "independent");
 });
 
-test("Teacher packages are private: other Teachers and the System Admin cannot see them; School Admin can review", async () => {
+test("Teacher packages are private: other Teachers, the System Admin and School Admins cannot see them (F10)", async () => {
   const { service } = await setup();
   const { package: pkg } = await service.createPackage(as("teacher"), { category: "teacher", language: "fil", title: "Kuwento" });
   assert.equal((await service.listPackages(as("teacher"))).packages.length, 1);
@@ -140,65 +161,97 @@ test("Teacher packages are private: other Teachers and the System Admin cannot s
   assert.equal((await service.listPackages(as("sa"))).packages.length, 0, "Independent Learner side never lists Teacher packages");
   await refused(service.getPackage(as("otherTeacher"), pkg.id), 404);
   await refused(service.getPackage(as("sa"), pkg.id), 404);
-  const adminList = await service.listPackages(as("admin"));
-  assert.equal(adminList.packages[0].ownerName, "Teacher One");
-  assert.deepEqual(adminList.packages[0].permissions, { view: true, manage: false, review: true, publish: true });
+  // F10 final workflow: School Admins do not review Teachers' private packages, so they no longer see them here.
+  assert.equal((await service.listPackages(as("admin"))).packages.length, 0);
+  await refused(service.getPackage(as("admin"), pkg.id), 404);
   // School packages are not visible to Teachers or the System Admin.
   const school = await service.createPackage(as("admin"), { category: "school", language: "en", title: "School" });
   await refused(service.getPackage(as("teacher"), school.package.id), 404);
   await refused(service.getPackage(as("sa"), school.package.id), 404);
-  // The School Admin may not edit a Teacher's content.
-  const draft = (await service.getPackage(as("admin"), pkg.id)).versions[0];
-  await refused(service.updateDraft(as("admin"), pkg.id, draft.id, { content: COMPLETE }), 403);
-  await refused(service.updateDraft(as("otherTeacher"), pkg.id, draft.id, { content: COMPLETE }), 404);
+  // Nobody but the owning Teacher may edit or publish a Teacher's content.
+  const draft = (await service.getPackage(as("teacher"), pkg.id)).versions[0];
+  for (const key of ["admin", "otherTeacher", "sa"]) {
+    await refused(service.updateDraft(as(key), pkg.id, draft.id, { content: COMPLETE }), 404);
+    await refused(service.transition(as(key), pkg.id, draft.id, "publish"), 404);
+  }
 });
 
-test("Teacher lifecycle: draft -> review -> returned -> approved by School Admin with attestation -> published -> new version", async () => {
-  const { d, service } = await setup();
+test("F10 Teacher lifecycle: draft -> publish directly (no review, approval or endorsement) -> new version retires the old one", async () => {
+  const { d, service } = await setupF10();
   const created = await service.createPackage(as("teacher"), { category: "teacher", language: "en", title: "River" });
   const pkgId = created.package.id;
   const v1 = created.versions[0].id;
-  await refused(service.transition(as("teacher"), pkgId, v1, "submit"), 422, /not ready for review/);
+  await refused(service.transition(as("teacher"), pkgId, v1, "publish"), 422, /not ready to publish/);
   const edited = await service.updateDraft(as("teacher"), pkgId, v1, { content: COMPLETE });
   assert.deepEqual(edited.versions[0].issues, []);
   assert.deepEqual(edited.versions[0].content.questions.map((q) => q.id), ["q1", "q2", "q3", "q4", "q5", "q6"]);
-  await service.transition(as("teacher"), pkgId, v1, "submit");
-  await refused(service.updateDraft(as("teacher"), pkgId, v1, { content: COMPLETE }), 409, /Only drafts/);
-  await refused(service.transition(as("teacher"), pkgId, v1, "approve", { attestation: "Me" }), 403, /cannot review/);
-  await refused(service.transition(as("admin"), pkgId, v1, "return"), 400, /note/);
-  const returned = await service.transition(as("admin"), pkgId, v1, "return", { note: "Question 4 is ambiguous." });
-  assert.equal(returned.versions[0].status, "draft");
-  assert.equal(returned.versions[0].reviewNote, "Question 4 is ambiguous.");
-  await service.transition(as("teacher"), pkgId, v1, "submit");
-  await refused(service.transition(as("admin"), pkgId, v1, "approve", { attestation: "  " }), 400, /educator review/);
-  await refused(service.transition(as("teacher"), pkgId, v1, "publish"), 409, /approved/);
-  const approved = await service.transition(as("admin"), pkgId, v1, "approve",
-    { attestation: "Reviewed by the Grade 5 English coordinator against the passage." });
-  assert.equal(approved.versions[0].status, "approved");
-  assert.equal(approved.versions[0].reviewedBy, "School Admin");
+  for (const action of ["submit", "approve", "return"]) {
+    await refused(service.transition(as("teacher"), pkgId, v1, action, { attestation: "x", note: "x" }), 409, /no review or approval step/);
+  }
+  await refused(service.recordEducatorReview(as("teacher"), pkgId, v1, F10_REVIEW), 409, /no longer part of the reassessment workflow/);
   const published = await service.transition(as("teacher"), pkgId, v1, "publish");
+  const p1 = published.versions[0];
   assert.equal(published.package.publishedVersion, "1.0");
-  const hash = published.versions[0].contentSha256;
-  assert.match(hash, /^[0-9a-f]{64}$/);
+  assert.deepEqual([p1.status, p1.submittedAt, p1.reviewedAt, p1.educatorEndorsed, p1.educatorReviews.length], ["published", null, null, false, 0],
+    "no submission, approval or endorsement is invented");
+  const hash = p1.contentSha256;
+  assert.match(hash, /^[0-9a-f]{64}$/, "published content is frozen");
+  assert.equal((await d.query("select count(*)::int n from m2_reassessment_assignments")).rows[0].n, 0, "publishing never assigns");
+  await refused(service.updateDraft(as("teacher"), pkgId, v1, { content: COMPLETE }), 409, /Only drafts/);
 
   // Changing published content needs a new version; the published one never changes.
-  const v2detail = await service.createVersion(as("teacher"), pkgId);
-  const v2 = v2detail.versions[0];
+  const v2 = (await service.createVersion(as("teacher"), pkgId)).versions[0];
   assert.deepEqual([v2.versionLabel, v2.status, v2.basedOnVersionId], ["2.0", "draft", v1]);
-  assert.deepEqual(v2.content, published.versions[0].content, "the draft starts as a copy");
   await refused(service.createVersion(as("teacher"), pkgId), 409, /in progress/);
-  const changed = { ...COMPLETE, paragraphs: [...COMPLETE.paragraphs, "Then they went home for lunch together."] };
-  await service.updateDraft(as("teacher"), pkgId, v2.id, { content: changed });
-  await service.transition(as("teacher"), pkgId, v2.id, "submit");
-  await service.transition(as("admin"), pkgId, v2.id, "approve", { attestation: "Reviewed again." });
-  const after = await service.transition(as("admin"), pkgId, v2.id, "publish");
+  await service.updateDraft(as("teacher"), pkgId, v2.id, { content: { ...COMPLETE, paragraphs: [...COMPLETE.paragraphs, "Then they went home for lunch together."] } });
+  const after = await service.transition(as("teacher"), pkgId, v2.id, "publish");
   assert.deepEqual(after.versions.map((v) => [v.versionLabel, v.status]), [["2.0", "published"], ["1.0", "retired"]]);
   assert.equal(after.versions[1].contentSha256, hash, "the retired version keeps its exact content");
-  assert.deepEqual(after.versions[1].content, published.versions[0].content);
-  // The database itself still refuses edits and deletes of history.
   await assert.rejects(d.query("update m2_assessment_package_versions set paragraphs = '[]' where id = $1", [v1]), /Only draft content/);
   await assert.rejects(d.query("delete from m2_assessment_package_versions where id = $1", [v1]), /Only draft versions/);
   await refused(service.deleteDraft(as("teacher"), pkgId, v1), 409);
+
+  // A version left "Submitted for review" by the old workflow: its manager moves it back to draft, or publishes it.
+  const v3 = (await service.createVersion(as("teacher"), pkgId)).versions[0];
+  await d.query("update m2_assessment_package_versions set status = 'in_review', submitted_by = $2 where id = $1", [v3.id, PEOPLE.teacher.id]);
+  await refused(service.transition(as("otherTeacher"), pkgId, v3.id, "reopen"), 404);
+  assert.equal((await service.transition(as("teacher"), pkgId, v3.id, "reopen")).versions[0].status, "draft");
+  await refused(service.transition(as("teacher"), pkgId, v3.id, "reopen"), 409, /Only a submitted version/);
+  await d.query("update m2_assessment_package_versions set status = 'in_review', submitted_by = $2 where id = $1", [v3.id, PEOPLE.teacher.id]);
+  const last = await service.transition(as("teacher"), pkgId, v3.id, "publish");
+  assert.deepEqual(last.versions.map((v) => v.status), ["published", "retired", "retired"]);
+});
+
+test("F10 School Admin and System Admin publish their own packages directly; the initial diagnostic still needs approval (F6)", async () => {
+  const { service } = await setupF10();
+  const made = {};
+  for (const [key, category] of [["admin", "school"], ["sa", "independent"]]) {
+    const created = await service.createPackage(as(key), { category, language: "fil", title: `${category} check` });
+    const [pid, vid] = [created.package.id, created.versions[0].id];
+    assert.deepEqual(created.package.permissions, { view: true, manage: true, review: false, publish: true }, `${key}: no review stage`);
+    await refused(service.transition(as(key), pid, vid, "publish"), 422, /not ready to publish/);
+    await service.updateDraft(as(key), pid, vid, { content: COMPLETE });
+    const published = await service.transition(as(key), pid, vid, "publish");
+    assert.deepEqual([published.versions[0].status, published.package.publishedVersion], ["published", "1.0"]);
+    made[key] = { pid, vid };
+  }
+  await refused(service.getPackage(as("admin"), made.sa.pid), 404, /not found/);
+  await refused(service.transition(as("admin"), made.sa.pid, made.sa.vid, "retire"), 404);
+  await refused(service.getPackage(as("sa"), made.admin.pid), 404);
+  await refused(service.getPackage(as("teacher"), made.admin.pid), 404);
+  const imported = await service.importInitial(as("sa"), { language: "en", assessment: codeContent("en") });
+  const next = (await service.createVersion(as("sa"), imported.package.id)).versions[0];
+  await refused(service.transition(as("sa"), imported.package.id, next.id, "publish"), 409, /approved/);
+  assert.equal(imported.package.permissions.review, true, "F6 keeps its review stage");
+});
+
+test("before m2_f10_direct_publish is applied, direct publishing is refused with a clear message (no bypass)", async () => {
+  const { service } = await setup();
+  const created = await service.createPackage(as("teacher"), { category: "teacher", language: "en", title: "Pending" });
+  const [pid, vid] = [created.package.id, created.versions[0].id];
+  await service.updateDraft(as("teacher"), pid, vid, { content: COMPLETE });
+  await refused(service.transition(as("teacher"), pid, vid, "publish"), 409, /database update that has not been applied yet/);
+  assert.equal((await service.getPackage(as("teacher"), pid)).versions[0].status, "draft");
 });
 
 test("F6: the System Admin imports the code 3.0 diagnostic, verified against the server copy; learner delivery stays on code", async () => {
@@ -324,9 +377,10 @@ test("routes: learner refusal message, issues passed through, unknown action 404
   assert.equal(created.status, 200);
   const { id } = created.body.package;
   const versionId = created.body.versions[0].id;
-  const submit = await call(teacherRouter, "POST", `/${id}/versions/${versionId}/submit`);
-  assert.equal(submit.status, 422);
-  assert.ok(submit.body.issues.length >= 3);
+  const publish = await call(teacherRouter, "POST", `/${id}/versions/${versionId}/publish`);
+  assert.equal(publish.status, 422);
+  assert.ok(publish.body.issues.length >= 3);
+  assert.equal((await call(teacherRouter, "POST", `/${id}/versions/${versionId}/submit`)).status, 409, "F10 has no review stage");
   assert.equal((await call(teacherRouter, "POST", `/${id}/versions/${versionId}/delete-everything`)).status, 404);
 
   const logged = [];
@@ -349,38 +403,22 @@ const REVIEW = { reviewerName: "Ms. Santos", reviewerQualification: "Grade 5 Fil
   reviewedOn: "2026-11-18", passageSuitable: true, questionsSound: true, answerKeysCorrect: true, languageAccurate: true,
   outcome: "endorsed", notes: "Synthetic test review." };
 
-test("A1 educator reviews: reviewers record evidence for frozen versions; library approval is not endorsement", async () => {
+test("A1 educator reviews (F10): no new reviews for reassessment versions; earlier review records stay visible, read-only", async () => {
   const { d, service } = await setup();
   const created = await service.createPackage(as("teacher"), { category: "teacher", language: "fil", title: "Kuwento" });
   const [pkgId, vId] = [created.package.id, created.versions[0].id];
-  await refused(service.recordEducatorReview(as("admin"), pkgId, vId, REVIEW), 409, /Submit the version/);
   await service.updateDraft(as("teacher"), pkgId, vId, { content: COMPLETE });
-  await service.transition(as("teacher"), pkgId, vId, "submit");
-  await refused(service.recordEducatorReview(as("teacher"), pkgId, vId, REVIEW), 403); // Teachers do not record reviews of their own packages
-  await refused(service.recordEducatorReview(as("otherTeacher"), pkgId, vId, REVIEW), 404);
-  await refused(service.recordEducatorReview(as("admin"), pkgId, vId, { ...REVIEW, answerKeysCorrect: false }), 400, /all four checks/);
-  await refused(service.recordEducatorReview(as("admin"), pkgId, vId, { ...REVIEW, languageAccurate: "yes" }), 400, /every review check/);
-  await refused(service.recordEducatorReview(as("admin"), pkgId, vId, { ...REVIEW, reviewedOn: "2999-01-01" }), 400, /future/);
-  await refused(service.recordEducatorReview(as("admin"), pkgId, vId, { ...REVIEW, reviewerQualification: " " }), 400, /qualification/);
-  let detail = await service.transition(as("admin"), pkgId, vId, "approve", { attestation: "Library approval by the School Admin." });
-  assert.equal(detail.versions[0].stageLabel, "Approved for library");
-  assert.equal(detail.versions[0].educatorEndorsed, false, "approval for the library is not educational validation");
-  detail = await service.recordEducatorReview(as("admin"), pkgId, vId, { ...REVIEW, outcome: "changes_requested", questionsSound: false });
-  assert.equal(detail.versions[0].educatorEndorsed, false);
-  detail = await service.recordEducatorReview(as("admin"), pkgId, vId, { ...REVIEW, reviewedOn: "2026-11-19" });
-  const v = detail.versions[0];
-  assert.equal(v.educatorEndorsed, true);
+  // A version submitted under the old workflow, with a review recorded then (history).
+  await d.query("update m2_assessment_package_versions set status = 'in_review', submitted_by = $2 where id = $1", [vId, PEOPLE.teacher.id]);
+  await d.query(`insert into m2_assessment_educator_reviews(version_id, reviewer_name, reviewer_qualification, reviewed_on, passage_suitable, questions_sound,
+    answer_keys_correct, language_accurate, outcome, recorded_by) values ($1, 'Ms. Santos', 'Teacher (stated)', '2026-11-18', true, true, true, true, 'endorsed', $2)`,
+    [vId, PEOPLE.admin.id]);
+  for (const key of ["teacher", "admin", "sa"]) await refused(service.recordEducatorReview(as(key), pkgId, vId, REVIEW), key === "teacher" ? 409 : 404);
+  const view = await service.getPackage(as("teacher"), pkgId);
+  assert.deepEqual(view.versions[0].educatorReviews.map((r) => [r.reviewedOn, r.outcome, r.recordedBy]), [["2026-11-18", "endorsed", "School Admin"]]);
+  assert.equal(view.versions[0].educatorEndorsed, true);
   assert.equal((await d.query("select m2_version_educator_endorsed($1) ok", [vId])).rows[0].ok, true, "JS mirror agrees with the SQL rule");
-  assert.deepEqual(v.educatorReviews.map((r) => [r.reviewedOn, r.outcome, r.recordedBy]),
-    [["2026-11-19", "endorsed", "School Admin"], ["2026-11-18", "changes_requested", "School Admin"]]);
-  // The Teacher sees the evidence on their own package (read-only).
-  const teacherView = await service.getPackage(as("teacher"), pkgId);
-  assert.equal(teacherView.versions[0].educatorEndorsed, true);
-  assert.equal(teacherView.package.permissions.review, false);
-  // A later changes_requested review withdraws the endorsement (agreement with SQL again).
-  detail = await service.recordEducatorReview(as("admin"), pkgId, vId, { ...REVIEW, reviewedOn: "2026-11-19", outcome: "changes_requested", passageSuitable: false });
-  assert.equal(detail.versions[0].educatorEndorsed, false);
-  assert.equal((await d.query("select m2_version_educator_endorsed($1) ok", [vId])).rows[0].ok, false);
+  assert.deepEqual(view.package.permissions, { view: true, manage: true, review: false, publish: true });
 });
 
 test("A2 published vs active: imported 3.0 is the only active initial version; publishing 4.0 does not replace it", async () => {
@@ -407,7 +445,7 @@ test("A2 published vs active: imported 3.0 is the only active initial version; p
 
   const reassess = await service.createPackage(as("sa"), { category: "independent", language: "en", title: "IL" });
   assert.deepEqual([reassess.versions[0].activeForLearners, reassess.package.activeVersion], [false, null]);
-  assert.match(reassess.versions[0].activationNote, /Reassessment is not available to learners yet/);
+  assert.match(reassess.versions[0].activationNote, /Never delivered automatically/);
 });
 
 test("current reading level service: maps the SQL lookup, validates input, reports a missing migration as 503", async () => {

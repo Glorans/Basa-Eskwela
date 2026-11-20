@@ -145,7 +145,7 @@ function learnerActivity(pkg, v, activation = { installed: false, activeVersionI
         : "Not active. Publishing in the library does not replace the current initial diagnostic; a System Admin activates a version separately.",
     };
   }
-  return { activeForLearners: false, activationNote: "Not active. Reassessment is not available to learners yet." };
+  return { activeForLearners: false, activationNote: "Never delivered automatically: a published version is used only when assigned (or started by an eligible Independent Learner) while reassessment is turned on." };
 }
 
 function packageSummary(profile, pkg, versions, activation) {
@@ -286,7 +286,7 @@ function createAssessmentPackageService({ repository, now = () => new Date() } =
   }
 
   const visibleScopes = (profile) => (profile.role === "system_admin" ? { scopes: ["platform"] }
-    : profile.role === "admin" ? { scopes: ["school", "teacher"] }
+    : profile.role === "admin" ? { scopes: ["school"] }
       : { scopes: ["teacher"], ownerId: profile.id });
 
   async function listPackages(requester) {
@@ -468,6 +468,7 @@ function createAssessmentPackageService({ repository, now = () => new Date() } =
     const { actor, profile } = requireStaff(requester);
     const pkg = await loadPackage(profile, packageId);
     requireActive(pkg);
+    if (pkg.kind === "reassessment") fail("Educator reviews are no longer part of the reassessment workflow.", 409);
     allow(policy.canReview(profile, pkg), "You cannot record educator reviews for this package.");
     const version = await loadVersion(pkg, versionId);
     if (version.status === "draft") fail("Submit the version for review before recording an educator review.", 409);
@@ -532,6 +533,39 @@ function createAssessmentPackageService({ repository, now = () => new Date() } =
     requireActive(pkg);
     const version = await loadVersion(pkg, versionId);
     const note = text(input.note, LIMITS.note, "The review note");
+    // F10 (final workflow, 2026-11-21): reassessment versions have no review stage. Their managers publish a valid
+    // draft directly; a version left "Submitted" by the old workflow can be published or moved back to draft.
+    if (pkg.kind === "reassessment") {
+      if (["submit", "approve", "return"].includes(action)) {
+        fail("Reassessment versions are published directly; there is no review or approval step.", 409);
+      }
+      if (action === "reopen") {
+        allow(policy.canManage(profile, pkg), "You cannot edit this package.");
+        if (version.status !== "in_review") fail("Only a submitted version can be moved back to draft.", 409);
+        await run(() => repository.updateVersion(version.id, { status: "draft" }));
+        return detail(profile, pkg);
+      }
+      if (action === "publish") {
+        allow(policy.canPublish(profile, pkg), "You cannot publish this package.");
+        if (!["draft", "in_review", "approved"].includes(version.status)) fail("Only a draft can be published.", 409);
+        if (version.status === "draft") {
+          const issues = await run(() => repository.contentIssues(version.passage_title, version.paragraphs, version.questions), "Unable to check the draft.");
+          if (issues.length) fail("This version is not ready to publish.", 422, issues);
+        }
+        try {
+          await repository.publishVersion(version.id, actor);
+        } catch (error) {
+          // Until m2_f10_direct_publish_PROPOSED.sql is applied, the database still accepts only approved versions.
+          if (/Only an approved version/.test(String(error?.message))) {
+            fail("Publishing directly needs a database update that has not been applied yet (m2_f10_direct_publish).", 409);
+          }
+          throw fromDatabase(error);
+        }
+        return detail(profile, pkg);
+      }
+    } else if (action === "reopen") {
+      fail("Unknown action.", 404);
+    }
     if (action === "submit") {
       allow(policy.canManage(profile, pkg), "You cannot submit this package for review.");
       if (version.status !== "draft") fail("Only a draft can be submitted for review.", 409);

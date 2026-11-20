@@ -1,9 +1,10 @@
 // M2 F9 — Assign Reassessment (classroom). Approved Teachers and School Admins only. Every rule is checked here AND
 // again by the database guard (m2_guard_reassessment_assignment) on insert; frontend checks are only for clarity.
 //
-//   Teacher       own ACTIVE Learning Rooms; own published, educator-endorsed PRIVATE packages only.
+//   Teacher       own ACTIVE Learning Rooms; own published PRIVATE packages only (F10: no endorsement needed).
 //   School Admin  every ACTIVE Learning Room (single-school pilot: no school membership exists);
-//                 school-level packages in any active room; a Teacher's package only in that Teacher's own rooms.
+//                 school-level packages only. F10 (2026-11-21): a Teacher's private package is assigned only by that
+//                 Teacher (also enforced by the database once m2_f10_direct_publish_PROPOSED.sql is applied).
 //   Others        403 (System Admin, Students, Independent Learners, pending Teachers).
 //
 // School-level packages are NOT offered to Teachers: F10 keeps school packages invisible to Teachers. Whether Teachers
@@ -47,11 +48,6 @@ async function run(work, fallback = "Unable to complete the reassessment request
   }
 }
 
-const isoDate = (value) => (value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? "").slice(0, 10));
-const newestReviewFirst = (a, b) => isoDate(b.reviewed_on).localeCompare(isoDate(a.reviewed_on))
-  || new Date(b.recorded_at) - new Date(a.recorded_at) || String(b.id).localeCompare(String(a.id));
-/** Mirrors m2_version_educator_endorsed(): the most recent review must be an endorsement. */
-const endorsed = (reviews) => [...reviews].sort(newestReviewFirst)[0]?.outcome === "endorsed";
 const manilaToday = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 const iso = (value) => (value instanceof Date ? value.toISOString() : value ?? null);
 const nameOf = (p, fallback) => (p ? getProfileDisplayName({ role: p.role, nickname: p.nickname, fullName: p.full_name }) || fallback : fallback);
@@ -77,12 +73,11 @@ function createReassessmentAssignmentService({ repository, now = () => new Date(
   /** Packages this account may assign, each with its published version and an explanation when not assignable. */
   async function assignablePackages(actor, role, room = null) {
     const packages = await run(() => repository.listPackages(role === "teacher"
-      ? { scopes: ["teacher"], ownerId: actor } : { scopes: ["school", "teacher"] }));
-    // Defense in depth: a Teacher only ever sees their own private packages.
-    const visible = packages.filter((p) => (role === "teacher" ? p.scope === "teacher" && p.owner_id === actor : true));
+      ? { scopes: ["teacher"], ownerId: actor } : { scopes: ["school"] }));
+    // Defense in depth: a Teacher only ever sees their own private packages; a School Admin only school packages.
+    const visible = packages.filter((p) => (role === "teacher" ? p.scope === "teacher" && p.owner_id === actor : p.scope === "school"));
     const versions = await run(() => repository.listVersions(visible.map((p) => p.id)));
     const published = new Map(versions.filter((v) => v.status === "published").map((v) => [v.package_id, v]));
-    const reviews = await run(() => repository.listReviews([...published.values()].map((v) => v.id)));
     const owners = role === "admin" ? await people(visible.filter((p) => p.scope === "teacher").map((p) => p.owner_id)) : new Map();
     return visible.map((pkg) => {
       const version = published.get(pkg.id) ?? null;
@@ -90,7 +85,6 @@ function createReassessmentAssignmentService({ repository, now = () => new Date(
       let reason = null;
       if (pkg.archived_at) reason = "Archived";
       else if (!version) reason = "Not published in the library";
-      else if (!endorsed(reviews.filter((r) => r.version_id === version.id))) reason = "No documented educator endorsement";
       else if (room && pkg.scope === "teacher" && room.teacher_id !== pkg.owner_id) reason = `Only in ${ownerName ?? "the owning Teacher"}'s Learning Rooms`;
       return {
         packageId: pkg.id,

@@ -14,7 +14,7 @@ const { createReassessmentsRouter } = require("../routes/reassessments");
 const { DIAGNOSTIC_ASSESSMENTS, getDiagnosticAssessmentBinding } = require("../services/diagnosticAssessments");
 
 const sql = (f) => readFileSync(resolve(__dirname, "../../supabase/proposed", f), "utf8");
-const MIGRATIONS = ["m2_assessment_packages_PROPOSED.sql", "m2_reassessment_foundation_PROPOSED.sql", "m2_independent_reassessment_eligibility_PROPOSED.sql"].map(sql);
+const MIGRATIONS = ["m2_assessment_packages_PROPOSED.sql", "m2_reassessment_foundation_PROPOSED.sql", "m2_independent_reassessment_eligibility_PROPOSED.sql", "m2_f10_direct_publish_PROPOSED.sql"].map(sql);
 const uid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const rid = (n) => `00000000-0000-4000-a000-${String(n).padStart(12, "0")}`;
 const P = {
@@ -144,7 +144,7 @@ test("eligibility per language: initial diagnostic required; the waiting interva
   assert.doesNotMatch(JSON.stringify({ il, il2, il3 }), /roomName|teacher|Learning Room/i, "no classroom information for Independent Learners");
 });
 
-test("visibility: only published, endorsed Independent Learner packages; classroom and other packages never appear or start", async () => {
+test("visibility: only published Independent Learner packages (F10: no endorsement needed); classroom and other packages never appear or start", async () => {
   const { d, service } = await setup();
   const ok = await version(d, { title: "IL ready" });
   await version(d, { title: "IL unendorsed", endorse: false });
@@ -152,7 +152,7 @@ test("visibility: only published, endorsed Independent Learner packages; classro
   const teacherPkg = await version(d, { audience: "classroom", scope: "teacher", owner: P.teacher[0], title: "Teacher private" });
   const schoolPkg = await version(d, { audience: "classroom", scope: "school", owner: P.admin[0], title: "School package" });
   const mine = await service.listMine(as("il"));
-  assert.deepEqual(mine.available.map((a) => a.title), ["IL ready"]);
+  assert.deepEqual(mine.available.map((a) => a.title), ["IL ready", "IL unendorsed"]);
   assert.equal(mine.available[0].packageVersionId, ok.versionId);
   assert.doesNotMatch(JSON.stringify(mine), /Teacher private|School package|correctChoiceId|paragraphs/);
   await refused(service.startIndependent(as("il"), { packageVersionId: teacherPkg.versionId }), 404, "PACKAGE_NOT_FOUND");

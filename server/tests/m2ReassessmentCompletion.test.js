@@ -17,6 +17,7 @@ const { DIAGNOSTIC_ASSESSMENTS, getDiagnosticAssessmentBinding } = require("../s
 const sql = (f) => readFileSync(resolve(__dirname, "../../supabase/proposed", f), "utf8");
 const PACKAGES = sql("m2_assessment_packages_PROPOSED.sql");
 const FOUNDATION = sql("m2_reassessment_foundation_PROPOSED.sql");
+const F10 = sql("m2_f10_direct_publish_PROPOSED.sql");
 const uid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const rid = (n) => `00000000-0000-4000-a000-${String(n).padStart(12, "0")}`;
 const P = {
@@ -79,6 +80,7 @@ async function setup({ gate = true } = {}) {
   }
   await d.exec(PACKAGES);
   await d.exec(FOUNDATION);
+  await d.exec(F10);
   if (gate) await d.exec("update m2_reassessment_settings set official_reassessment_enabled = true");
   await d.exec("set role service_role");
   const receipts = createTranscriptReceiptService({ getSecret: () => SECRET });
@@ -168,8 +170,9 @@ test("delivery is refused when the gate is off, the room is archived, the Studen
   await su(d, () => d.query("delete from enrollments where room_id = $1 and student_id = $2", [ROOM_A, P.s1[0]]));
   await refused(service.getContent(as("s1"), x.assignmentId), 409, "ROOM_NOT_ACTIVE");
   await su(d, () => d.query("insert into enrollments(room_id, student_id) values ($1, $2)", [ROOM_A, P.s1[0]]));
-  const withdrawn = await assigned(d, { student: "s2", endorse: false });
-  await refused(service.getContent(as("s2"), withdrawn.assignmentId), 409, "VERSION_WITHDRAWN");
+  // F10: a later "changes requested" review no longer withdraws a published version; only retiring it does.
+  const notEndorsed = await assigned(d, { student: "s2", endorse: false });
+  assert.ok((await service.getContent(as("s2"), notEndorsed.assignmentId)).assessment);
   await su(d, () => d.query(`update m2_assessment_package_versions set status = 'retired', retired_by = $2 where id = $1`, [x.versionId, P.teacher[0]]));
   await refused(service.getContent(as("s1"), x.assignmentId), 409, "VERSION_WITHDRAWN");
 });
@@ -247,7 +250,11 @@ test("receipts must be for THIS Student, language, version, assignment and passa
   await refused(submit([receipt(receipts, { bind: binding(z) })]), 422, "READING_NOT_VERIFIED"); // another assignment's
   await refused(submit([receipt(receipts, { language: "fil", bind: binding(x) })]), 422, "READING_NOT_VERIFIED"); // another language
   await refused(submit([receipt(receipts, { bind: { ...binding(x), passageHash: "0".repeat(64) } })]), 422, "READING_NOT_VERIFIED"); // another passage
-  const tampered = receipt(receipts, { bind: binding(x) }).replace(/.$/, (c) => (c === "A" ? "B" : "A"));
+  // Flip the FIRST signature character: the last base64url character also holds unused padding bits, so changing it
+  // can leave the decoded signature identical (the receipt would then still be genuine, about 1 run in 16).
+  const genuine = receipt(receipts, { bind: binding(x) });
+  const tampered = genuine.replace(/\.(.)/, (_m, c) => `.${c === "A" ? "B" : "A"}`);
+  assert.equal(tampered.split(".")[0], genuine.split(".")[0], "only the signature is changed");
   await refused(submit([tampered]), 422, "READING_NOT_VERIFIED");
   const old = createTranscriptReceiptService({ getSecret: () => SECRET, now: () => Date.now() - 25 * 60 * 60 * 1000 });
   await refused(submit([receipt(old, { bind: binding(x) })]), 422, "READING_NOT_VERIFIED"); // expired
@@ -339,4 +346,29 @@ test("routes: /me uses the learner check, ignores any student id in the request,
   assert.deepEqual([ilList.status, ilList.body.reassessments], [200, []], "an Independent Learner never sees classroom assignments");
   assert.equal((await call(createReassessmentsRouter({ authorizeLearner: async () => as("s1") }), "GET", "/me")).status, 503, "no delivery service = not installed");
   assert.deepEqual((await call(router, "GET", "/overview")).body, { success: true, ok: true }, "F9 staff routes unaffected");
+});
+
+test("F8 -> F3/F5: the recorded reassessment joins the learner's official history; the current level follows the placement rule", async () => {
+  const { toHistoryEntry } = require("../services/diagnosticHistoryService");
+  const { buildReadingProgress } = require("../services/readingProgressService");
+  const { d, service, receipts } = await setup();
+  const before = (await d.query("select id, reading_level, orv_score, comprehension_score from diagnostic_results where user_id = $1 order by id", [P.s1[0]])).rows;
+  const x = await assigned(d);
+  await service.submitResult(as("s1"), x.assignmentId, { transcriptReceipts: [receipt(receipts, { bind: binding(x) })], answers: ALL_RIGHT });
+  const rows = (await d.query("select * from diagnostic_results where user_id = $1", [P.s1[0]])).rows;
+  // Supabase returns ISO timestamps; PGlite returns Date objects (second-resolution strings), so normalise as the API does.
+  const entries = rows.map((r) => toHistoryEntry({ ...r, completed_at: new Date(r.completed_at).toISOString() }));
+  const re = entries.find((e) => e.assessmentType === "reassessment");
+  assert.ok(re && re.verified && re.language === "en", "F3: the reassessment is in the learner's history, verified, English");
+  assert.equal(typeof re.wordRecognitionScore, "number");
+  assert.equal(typeof re.comprehensionScore, "number");
+  const off = buildReadingProgress(entries, { followsReassessment: false });
+  assert.deepEqual([off.en.current.source, off.en.reassessments.length, off.en.reassessments[0].id], ["initial", 1, re.id],
+    "switch OFF: the current level stays the initial diagnostic; the reassessment is history");
+  assert.match(off.en.placementNote, /placement still uses the initial diagnostic/);
+  assert.equal(off.fil.reassessments.length, 0, "Filipino is untouched by an English reassessment");
+  const on = buildReadingProgress(entries, { followsReassessment: true });
+  assert.deepEqual([on.en.current.source, on.en.current.readingLevel], ["reassessment", re.readingLevel], "switch ON (only after approval): the latest official result");
+  const after = (await d.query("select id, reading_level, orv_score, comprehension_score from diagnostic_results where user_id = $1 and assessment_type = 'initial' order by id", [P.s1[0]])).rows;
+  assert.deepEqual(after, before, "earlier results are unchanged");
 });

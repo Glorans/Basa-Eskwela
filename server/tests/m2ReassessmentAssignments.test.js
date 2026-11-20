@@ -14,6 +14,7 @@ const { createReassessmentsRouter } = require("../routes/reassessments");
 const sql = (f) => readFileSync(resolve(__dirname, "../../supabase/proposed", f), "utf8");
 const PACKAGES = sql("m2_assessment_packages_PROPOSED.sql");
 const FOUNDATION = sql("m2_reassessment_foundation_PROPOSED.sql");
+const F10 = sql("m2_f10_direct_publish_PROPOSED.sql");
 const uid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const P = {
   sa: [uid(1), "system_admin", null, "Sys Admin"], admin: [uid(2), "admin", null, "School Admin"],
@@ -75,6 +76,7 @@ async function setup({ gate = true } = {}) {
   }
   await d.exec(PACKAGES);
   await d.exec(FOUNDATION);
+  await d.exec(F10);
   if (gate) await d.exec("update m2_reassessment_settings set official_reassessment_enabled = true");
   await d.exec("set role service_role");
   const service = createReassessmentAssignmentService({ repository: pgliteRepository(d), now: () => new Date("2026-11-19T04:00:00Z") });
@@ -97,7 +99,8 @@ async function pkg(d, { scope = "teacher", owner = P.teacher[0], language = "en"
     if (step === "approved") await d.query(`update m2_assessment_package_versions set status = 'approved', reviewed_by = $2, educator_review_attestation = 'Library' where id = $1`, [v.id, P.admin[0]]);
     if (step === "published") await d.query("select m2_publish_assessment_version($1, $2)", [v.id, owner]);
   }
-  if (endorse && upTo !== "draft") {
+  if (upTo === "direct") await d.query("select m2_publish_assessment_version($1, $2)", [v.id, owner]);
+  if (endorse && !["draft", "direct"].includes(upTo)) {
     await d.query(`insert into m2_assessment_educator_reviews(version_id, reviewer_name, reviewer_qualification, reviewed_on, passage_suitable, questions_sound,
       answer_keys_correct, language_accurate, outcome, recorded_by) values ($1, 'Reviewer', 'Teacher (stated)', '2026-11-18', true, true, true, true, 'endorsed', $2)`, [v.id, P.admin[0]]);
   }
@@ -142,6 +145,7 @@ test("Teacher sees only own active rooms and own private packages, each with the
   const { d, service } = await setup();
   const ok = await pkg(d, { title: "A ready" });
   await pkg(d, { title: "B unendorsed", endorse: false });
+  const direct = await pkg(d, { title: "F published directly", upTo: "direct" });
   await pkg(d, { title: "C draft", upTo: "draft" });
   await pkg(d, { title: "D approved only", upTo: "approved" });
   await pkg(d, { title: "E archived", archive: true });
@@ -150,8 +154,11 @@ test("Teacher sees only own active rooms and own private packages, each with the
   const o = await service.overview(as("teacher"));
   assert.deepEqual(o.rooms.map((r) => r.name), ["Room A"], "no archived room, no other Teacher's room");
   assert.deepEqual(o.packages.map((p) => [p.title, p.eligible, p.reason]), [
-    ["A ready", true, null], ["B unendorsed", false, "No documented educator endorsement"], ["C draft", false, "Not published in the library"],
-    ["D approved only", false, "Not published in the library"], ["E archived", false, "Archived"]]);
+    ["A ready", true, null], ["B unendorsed", true, null], ["F published directly", true, null], ["C draft", false, "Not published in the library"],
+    ["D approved only", false, "Not published in the library"], ["E archived", false, "Archived"]],
+    "F10: published is enough; no educator endorsement");
+  const directRoster = await service.roomRoster(as("teacher"), ROOM_A, direct);
+  assert.ok(directRoster.students.length > 0);
   assert.equal(o.packages[0].versionId, ok);
   assert.doesNotMatch(JSON.stringify(o), /Other teacher's|School package|correctChoiceId|paragraphs/);
   const roster = await service.roomRoster(as("teacher"), ROOM_A, ok);
@@ -160,21 +167,28 @@ test("Teacher sees only own active rooms and own private packages, each with the
   await refused(service.roomRoster(as("teacher"), ARCHIVED), 404, "ROOM_NOT_FOUND");
 });
 
-test("School Admin: all active rooms (single school); school packages anywhere; a Teacher's package only in that Teacher's rooms", async () => {
+test("School Admin: all active rooms (single school); school packages only — Teachers' private packages are never offered or assignable (F10)", async () => {
   const { d, service } = await setup();
   const school = await pkg(d, { scope: "school", owner: P.admin[0], title: "School story" });
   const teachers = await pkg(d, { title: "Teacher One story" });
   const o = await service.overview(as("admin"));
   assert.deepEqual(o.rooms.map((r) => [r.name, r.teacherName]), [["Room A", "Teacher One"], ["Room B", "Teacher Two"]]);
-  const inB = await service.assignablePackagesForRoom(as("admin"), ROOM_B);
-  assert.deepEqual(inB.packages.map((p) => [p.title, p.eligible, p.reason]),
-    [["School story", true, null], ["Teacher One story", false, "Only in Teacher One's Learning Rooms"]]);
-  await refused(service.createAssignments(as("admin"), { roomId: ROOM_B, packageVersionId: teachers, studentIds: [P.outsider[0]] }), 409, "PACKAGE_NOT_ELIGIBLE");
-  const inA = await service.createAssignments(as("admin"), { roomId: ROOM_A, packageVersionId: teachers, studentIds: [P.s2[0]] });
-  assert.equal(inA.created, 1);
+  assert.deepEqual(o.packages.map((p) => p.title), ["School story"], "no Teacher package is listed for the School Admin");
+  for (const room of [ROOM_A, ROOM_B]) {
+    assert.deepEqual((await service.assignablePackagesForRoom(as("admin"), room)).packages.map((p) => [p.title, p.eligible]), [["School story", true]]);
+  }
+  // Server: a Teacher's package id is treated as unknown, even in that Teacher's own room.
+  await refused(service.createAssignments(as("admin"), { roomId: ROOM_A, packageVersionId: teachers, studentIds: [P.s2[0]] }), 404, "PACKAGE_NOT_FOUND");
+  await refused(service.roomRoster(as("admin"), ROOM_A, teachers), 404, "PACKAGE_NOT_FOUND");
+  // Database (m2_f10_direct_publish): refused even if the server check were bypassed.
+  await assert.rejects(d.query(`insert into m2_reassessment_assignments(package_version_id, package_id, language, kind, room_id, student_id, assigned_by)
+    select id, package_id, 'en', 'classroom', $2, $3, $4 from m2_assessment_package_versions where id = $1`, [teachers, ROOM_A, P.s2[0], P.admin[0]]),
+  /School Admin for school packages/);
+  assert.equal(await count(d), 0);
   const inBSchool = await service.createAssignments(as("admin"), { roomId: ROOM_B, packageVersionId: school, studentIds: [P.outsider[0]] });
   assert.equal(inBSchool.assignments[0].assignedBy, "School Admin");
-  // Teachers are NOT offered school packages (F10 visibility); the id is not disclosed either.
+  // The Teacher still assigns their own package in their own room; Teachers are not offered school packages.
+  assert.equal((await service.createAssignments(as("teacher"), { roomId: ROOM_A, packageVersionId: teachers, studentIds: [P.s2[0]] })).created, 1);
   await refused(service.createAssignments(as("teacher"), { roomId: ROOM_A, packageVersionId: school, studentIds: [P.s3[0]] }), 404, "PACKAGE_NOT_FOUND");
 });
 

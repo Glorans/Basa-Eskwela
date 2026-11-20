@@ -2,7 +2,8 @@
 // centrally approved Independent Learner packages). The learner's id comes from the verified session, never from the
 // request. A Student only ever reaches classroom assignments; an Independent Learner only independent ones. Every read re-checks: assignment owned by this Student and active, the
 // official reassessment gate ON, the Learning Room active and the Student still enrolled, and the exact assigned
-// package version still published and educator-endorsed (a retired/withdrawn version or archived package is refused).
+// package version still published (a retired/withdrawn version or archived package is refused). F10 final workflow:
+// no educator endorsement is required (the database rule is removed by m2_f10_direct_publish_PROPOSED.sql).
 //
 // Reuses the M2 diagnostic pipeline unchanged: signed transcript receipts (verifyReading), duration handling
 // (resolveDuration) and the server scorer + thresholds (scoreDiagnostic, title-optional-v1). Receipts are bound to
@@ -104,7 +105,6 @@ function createReassessmentDeliveryService({ repository, receipts, now = () => n
     const audience = assignment.kind === "independent" ? "independent_learners" : "classroom";
     if (!version || version.status !== "published" || !pkg || pkg.archived_at || pkg.kind !== "reassessment" || pkg.audience !== audience
       || version.package_id !== pkg.id || pkg.language !== assignment.language) return "VERSION_WITHDRAWN";
-    if (!(await run(() => repository.isEndorsed(version.id)))) return "VERSION_WITHDRAWN";
     return null;
   }
 
@@ -209,7 +209,6 @@ function createReassessmentDeliveryService({ repository, receipts, now = () => n
     for (const pkg of packages) {
       const version = versions.find((v) => v.package_id === pkg.id && v.status === "published");
       if (pkg.archived_at || pkg.kind !== "reassessment" || pkg.audience !== "independent_learners" || !version) continue;
-      if (!(await run(() => repository.isEndorsed(version.id)))) continue;
       const done = taken.has(version.id);
       const lang = languages[pkg.language];
       available.push({
@@ -238,7 +237,7 @@ function createReassessmentDeliveryService({ repository, receipts, now = () => n
     const pkg = version ? await run(() => repository.getPackage(version.package_id)) : null;
     // A classroom package (or anything else) looks exactly like a missing one.
     if (!version || !pkg || pkg.kind !== "reassessment" || pkg.audience !== "independent_learners" || pkg.archived_at
-      || version.status !== "published" || !(await run(() => repository.isEndorsed(version.id)))) {
+      || version.status !== "published") {
       fail("Reassessment not found.", 404, "PACKAGE_NOT_FOUND");
     }
     const mine = await run(() => repository.listMyAssignments(userId, "independent"));

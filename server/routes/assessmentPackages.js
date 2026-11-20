@@ -18,7 +18,7 @@ const { createSupabaseAssessmentPackageRepository } = require("../services/asses
 //   PATCH  /:id/versions/:versionId           edit a draft
 //   DELETE /:id/versions/:versionId           delete a draft
 //   POST   /:id/versions/:versionId/educator-reviews   record an educator review (append-only evidence)
-//   POST   /:id/versions/:versionId/:action   submit | return | approve | publish | retire
+//   POST   /:id/versions/:versionId/:action   submit | return | approve | publish | retire (initial); publish | reopen | retire (reassessment)
 function createAssessmentPackagesRouter({
   authorize = (req) => authorizeDiagnosticPracticeRequest(req),
   service = createAssessmentPackageService({ repository: createSupabaseAssessmentPackageRepository() }),
