@@ -325,10 +325,14 @@ async function teacher(teacherId) {
   return { students, notifications: history.filter(e => !e.superseded_at && !e.read_at && students.some(s => s.id === e.student_id)).sort((a,b) => b.occurred_at.localeCompare(a.occurred_at)), notificationsActive };
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Admin scope: any Student-role learner (single-school administration). Independent Learners are excluded. */
-async function requireAdminStudent(studentId, load = rows) {
+/**
+ * Admin scope: a Student-role learner of the School Admin's own school (M1 multi-tenancy). Independent Learners and
+ * other schools' Students answer "not found". schoolId comes from the School Admin's database profile.
+ */
+async function requireAdminStudent(studentId, load = rows, schoolId) {
   if (typeof studentId !== 'string' || !UUID.test(studentId)) throw fail('Student not found.', 404);
-  const found = await load('profiles', 'id,role', { id: studentId, role: 'student' });
+  if (!schoolId) throw fail('Your School Admin account is not assigned to a school.', 403);
+  const found = await load('profiles', 'id,role', { id: studentId, role: 'student', school_id: schoolId });
   if (!found.length) throw fail('Student not found.', 404);
 }
 /**

@@ -50,25 +50,27 @@ router.patch('/notifications/:id/read',wrap(async req => {
 }));
 // ---- Admin student performance, competency and interventions (Admin only; Student-role learners) ----
 const adminAnalytics = () => require('../services/adminSystemAnalytics');
-const adminData = () => adminAnalytics().loadAdminData({ rows: analytics.rows, quizzes: analytics.quizzes });
+// M1 multi-tenancy: every Admin view is limited to the School Admin's own school (school read from the database).
+const schoolMembers = requester => require('../services/schoolScope').requesterSchoolMembers(requester).then(scope => scope.members);
+const adminData = members => adminAnalytics().loadAdminData({ rows: analytics.rows, quizzes: analytics.quizzes }, members);
 router.get('/admin/students',wrap(async req => {
-  await authorizeAdminRequest(req);
-  return adminAnalytics().buildAdminStudents(await adminData());
+  const requester = await authorizeAdminRequest(req);
+  return adminAnalytics().buildAdminStudents(await adminData(await schoolMembers(requester)));
 }));
 router.get('/admin/students/:studentId',wrap(async req => {
   const requester = await authorizeAdminRequest(req);
-  await analytics.requireAdminStudent(req.params.studentId);
+  await analytics.requireAdminStudent(req.params.studentId, undefined, requester.schoolId);
   const own = await analytics.rows('m7_interventions','*',{ teacher_id: requester.user.id, student_id: req.params.studentId });
-  const detail = adminAnalytics().buildAdminStudentDetail(await adminData(), req.params.studentId, requester.user.id, own);
+  const detail = adminAnalytics().buildAdminStudentDetail(await adminData(await schoolMembers(requester)), req.params.studentId, requester.user.id, own);
   return { ...detail, historicalQuizzes: await analytics.historicalQuizzes({ user_id: req.params.studentId }) };
 }));
 router.post('/admin/students/:studentId/interventions',wrap(async req => {
   const requester = await authorizeAdminRequest(req);
-  return analytics.saveIntervention(requester.user.id,req.params.studentId,null,req.body,{ authorize: () => analytics.requireAdminStudent(req.params.studentId) });
+  return analytics.saveIntervention(requester.user.id,req.params.studentId,null,req.body,{ authorize: () => analytics.requireAdminStudent(req.params.studentId, undefined, requester.schoolId) });
 }));
 router.patch('/admin/students/:studentId/interventions/:id',wrap(async req => {
   const requester = await authorizeAdminRequest(req);
-  return analytics.saveIntervention(requester.user.id,req.params.studentId,req.params.id,req.body,{ authorize: () => analytics.requireAdminStudent(req.params.studentId) });
+  return analytics.saveIntervention(requester.user.id,req.params.studentId,req.params.id,req.body,{ authorize: () => analytics.requireAdminStudent(req.params.studentId, undefined, requester.schoolId) });
 }));
 // ---- System Admin (M7 F2 platform overview, F4 Independent Learner performance). Read-only; System Admin only. ----
 // School Admin, Teacher and learner routes above are unchanged; /system and /admin/* stay School Admin only.

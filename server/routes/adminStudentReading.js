@@ -63,7 +63,9 @@ function createAdminStudentReadingRouter(dependencies = {}) {
     try {
       const requester = await authorize(req, dependencies);
       adminId = requester.user.id;
-      const body = await respond(req, requester);
+      // M1 multi-tenancy: every read is limited to the School Admin's own school (from the database profile).
+      const scoped = { ...dependencies, schoolId: requester.schoolId ?? requester.profile?.school_id ?? null };
+      const body = await respond(req, requester, scoped);
       accessLog({ adminId, attemptId, at: now(), operation, outcome: "allowed" });
       res.set("Cache-Control", "no-store");
       return res.json({ success: true, ...body });
@@ -73,24 +75,24 @@ function createAdminStudentReadingRouter(dependencies = {}) {
     }
   };
 
-  router.get("/students", handle("list_students", async () => ({
-    students: await listStudentsWithReadings(dependencies),
+  router.get("/students", handle("list_students", async (_req, _requester, scoped) => ({
+    students: await listStudentsWithReadings(scoped),
   })));
 
-  router.get("/students/:studentId/attempts", handle("list_student_readings", async (req) => (
-    listStudentReadings(req.params.studentId, dependencies)
+  router.get("/students/:studentId/attempts", handle("list_student_readings", async (req, _requester, scoped) => (
+    listStudentReadings(req.params.studentId, scoped)
   )));
 
-  router.get("/attempts/:attemptId", handle("view_assessment", async (req) => ({
-    attempt: await getStudentAttempt(req.params.attemptId, dependencies),
+  router.get("/attempts/:attemptId", handle("view_assessment", async (req, _requester, scoped) => ({
+    attempt: await getStudentAttempt(req.params.attemptId, scoped),
   })));
 
-  router.get("/attempts/:attemptId/pronunciation", handle("view_pronunciation", async (req) => (
-    getStudentPronunciationCheck(req.params.attemptId, dependencies)
+  router.get("/attempts/:attemptId/pronunciation", handle("view_pronunciation", async (req, _requester, scoped) => (
+    getStudentPronunciationCheck(req.params.attemptId, scoped)
   )));
 
-  router.get("/attempts/:attemptId/recording", handle("open_recording", async (req, requester) => ({
-    recording: await getStudentRecording(requester, req.params.attemptId, dependencies),
+  router.get("/attempts/:attemptId/recording", handle("open_recording", async (req, requester, scoped) => ({
+    recording: await getStudentRecording(requester, req.params.attemptId, scoped),
   })));
 
   return router;

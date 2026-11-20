@@ -9,7 +9,7 @@ const { canViewAccount } = require("./m1AccountScope");
 
 // Diagnostics belong to learners. Which learners a viewer sees follows the M1 account scope: a School Admin sees
 // Students only, never Independent Learners (Appendix N; the School Admin manages only Teachers and Students).
-// Single-school limitation: there is no school membership in the database, so a School Admin sees ALL Students.
+// M1 multi-tenancy: only the Students of the School Admin's own school (listManagedUsers applies the school).
 const DIAGNOSTIC_LEARNER_ROLES = new Set(["student", "general_user"]);
 
 async function listDiagnosticResultRows(supabase) {
@@ -28,14 +28,15 @@ async function listDiagnosticResultRows(supabase) {
   return data ?? [];
 }
 
-async function listAdminDiagnosticResults(dependencies = {}, viewerRole) {
+async function listAdminDiagnosticResults(dependencies = {}, viewerRole, viewerSchoolId) {
   if (viewerRole !== "admin") throw new AdminAuthorizationError();
+  if (!viewerSchoolId) throw new AdminAuthorizationError("Your School Admin account is not assigned to a school.");
   const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
   const listUsers = dependencies.listManagedUsers ?? listManagedUsers;
   const listRows = dependencies.listDiagnosticResultRows ?? listDiagnosticResultRows;
   const supabase = getAdmin();
   const [users, rows] = await Promise.all([
-    listUsers({ getSupabaseAdmin: getAdmin }, viewerRole),
+    listUsers({ getSupabaseAdmin: getAdmin }, viewerRole, viewerSchoolId),
     listRows(supabase),
   ]);
   const userById = new Map(users.map((user) => [user.id, user]));

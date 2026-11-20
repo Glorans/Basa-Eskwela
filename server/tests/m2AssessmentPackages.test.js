@@ -78,7 +78,7 @@ async function setup() {
     await d.query("insert into profiles values ($1, $2, $3, $4)", [p.id, p.role, p.full_name ?? null, p.nickname ?? null]);
   }
   await d.exec(PROPOSAL);
-  return { d, service: createAssessmentPackageService({ repository: pgliteRepository(d) }) };
+  return { d, service: createAssessmentPackageService({ repository: pgliteRepository(d), schoolFilter: async (_requester, ids) => new Set(ids.filter(Boolean)) }) };
 }
 
 /** The live table shapes plus the packages, reassessment foundation and F10 direct-publish proposals (F10 tests). */
@@ -93,7 +93,7 @@ async function setupF10() {
   await d.exec(PROPOSAL);
   await d.exec(FOUNDATION);
   await d.exec(F10);
-  return { d, service: createAssessmentPackageService({ repository: pgliteRepository(d) }) };
+  return { d, service: createAssessmentPackageService({ repository: pgliteRepository(d), schoolFilter: async (_requester, ids) => new Set(ids.filter(Boolean)) }) };
 }
 const F10_REVIEW = { reviewerName: "Ms. Santos", reviewerQualification: "Teacher (stated)", reviewedOn: "2026-11-18", passageSuitable: true,
   questionsSound: true, answerKeysCorrect: true, languageAccurate: true, outcome: "endorsed", notes: "" };

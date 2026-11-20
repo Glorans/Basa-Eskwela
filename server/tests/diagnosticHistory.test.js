@@ -181,7 +181,7 @@ test("Teacher with no rooms, or another Teacher, sees nothing of t1's Students",
 test("School Admin list: every assessment type with type and version; Independent Learners never shown", async () => {
   const db = fakeDb(TABLES);
   const users = TABLES.profiles.map((p) => ({ id: p.id, role: p.role, nickname: p.nickname, fullName: p.full_name, email: `${p.id}@example.invalid` }));
-  const rows = await listAdminDiagnosticResults({ getSupabaseAdmin: () => db, listManagedUsers: async () => users }, "admin");
+  const rows = await listAdminDiagnosticResults({ getSupabaseAdmin: () => db, listManagedUsers: async () => users }, "admin", "5c000000-0000-4000-8000-000000000001");
   assert.equal(rows.some((row) => row.role === "general_user" || ["d6", "d7"].includes(row.id)), false);
   assert.ok(rows.every((row) => row.assessmentType === "initial" && row.assessmentVersion === "3.0"));
   assert.equal(db.selects.some(([table, cols]) => table === "diagnostic_results" && /transcript|oral_reading_metrics|verification_recording_id/.test(cols)), false);

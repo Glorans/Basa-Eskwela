@@ -89,7 +89,7 @@ test('admin report uses two-score recovery and the highest-priority context', ()
 });
 test('admin service loads only existing tables and excludes private intervention fields', async () => {
   const calls=[];
-  const report=await getAdminSystemAnalytics({profile:{role:'admin'}},{},{rows:async(table,columns)=>{calls.push({table,columns});return [];},quizzes:async()=>[]});
+  const report=await getAdminSystemAnalytics({profile:{role:'admin'}},{},{rows:async(table,columns)=>{calls.push({table,columns});return [];},quizzes:async()=>[],requesterSchoolMembers:async()=>({members:new Set()})});
   assert.equal(report.students,0);
   assert.ok(calls.every(c=>c.table !== 'm7_risk_events' && c.table !== 'm7_risk_queue'));
   assert.equal(calls.find(c=>c.table==='m7_interventions').columns,'id,teacher_id,student_id,status');

@@ -144,8 +144,14 @@ function buildAdminAnalytics(data, filters) {
 const requireAdmin = (requester) => {
   if (requester?.profile?.role !== 'admin') throw Object.assign(new Error('Admin access is required.'), { statusCode: 403 });
 };
-/** Everything the Admin views read. Selects only; intervention notes are not loaded here. */
-async function loadAdminData(dependencies = {}) {
+/**
+ * Everything the Admin views read. Selects only; intervention notes are not loaded here.
+ * M1 multi-tenancy: schoolMembers (a Set of the School Admin's school account ids, from services/schoolScope.js) is
+ * required; every account, room, enrollment, assignment and intervention outside that school is dropped before any
+ * total is computed. Without it nothing is read (fails closed).
+ */
+async function loadAdminData(dependencies = {}, schoolMembers) {
+  if (!(schoolMembers instanceof Set)) throw Object.assign(new Error('School scope is required.'), { statusCode: 403 });
   const { rows, quizzes } = dependencies.rows ? dependencies : require('./m7Analytics');
   const [profiles, rooms, enrollments, readings, quizResults, materialAssignments, attempts, interventions, roomModules, recipients, passages, modules, questions, materials] = await Promise.all([
     rows('profiles', 'id,role,teacher_status,full_name,nickname'), rows('rooms', 'id,room_name,teacher_id'),
@@ -157,6 +163,20 @@ async function loadAdminData(dependencies = {}) {
     rows('room_modules', '*'), rows('room_module_recipients', 'room_module_id,student_id'), rows('module_passages', 'id,module_id'),
     rows('modules', 'id,title,status,deleted_at'), rows('comprehension_questions', 'id,passage_id', { review_status: 'reviewed' }), rows('uploaded_materials', 'id,title'),
   ]);
+  return scopedAdminData(schoolMembers, { profiles, rooms, enrollments, readings, quizResults, materialAssignments, attempts, interventions, roomModules, recipients, passages, modules, questions, materials });
+}
+/** The school-limited Admin data (M1 multi-tenancy): rooms of the school's Teachers, the school's Students only. */
+function scopedAdminData(schoolMembers, all) {
+  const inSchool = (id) => schoolMembers.has(id);
+  const profiles = all.profiles.filter((p) => inSchool(p.id));
+  const rooms = all.rooms.filter((r) => inSchool(r.teacher_id));
+  const roomIds = new Set(rooms.map((r) => r.id));
+  const enrollments = all.enrollments.filter((e) => roomIds.has(e.room_id) && inSchool(e.student_id));
+  const materialAssignments = all.materialAssignments.filter((a) => roomIds.has(a.room_id) && inSchool(a.student_id));
+  const roomModules = all.roomModules.filter((m) => roomIds.has(m.room_id));
+  const recipients = all.recipients.filter((r) => inSchool(r.student_id));
+  const interventions = all.interventions.filter((i) => inSchool(i.student_id) && inSchool(i.teacher_id));
+  const { readings, quizResults, attempts, passages, modules, questions, materials } = all;
   const studentIds = new Set(profiles.filter(p => p.role === 'student').map(p => p.id));
   const enrolledIn = roomId => enrollments.filter(e => e.room_id === roomId && studentIds.has(e.student_id)).map(e => e.student_id);
   const titleOf = (list, id) => list.find((row) => row.id === id)?.title;
@@ -176,7 +196,8 @@ async function loadAdminData(dependencies = {}) {
 async function getAdminSystemAnalytics(requester, query = {}, dependencies = {}) {
   requireAdmin(requester);
   const filters = parseFilters(query);
-  return buildAdminAnalytics(await loadAdminData(dependencies), filters);
+  const { members } = await (dependencies.requesterSchoolMembers ?? require('./schoolScope').requesterSchoolMembers)(requester, dependencies);
+  return buildAdminAnalytics(await loadAdminData(dependencies, members), filters);
 }
 
 // ---- Admin student performance (Student-role learners; Independent Learners are not included) ----
@@ -254,5 +275,5 @@ function buildAdminStudentDetail(data, studentId, adminId, ownInterventions = []
     },
   };
 }
-module.exports = { getAdminSystemAnalytics, buildAdminAnalytics, parseFilters, loadAdminData, requireAdmin,
+module.exports = { getAdminSystemAnalytics, buildAdminAnalytics, parseFilters, loadAdminData, scopedAdminData, requireAdmin,
   buildAdminStudents, buildAdminStudentDetail, competencyOf, studentRiskContexts };

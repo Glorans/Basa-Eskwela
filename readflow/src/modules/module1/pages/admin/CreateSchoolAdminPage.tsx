@@ -1,7 +1,8 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { showReadFlowDialog } from "../../../../components/ReadFlowDialog";
 import { CONFIRMATION_METHODS, createSchoolAdmin, getAdminUserError } from "../../services/adminUsers";
+import { listSchools, type School } from "../../services/schools";
 import {
   FULL_NAME_MAX_LENGTH,
   getFullNameValidationError,
@@ -11,7 +12,7 @@ import {
 import "../../../../pages/admin/UserManagementPage.css";
 import "./CreateSchoolAdminPage.css";
 
-type FieldErrors = Partial<Record<"email" | "fullName" | "reference" | "confirmationMethod" | "authorizingPosition" | "note", string>>;
+type FieldErrors = Partial<Record<"email" | "fullName" | "schoolId" | "reference" | "confirmationMethod" | "authorizingPosition" | "note", string>>;
 
 const SCHOOL_ACCOUNTS_PATH = "/system-admin/users?section=school";
 const INVITATION_SENT_TITLE = "Invitation sent";
@@ -27,6 +28,9 @@ export default function CreateSchoolAdminPage() {
   const [confirmationMethod, setConfirmationMethod] = useState("");
   const [authorizingPosition, setAuthorizingPosition] = useState("");
   const [note, setNote] = useState("");
+  // F9: the one school this School Admin will manage (active schools only; re-checked on the server).
+  const [schoolId, setSchoolId] = useState("");
+  const [schools, setSchools] = useState<School[]>([]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -35,6 +39,14 @@ export default function CreateSchoolAdminPage() {
   const busy = useRef(false);
   const fullNameInput = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    let active = true;
+    listSchools()
+      .then((rows) => { if (active) setSchools(rows.filter((school) => school.status === "active")); })
+      .catch((loadError) => { if (active) setError(getAdminUserError(loadError)); });
+    return () => { active = false; };
+  }, []);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting || busy.current) return;
@@ -42,6 +54,7 @@ export default function CreateSchoolAdminPage() {
     const nextErrors: FieldErrors = {
       email: isValidSignupEmail(email) ? undefined : "Enter a valid email address.",
       fullName: getFullNameValidationError(fullName) ? "Enter the School Admin's full name (up to 100 characters)." : undefined,
+      schoolId: schools.some((school) => school.id === schoolId) ? undefined : "Choose the school this School Admin will manage.",
       reference: ref.length >= 5 && ref.length <= 300 ? undefined : "Enter the authorization reference (5 to 300 characters).",
       confirmationMethod: confirmationMethod ? undefined : "Choose how you confirmed the request.",
       authorizingPosition: position.length >= 2 && position.length <= 100 ? undefined : "Enter the position of the person who authorized it.",
@@ -58,10 +71,11 @@ export default function CreateSchoolAdminPage() {
       await createSchoolAdmin({
         email: normalizeAuthEmail(email),
         fullName: fullName.trim(),
+        schoolId,
         authorization: { reference: ref, confirmationMethod, authorizingPosition: position, note: note.trim() || undefined },
       });
       sent = true;
-      setEmail(""); setFullName(""); setReference(""); setConfirmationMethod(""); setAuthorizingPosition(""); setNote("");
+      setEmail(""); setFullName(""); setSchoolId(""); setReference(""); setConfirmationMethod(""); setAuthorizingPosition(""); setNote("");
     } catch (createError) {
       setError(getAdminUserError(createError));
     } finally {
@@ -115,6 +129,14 @@ export default function CreateSchoolAdminPage() {
             <span>Email address</span>
             <input type="email" autoComplete="off" value={email} onChange={(event) => setEmail(event.target.value)} {...field("email")} />
             {fieldError("email")}
+          </label>
+          <label>
+            <span>School</span>
+            <select value={schoolId} onChange={(event) => setSchoolId(event.target.value)} {...field("schoolId")}>
+              <option value="">Choose a school</option>
+              {schools.map((school) => <option key={school.id} value={school.id}>{school.name} ({school.code})</option>)}
+            </select>
+            {fieldError("schoolId")}
           </label>
         </fieldset>
 

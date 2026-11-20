@@ -79,7 +79,7 @@ async function setup({ gate = true } = {}) {
   await d.exec(F10);
   if (gate) await d.exec("update m2_reassessment_settings set official_reassessment_enabled = true");
   await d.exec("set role service_role");
-  const service = createReassessmentAssignmentService({ repository: pgliteRepository(d), now: () => new Date("2026-11-19T04:00:00Z") });
+  const service = createReassessmentAssignmentService({ repository: pgliteRepository(d), now: () => new Date("2026-11-19T04:00:00Z"), schoolFilter: async (_requester, ids) => new Set(ids.filter(Boolean)) });
   return { d, service, repo: pgliteRepository(d) };
 }
 

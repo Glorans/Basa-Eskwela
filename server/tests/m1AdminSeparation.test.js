@@ -33,15 +33,19 @@ const ACCOUNTS = {
 const LEARNER_MARKERS = [uuid(7), uuid(8), "Indie Iris", "Indie Ivan", "iris@", "ivan@"];
 const email = (name) => `${name.split(" ")[1].toLowerCase()}@example.test`;
 const TEACHER_MATERIAL = uuid(70);
+// M1 multi-tenancy: every School Admin, Teacher and Student here belongs to School 1.
+const S1 = uuid(60);
 const LEARNER_MATERIAL = uuid(71);
 
 function world() {
   const profiles = Object.values(ACCOUNTS).map(([id, role, name]) => ({
     id, role, full_name: name, nickname: name.split(" ")[1], status: "active",
     teacher_status: role === "teacher" ? "approved" : null, created_at: "2026-11-01T00:00:00.000Z",
+    school_id: ["admin", "teacher", "student"].includes(role) ? S1 : null,
   }));
   const db = createDatabase({
     profiles,
+    schools: [{ id: S1, name: "School 1" }],
     uploaded_materials: [material(TEACHER_MATERIAL, uuid(5), "Teacher text"), material(LEARNER_MATERIAL, uuid(7), "Iris private text")],
     diagnostic_results: [uuid(6), uuid(7)].map((userId, n) => ({ id: uuid(80 + n), user_id: userId, assessment_type: "initial",
       language: "en", orv_score: 90, comprehension_score: 80, reading_speed_wpm: 70, reading_level: "Instructional",
@@ -98,13 +102,13 @@ function world() {
   app.use(express.json());
   app.use("/api/admin/users", createAdminUsersRouter({
     authorizeAccountManager: (req) => authorizeAccountManager(req, deps),
-    listManagedUsers: (_unused, role) => listManagedUsers({ getSupabaseAdmin }, role),
+    listManagedUsers: (_unused, role, school) => listManagedUsers({ getSupabaseAdmin }, role, school),
     deleteManagedUser: (requesterId, userId, _unused, role) => deleteManagedUser(requesterId, userId, { getSupabaseAdmin }, role),
     createSchoolAdmin: (input, _unused, requester) => createSchoolAdmin(input, { getSupabaseAdmin, passwordSetupRedirect: () => "https://basaeskwela.com/reset-password" }, requester),
   }));
   app.use("/api/admin/diagnostic-results", createAdminDiagnosticResultsRouter({
     authorizeAdminRequest: (req) => authorizeAdminRequest(req, deps),
-    listAdminDiagnosticResults: (_unused, role) => listAdminDiagnosticResults({ getSupabaseAdmin }, role),
+    listAdminDiagnosticResults: (_unused, role, school) => listAdminDiagnosticResults({ getSupabaseAdmin }, role, school),
   }));
   app.use("/api/materials", createMaterialsRouter(deps));
   return { app, db, deletedAuthUsers };
@@ -135,7 +139,7 @@ test("School Admin lists Teachers and Students only; no query manipulation retur
     assert.deepEqual(list.json.users.map((u) => u.role).sort(), ["student", "teacher"]);
     assert.deepEqual(list.json.users.map((u) => u.email).sort(), ["sam@example.test", "tess@example.test"], "roles and emails shown");
     assert.equal(list.json.users.length, 2, "the count covers Teachers and Students only");
-    assert.deepEqual(list.json.permissions, { role: "admin", visibleRoles: ["teacher", "student"], deletableRoles: ["teacher", "student"], statusRoles: ["teacher", "student"], canCreateSchoolAdmin: false });
+    assert.deepEqual(list.json.permissions, { role: "admin", visibleRoles: ["teacher", "student"], deletableRoles: ["teacher", "student"], statusRoles: ["teacher", "student"], canCreateSchoolAdmin: false, canManageSchools: false });
     assert.equal(leaksLearner(list.text), false);
     assert.equal(/Sys Admin|Other Sys|School Admin Two/.test(list.text), false, "no administrator accounts");
     for (const query of ["?role=general_user", "?search=iris", "?q=Indie", `?userId=${uuid(7)}`, `?id=${uuid(7)}`, "?page=2&perPage=1000", "?includeAll=true", "?scope=all"]) {
@@ -216,7 +220,7 @@ test("System Admin manages Independent Learners and School Admins, never System 
 
     assert.equal((await call("system", "POST", "/api/admin/users/school-admins", { email: "x@school.test", fullName: "No Basis" })).status, 400,
       "an authorization record is required");
-    const created = await call("system", "POST", "/api/admin/users/school-admins", { email: "Principal@School.test", fullName: "Pat Principal", role: "system_admin",
+    const created = await call("system", "POST", "/api/admin/users/school-admins", { email: "Principal@School.test", fullName: "Pat Principal", role: "system_admin", schoolId: S1,
       authorization: { reference: "Request letter dated 2026-11-18", confirmationMethod: "official_school_phone", authorizingPosition: "School Principal" } });
     assert.equal(created.status, 201);
     assert.equal(created.json.account.role, null, "no role until the invitation is accepted");

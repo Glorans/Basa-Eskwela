@@ -100,6 +100,8 @@ export default function UserManagementPage() {
       ? [{ title: "Independent Learner Accounts", users: matchingLearners.slice(learnerPageStart, learnerPageStart + 10) }]
       : [{ title: isSystemAdmin ? "All Registered Users" : "", users: filteredUsers }];
   const showRoleFilter = !schoolView && !independentView;
+  // M1 multi-tenancy: the System Admin sees each school account's school (School Admins see only their own school).
+  const showSchool = isSystemAdmin && !independentView;
   const showVerification = schoolView ? activeSchoolTab === "teacher" : !independentView;
   const activeSearch = schoolView ? schoolSearch : independentView ? learnerSearch : searchQuery;
   const activeStatus = schoolView ? schoolStatus : independentView ? learnerStatus : statusFilter;
@@ -383,6 +385,7 @@ export default function UserManagementPage() {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
+                {showSchool && <th>School</th>}
                 {!independentView && !isSchoolAdmin && <th>Role</th>}
                 <th>{isSchoolAdmin ? "Account Status" : "Status"}</th>
                 <th>{isSchoolAdmin ? "Registration Date" : "Registered"}</th>
@@ -407,6 +410,7 @@ export default function UserManagementPage() {
                       {isSystemAdmin && user.role === "admin" && <><br /><SchoolAdminAuthorizationNote authorization={user.schoolAdminAuthorization} /></>}
                     </td>
                     <td>{user.email || "\u2014"}</td>
+                    {showSchool && <td>{user.schoolName || "\u2014"}</td>}
                     {!independentView && !isSchoolAdmin && <td>
                       <span className="admin-users-role-readonly">{roleLabel}</span>
                     </td>}
@@ -439,7 +443,7 @@ export default function UserManagementPage() {
               })}
               {group.users.length === 0 && (
                 <tr>
-                  <td className="admin-users-empty" colSpan={isSchoolAdmin ? showVerification ? 6 : 5 : independentView ? 5 : showVerification ? 7 : 6}>
+                  <td className="admin-users-empty" colSpan={(isSchoolAdmin ? showVerification ? 6 : 5 : independentView ? 5 : showVerification ? 7 : 6) + (showSchool ? 1 : 0)}>
                     {schoolView || independentView
                       ? categoryHasFilters ? "No accounts match your search or filters." : "No accounts in this category yet."
                       : users.length === 0 ? "No user profiles were found." : "No users match your search or filters."}

@@ -13,6 +13,7 @@ import Settings from "./modules/module1/pages/Settings";
 import UserManagementPage from "./modules/module1/pages/admin/UserManagementPage";
 import TeacherInvitationsPage from "./modules/module1/pages/admin/TeacherInvitationsPage";
 import CreateSchoolAdminPage from "./modules/module1/pages/admin/CreateSchoolAdminPage";
+import SchoolsPage from "./modules/module1/pages/admin/SchoolsPage";
 import { DIAGNOSTIC_LEARNER_ROLES } from "./modules/module1/utils/authOnboarding";
 
 import {
@@ -316,6 +317,8 @@ function App() {
             <Route index element={<Navigate to="users" replace />} />
             <Route path="users" element={<UserManagementPage />} />
             <Route path="school-admins/new" element={<CreateSchoolAdminPage />} />
+            {/* M1 F8 Create School (System Admin only; re-checked on the server). */}
+            <Route path="schools" element={<SchoolsPage />} />
             <Route path="analytics" element={<SystemAdminOverviewPage />} />
             <Route path="independent-learners" element={<SystemAdminLearnerPerformancePage />} />
             {/* M2 F6 + F10 - initial diagnostic and Independent Learner reassessment packages */}

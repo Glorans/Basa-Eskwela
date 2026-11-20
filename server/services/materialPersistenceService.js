@@ -248,8 +248,11 @@ async function listPersistedMaterials(
     materials,
   );
   if (requester.profile.role === "admin") {
-    // School Admin: never an Independent Learner's personal upload (see isIndependentLearnerUpload).
+    // School Admin: never an Independent Learner's personal upload (see isIndependentLearnerUpload), and never
+    // another school's material (M1 multi-tenancy).
     materials = materials.filter((material) => profiles.get(material.uploaded_by)?.role !== "general_user");
+    const foreign = await require("./schoolScope").foreignSchoolOwners(requester, materials.map((m) => m.uploaded_by), dependencies);
+    materials = materials.filter((material) => !foreign.has(material.uploaded_by));
   }
 
   const materialIds = materials.map(
@@ -399,6 +402,13 @@ async function getAuthorizedMaterialRow(
     && await isIndependentLearnerUpload(dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin(), material.uploaded_by)
   ) {
     // The same answer as a missing material, so the ID reveals nothing about the Independent Learner.
+    throw new MaterialPersistenceError("Uploaded material not found.", 404, "MATERIAL_NOT_FOUND");
+  }
+  if (
+    requester.profile.role === "admin"
+    && (await require("./schoolScope").foreignSchoolOwners(requester, [material.uploaded_by], dependencies)).size
+  ) {
+    // M1 multi-tenancy: another school's material is answered exactly like a missing one.
     throw new MaterialPersistenceError("Uploaded material not found.", 404, "MATERIAL_NOT_FOUND");
   }
 
