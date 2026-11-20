@@ -7,3 +7,7 @@ m2_m8_reassessment_safety_ROLLBACK_PROPOSED.sql -text
 m2_initial_activation_PROPOSED.sql -text
 m2_initial_activation_no_endorsement_PROPOSED.sql -text
 m2_initial_activation_no_endorsement_ROLLBACK_PROPOSED.sql -text
+# The 5-8 question change replaces and restores m2_assessment_content_issues() byte-for-byte; the local test
+# database's body has CRLF line endings, which these files keep inside the function body.
+m2_flexible_questions_PROPOSED.sql -text
+m2_flexible_questions_ROLLBACK_PROPOSED.sql -text

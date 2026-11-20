@@ -1,8 +1,35 @@
--- PROPOSED ONLY: NOT APPLIED. Requires separate approval for the existing local database.
--- Replaces structural validation only. No data updates, activation, thresholds, or history changes.
+-- M2: 5 TO 8 COMPREHENSION QUESTIONS PER PASSAGE -- PROPOSED. NOT APPLIED. Requires separate approval.
+-- Requires: m2_assessment_packages_PROPOSED.sql (applied).
+-- Rollback: m2_flexible_questions_ROLLBACK_PROPOSED.sql   Verify: m2_flexible_questions_VERIFY_READONLY.sql
+--
+-- Changes ONE thing in m2_assessment_content_issues(), the structural check that runs when a version is SUBMITTED
+-- (and when the built-in 3.0 is imported): a version may have 5, 6, 7 or 8 questions instead of exactly 6.
+-- Everything else is unchanged: each question needs a unique id, a type (literal, inferential or critical), a prompt,
+-- exactly four answer choices a-d with text, and one correct answer; every version still needs at least one literal,
+-- one inferential and one critical question; the passage still needs a title, 1-10 paragraphs and 20-600 words.
+-- Existing six-question versions stay valid. No row is changed; no result, score, threshold or level is touched.
+-- Scoring already divides by the version's own question count (calculateComprehensionScore).
+-- The body below is the live body with only the count rule and the loop bound changed (md5 cb51bb7e6cf0a501a0950203e0f88da7 -> c349c8b5fbea59de2b3ca99658e0878a).
+-- GENERATED FOR THE LOCAL M2 TEST DATABASE (basa-m2-manual), whose validator body uses CRLF line endings. For any
+-- other database (e.g. Staging), regenerate from THAT database's live body; the md5 guard below refuses otherwise.
+-- The body keeps those exact bytes: do not let an editor or git change its line endings (.gitattributes: -text).
 begin;
+
+do $$
+begin
+  if to_regprocedure('public.m2_assessment_content_issues(text,jsonb,jsonb)') is null then
+    raise exception 'STOP: apply m2_assessment_packages_PROPOSED.sql first';
+  end if;
+  if (select md5(prosrc) from pg_proc where oid = 'public.m2_assessment_content_issues(text,jsonb,jsonb)'::regprocedure) <> 'cb51bb7e6cf0a501a0950203e0f88da7' then
+    raise exception 'STOP: m2_assessment_content_issues() is not the reviewed six-question original; review before applying';
+  end if;
+end $$;
+
+create temporary table m2_validator_acl_before on commit drop as
+  select proacl::text as acl, pg_get_userbyid(proowner) as owner, provolatile, proconfig::text as config from pg_proc where oid = 'public.m2_assessment_content_issues(text,jsonb,jsonb)'::regprocedure;
+
 create or replace function public.m2_assessment_content_issues(p_title text, p_paragraphs jsonb, p_questions jsonb)
-returns text[] language plpgsql immutable set search_path = '' as $$
+returns text[] language plpgsql immutable set search_path = '' as $fn$
 declare
   issues text[] := '{}';
   q jsonb; c jsonb; i integer := 0; words integer := 0; ids text[] := '{}'; choice_ids text[];
@@ -54,6 +81,19 @@ begin
     issues := array_append(issues, 'Include at least one literal, one inferential and one critical question.');
   end if;
   return issues;
+end $fn$;
+
+do $$
+begin
+  if (select md5(prosrc) from pg_proc where oid = 'public.m2_assessment_content_issues(text,jsonb,jsonb)'::regprocedure) <> 'c349c8b5fbea59de2b3ca99658e0878a' then
+    raise exception 'STOP: the new body does not match the reviewed version';
+  end if;
+  if exists (select 1 from pg_proc p, m2_validator_acl_before b where p.oid = 'public.m2_assessment_content_issues(text,jsonb,jsonb)'::regprocedure
+             and (p.proacl::text is distinct from b.acl or pg_get_userbyid(p.proowner) <> b.owner
+                  or p.provolatile <> b.provolatile or p.proconfig::text is distinct from b.config)) then
+    raise exception 'STOP: owner, privileges, volatility or search_path changed';
+  end if;
 end $$;
 
+notify pgrst, 'reload schema';
 commit;
