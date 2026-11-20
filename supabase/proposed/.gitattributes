@@ -2,3 +2,8 @@
 # while the new code uses LF. Line-ending conversion (core.autocrlf) would change the bodies and break their md5 checks.
 m2_m8_reassessment_safety_PROPOSED.sql -text
 m2_m8_reassessment_safety_ROLLBACK_PROPOSED.sql -text
+# The F6 no-endorsement change checks m2_activate_initial_version()'s exact body (md5, LF line endings) before and
+# after applying, and its rollback restores that body byte-for-byte. Keep all three files exactly as stored.
+m2_initial_activation_PROPOSED.sql -text
+m2_initial_activation_no_endorsement_PROPOSED.sql -text
+m2_initial_activation_no_endorsement_ROLLBACK_PROPOSED.sql -text
