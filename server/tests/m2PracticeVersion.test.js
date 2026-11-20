@@ -65,7 +65,7 @@ async function setup() {
   ids.en.v4 = await version("en", "4.0", "published");
   ids.en.v5 = await version("en", "5.0", "draft");
   ids.fil.v4 = await version("fil", "4.0", "published", ["a", "b", "c", "d", "a", "b"]);
-  // A Teacher's private reassessment package (F10) must never be practised here.
+  // A Teacher's private reassessment package (F10), still a draft: preview-only.
   const { rows: [tp] } = await d.query(`insert into m2_assessment_packages(kind, audience, scope, owner_id, language, title)
     values ('reassessment','classroom','teacher',$1,'en','Tess') returning id`, [TEACHER]);
   const tc = content("teacher", ["a", "a", "a", "a", "a", "a"]);
@@ -106,7 +106,7 @@ test("access: School Admin and Teacher cannot see Initial Diagnostic versions; d
   }
   await assert.rejects(ctx.practiceVersions.getContent(SA_REQ, ctx.ids.en.v5.id), (e) => e.statusCode === 409 && /Drafts can be previewed only/.test(e.message));
   await assert.rejects(ctx.practiceVersions.getContent(SA_REQ, ctx.ids.teacherVersion), (e) => e.statusCode === 404, "a Teacher's private package is not visible to the System Admin");
-  await assert.rejects(ctx.practiceVersions.getContent(TEACHER_REQ, ctx.ids.teacherVersion), (e) => e.statusCode === 409, "F10 packages are not practised here");
+  await assert.rejects(ctx.practiceVersions.getContent(TEACHER_REQ, ctx.ids.teacherVersion), (e) => e.statusCode === 409, "a draft Teacher reassessment is preview-only (F10 practice: m2F10Practice.test.js)");
   const builtIn = (await ctx.d.query(`select id from m2_assessment_package_versions where source = 'code_import' and package_id = $1`, [ctx.ids.en.pkg])).rows[0].id;
   await assert.rejects(ctx.practiceVersions.getContent(SA_REQ, builtIn), (e) => e.code === "USE_BUILT_IN_PRACTICE");
   await assert.rejects(ctx.practiceVersions.getContent(SA_REQ, "not-a-uuid"), (e) => e.statusCode === 404);

@@ -63,8 +63,9 @@ function createDiagnosticPracticeRouter({
     }
   });
 
-  // M2 F7: the passage and questions (no answer keys) of an authored Initial Diagnostic version this staff member may
-  // practise. Only the System Admin can see Initial Diagnostic packages; drafts and unpublished versions are refused.
+  // M2 F7 + F10: the passage and questions (no answer keys) of a package version this staff member may practise: a
+  // published Initial Diagnostic version (System Admin) or the published version of a reassessment package its manager
+  // owns (System Admin, School Admin, the owning Teacher). Drafts and unpublished versions are refused.
   router.get("/api/diagnostic/practice/versions/:versionId", async (req, res) => {
     res.set("Cache-Control", "no-store");
     try {

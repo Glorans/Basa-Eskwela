@@ -195,9 +195,27 @@ async function listSchoolStudentResults({ getAdmin = getSupabaseAdmin } = {}) {
     list.push(titled[index]);
     byStudent.set(row.user_id, list);
   });
+  // F3/F5 room filter: each Student's ACTIVE Learning Rooms (archived rooms are left out, as for Teachers). A Student
+  // in no active room is still listed (rooms: []). Only room ids and names are read.
+  const rooms = (await selectRows(db.from("rooms").select("id, room_name, archived_at").is("archived_at", null), "Learning Rooms"))
+    .filter((room) => room.archived_at == null);
+  const roomById = new Map(rooms.map((room) => [room.id, room]));
+  const roomsByStudent = new Map();
+  const roomIds = [...roomById.keys()];
+  for (let i = 0; i < roomIds.length; i += BATCH) {
+    for (const enrollment of await selectRows(
+      db.from("enrollments").select("room_id, student_id").in("room_id", roomIds.slice(i, i + BATCH)), "Learning Room enrollments")) {
+      const room = roomById.get(enrollment.room_id);
+      if (!room || !allowed.has(enrollment.student_id)) continue;
+      const list = roomsByStudent.get(enrollment.student_id) ?? [];
+      list.push({ id: room.id, name: room.room_name });
+      roomsByStudent.set(enrollment.student_id, list);
+    }
+  }
   return profiles.map((p) => ({
     id: p.id,
     name: getProfileDisplayName({ role: p.role, nickname: p.nickname, fullName: p.full_name }) || "Student",
+    rooms: (roomsByStudent.get(p.id) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
     results: (byStudent.get(p.id) ?? []).sort(newestFirst),
   })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }

@@ -1,11 +1,15 @@
-// M2 F7 — staff practice of a SPECIFIC authored Initial Diagnostic version (Try Assessment from the version editor).
+// M2 F7 + F10 — staff practice of a SPECIFIC package version (Try Assessment from the version editor).
 //
-// Who:   only staff who may view the package (assessmentPackagePolicy.canView): for Initial Diagnostic packages that is
-//        the System Admin. School Admins and Teachers keep practising the built-in diagnostic (POST /api/diagnostic/practice
-//        with the code-defined id), exactly as before.
-// What:  an AUTHORED version of an Initial Diagnostic package that is PUBLISHED in the library, or the authored version
-//        learners take now. Drafts, versions in review, approved-but-unpublished and other retired versions are refused
-//        (preview only). The built-in 3.0 keeps its existing code path.
+// Who:   only staff who may view the package (assessmentPackagePolicy.canView), i.e. its managers:
+//          Initial Diagnostic                     System Admin (F7)
+//          central Independent Learner (F10)      System Admin
+//          school reassessment (F10)              School Admin
+//          Teacher private reassessment (F10)     the owning Teacher only
+//        Anyone else gets 404 (invisible and missing look the same). School Admins and Teachers also keep practising
+//        the built-in diagnostic (POST /api/diagnostic/practice with the code-defined id), exactly as before.
+// What:  Initial Diagnostic: an AUTHORED version that is PUBLISHED, or the authored version learners take now.
+//        Reassessment: the PUBLISHED version only. Drafts, submitted, approved-but-unpublished and retired versions are
+//        refused (preview only). The reassessment switches are NOT required: this is staff practice, not delivery.
 // Bound: receipts and scoring use the identity
 //          assessment id      "m2-practice-version:<version id>"   (never a learner diagnostic or reassessment id)
 //          assessment version the version label (e.g. "4.0")
@@ -49,11 +53,21 @@ function createPracticeVersionService({ getAdmin = getSupabaseAdmin } = {}) {
       .select("id, kind, audience, scope, owner_id, language, archived_at, legacy_assessment_id").eq("id", v.package_id).maybeSingle()) : null;
     // Invisible and missing look the same, as on the package pages.
     if (!v || !pkg || !policy.canView(requester?.profile, pkg)) fail(404, "VERSION_NOT_FOUND", "This version was not found.");
-    if (policy.categoryOf(pkg) !== "initial") fail(409, "VERSION_NOT_PRACTISABLE", "Only Initial Diagnostic versions can be practised here.");
-    if (v.source !== "authored") fail(409, "USE_BUILT_IN_PRACTICE", "Practise the built-in version with Try Assessment on version 3.0.");
-    const activation = await read(db().from("m2_initial_activation").select("package_version_id").eq("language", pkg.language).maybeSingle());
-    const activeForLearners = activation?.package_version_id === v.id;
-    if (v.status !== "published" && !activeForLearners) {
+    const category = policy.categoryOf(pkg);
+    let activeForLearners = false;
+    if (category === "initial") {
+      if (v.source !== "authored") fail(409, "USE_BUILT_IN_PRACTICE", "Practise the built-in version with Try Assessment on version 3.0.");
+      const activation = await read(db().from("m2_initial_activation").select("package_version_id").eq("language", pkg.language).maybeSingle());
+      activeForLearners = activation?.package_version_id === v.id;
+    } else if (pkg.kind !== "reassessment") {
+      fail(409, "VERSION_NOT_PRACTISABLE", "This version cannot be practised.");
+    } else if (v.status !== "published") {
+      // F10: only the published reassessment version; drafts and older versions are preview-only.
+      fail(409, "VERSION_NOT_PRACTISABLE", v.status === "retired"
+        ? "Retired versions cannot be practised. Try the published version."
+        : "Publish this version to try it. Drafts can be previewed only.");
+    }
+    if (category === "initial" && v.status !== "published" && !activeForLearners) {
       fail(409, "VERSION_NOT_PRACTISABLE", v.status === "draft" || v.status === "in_review" || v.status === "approved"
         ? "Publish this version to practise it. Drafts can be previewed only."
         : "Only the published version, or the version learners take, can be practised.");
@@ -65,6 +79,7 @@ function createPracticeVersionService({ getAdmin = getSupabaseAdmin } = {}) {
       source: "practice-version",
       versionId: v.id,
       packageId: pkg.id,
+      category,
       id: `${PRACTICE_VERSION_PREFIX}${v.id}`,
       version: v.version_label,
       language: pkg.language,
@@ -85,6 +100,7 @@ function createPracticeVersionService({ getAdmin = getSupabaseAdmin } = {}) {
     const { assessment, activeForLearners } = await load(requester, versionId);
     return {
       packageId: assessment.packageId,
+      packageCategory: assessment.category,
       versionId: assessment.versionId,
       activeForLearners,
       assessment: {
