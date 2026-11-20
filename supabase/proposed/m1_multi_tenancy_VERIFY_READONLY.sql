@@ -39,6 +39,12 @@ with checks(label, ok, detail) as (
     (select bool_and(prosrc like '%m1_%visible%' or prosrc like '%m1_current_school%') from pg_proc where pronamespace = 'public'::regnamespace
       and proname in ('m1_school_admin_sees_owner', 'm1_school_admin_sees_material', 'm1_school_admin_sees_question', 'm1_school_admin_sees_storage_owner',
                       'm4_admin_classroom_teachers', 'm3_trashed_modules', 'm3_module_revisions', 'm3_can_manage_module', 'm5_can_read_activity')), ''
+  union all select 'M3 publish readiness authorizes itself (module exists + m3_can_manage_module) before reading anything',
+    (select prosrc like '%not exists (select 1 from public.modules where id = target_id) or not public.m3_can_manage_module(target_id)%'
+       from pg_proc where oid = 'public.m3_collection_publish_issues(uuid)'::regprocedure)
+    and has_function_privilege('authenticated', 'public.m3_collection_publish_issues(uuid)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.m3_collection_publish_issues(uuid)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.m3_collection_publish_issues_phase1(uuid)', 'EXECUTE'), ''
   union all select 'F10/F11/F9/F7 functions are school-aware',
     (select prosrc like '%code_row.school_id%' from pg_proc where oid = 'public.register_teacher_with_invite(text)'::regprocedure)
     and (select prosrc like '%school_id = v_school%' from pg_proc where oid = 'public.review_teacher_registration(uuid,text)'::regprocedure)

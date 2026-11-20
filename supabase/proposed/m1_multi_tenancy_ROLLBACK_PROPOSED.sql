@@ -338,6 +338,30 @@ begin
   insert into public.m1_school_admin_invitation_events (invitation_id, target_id, actor_id, action) values (v_id, p_user, p_actor, 'authorized');
   return v_id;
 end $function$;
+CREATE OR REPLACE FUNCTION public.m3_collection_publish_issues(target_id uuid)
+ RETURNS text[]
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare issues text[]; p record; category text; total integer;
+begin
+  -- Keep title/text/review/answer-key checks from the original readiness function.
+  issues := public.m3_collection_publish_issues_phase1(target_id);
+  for p in select id, display_order from public.module_passages where module_id = target_id loop
+    select count(*) into total from public.comprehension_questions where passage_id = p.id;
+    if total not in (6, 9, 12) then
+      issues := array_append(issues, format('Passage %s requires 6, 9 or 12 questions', p.display_order));
+    else
+      foreach category in array array['literal','inferential','critical'] loop
+        if (select count(*) from public.comprehension_questions where passage_id = p.id and question_type = category) <> total / 3 then
+          issues := array_append(issues, format('Passage %s requires exactly %s %s questions', p.display_order, total / 3, category));
+        end if;
+      end loop;
+    end if;
+  end loop;
+  return issues;
+end; $function$;
 revoke all on function public.m1_create_school_admin_invitation(uuid, uuid, text, text, text, text, text, text, integer) from public, anon, authenticated;
 grant execute on function public.m1_create_school_admin_invitation(uuid, uuid, text, text, text, text, text, text, integer) to service_role;
 drop function public.m1_create_school(uuid, text, text, text);

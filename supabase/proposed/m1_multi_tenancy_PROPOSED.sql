@@ -26,6 +26,7 @@
 --      - write guards (triggers) on the classroom/content tables, because SECURITY DEFINER RPCs bypass RLS.
 --      - the School Admin helper functions (m1_school_admin_sees_*, m4_admin_classroom_teachers, m3_trashed_modules,
 --        m3_module_revisions, m3_can_manage_module, m5_can_read_activity) are limited to the caller's school.
+--      - m3_collection_publish_issues authorizes itself first (unknown id and other school's module: same refusal).
 --   The backend uses the service role (bypasses RLS); its school checks are in server/services/schoolScope.js.
 --
 -- Not changed: Modules 2-8 logic, scores, M2 switches, user ids, existing rows other than the backfilled school_id.
@@ -400,6 +401,34 @@ returns boolean language sql stable security definer set search_path = '' as $$
     else false
   end
 $$;
+
+-- M3 publish readiness (callable by signed-in accounts). It now authorizes on its own, before reading anything:
+-- the module must exist and the caller must be able to manage it (owner Teacher, or an Admin of the author's
+-- school; the System Admin keeps platform access). Another school's module and an unknown id get the SAME error,
+-- so the answer never reveals whether another school's module exists. Body otherwise unchanged.
+create or replace function public.m3_collection_publish_issues(target_id uuid)
+returns text[] language plpgsql security definer set search_path = '' as $$
+declare issues text[]; p record; category text; total integer;
+begin
+  if not exists (select 1 from public.modules where id = target_id) or not public.m3_can_manage_module(target_id) then
+    raise exception 'Module owner or Admin access required';
+  end if;
+  -- Keep title/text/review/answer-key checks from the original readiness function.
+  issues := public.m3_collection_publish_issues_phase1(target_id);
+  for p in select id, display_order from public.module_passages where module_id = target_id loop
+    select count(*) into total from public.comprehension_questions where passage_id = p.id;
+    if total not in (6, 9, 12) then
+      issues := array_append(issues, format('Passage %s requires 6, 9 or 12 questions', p.display_order));
+    else
+      foreach category in array array['literal','inferential','critical'] loop
+        if (select count(*) from public.comprehension_questions where passage_id = p.id and question_type = category) <> total / 3 then
+          issues := array_append(issues, format('Passage %s requires exactly %s %s questions', p.display_order, total / 3, category));
+        end if;
+      end loop;
+    end if;
+  end loop;
+  return issues;
+end; $$;
 
 create or replace function public.m5_can_read_activity(r uuid, s uuid)
 returns boolean language sql stable security definer set search_path = '' as $$

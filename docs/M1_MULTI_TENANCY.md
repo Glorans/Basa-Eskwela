@@ -28,6 +28,15 @@ No other table gets a `school_id`.
   - 2 role-less accounts stay without a school.
   - 13 Students who are in no Learning Room are assigned to School 1 by their role (Student role means school Student on a one-school platform). The VERIFY script prints their count for review.
 
+### The 13 Students in no Learning Room: verified 2026-11-21 (read-only on Staging, no personal data printed)
+
+- All 13 have the Student role, are active, confirmed and have signed in. None is an Independent Learner (`general_user`), a role-less account or a Teacher.
+- There is only one school today, and no record links any of them to anything outside it:
+  - the oral reading they did was on modules authored by School 1 Teachers (7) and School 1 Admins (2);
+  - one of them (S01) was removed from a School 1 Teacher's room by a School 1 Admin (`m4_admin_actions`), and still has one active reading assignment from that School 1 Teacher. That assignment is a pre-existing M4 leftover and not a school question.
+- Their history (Initial Diagnostic results, oral reading, comprehension, M5, M7 and M8 rows) is untouched. The migration changes no row except `profiles.school_id`. The rehearsal (check S) proves their records and visibility are byte-identical.
+- **Decision: the mapping to School 1 is retained.** Nothing in the data is ambiguous.
+
 ## Enforcement
 
 - **Backend:** service role, so RLS is bypassed. `server/services/schoolScope.js` limits every School Admin path to the requester's school, which is read from their database profile. Covered paths:
@@ -46,7 +55,8 @@ No other table gets a `school_id`.
   - write-guard triggers for SECURITY DEFINER RPCs;
   - school-aware helper functions (`m1_school_admin_sees_*`, `m4_admin_classroom_teachers`, M3 trash and revisions, `m5_can_read_activity`);
   - F7, F9, F10 and F11 functions;
-  - `m1_create_school` / `m1_update_school` (System Admin, service_role only).
+  - `m1_create_school` / `m1_update_school` (System Admin, service_role only);
+  - `m3_collection_publish_issues` (M3 publish readiness, callable from the browser) authorizes itself before reading anything. The module must exist and the caller must be able to manage it: the owner Teacher, an Admin of the author's school, or the System Admin. Another school's module and an unknown id get the same refusal, so the answer reveals nothing, not even existence.
 - **Inactive school:** accepts no new School Admins, Teachers (codes) or Students. Its accounts and records are kept. Schools are never deleted.
 
 ## Files
@@ -54,9 +64,9 @@ No other table gets a `school_id`.
 | File | Purpose |
 | --- | --- |
 | `supabase/proposed/m1_multi_tenancy_PROPOSED.sql` | Forward migration (one transaction). |
-| `m1_multi_tenancy_PREFLIGHT_READONLY.sql` | Must be 6 PASS / 0 FAIL on Staging before applying. It checks the 15 replaced function bodies by md5. |
-| `m1_multi_tenancy_VERIFY_READONLY.sql` | Must be 16 PASS / 0 FAIL after applying. |
-| `m1_multi_tenancy_ROLLBACK_PROPOSED.sql` | Restores the 15 functions byte-for-byte (`-text`). It refuses once a second school exists. |
+| `m1_multi_tenancy_PREFLIGHT_READONLY.sql` | Must be 6 PASS / 0 FAIL on Staging before applying. It checks the 16 replaced function bodies by md5. |
+| `m1_multi_tenancy_VERIFY_READONLY.sql` | Must be 17 PASS / 0 FAIL after applying. |
+| `m1_multi_tenancy_ROLLBACK_PROPOSED.sql` | Restores the 16 functions byte-for-byte (`-text`). It refuses once a second school exists. |
 
 Local rehearsal (restored Staging copy, no network): `release-review/m1-multi-tenancy-20261121/rehearse_db.py`, **64/64**. It covers:
 
@@ -66,25 +76,59 @@ Local rehearsal (restored Staging copy, no network): `release-review/m1-multi-te
 - per-account visibility identical for all 60 restored accounts;
 - School 2 through the real flows;
 - the 13 isolation checks;
-- the M2 flow in both schools.
+- the M2 flow in both schools;
+- M3 publish readiness: authorized and unauthorized access in both directions, an unknown id, and the publish trigger;
+- the 13 Students in no Learning Room;
+- M2 official results and history byte-identical.
 
-## Staging order (each step needs approval)
+Repository test: `supabase/tests/m1SchoolM3PublishIssues.test.cjs` (PGlite, real function bodies).
 
-1. Fresh verified Staging backup (the established `prepare_backup.py` pattern), plus a restore rehearsal of that backup.
-2. PREFLIGHT on Staging (read-only).
-3. Apply the forward SQL, then VERIFY.
-4. Deploy the backend (it reads `profiles.school_id`, so it must come **after** the SQL). Between steps 3 and 4 the old backend cannot create Teacher codes or School Admin invitations; every other path keeps working, because only School 1 exists.
-5. Deploy the frontend (Schools page, school selector).
-6. Create School 2 only after steps 3–5.
+## Staging release (each step needs approval)
 
-**Recovery:**
+All from one commit of `feat/m1-multi-tenancy`, the same commit for the SQL, the backend and the frontend. Render auto-deploy is off.
 
-- Before School 2 exists: run the ROLLBACK SQL, then redeploy the previous backend and frontend.
-- After School 2 exists: fix forward (the rollback refuses).
-- If needed: restore from the step 1 backup.
+1. **Backup.** Take a fresh verified Staging backup (the established `prepare_backup.py` pattern). Verify it by restoring it into a local container.
+2. **PREFLIGHT** on Staging (read-only): 6 PASS / 0 FAIL. Stop on any FAIL.
+3. **Prepare the deploys before the SQL:**
+   - Set the backend and frontend services' commit to the release commit, but do not deploy yet.
+   - Pick a quiet time, with no School Admin creating Teacher codes or invitations.
+4. **Apply the forward SQL** in the Supabase SQL Editor. It is one transaction, so it applies completely or not at all.
+5. **VERIFY** (read-only): 17 PASS / 0 FAIL. School 1 mapping INFO rows: 3 admin, 5 teacher, 39 student; 13 Students by role.
+6. **Deploy the backend immediately** (Manual Deploy). Confirm `/health` and the deployed commit.
+7. **Deploy the frontend.** Confirm the commit and the new asset hash.
+8. **Check School 1** (existing accounts, read-only plus a sign-in):
+   - System Admin: user list with a School column and the Schools page.
+   - School Admin: their users, Teacher codes and results.
+   - A Teacher: rooms, modules and M3 publish readiness.
+   - A Student: room, history and results.
+   - Rerun VERIFY. Confirm the per-table row counts are unchanged except `school_id`.
+9. **School 2 (needs separate authorization):** the System Admin creates School 2, then invites a synthetic School Admin. That admin creates a Teacher code, approves a synthetic Teacher, creates a room, and a synthetic Student joins.
+10. **Isolation and M2:**
+    - No School 1 account sees School 2 and the reverse (users, rooms, results, modules, publish readiness).
+    - A cross-school join is refused.
+    - The M2 flow (publish, assign, official result) works in School 2.
+    - The M2 switches are unchanged.
+
+**Compatibility window (between steps 4 and 6).**
+
+- The old backend cannot create Teacher codes or School Admin invitations:
+  - the old invitation call no longer exists;
+  - a code without a school is refused by the new NOT NULL rule.
+- Everything else keeps working, because only School 1 exists and School 1 accounts see exactly what they saw before.
+- Step 3 keeps the window to the length of one backend deploy, a few minutes. Nobody should create codes or invitations in that time.
+
+**Recovery if a deploy fails after the SQL is applied** (no School 2 exists yet):
+
+- **Backend deploy fails:**
+  1. Redeploy (Render keeps the previous instance serving until the new one is healthy).
+  2. If it cannot be fixed quickly, run `m1_multi_tenancy_ROLLBACK_PROPOSED.sql`. It restores the 16 functions byte-for-byte and removes the school objects.
+  3. Keep the previous backend, which is compatible again after the rollback.
+- **Frontend deploy fails:** the new backend works with the old frontend (only the Schools page and the school selector are missing). Redeploy the frontend, or roll back the frontend alone.
+- **VERIFY fails or the data looks wrong:** run the ROLLBACK SQL, then rerun the PREFLIGHT checks. Every one should pass again except that the migration is no longer applied.
+- **Last resort:** restore the step 1 backup.
+- **After School 2 exists:** the rollback refuses. Fix forward.
 
 ## Known limits (not in scope)
 
 - Moving an account between schools is not supported (the school is fixed once set).
-- `m3_collection_publish_issues(id)` still returns issue text for any module id (ids are unguessable; read-only).
 - Independent Learners keep their previous read access to published school modules (unchanged behaviour).

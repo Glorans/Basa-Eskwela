@@ -16,13 +16,14 @@ with expected(fn, md5) as (values
   ('public.review_teacher_registration(uuid,text)', 'd9e4e51328e428fbeffbded35a93850a'),
   ('public.m1_accept_school_admin_invitation(uuid,timestamp with time zone)', 'f8c76e234a472b7d071b53c11543b241'),
   ('public.m1_set_account_status(uuid,uuid,text)', '0c7e106e31af85fee5c4d50809a675a5'),
-  ('public.m1_create_school_admin_invitation(uuid,uuid,text,text,text,text,text,text,integer)', '4bb0c20a84377997308b2308b6f18243')
+  ('public.m1_create_school_admin_invitation(uuid,uuid,text,text,text,text,text,text,integer)', '4bb0c20a84377997308b2308b6f18243'),
+  ('public.m3_collection_publish_issues(uuid)', '6f79cabbe0c5536457a614522fce87ea')
 ), checks(label, ok, detail) as (
   select 'multi-tenancy not applied yet: no schools table, no profiles.school_id, no school helpers',
     to_regclass('public.schools') is null and to_regclass('public.m1_school_events') is null
     and not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'school_id')
     and to_regprocedure('public.m1_school_visible(uuid)') is null, ''
-  union all select 'each of the 15 functions the migration replaces still has the exact body the rollback restores',
+  union all select 'each of the 16 functions the migration replaces still has the exact body the rollback restores',
     not exists (select 1 from expected e where to_regprocedure(e.fn) is null or md5(pg_get_functiondef(to_regprocedure(e.fn))) <> e.md5),
     coalesce((select string_agg(e.fn, ', ') from expected e where to_regprocedure(e.fn) is null or md5(pg_get_functiondef(to_regprocedure(e.fn))) <> e.md5), '')
   union all select 'roles consistent with the backfill rules (every account role is known)',
