@@ -16,3 +16,8 @@ m2_f10_direct_publish_PROPOSED.sql -text
 m2_f10_direct_publish_ROLLBACK_PROPOSED.sql -text
 # M1 multi-tenancy rollback restores live function bodies byte-for-byte (CRLF inside some bodies).
 m1_multi_tenancy_ROLLBACK_PROPOSED.sql -text
+# M5/M6 staff practice and M7 queue tidy-up: forward/rollback bodies are fingerprinted byte-for-byte.
+m5_m6_staff_practice_PROPOSED.sql -text
+m5_m6_staff_practice_ROLLBACK_PROPOSED.sql -text
+m7_staff_practice_queue_PROPOSED.sql -text
+m7_staff_practice_queue_ROLLBACK_PROPOSED.sql -text
