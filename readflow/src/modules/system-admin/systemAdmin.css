@@ -240,3 +240,7 @@
 /* Errors: a bar and heavier text in addition to red. */
 .system-admin-ui.m3-shell :is(.m3-error-message,.m3-editor-upload-status--error,.m3-editor-publish-issues,.admin-users-message--error,.m7-error,.m3-feedback-banner--error,.m3-editor-recovery-warning) { border-left: 4px solid #9b3434; font-weight: 600; padding-left: 10px; }
 .system-admin-ui.m3-shell :is(input,select,textarea)[aria-invalid="true"] { border: 2px solid #9b3434; }
+/* M5 result page: the hero sits on the light tint (its dark-sidebar default hid the heading), and the result cards use the
+   forest green for titles, values and text so every line keeps strong contrast on the pastel card fills. */
+.system-admin-ui.m3-shell .result-feedback-hero { background: var(--sa-light); color: var(--sa-forest); }
+.system-admin-ui.m3-shell .result-panel-card { --basa-navy: var(--sa-forest); }

@@ -255,6 +255,8 @@
   gap: 12px;
   box-sizing: border-box;
   width: min(100%, 1040px);
+  /* The result cards pick their columns from this width, not the viewport, so shells with a sidebar never squeeze them. */
+  container: result-feedback / inline-size;
   min-width: 0;
   margin: 0 auto;
   padding: 0;
@@ -547,9 +549,16 @@
   gap: 14px;
 }
 
-@media (max-width: 1100px) {
+/* Five columns only when each card can hold its longest title word ("Mispronounced", "Transkripsiyon") whole. */
+@container result-feedback (max-width: 979px) {
   .result-panel-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container result-feedback (max-width: 559px) {
+  .result-panel-cards {
+    grid-template-columns: 1fr;
   }
 }
 
