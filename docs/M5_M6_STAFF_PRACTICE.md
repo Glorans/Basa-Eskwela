@@ -39,9 +39,10 @@ Status: implemented on `feat/m5-m6-staff-practice` and rehearsed locally. **Not 
 | File | Purpose |
 | --- | --- |
 | `m5_m6_staff_practice_PROPOSED.sql` | **Required.** Replaces `m6_assert_completion_access(uuid)` with one staff rule (System Admin, School Admin, approved Teacher; school-scoped). Guarded by the live md5 `c9a82099…`. |
-| `m5_m6_staff_practice_VERIFY_READONLY.sql` | 7 rows. Before applying: 6 PASS / 1 FAIL ("applied"). After: 6 PASS / 1 FAIL ("not applied yet"). |
+| `m5_m6_staff_practice_PREFLIGHT_READONLY.sql` | Run **before** applying. 6 checks + `OVERALL`; all must be PASS (7 PASS / 0 FAIL). |
+| `m5_m6_staff_practice_VERIFY_READONLY.sql` | Run **after** applying. 6 checks + `OVERALL`; all must be PASS (7 PASS / 0 FAIL). Before applying it reports `OVERALL | FAIL` on purpose (the function is not the new body yet). |
 | `m5_m6_staff_practice_ROLLBACK_PROPOSED.sql` | Restores the live body byte-for-byte. |
-| `m7_staff_practice_queue_PROPOSED.sql` | **Optional.** `m7_enqueue_completion()` skips every staff role (it already skipped School Admins). Guarded by md5 `56388560…`. |
+| `m7_staff_practice_queue_PROPOSED.sql` | **Optional, NOT part of the M5/M6 release.** `m7_enqueue_completion()` skips every staff role (it already skipped School Admins). Guarded by md5 `56388560…`. |
 | `m7_staff_practice_queue_VERIFY_READONLY.sql` / `_ROLLBACK_PROPOSED.sql` | 4 rows: 3 PASS / 1 FAIL before and after, as above. The rollback restores the live body byte-for-byte. |
 
 Neither migration changes a table, column, policy, grant, score, reward or existing row.
@@ -61,18 +62,21 @@ Neither migration changes a table, column, policy, grant, score, reward or exist
   - frontend: `readflow/tests/m5m6StaffPracticePreview.test.ts`.
 
 ## Staging release order (each step needs approval)
-1. Back up Staging and verify the backup with a restore.
-2. Run VERIFY read-only: 6/1, where only "applied" fails.
-3. Apply `m5_m6_staff_practice_PROPOSED.sql`, then VERIFY: 6/1, where only "not applied yet" fails.
-4. Optionally apply `m7_staff_practice_queue_PROPOSED.sql`, then its VERIFY: 3/1.
+1. Back up Staging and verify the backup with a restore. Done 2026-11-21: `2026-11-21_120707_preM5M6Practice`; restore 9/9; release rehearsal 31/31.
+2. Run PREFLIGHT read-only: 7 PASS / 0 FAIL (`OVERALL | PASS`). Stop on any FAIL.
+3. Apply `m5_m6_staff_practice_PROPOSED.sql` (one transaction, guarded by the live md5).
+4. Run VERIFY read-only: 7 PASS / 0 FAIL (`OVERALL | PASS`). Stop and roll back on any FAIL.
 5. Deploy the backend.
 6. Deploy the frontend.
+
+The M7 tidy-up is **not** part of this release.
 
 The SQL is safe with the old backend, because it only widens what the database allows and the old backend still applies its narrower rules. The new backend without the SQL would let the System Admin and School Admins start practice but not complete it, so the **SQL goes first**.
 
 **Recovery:**
-- Run the ROLLBACK file(s). Completed practice attempts are kept.
-- Redeploy the previous backend and frontend.
+- **Backend or frontend deploy fails:** redeploy, or keep the previous version. The new SQL works with the old backend.
+- **VERIFY fails, or you want to undo:** run `m5_m6_staff_practice_ROLLBACK_PROPOSED.sql`. Completed practice attempts are kept. Then redeploy the previous backend and frontend, and check that PREFLIGHT reads 7/0 again.
+- **Last resort:** restore `2026-11-21_120707_preM5M6Practice`.
 
 ## Still to verify live (manual, on Staging)
 - Real microphone and Azure recordings for the System Admin, a School Admin and a Teacher, including an English Teacher reading with the pronunciation check (Teacher M5 F2–F4 have never run live).
