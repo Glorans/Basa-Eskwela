@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const SCHOOL = "5c000000-0000-4000-8000-000000000001";
 const express = require("express");
 const {
   createAdminDiagnosticResultsRouter,
@@ -107,7 +108,7 @@ test("service returns Student diagnostics only: a School Admin never receives In
     getSupabaseAdmin: () => ({}),
     listManagedUsers: async () => users,
     listDiagnosticResultRows: async () => users.map((user) => row(user.id)),
-  }, "admin");
+  }, "admin", SCHOOL);
 
   // Even though the injected account list includes an Independent Learner, the result excludes them.
   assert.deepEqual(results.map((result) => result.role), ["student"]);
@@ -115,9 +116,12 @@ test("service returns Student diagnostics only: a School Admin never receives In
   assert.equal(/learner-id|learner@test|"Learner"/.test(JSON.stringify(results)), false, "no Independent Learner id, name or email");
   assert.deepEqual(results.map(result => result.language), ["en"]);
   for (const role of [undefined, "system_admin", "teacher", "student", "general_user"]) {
-    await assert.rejects(listAdminDiagnosticResults({ listManagedUsers: async () => users, listDiagnosticResultRows: async () => [] }, role),
+    await assert.rejects(listAdminDiagnosticResults({ listManagedUsers: async () => users, listDiagnosticResultRows: async () => [] }, role, SCHOOL),
       (error) => error.statusCode === 403, String(role));
   }
+  // M1 multi-tenancy: a School Admin without a school gets nothing.
+  await assert.rejects(listAdminDiagnosticResults({ listManagedUsers: async () => users, listDiagnosticResultRows: async () => [] }, "admin", null),
+    (error) => error.statusCode === 403);
   assert.equal("transcript" in results[0], false);
   assert.equal("oralReadingMetrics" in results[0], false);
 });
@@ -140,11 +144,11 @@ test("profile loading resolves learner nicknames for both languages without muta
     ] }, error: null }) } },
     from(table) {
       // Listing users as System Admin also reads the School Admin invitation records (#20): none in this test.
-      if (table === "m1_school_admin_invitations") return { select: async () => ({ data: [], error: null }) };
+      if (table === "m1_school_admin_invitations" || table === "schools") return { select: async () => ({ data: [], error: null }) };
       assert.equal(table, "profiles");
       return {
         select(fields) {
-          assert.deepEqual(fields.split(", "), ["id", "full_name", "nickname", "role", "status", "created_at", "teacher_status"]);
+          assert.deepEqual(fields.split(", "), ["id", "full_name", "nickname", "role", "status", "created_at", "teacher_status", "school_id"]);
           return this;
         },
         order: async () => ({ data: profiles, error: null }),
@@ -159,7 +163,7 @@ test("profile loading resolves learner nicknames for both languages without muta
     listDiagnosticResultRows: async () => profiles.flatMap(profile => ["en", "fil"].map(language => ({
       id: `${profile.id}-${language}`, user_id: profile.id, language,
     }))),
-  }, "admin");
+  }, "admin", SCHOOL);
   // Students only (Independent Learners are outside the School Admin's scope).
   assert.deepEqual(results.map(result => result.learnerName), [
     "Mariel", "Mariel", "Legacy Reader", "Legacy Reader", "", "", "", "",

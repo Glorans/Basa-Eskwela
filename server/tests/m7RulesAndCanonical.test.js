@@ -234,13 +234,13 @@ test('Teacher, Admin and report totals agree on a mixed module and on progress',
   };
   const teacher = await getTeacherCompletionAnalytics({ user: { id: 'teacher' }, profile: { role: 'teacher', teacher_status: 'approved' } }, { getSupabaseAdmin: () => database(tables) });
   assert.deepEqual([teacher.totalAssignments, teacher.inProgressAssignments, teacher.completedAssignments], [1, 1, 0]);
-  const admin = await loadAdminData({ rows: memoryRows(tables), quizzes: async () => [] });
+  const admin = await loadAdminData({ rows: memoryRows(tables), quizzes: async () => [] }, new Set(tables.profiles.map((p) => p.id)));
   const detail = buildAdminStudentDetail(admin, USER, 'admin');
   assert.deepEqual(detail.activities.map((a) => [a.kind, a.title, a.status, a.passagesCompleted, a.passagesTotal]), [['module', 'Mixed', 'In Progress', 1, 2]]);
   tables.m6_comprehension_attempts[0] = moduleAttempt('a', 'q', DONE);
   const done = await getTeacherCompletionAnalytics({ user: { id: 'teacher' }, profile: { role: 'teacher', teacher_status: 'approved' } }, { getSupabaseAdmin: () => database(tables) });
   assert.deepEqual([done.completedAssignments, done.completionRate], [1, 100]);
-  assert.equal(buildAdminStudents(await loadAdminData({ rows: memoryRows(tables), quizzes: async () => [] }))[0].completion.completed, 1);
+  assert.equal(buildAdminStudents(await loadAdminData({ rows: memoryRows(tables), quizzes: async () => [] }, new Set(tables.profiles.map((p) => p.id))))[0].completion.completed, 1);
 });
 
 test('module assignments: removed ones are not counted, and selected recipients only', () => {
@@ -286,7 +286,7 @@ test('J: Admin practice never reaches learner analytics, even through loadAdminD
     oral_reading_attempts: [{ id: 'ar', user_id: 'admin', room_id: null, completed_at: '2026-10-01T00:00:00Z', pronunciation_accuracy: 1, reading_speed_wpm: 1 }],
     m6_comprehension_attempts: [{ id: 'aq', user_id: 'admin', status: 'completed' }],
   };
-  const data = await loadAdminData({ rows: memoryRows(tables), quizzes: async () => [{ id: 'aq', userId: 'admin', status: 'completed', score: 0, completedAt: '2026-10-01T00:00:00Z' }] });
+  const data = await loadAdminData({ rows: memoryRows(tables), quizzes: async () => [{ id: 'aq', userId: 'admin', status: 'completed', score: 0, completedAt: '2026-10-01T00:00:00Z' }] }, new Set(tables.profiles.map((p) => p.id)));
   assert.deepEqual([data.readings, data.quizzes, data.attempts], [[], [], []]);
   assert.ok(!buildAdminStudents(data).some((s) => s.id === 'admin'));
   assert.deepEqual(buildAdminAnalytics(data, parseFilters({})).details.riskCounts['No assessment data'], 1);
@@ -322,7 +322,7 @@ test('activities a Teacher removed are not owed work in M7; Teacher, Admin and p
   const removed = activity({ id: 'gone', removed_at: '2026-10-05T00:00:00Z' });
   assert.deepEqual(activeMaterialAssignments([kept, removed]), [kept]);
   const before = { profiles: adminData().profiles, rooms: adminData().rooms, enrollments: adminData().enrollments, reading_activity_assignments: [kept, removed] };
-  const data = await loadAdminData({ rows: memoryRows(before), quizzes: async () => [] });
+  const data = await loadAdminData({ rows: memoryRows(before), quizzes: async () => [] }, new Set(before.profiles.map((p) => p.id)));
   assert.deepEqual(data.assignments.map((row) => row.id), ['kept']);
   assert.equal(buildAdminStudents(data)[0].completion.assigned, 1);
   assert.equal(before.reading_activity_assignments.length, 2, 'nothing is changed');

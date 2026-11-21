@@ -71,7 +71,7 @@ test("F5 routes: own progress for learners; Teachers through the F3 active-room 
   const own = [];
   const base = { listOwn: async (u) => { own.push(u); return [entry({ id: "i" })]; }, placementSwitch: async () => false,
     listTeacher: async () => ({ students: [{ id: "s1", name: "Ana", rooms: [{ id: "r", name: "Room" }], results: [entry({ id: "i" })] }] }),
-    listSchool: async () => [{ id: "s1", name: "Ana", results: [entry({ id: "i" })] }] };
+    listSchool: async () => [{ id: "s1", name: "Ana", results: [entry({ id: "i" })] }], requireSchool: async () => "school-1" };
   for (const role of ["student", "general_user"]) {
     const r = await call(createDiagnosticHistoryRouter({ ...base, authorizeLearner: who("L1", role) }), "/progress/me?userId=someone-else");
     assert.deepEqual([r.status, r.body.progress.en.current.readingLevel], [200, "Instructional"]);
@@ -91,15 +91,17 @@ test("F5 routes: own progress for learners; Teachers through the F3 active-room 
 test("F5 school scope: Students only (Independent Learners excluded); results never include answers or transcripts", async () => {
   const d = new PGlite();
   await d.exec(LIVE_FIXTURE);
-  const ids = { s: "00000000-0000-4000-8000-000000000001", il: "00000000-0000-4000-8000-000000000002" };
+  const ids = { s: "00000000-0000-4000-8000-000000000001", il: "00000000-0000-4000-8000-000000000002", school: "00000000-0000-4000-8000-000000000003" };
   for (const [key, role] of [["s", "student"], ["il", "general_user"]]) {
     await d.query("insert into auth.users values ($1)", [ids[key]]);
     await d.query("insert into profiles(id, role, full_name, nickname) values ($1, $2, $3, $3)", [ids[key], role, `N${key}`]);
+    await d.query("alter table profiles add column if not exists school_id uuid");
+    if (role === "student") await d.query("update profiles set school_id = $1 where id = $2", [ids.school, ids[key]]);
     await d.query(`insert into diagnostic_results(user_id, language, assessment_id, assessment_version, orv_score, comprehension_score, reading_level, difficulty_tier,
       transcript, oral_reading_metrics, verification_status, verification_method, verification_recording_id, verified_at)
       values ($1, 'en', 'grade5-en-passage-v3', '3.0', 90, 60, 'Instructional', 'Medium', 'SECRET TRANSCRIPT', '{"comprehensionAnswers":{"q1":"a"}}', 'server_verified', 'm', $1, now())`, [ids[key]]);
   }
-  const students = await listSchoolStudentResults({ getAdmin: () => createPgliteSupabase(d) });
+  const students = await listSchoolStudentResults({ getAdmin: () => createPgliteSupabase(d), schoolId: ids.school });
   assert.deepEqual(students.map((s) => s.id), [ids.s]);
   assert.doesNotMatch(JSON.stringify(students), /SECRET|comprehensionAnswers/);
 });

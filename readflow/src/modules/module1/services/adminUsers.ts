@@ -16,6 +16,9 @@ export interface ManagedUser {
   schoolAdminAuthorization?: SchoolAdminAuthorization | null;
   createdAt: string;
   teacherStatus?: "pending" | "approved" | "rejected" | null;
+  // M1 multi-tenancy, System Admin view only: the account's school (null for System Admins and Independent Learners).
+  schoolId?: string | null;
+  schoolName?: string | null;
 }
 
 // What the signed-in manager may do, decided by the server from the role stored in the database (M1 F6/F7/F8).
@@ -27,6 +30,8 @@ export interface AccountPermissions {
   // M1 F7: roles this manager may deactivate and reactivate (re-checked on the server).
   statusRoles: string[];
   canCreateSchoolAdmin: boolean;
+  // M1 F8 Create School (System Admin only).
+  canManageSchools?: boolean;
 }
 
 interface ManagedUsersResponse {
@@ -100,11 +105,12 @@ export async function getManagedAccounts() {
   return { users: response.data.users, permissions: permissions ? { ...permissions, statusRoles: permissions.statusRoles ?? [] } : NO_PERMISSIONS };
 }
 
-// M1 F8 (System Admin only). The server sets the role; the request carries only the email and name.
-export async function createSchoolAdmin(input: { email: string; fullName: string; authorization: SchoolAdminAuthorizationInput }) {
+// M1 F8/F9 (System Admin only). The server sets the role; the request carries the email, name and the ONE school the
+// School Admin will manage (re-checked on the server and in the database: it must exist and be active).
+export async function createSchoolAdmin(input: { email: string; fullName: string; schoolId: string; authorization: SchoolAdminAuthorizationInput }) {
   const response = await api.post<{ success: true; account: CreatedSchoolAdmin; message: string }>(
     "/api/admin/users/school-admins",
-    { email: input.email, fullName: input.fullName, authorization: input.authorization },
+    { email: input.email, fullName: input.fullName, schoolId: input.schoolId, authorization: input.authorization },
     { headers: await getAdminRequestHeaders() },
   );
   return response.data;

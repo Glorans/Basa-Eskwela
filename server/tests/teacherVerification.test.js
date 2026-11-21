@@ -34,13 +34,14 @@ test('pending Teachers cannot use the Admin API', async () => {
   await assert.rejects(authorizeAdminRequest({}, dependencies('teacher', 'pending')), (error) => error.statusCode === 403);
 });
 
+const SCHOOL = '5c000000-0000-4000-8000-000000000001';
 test('Admin listing includes real Teacher status, full name, email and registration date', async () => {
   const profile = { id: 'teacher', role: 'teacher', teacher_status: 'pending', full_name: 'Maria Santos',
-    nickname: null, status: 'active', created_at: '2026-10-08T00:00:00Z' };
+    nickname: null, status: 'active', created_at: '2026-10-08T00:00:00Z', school_id: SCHOOL };
   const users = await listManagedUsers({ getSupabaseAdmin: () => ({
     auth: { admin: { listUsers: async () => ({ data: { users: [{ id: 'teacher', email: 'teacher@example.test' }] } }) } },
     from: () => ({ select() { return this; }, order: async () => ({ data: [profile] }) }),
-  }) }, 'admin');
+  }) }, 'admin', SCHOOL);
   assert.equal(users[0].teacherStatus, 'pending');
   assert.equal(users[0].fullName, 'Maria Santos');
   assert.equal(users[0].email, 'teacher@example.test');

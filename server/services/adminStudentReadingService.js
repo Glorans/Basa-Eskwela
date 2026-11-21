@@ -1,10 +1,11 @@
 // Admin "Student Reading Assessments": read-only review of students' saved M5
 // oral-reading assessments. See docs/M5_ADMIN_STUDENT_READING_REVIEW.md.
 //
-// Scope (single-school prototype): every account whose database role is
-// "student", enrolled in a classroom or not. Independent Learners, Teachers and
-// other Admins are out of scope, and their attempts look exactly like attempts
-// that do not exist. This does not define access across schools or organizations.
+// Scope: every account whose database role is "student" AND whose school is the
+// School Admin's own school (M1 multi-tenancy; dependencies.schoolId, read from the
+// School Admin's database profile), enrolled in a classroom or not. Independent
+// Learners, Teachers, other Admins and other schools' Students are out of scope, and
+// their attempts look exactly like attempts that do not exist.
 //
 // Every read of one attempt goes through getStudentAttempt, which checks the
 // owner's role in the database on each request. Nothing here writes, and nothing
@@ -51,15 +52,22 @@ const displayName = (profile) => getProfileDisplayName({
   role: profile.role, nickname: profile.nickname, fullName: profile.full_name,
 }) || "Unnamed student";
 
-/** The profile of an in-scope student, or null. The role always comes from the database. */
-async function loadStudentProfile(supabase, userId) {
-  const { data, error } = await supabase.from("profiles").select("id,role,full_name,nickname").eq("id", userId).maybeSingle();
+/** The School Admin's school (fails closed: no school, no data). */
+function schoolOf(dependencies) {
+  if (!dependencies.schoolId) throw new OralReadingPersistenceError("Your School Admin account is not assigned to a school.", 403, "NO_SCHOOL");
+  return dependencies.schoolId;
+}
+
+/** The profile of an in-scope student, or null. The role and school always come from the database. */
+async function loadStudentProfile(supabase, userId, schoolId) {
+  const { data, error } = await supabase.from("profiles").select("id,role,full_name,nickname,school_id").eq("id", userId).maybeSingle();
   if (error) throw unavailable();
-  return data?.role === STUDENT_ROLE ? data : null;
+  return data?.role === STUDENT_ROLE && data.school_id === schoolId ? data : null;
 }
 
 /** Students with at least one saved reading: name and counts only, never emails. */
 async function listStudentsWithReadings(dependencies = {}) {
+  const schoolId = schoolOf(dependencies);
   const supabase = database(dependencies);
   const attempts = await readAll(() => supabase.from("oral_reading_attempts").select("user_id,completed_at").order("id", { ascending: true }));
   const byUser = new Map();
@@ -72,12 +80,12 @@ async function listStudentsWithReadings(dependencies = {}) {
   const ids = [...byUser.keys()];
   const students = [];
   for (let index = 0; index < ids.length; index += PROFILE_BATCH) {
-    const { data, error } = await supabase.from("profiles").select("id,role,full_name,nickname")
-      .eq("role", STUDENT_ROLE).in("id", ids.slice(index, index + PROFILE_BATCH));
+    const { data, error } = await supabase.from("profiles").select("id,role,full_name,nickname,school_id")
+      .eq("role", STUDENT_ROLE).eq("school_id", schoolId).in("id", ids.slice(index, index + PROFILE_BATCH));
     if (error) throw unavailable();
     // Checked again here, so a query change can never widen the list.
     for (const profile of data ?? []) {
-      if (profile.role === STUDENT_ROLE) students.push({ id: profile.id, name: displayName(profile), ...byUser.get(profile.id) });
+      if (profile.role === STUDENT_ROLE && profile.school_id === schoolId) students.push({ id: profile.id, name: displayName(profile), ...byUser.get(profile.id) });
     }
   }
   return students.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
@@ -86,8 +94,9 @@ async function listStudentsWithReadings(dependencies = {}) {
 /** One student's saved readings, newest first, in the shape Reading History cards use. */
 async function listStudentReadings(studentId, dependencies = {}) {
   if (typeof studentId !== "string" || !UUID_PATTERN.test(studentId)) throw notFound();
+  const schoolId = schoolOf(dependencies);
   const supabase = database(dependencies);
-  const student = await loadStudentProfile(supabase, studentId);
+  const student = await loadStudentProfile(supabase, studentId, schoolId);
   if (!student) throw notFound();
   const rows = await readAll(() => supabase.from("oral_reading_attempts").select(SUMMARY_COLUMNS)
     .eq("user_id", studentId).order("completed_at", { ascending: false }));
@@ -120,11 +129,12 @@ async function listStudentReadings(studentId, dependencies = {}) {
  */
 async function getStudentAttempt(attemptId, dependencies = {}) {
   if (typeof attemptId !== "string" || !UUID_PATTERN.test(attemptId)) throw notFound();
+  const schoolId = schoolOf(dependencies);
   const supabase = database(dependencies);
   const { data: row, error } = await supabase.from("oral_reading_attempts").select("*").eq("id", attemptId).maybeSingle();
   if (error) throw unavailable();
   if (!row) throw notFound();
-  const student = await loadStudentProfile(supabase, row.user_id);
+  const student = await loadStudentProfile(supabase, row.user_id, schoolId);
   if (!student) throw notFound();
   // Saved snapshots only, so a reading still opens after its module is removed. A
   // language that was never saved stays unknown instead of being guessed.

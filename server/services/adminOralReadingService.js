@@ -24,11 +24,14 @@ async function listPracticeReadingPassages(requester, dependencies = {}) {
   if (!isApprovedTeacher(requester)) {
     throw new OralReadingAuthorizationError("Approved Teacher access is required.");
   }
-  return listPublishedPassages(dependencies, null);
+  return listPublishedPassages(dependencies, null, requester);
 }
 
-/** createdBy null = every author (the shared published catalog). */
-async function listPublishedPassages(dependencies, createdBy) {
+/**
+ * createdBy null = every author (the shared published catalog). With a requester (Teacher practice), modules whose
+ * author belongs to ANOTHER school are left out (M1 multi-tenancy); platform modules stay in the catalog.
+ */
+async function listPublishedPassages(dependencies, createdBy, requester = null) {
   const db = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
 
   async function all(table, columns, configure = (query) => query) {
@@ -46,10 +49,14 @@ async function listPublishedPassages(dependencies, createdBy) {
   const modules = (await all("modules", "id,path_id,title,status,deleted_at,passage,created_by",
     (query) => (createdBy ? query.eq("status", "published").eq("created_by", createdBy) : query.eq("status", "published"))))
     .filter((row) => row.status === "published" && !row.deleted_at && (!createdBy || row.created_by === createdBy));
+  const foreign = requester
+    ? await require("./schoolScope").foreignSchoolOwners(requester, modules.map((row) => row.created_by), dependencies)
+    : new Set();
+  const visible = modules.filter((row) => !foreign.has(row.created_by));
   const paths = new Map((await all("learning_paths", "id,language")).map((row) => [row.id, row.language]));
   const passages = await all("module_passages", "id,module_id,title,passage_text,display_order");
 
-  return modules.flatMap((module) => {
+  return visible.flatMap((module) => {
     // Same language matching as oral-reading scoring; unsupported languages are skipped.
     let language;
     try {

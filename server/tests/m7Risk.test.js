@@ -45,7 +45,8 @@ test('M7 reused authorization rejects wrong roles and unapproved teachers', asyn
   for (const role of ['student','general_user','teacher']) await assert.rejects(authorizeAdminRequest({},authDependencies({role})), /Admin access/);
   for (const profile of [{role:'student'},{role:'admin'},{role:'teacher',teacher_status:'pending'}]) await assert.rejects(authorizeTeacherOralReadingRequest({},authDependencies(profile)), /Approved Teacher/);
   await assert.rejects(authorizeOralReadingRequest({},authDependencies({role:'teacher'})));
-  assert.equal((await authorizeAdminRequest({},authDependencies({role:'admin'}))).user.id,'current-user');
+  assert.equal((await authorizeAdminRequest({},authDependencies({role:'admin',school_id:'5c000000-0000-4000-8000-000000000001'}))).user.id,'current-user');
+  await assert.rejects(authorizeAdminRequest({},authDependencies({role:'admin'})), /not assigned to a school/);
   assert.equal((await authorizeTeacherOralReadingRequest({},authDependencies({role:'teacher',teacher_status:'approved'}))).user.id,'current-user');
   assert.equal((await authorizeOralReadingRequest({},authDependencies({role:'student'}))).user.id,'current-user');
 });

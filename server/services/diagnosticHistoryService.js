@@ -179,13 +179,14 @@ async function listTeacherDiagnosticResults(teacherId, { getAdmin = getSupabaseA
 }
 
 /**
- * School Admin (single-school pilot): every Student account and their results. Independent Learners are excluded from
- * school reporting. No school membership is invented: all Students belong to the one pilot school.
+ * School Admin: every Student of the School Admin's own school (M1 multi-tenancy; schoolId read from the database
+ * profile) and their results. Independent Learners are excluded from school reporting. Fails closed without a school.
  */
-async function listSchoolStudentResults({ getAdmin = getSupabaseAdmin } = {}) {
+async function listSchoolStudentResults({ getAdmin = getSupabaseAdmin, schoolId } = {}) {
+  if (!schoolId) throw new DiagnosticHistoryError("Your School Admin account is not assigned to a school.", 403);
   const db = getAdmin();
-  const profiles = (await selectRows(db.from("profiles").select("id, role, full_name, nickname").eq("role", "student"), "Student profiles"))
-    .filter((p) => p.role === "student");
+  const profiles = (await selectRows(db.from("profiles").select("id, role, full_name, nickname, school_id").eq("role", "student").eq("school_id", schoolId), "Student profiles"))
+    .filter((p) => p.role === "student" && p.school_id === schoolId);
   const allowed = new Set(profiles.map((p) => p.id));
   const rows = (await loadResultsFor(db, [...allowed])).filter((row) => allowed.has(row.user_id));
   const titled = await withTitles(db, rows.map(toHistoryEntry));
@@ -197,9 +198,12 @@ async function listSchoolStudentResults({ getAdmin = getSupabaseAdmin } = {}) {
   });
   // F3/F5 room filter: each Student's ACTIVE Learning Rooms (archived rooms are left out, as for Teachers). A Student
   // in no active room is still listed (rooms: []). Only room ids and names are read.
-  const rooms = (await selectRows(db.from("rooms").select("id, room_name, archived_at").is("archived_at", null), "Learning Rooms"))
+  const rooms = (await selectRows(db.from("rooms").select("id, room_name, archived_at, teacher_id").is("archived_at", null), "Learning Rooms"))
     .filter((room) => room.archived_at == null);
-  const roomById = new Map(rooms.map((room) => [room.id, room]));
+  // Only this school's rooms (their Teacher belongs to the school).
+  const teachers = await require("./schoolScope").filterSchoolMembers(schoolId, rooms.map((room) => room.teacher_id), { getAdmin });
+  const schoolRooms = rooms.filter((room) => teachers.has(room.teacher_id));
+  const roomById = new Map(schoolRooms.map((room) => [room.id, room]));
   const roomsByStudent = new Map();
   const roomIds = [...roomById.keys()];
   for (let i = 0; i < roomIds.length; i += BATCH) {

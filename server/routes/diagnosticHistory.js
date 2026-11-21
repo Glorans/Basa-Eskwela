@@ -26,6 +26,7 @@ function createDiagnosticHistoryRouter({
   // M2 F5 (official reading-level progress). School Admin only for the school list (System Admin has no F5 access).
   authorizeSchoolAdmin = (req) => authorizeDiagnosticPracticeRequest(req),
   listSchool = listSchoolStudentResults,
+  requireSchool = (requester) => require("../services/schoolScope").requireRequesterSchool(requester),
   placementSwitch = () => readPlacementSwitch(getSupabaseAdmin()),
   log = console.error,
 } = {}) {
@@ -84,11 +85,12 @@ function createDiagnosticHistoryRouter({
     return { followsReassessment, students: students.map(({ results, ...s }) => ({ ...s, progress: buildReadingProgress(results, { followsReassessment }) })) };
   }));
 
-  // F5: School Admin, every Student (single-school pilot); Independent Learners are excluded from school reporting.
+  // F5: School Admin, every Student of their own school (M1 multi-tenancy); Independent Learners are excluded.
   router.get("/progress/school", handle(async (req) => {
     const requester = await authorizeSchoolAdmin(req);
     if (requester?.profile?.role !== "admin") throw Object.assign(new Error("School Admin access is required."), { statusCode: 403 });
-    const [students, followsReassessment] = await Promise.all([listSchool(), placementSwitch()]);
+    const schoolId = await requireSchool(requester);
+    const [students, followsReassessment] = await Promise.all([listSchool({ schoolId }), placementSwitch()]);
     return { followsReassessment, students: students.map(({ results, ...s }) => ({ ...s, progress: buildReadingProgress(results, { followsReassessment }) })) };
   }));
 

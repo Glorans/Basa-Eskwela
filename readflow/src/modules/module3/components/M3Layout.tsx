@@ -45,6 +45,8 @@ function getNavItems(role: ShellRole) {
       { label: "Reading Materials", to: "/system-admin/content/materials", icon: Files, end: true },
       { label: "Upload Material", to: "/system-admin/content/materials/upload", icon: FilePlus2, end: true },
       { label: "User Management", to: "/system-admin/users", icon: Users, end: true },
+      // Appendix N M1 F8: Create School and the list of schools.
+      { label: "Schools", to: "/system-admin/schools", icon: School, end: true },
       // Appendix N M7 for the System Admin: F2 (system-wide dashboard) and F4 (Independent Learner performance).
       { label: "Platform Analytics", to: "/system-admin/analytics", icon: ChartNoAxesCombined, end: true },
       { label: "Independent Learners", to: "/system-admin/independent-learners", icon: UserRound, end: true },

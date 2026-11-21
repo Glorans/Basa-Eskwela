@@ -20,7 +20,7 @@ function data({ withPractice }) {
       ...(withPractice ? [{ id: 'qa', user_id: 'admin', status: 'completed' }] : [])],
   };
   const quizzes = [quiz('q1', 's', 80), quiz('q2', 'g', 60), ...(withPractice ? [quiz('qa', 'admin', 0)] : [])];
-  return { rows: async (table) => tables[table] ?? [], quizzes: async () => quizzes };
+  return { rows: async (table) => tables[table] ?? [], quizzes: async () => quizzes, requesterSchoolMembers: async () => ({ members: new Set(tables.profiles.map((p) => p.id)) }) };
 }
 
 test('Admin practice readings and comprehension never change Admin System Performance', async () => {

@@ -29,7 +29,7 @@ async function authorizeAdminRequest(req, dependencies = {}) {
   const user = await authenticate(req);
   const { data: profile, error } = await getAdmin()
     .from("profiles")
-    .select("id, role")
+    .select("id, role, school_id")
     .eq("id", user.id)
     .single();
 
@@ -40,8 +40,12 @@ async function authorizeAdminRequest(req, dependencies = {}) {
   if (profile.role !== "admin") {
     throw new AdminAuthorizationError();
   }
+  // M1 multi-tenancy: every School Admin path is limited to this school; without one, nothing is allowed.
+  if (!profile.school_id) {
+    throw new AdminAuthorizationError("Your School Admin account is not assigned to a school. Contact your System Admin.");
+  }
 
-  return { user, profile };
+  return { user, profile, schoolId: profile.school_id };
 }
 
 /**
@@ -67,10 +71,13 @@ async function authorizeAccountManager(req, dependencies = {}) {
   const authenticate = dependencies.getAuthenticatedSupabaseUser ?? getAuthenticatedSupabaseUser;
   const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
   const user = await authenticate(req);
-  const { data: profile, error } = await getAdmin().from("profiles").select("id, role").eq("id", user.id).single();
+  const { data: profile, error } = await getAdmin().from("profiles").select("id, role, school_id").eq("id", user.id).single();
   if (error || !profile) throw new SupabaseAuthenticationError();
   if (!isAccountManager(profile.role)) throw new AdminAuthorizationError("Administrator access is required.");
-  return { user, profile };
+  if (profile.role === "admin" && !profile.school_id) {
+    throw new AdminAuthorizationError("Your School Admin account is not assigned to a school. Contact your System Admin.");
+  }
+  return { user, profile, schoolId: profile.school_id ?? null };
 }
 
 async function listAllAuthUsers(supabase) {
@@ -95,13 +102,18 @@ async function listAllAuthUsers(supabase) {
 }
 
 /**
- * F6: the accounts a manager may see (System Admin: all; School Admin: Teachers and Students only).
- * Fails closed: without a manager role read from the database, nothing is returned.
+ * F6: the accounts a manager may see (System Admin: all, with each account's school; School Admin: the Teachers and
+ * Students of their own school only). Fails closed: without a manager role read from the database (and, for a School
+ * Admin, their school), nothing is returned.
  */
-async function listManagedUsers(dependencies = {}, managerRole) {
+async function listManagedUsers(dependencies = {}, managerRole, managerSchoolId) {
   if (!isAccountManager(managerRole)) throw new AdminAuthorizationError("Administrator access is required.");
-  const users = (await loadAccountDirectory(dependencies)).filter((user) => canViewAccount(managerRole, user.role));
-  if (managerRole !== "system_admin") return users;
+  if (managerRole === "admin" && !managerSchoolId) throw new AdminAuthorizationError("Your School Admin account is not assigned to a school.");
+  const users = (await loadAccountDirectory(dependencies))
+    .filter((user) => canViewAccount(managerRole, user.role, managerSchoolId ?? null, user.schoolId ?? null));
+  if (managerRole !== "system_admin") return users.map(({ schoolId: _school, ...user }) => user);
+  const schools = await loadSchoolNames(dependencies);
+  users.forEach((user) => { user.schoolName = user.schoolId ? schools.get(user.schoolId) ?? "Unknown school" : null; });
   // System Admin only: authorization records and invitation states. School Admins never receive these.
   const supabase = (dependencies.getSupabaseAdmin ?? getSupabaseAdmin)();
   const records = await require("./schoolAdminInvitations").loadInvitationRecords(supabase);
@@ -123,7 +135,7 @@ async function loadAccountDirectory(dependencies = {}) {
     listAllAuthUsers(supabase),
     supabase
       .from("profiles")
-      .select("id, full_name, nickname, role, status, created_at, teacher_status")
+      .select("id, full_name, nickname, role, status, created_at, teacher_status, school_id")
       .order("created_at", { ascending: false }),
   ]);
 
@@ -147,6 +159,7 @@ async function loadAccountDirectory(dependencies = {}) {
       // a mismatch means a deactivation or reactivation stopped part-way and the administrator should retry it.
       signInBlocked: isBanned(authUser),
       teacherStatus: profile?.teacher_status ?? null,
+      schoolId: profile?.school_id ?? null,
       createdAt: profile?.created_at ?? authUser.created_at,
     };
   });
@@ -162,12 +175,20 @@ async function loadAccountDirectory(dependencies = {}) {
         status: profile.status,
         signInBlocked: null,
         teacherStatus: profile.teacher_status ?? null,
+        schoolId: profile.school_id ?? null,
         createdAt: profile.created_at,
       });
     }
   }
 
   return users.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+// System Admin view: school id -> name (an empty map before the multi-tenancy database update).
+async function loadSchoolNames(dependencies = {}) {
+  const result = await (dependencies.getSupabaseAdmin ?? getSupabaseAdmin)().from("schools").select("id, name");
+  if (!result || result.error) return new Map();
+  return new Map((result.data ?? []).map((row) => [row.id, row.name]));
 }
 
 const ADMINISTRATOR_ROLES = new Set(["admin", "system_admin"]);
@@ -259,8 +280,9 @@ function accountStatusDatabaseError(error, undoFailed = false) {
   );
 }
 
-async function setManagedUserStatus(requesterId, userId, status, dependencies = {}, managerRole) {
+async function setManagedUserStatus(requesterId, userId, status, dependencies = {}, managerRole, managerSchoolId) {
   if (!isAccountManager(managerRole)) throw new AdminAuthorizationError("Administrator access is required.");
+  if (managerRole === "admin" && !managerSchoolId) throw new AdminAuthorizationError("Your School Admin account is not assigned to a school.");
   if (!Object.prototype.hasOwnProperty.call(ACCOUNT_STATUSES, status)) {
     throw new AdminUserOperationError("Choose Deactivate or Reactivate.", 400);
   }
@@ -271,12 +293,14 @@ async function setManagedUserStatus(requesterId, userId, status, dependencies = 
   const getAdmin = dependencies.getSupabaseAdmin ?? getSupabaseAdmin;
   const supabase = getAdmin();
   const { data: profile, error: profileError } = await supabase
-    .from("profiles").select("id, role, status").eq("id", userId).maybeSingle();
+    .from("profiles").select("id, role, status, school_id").eq("id", userId).maybeSingle();
   if (profileError) throw new AdminUserOperationError("Unable to verify the selected account.");
 
-  // F7 scope, checked on the server against the database role (never the browser's list).
+  // F7 scope, checked on the server against the database role and school (never the browser's list). The database
+  // function m1_set_account_status re-checks both.
   const targetRole = profile?.role ?? null;
-  if (!profile || !canChangeAccountStatus({ managerRole, managerId: requesterId, targetRole, targetId: userId })) {
+  if (!profile || !canChangeAccountStatus({ managerRole, managerId: requesterId, targetRole, targetId: userId,
+    managerSchoolId: managerSchoolId ?? null, targetSchoolId: profile.school_id ?? null })) {
     if (managerRole === "system_admin" && targetRole === "system_admin") {
       throw new AdminUserOperationError("System Admin accounts cannot be deactivated through User Management.", 409);
     }

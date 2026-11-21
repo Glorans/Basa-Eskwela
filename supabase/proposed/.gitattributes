@@ -14,3 +14,5 @@ m2_flexible_questions_ROLLBACK_PROPOSED.sql -text
 # F10 direct publishing replaces and restores four live function bodies byte-for-byte (CRLF in the local test database).
 m2_f10_direct_publish_PROPOSED.sql -text
 m2_f10_direct_publish_ROLLBACK_PROPOSED.sql -text
+# M1 multi-tenancy rollback restores live function bodies byte-for-byte (CRLF inside some bodies).
+m1_multi_tenancy_ROLLBACK_PROPOSED.sql -text

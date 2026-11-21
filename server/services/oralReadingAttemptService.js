@@ -200,6 +200,10 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
   if (moduleRow.deleted_at || moduleRow.status !== "published") {
     throw new OralReadingAuthorizationError("This reading module is not available for oral reading.");
   }
+  // M1 multi-tenancy: another school's module answers "not found" (platform modules stay available).
+  if ((await require("./schoolScope").foreignSchoolOwners(requester, [moduleRow.created_by], dependencies)).size) {
+    throw new OralReadingPersistenceError("Reading module not found.", 404, "MODULE_NOT_FOUND");
+  }
 
   let roomId = null;
   let assignmentId = null;

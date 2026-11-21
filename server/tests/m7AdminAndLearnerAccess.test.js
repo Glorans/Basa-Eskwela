@@ -152,15 +152,19 @@ test('Admin interventions are authored by the Admin, limited to Student accounts
   const log = [];
   currentDb = interventionDb(log);
   const body = { notes: ' Meet weekly ', intervention_date: '2026-11-05', status: 'planned', follow_up_date: null, follow_up_notes: '' };
-  const students = async (table, cols, filters) => (table === 'profiles' && filters.id === S1 && filters.role === 'student' ? [{ id: S1, role: 'student' }] : []);
-  const authorize = () => analytics.requireAdminStudent(S1, students);
+  // M1 multi-tenancy: the Student must also belong to the School Admin's school (SCHOOL); another school answers 404.
+  const SCHOOL = id(900), OTHER = id(901);
+  const students = async (table, cols, filters) => (table === 'profiles' && filters.id === S1 && filters.role === 'student' && filters.school_id === SCHOOL ? [{ id: S1, role: 'student' }] : []);
+  const authorize = () => analytics.requireAdminStudent(S1, students, SCHOOL);
+  await assert.rejects(analytics.saveIntervention(ADMIN, S1, null, { notes: 'x', intervention_date: '2026-11-05', status: 'planned' }, { authorize: () => analytics.requireAdminStudent(S1, students, OTHER) }), { statusCode: 404 });
+  await assert.rejects(analytics.requireAdminStudent(S1, students, null), { statusCode: 403 });
   await analytics.saveIntervention(ADMIN, S1, null, body, { authorize });
   assert.deepEqual([log[0].action, log[0].row.teacher_id, log[0].row.student_id, log[0].row.notes], ['insert', ADMIN, S1, 'Meet weekly']);
   await analytics.saveIntervention(ADMIN, S1, id(80), body, { authorize });
   assert.deepEqual(log[1].filters, { id: id(80), teacher_id: ADMIN, student_id: S1 }, 'an Admin update can only match its own record');
   // Independent Learners, unknown IDs and malformed IDs are refused before any write.
   for (const studentId of [IL, id(999), 'not-a-uuid']) {
-    await assert.rejects(analytics.saveIntervention(ADMIN, studentId, null, body, { authorize: () => analytics.requireAdminStudent(studentId, async () => []) }), { statusCode: 404 });
+    await assert.rejects(analytics.saveIntervention(ADMIN, studentId, null, body, { authorize: () => analytics.requireAdminStudent(studentId, async () => [], SCHOOL) }), { statusCode: 404 });
   }
   assert.equal(log.filter((entry) => entry.table === 'm7_interventions').length, 2);
   // Validation is unchanged.
@@ -200,7 +204,10 @@ test('Admin report generation requires an Admin and reads no data otherwise', as
     await assert.rejects(generateAdminWeeklyReport({ user: { id: T1 }, profile: { role } }, { startDate: '2026-11-02', endDate: '2026-11-08' },
       { loadAdminData: async () => assert.fail('no data for non-Admins') }), AdminAuthorizationError, role);
   }
-  const report = await generateAdminWeeklyReport({ user: { id: ADMIN }, profile: { role: 'admin' } }, { startDate: '2026-11-02', endDate: '2026-11-08' }, { loadAdminData: async () => data() });
+  const scoped = [];
+  const report = await generateAdminWeeklyReport({ user: { id: ADMIN }, profile: { role: 'admin' } }, { startDate: '2026-11-02', endDate: '2026-11-08' },
+    { loadAdminData: async (_deps, members) => { scoped.push(members); return data(); }, requesterSchoolMembers: async () => ({ members: new Set(['school-member']) }) });
+  assert.deepEqual([...scoped[0]], ['school-member'], 'the report reads only the School Admin school');
   assert.equal(report.scope, 'admin');
 });
 

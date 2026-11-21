@@ -183,8 +183,15 @@ function initialDelivery(pkg, versions = [], activation = { installed: false, ac
   };
 }
 
-function createAssessmentPackageService({ repository, now = () => new Date() } = {}) {
+// M1 multi-tenancy: the ids among ids that belong to the requester's own school (read from the database profile).
+const defaultSchoolFilter = async (requester, ids) => {
+  const scope = require("./schoolScope");
+  return scope.filterSchoolMembers(await scope.requireRequesterSchool(requester), ids);
+};
+
+function createAssessmentPackageService({ repository, now = () => new Date(), schoolFilter = defaultSchoolFilter } = {}) {
   if (!repository) throw new Error("An assessment package repository is required.");
+  const inSchool = (profile, ids) => schoolFilter({ user: { id: profile.id }, profile }, ids);
 
   const requireStaff = (requester) => {
     if (!requester?.user?.id || !policy.isStaff(requester.profile)) {
@@ -198,6 +205,8 @@ function createAssessmentPackageService({ repository, now = () => new Date() } =
     const pkg = await run(() => repository.getPackage(packageId), "Unable to load the assessment package.");
     // A package the account may not see is reported as missing, so its existence is not disclosed.
     if (!pkg || !policy.canView(profile, pkg)) fail("Assessment package not found.", 404);
+    // M1 multi-tenancy: a School Admin sees only school packages owned by their own school.
+    if (profile.role === "admin" && !(await inSchool(profile, [pkg.owner_id])).has(pkg.owner_id)) fail("Assessment package not found.", 404);
     return pkg;
   };
 
@@ -291,8 +300,11 @@ function createAssessmentPackageService({ repository, now = () => new Date() } =
 
   async function listPackages(requester) {
     const { profile } = requireStaff(requester);
-    const rows = (await run(() => repository.listPackages(visibleScopes(profile)), "Unable to load assessment packages."))
+    const scoped = (await run(() => repository.listPackages(visibleScopes(profile)), "Unable to load assessment packages."))
       .filter((pkg) => policy.canView(profile, pkg)); // defense in depth: the query is already scoped
+    // M1 multi-tenancy: a School Admin lists only their own school's packages.
+    const schoolOwners = profile.role === "admin" ? await inSchool(profile, scoped.map((p) => p.owner_id)) : null;
+    const rows = schoolOwners ? scoped.filter((pkg) => schoolOwners.has(pkg.owner_id)) : scoped;
     const versions = rows.length ? await run(() => repository.listVersions(rows.map((p) => p.id)), "Unable to load versions.") : [];
     const names = await (async () => {
       const ids = rows.filter((p) => p.scope === "teacher" && profile.role === "admin" && p.owner_id).map((p) => p.owner_id);

@@ -70,6 +70,8 @@ app.use("/api/assessment-packages", require("./routes/assessmentPackages").creat
 // official reassessment gate is OFF.
 app.use("/api/reassessments", require("./routes/reassessments").createReassessmentsRouter({ delivery: reassessmentDelivery }));
 app.use("/api/admin/users", adminUsersRouter);
+// M1 F8 Create School / list / rename / activate-deactivate (System Admin only).
+app.use("/api/admin/schools", require("./routes/adminSchools").createAdminSchoolsRouter());
 app.use("/api/account", require("./routes/accountInvitation").accountInvitationRouter);
 app.use("/api/admin/teacher-invitations", require("./routes/teacherInvitations").createTeacherInvitationsRouter());
 // Admin review of students' saved assessments; other /admin paths continue to oralReadingRouter.

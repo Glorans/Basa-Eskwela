@@ -64,7 +64,7 @@ async function setup() {
     (select to_jsonb(s)::text from m2_reassessment_settings s) s`)).rows[0];
   await d.exec("set role service_role");
   const supa = createPgliteSupabase(d);
-  const practiceVersions = createPracticeVersionService({ getAdmin: () => supa });
+  const practiceVersions = createPracticeVersionService({ getAdmin: () => supa, schoolFilter: async (_requester, ids) => new Set(ids.filter(Boolean)) });
   const receipts = testReceipts();
   return { d, ids, practiceVersions, receipts, fingerprint,
     service: createDiagnosticPracticeService({ receipts, practiceVersions }),

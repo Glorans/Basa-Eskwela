@@ -32,8 +32,13 @@ const isPracticeVersionAssessmentId = (value) => typeof value === "string" && va
 const passageText = (paragraphs) => paragraphs.join(" ");
 const fail = (status, code, message) => { throw new DiagnosticSubmissionError(status, code, message); };
 
-function createPracticeVersionService({ getAdmin = getSupabaseAdmin } = {}) {
+function createPracticeVersionService({ getAdmin = getSupabaseAdmin, schoolFilter } = {}) {
   const db = () => getAdmin();
+  // M1 multi-tenancy: the ids among ids in the requester's own school.
+  schoolFilter ??= async (requester, ids) => {
+    const scope = require("./schoolScope");
+    return scope.filterSchoolMembers(await scope.requireRequesterSchool(requester, { getAdmin }), ids, { getAdmin });
+  };
 
   async function read(query) {
     const { data, error } = await query;
@@ -53,6 +58,10 @@ function createPracticeVersionService({ getAdmin = getSupabaseAdmin } = {}) {
       .select("id, kind, audience, scope, owner_id, language, archived_at, legacy_assessment_id").eq("id", v.package_id).maybeSingle()) : null;
     // Invisible and missing look the same, as on the package pages.
     if (!v || !pkg || !policy.canView(requester?.profile, pkg)) fail(404, "VERSION_NOT_FOUND", "This version was not found.");
+    // M1 multi-tenancy: a School Admin tries only their own school's packages.
+    if (requester?.profile?.role === "admin" && !(await schoolFilter(requester, [pkg.owner_id])).has(pkg.owner_id)) {
+      fail(404, "VERSION_NOT_FOUND", "This version was not found.");
+    }
     const category = policy.categoryOf(pkg);
     let activeForLearners = false;
     if (category === "initial") {

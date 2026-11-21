@@ -42,8 +42,10 @@ test("scope matrix: who may view and delete which role (deny by default)", () =>
 });
 
 function profileReader(role) {
-  return { from: () => ({ select() { return this; }, eq() { return this; }, async single() { return { data: role === undefined ? null : { id: id(9), role }, error: null }; } }) };
+  return { from: () => ({ select() { return this; }, eq() { return this; }, async single() { return { data: role === undefined ? null : { id: id(9), role, school_id: role === "admin" ? SCHOOL_1 : null }, error: null }; } }) };
 }
+
+const SCHOOL_1 = id(501), SCHOOL_2 = id(502);
 
 test("account management authorization: only System Admin and School Admin, read from the database", async () => {
   for (const role of ["system_admin", "admin"]) {
@@ -64,17 +66,31 @@ test("account management authorization: only System Admin and School Admin, read
 function directory() {
   const accounts = [
     ["system_admin", 1], ["admin", 2], ["teacher", 3], ["student", 4], ["general_user", 5], [null, 6],
-  ].map(([role, n]) => ({ id: id(n), role, full_name: `User ${n}`, status: "active", created_at: `2026-11-0${n}` }));
+  ].map(([role, n]) => ({ id: id(n), role, full_name: `User ${n}`, status: "active", created_at: `2026-11-0${n}`,
+    school_id: ["admin", "teacher", "student"].includes(role) ? SCHOOL_1 : null }));
+  // M1 multi-tenancy: a Teacher and a Student of School 2.
+  accounts.push({ id: id(7), role: "teacher", full_name: "User 7", status: "active", created_at: "2026-11-07", school_id: SCHOOL_2 },
+    { id: id(8), role: "student", full_name: "User 8", status: "active", created_at: "2026-11-08", school_id: SCHOOL_2 });
   return {
     auth: { admin: { listUsers: async () => ({ data: { users: accounts.map((a) => ({ id: a.id, email: `u${a.id.slice(-1)}@example.test`, created_at: a.created_at })) }, error: null }) } },
-    from: () => ({ select() { return this; }, order: async () => ({ data: accounts, error: null }) }),
+    from: (table) => (table === "schools"
+      ? { select: async () => ({ data: [{ id: SCHOOL_1, name: "School 1" }, { id: SCHOOL_2, name: "School 2" }], error: null }) }
+      : { select() { return this; }, order: async () => ({ data: accounts, error: null }) }),
   };
 }
 
 test("F6 view roles: School Admin sees only Teachers and Students; System Admin sees everyone", async () => {
-  const roles = async (manager) => (await listManagedUsers({ getSupabaseAdmin: directory }, manager)).map((u) => u.role).sort();
-  assert.deepEqual(await roles("admin"), ["student", "teacher"], "no Independent Learners, administrators or unassigned accounts");
-  assert.deepEqual(await roles("system_admin"), ["", "admin", "general_user", "student", "system_admin", "teacher"].sort());
+  const list = (manager, school) => listManagedUsers({ getSupabaseAdmin: directory }, manager, school);
+  const roles = async (manager, school = SCHOOL_1) => (await list(manager, school)).map((u) => u.role).sort();
+  assert.deepEqual(await roles("admin"), ["student", "teacher"], "no Independent Learners, administrators, unassigned or other-school accounts");
+  assert.deepEqual((await list("admin", SCHOOL_1)).map((u) => u.id).sort(), [id(3), id(4)]);
+  assert.deepEqual((await list("admin", SCHOOL_2)).map((u) => u.id).sort(), [id(7), id(8)], "School 2's School Admin sees only School 2");
+  assert.ok((await list("admin", SCHOOL_1)).every((u) => !("schoolId" in u) && !("schoolName" in u)));
+  await assert.rejects(list("admin", null), AdminAuthorizationError, "a School Admin without a school sees nothing");
+  assert.deepEqual(await roles("system_admin", null), ["", "admin", "general_user", "student", "student", "system_admin", "teacher", "teacher"].sort());
+  const everyone = await list("system_admin", null);
+  assert.equal(everyone.find((u) => u.id === id(7)).schoolName, "School 2");
+  assert.equal(everyone.find((u) => u.id === id(5)).schoolName, null, "Independent Learners have no school");
   for (const role of [undefined, null, "teacher", "student", "general_user", "School Admin"]) {
     await assert.rejects(roles(role), (error) => error instanceof AdminAuthorizationError, `fails closed for ${role}`);
   }
@@ -137,7 +153,7 @@ test("routes: permissions summary, scoped delete, and School Admin creation for 
   const as = (role) => ({
     authorizeAccountManager: async () => {
       if (!["admin", "system_admin"].includes(role)) throw new AdminAuthorizationError("Administrator access is required.");
-      return { user: { id: id(1) }, profile: { role } };
+      return { user: { id: id(1) }, profile: { role, school_id: role === "admin" ? SCHOOL_1 : null } };
     },
     listManagedUsers: async (...args) => { calls.list.push(args); return []; },
     deleteManagedUser: async (...args) => { calls.del.push(args); },
@@ -146,8 +162,8 @@ test("routes: permissions summary, scoped delete, and School Admin creation for 
   const post = (url, body) => fetch(`${url}/school-admins`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   await server(as("admin"), async (url) => {
     const listing = await (await fetch(url)).json();
-    assert.deepEqual(listing.permissions, { role: "admin", visibleRoles: ["teacher", "student"], deletableRoles: ["teacher", "student"], statusRoles: ["teacher", "student"], canCreateSchoolAdmin: false });
-    assert.deepEqual(calls.list.at(-1), [undefined, "admin"]);
+    assert.deepEqual(listing.permissions, { role: "admin", visibleRoles: ["teacher", "student"], deletableRoles: ["teacher", "student"], statusRoles: ["teacher", "student"], canCreateSchoolAdmin: false, canManageSchools: false });
+    assert.deepEqual(calls.list.at(-1), [undefined, "admin", SCHOOL_1]);
     assert.equal((await post(url, { email: "a@b.co", fullName: "A B" })).status, 403, "School Admin cannot create School Admins");
     assert.equal(calls.create.length, 0);
     assert.equal((await fetch(`${url}/${id(4)}`, { method: "DELETE" })).status, 410, "routine permanent deletion is disabled");
@@ -164,9 +180,10 @@ test("routes: permissions summary, scoped delete, and School Admin creation for 
     const listing = await (await fetch(url)).json();
     assert.equal(listing.permissions.canCreateSchoolAdmin, true);
     assert.deepEqual(listing.permissions.deletableRoles, ["general_user", "admin"]);
-    const response = await post(url, { email: "new@school.test", fullName: "New Admin", role: "system_admin" });
+    const response = await post(url, { email: "new@school.test", fullName: "New Admin", role: "system_admin", schoolId: SCHOOL_2 });
     assert.equal(response.status, 201);
-    assert.deepEqual(calls.create.at(-1), { email: "new@school.test", fullName: "New Admin", authorization: undefined }, "a role in the request body is ignored");
+    // The chosen school is passed on (validated in the service and the database); a role in the body is ignored.
+    assert.deepEqual(calls.create.at(-1), { email: "new@school.test", fullName: "New Admin", schoolId: SCHOOL_2, authorization: undefined }, "a role in the request body is ignored");
     assert.match((await response.json()).message, /invitation sent. The account gets School Admin access only after the invitee accepts/);
   });
 });

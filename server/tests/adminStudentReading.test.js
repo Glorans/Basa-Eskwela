@@ -21,19 +21,25 @@ const attempt = (attemptId, user, completedAt, extra = {}) => ({
   stt_confidence: null, scoring_version: 2, completed_at: completedAt, ...extra,
 });
 
+const SCHOOL = id(901), SCHOOL_2 = id(902), OTHER_SCHOOL_STUDENT = id(903), OTHER_SCHOOL_ADMIN = id(904), OTHER_SCHOOL_ATTEMPT = id(905);
+
 function fakeDatabase() {
   const tables = {
     profiles: [
-      { id: ADMIN, role: "admin", full_name: "Admin One" }, { id: OTHER_ADMIN, role: "admin", full_name: "Admin Two" },
-      { id: TEACHER, role: "teacher", full_name: "Teacher", teacher_status: "approved" },
-      { id: STUDENT, role: "student", full_name: "Ana Cruz", nickname: "Ana" }, { id: UNENROLLED, role: "student", full_name: "Ben Reyes" },
-      { id: NO_READINGS, role: "student", full_name: "Cara Lim" }, { id: LEARNER, role: "general_user", full_name: "Indie Learner" },
+      { id: ADMIN, role: "admin", full_name: "Admin One", school_id: SCHOOL }, { id: OTHER_ADMIN, role: "admin", full_name: "Admin Two", school_id: SCHOOL },
+      { id: TEACHER, role: "teacher", full_name: "Teacher", teacher_status: "approved", school_id: SCHOOL },
+      { id: STUDENT, role: "student", full_name: "Ana Cruz", nickname: "Ana", school_id: SCHOOL }, { id: UNENROLLED, role: "student", full_name: "Ben Reyes", school_id: SCHOOL },
+      { id: NO_READINGS, role: "student", full_name: "Cara Lim", school_id: SCHOOL }, { id: LEARNER, role: "general_user", full_name: "Indie Learner" },
+      // M1 multi-tenancy: a School 2 Student and School Admin (never visible to School 1's School Admin).
+      { id: OTHER_SCHOOL_STUDENT, role: "student", full_name: "Other School Student", school_id: SCHOOL_2 },
+      { id: OTHER_SCHOOL_ADMIN, role: "admin", full_name: "Other School Admin", school_id: SCHOOL_2 },
     ],
     oral_reading_attempts: [
       attempt(EN, STUDENT, "2026-11-04T20:00:00Z"), attempt(EN_OLD, STUDENT, "2026-11-03T20:00:00Z"),
       attempt(FIL, STUDENT, "2026-11-02T20:00:00Z", { language_snapshot: "fil" }), attempt(UNENROLLED_ATTEMPT, UNENROLLED, "2026-11-01T20:00:00Z"),
       attempt(LEARNER_ATTEMPT, LEARNER, "2026-11-04T10:00:00Z"), attempt(TEACHER_ATTEMPT, TEACHER, "2026-11-04T11:00:00Z"),
       attempt(ADMIN_ATTEMPT, ADMIN, "2026-11-04T12:00:00Z"), attempt(OTHER_ADMIN_ATTEMPT, OTHER_ADMIN, "2026-11-04T13:00:00Z"),
+      attempt(OTHER_SCHOOL_ATTEMPT, OTHER_SCHOOL_STUDENT, "2026-11-04T14:00:00Z"),
     ],
     oral_reading_recordings: [EN, LEARNER_ATTEMPT, TEACHER_ATTEMPT, ADMIN_ATTEMPT].map((attemptId) => ({ attempt_id: attemptId, segments: [`path/${attemptId}/000`] })),
     oral_reading_pronunciation_checks: [{
@@ -100,6 +106,19 @@ async function start(t) {
   };
   return { db, logs, call };
 }
+
+test("M1 multi-tenancy: another school's Students and readings are invisible; that school's Admin sees only its own", async (t) => {
+  const { call } = await start(t);
+  const list = await call("/students");
+  assert.equal(list.status, 200);
+  assert.equal(list.body.students.some((s) => s.id === OTHER_SCHOOL_STUDENT), false);
+  for (const path of [`/students/${OTHER_SCHOOL_STUDENT}/attempts`, `/attempts/${OTHER_SCHOOL_ATTEMPT}`, `/attempts/${OTHER_SCHOOL_ATTEMPT}/recording`]) {
+    assert.equal((await call(path)).status, 404, path);
+  }
+  const other = await call("/students", { as: OTHER_SCHOOL_ADMIN });
+  assert.deepEqual(other.body.students.map((s) => s.id), [OTHER_SCHOOL_STUDENT]);
+  assert.equal((await call(`/attempts/${EN}`, { as: OTHER_SCHOOL_ADMIN })).status, 404);
+});
 
 const ROUTES = ["/students", `/students/${STUDENT}/attempts`, `/attempts/${EN}`, `/attempts/${EN}/pronunciation`, `/attempts/${EN}/recording`];
 

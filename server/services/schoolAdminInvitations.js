@@ -64,6 +64,8 @@ function databaseError(error, fallback = "The invitation could not be saved. No 
     m1_invite_link_not_current: ["Open the most recent setup link from your invitation email, then set your password again.", 403],
     m1_invite_email_unconfirmed: ["Open the setup link from your invitation email first.", 403],
     m1_invite_password_not_set: ["Set your password first.", 403],
+    m1_invite_school_required: ["Choose the school this School Admin will manage.", 400],
+    m1_invite_school_inactive: ["Choose an active school. This school is inactive or does not exist.", 409],
   };
   const key = Object.keys(known).find((k) => message.includes(k));
   return key ? new InvitationError(...known[key]) : new InvitationError(fallback, 502);
@@ -103,6 +105,11 @@ async function createSchoolAdmin(input, dependencies = {}, requester = {}) {
   const fullName = text(input?.fullName);
   if (!EMAIL_PATTERN.test(email)) throw new InvitationError("Enter a valid email address.");
   if (!fullName || fullName.length > 100) throw new InvitationError("Enter the School Admin's full name (up to 100 characters).");
+  // F9: exactly one school per School Admin. The id is re-checked in the database (must exist and be active).
+  const schoolId = String(input?.schoolId ?? "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(schoolId)) {
+    throw new InvitationError("Choose the school this School Admin will manage.");
+  }
   const authorization = readAuthorization(input?.authorization);
   const actorId = requester.userId;
   if (!actorId) throw new InvitationError("Only an active System Admin can create School Admin invitations.", 403);
@@ -127,6 +134,7 @@ async function createSchoolAdmin(input, dependencies = {}, requester = {}) {
   const invited = await supabase.rpc("m1_create_school_admin_invitation", {
     p_actor: actorId, p_user: newId, p_email: email, p_full_name: fullName, p_reference: authorization.reference,
     p_method: authorization.method, p_position: authorization.position, p_note: authorization.note, p_valid_days: VALID_DAYS,
+    p_school: schoolId,
   });
   if (invited.error || !invited.data) {
     // The Auth user was created moments ago by this request and never used: remove it so nothing half-made remains.
@@ -141,7 +149,7 @@ async function createSchoolAdmin(input, dependencies = {}, requester = {}) {
     setupEmailSent = await sendSetupEmail(supabase, email, redirectTo);
     if (!setupEmailSent) await supabase.rpc("m1_record_school_admin_invitation_email", { p_actor: actorId, p_invitation: invitationId, p_outcome: "failed", p_valid_days: VALID_DAYS });
   }
-  return { id: newId, invitationId, email, fullName, role: null, invitationStatus: "pending", setupEmailSent, expiresAt: recorded.data ?? null };
+  return { id: newId, invitationId, email, fullName, schoolId, role: null, invitationStatus: "pending", setupEmailSent, expiresAt: recorded.data ?? null };
 }
 
 async function loadInvitation(supabase, invitationId) {
@@ -216,10 +224,11 @@ async function ownInvitationState(user, dependencies = {}) {
 /** System Admin view: authorization records and invitation states, keyed by account id (null if not installed). */
 async function loadInvitationRecords(supabase) {
   const { data, error } = await supabase.from("m1_school_admin_invitations")
-    .select("id, user_id, authorized_by, authorized_at, authorization_reference, confirmation_method, authorizing_position, note, status, last_sent_at, send_count, expires_at, accepted_at, cancelled_at");
+    .select("id, user_id, school_id, authorized_by, authorized_at, authorization_reference, confirmation_method, authorizing_position, note, status, last_sent_at, send_count, expires_at, accepted_at, cancelled_at");
   if (error) return null;
   return new Map((data ?? []).map((row) => [row.user_id, {
     id: row.id,
+    schoolId: row.school_id ?? null,
     state: row.status === "pending" && Date.parse(row.expires_at) <= Date.now() ? "expired" : row.status,
     authorizedBy: row.authorized_by, authorizedAt: row.authorized_at, reference: row.authorization_reference,
     confirmationMethod: row.confirmation_method, confirmationLabel: CONFIRMATION_METHODS[row.confirmation_method] ?? row.confirmation_method,

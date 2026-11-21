@@ -300,7 +300,9 @@ async function generateAdminWeeklyReport(requester, period, dependencies = {}) {
   // Validate dates before reading anything.
   getPeriodBounds(period);
   const load = dependencies.loadAdminData ?? require("./adminSystemAnalytics").loadAdminData;
-  return buildAdminWeeklyReport(await load(dependencies), period);
+  // M1 multi-tenancy: only the School Admin's own school.
+  const { members } = await (dependencies.requesterSchoolMembers ?? require("./schoolScope").requesterSchoolMembers)(requester, dependencies);
+  return buildAdminWeeklyReport(await load(dependencies, members), period);
 }
 
 module.exports = {

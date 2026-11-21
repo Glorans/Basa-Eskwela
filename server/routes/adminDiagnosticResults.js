@@ -41,7 +41,7 @@ function createAdminDiagnosticResultsRouter(dependencies = {}) {
   router.get("/", async (req, res) => {
     try {
       const { profile } = await authorize(req);
-      return res.json({ success: true, results: await listResults(undefined, profile?.role) });
+      return res.json({ success: true, results: await listResults(undefined, profile?.role, profile?.school_id ?? null) });
     } catch (error) {
       return sendAdminDiagnosticError(res, error);
     }

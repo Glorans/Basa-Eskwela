@@ -52,7 +52,7 @@ function createAdminUsersRouter(dependencies = {}) {
       const { profile } = await authorize(req);
       return res.json({
         success: true,
-        users: await listUsers(undefined, profile.role),
+        users: await listUsers(undefined, profile.role, profile.school_id ?? null),
         permissions: describePermissions(profile.role),
       });
     } catch (error) {
@@ -77,7 +77,7 @@ function createAdminUsersRouter(dependencies = {}) {
       if (!uuidPattern.test(req.params.userId)) {
         return res.status(400).json({ success: false, message: "Invalid user ID." });
       }
-      const account = await setStatus(user.id, req.params.userId, req.body?.status, undefined, profile.role);
+      const account = await setStatus(user.id, req.params.userId, req.body?.status, undefined, profile.role, profile.school_id ?? null);
       return res.json({
         success: true,
         account,
@@ -97,7 +97,7 @@ function createAdminUsersRouter(dependencies = {}) {
         throw new AdminAuthorizationError("Only a System Admin can create School Admin accounts.");
       }
       const account = await createAdmin(
-        { email: req.body?.email, fullName: req.body?.fullName, authorization: req.body?.authorization },
+        { email: req.body?.email, fullName: req.body?.fullName, schoolId: req.body?.schoolId, authorization: req.body?.authorization },
         undefined,
         { userId: user.id },
       );

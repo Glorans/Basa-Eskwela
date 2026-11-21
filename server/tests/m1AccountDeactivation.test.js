@@ -11,14 +11,19 @@ const { AccountDeactivatedError, SupabaseAuthenticationError } = require('../ser
 
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const SA = id(1), SCHOOL = id(2), TEACHER = id(3), STUDENT = id(4), LEARNER = id(5), SA2 = id(6), UNKNOWN = id(99);
-const ROLES = { [SA]: 'system_admin', [SCHOOL]: 'admin', [TEACHER]: 'teacher', [STUDENT]: 'student', [LEARNER]: 'general_user', [SA2]: 'system_admin' };
+const OTHER_STUDENT = id(7), OTHER_ADMIN = id(8);
+const ROLES = { [SA]: 'system_admin', [SCHOOL]: 'admin', [TEACHER]: 'teacher', [STUDENT]: 'student', [LEARNER]: 'general_user', [SA2]: 'system_admin',
+  [OTHER_STUDENT]: 'student', [OTHER_ADMIN]: 'admin' };
+// M1 multi-tenancy: School 1 (S1) and School 2 (S2). System Admins and Independent Learners have no school.
+const S1 = id(50), S2 = id(51);
+const SCHOOLS = { [SCHOOL]: S1, [TEACHER]: S1, [STUDENT]: S1, [OTHER_STUDENT]: S2, [OTHER_ADMIN]: S2 };
 
 function fakeSupabase({ rpcError = null, banError = null, unbanError = null } = {}) {
   const calls = [];
   const client = {
     from: table => ({ select: () => ({ eq: (_c, value) => ({ maybeSingle: async () => {
       assert.equal(table, 'profiles');
-      return { data: ROLES[value] ? { id: value, role: ROLES[value], status: 'active' } : null, error: null };
+      return { data: ROLES[value] ? { id: value, role: ROLES[value], status: 'active', school_id: SCHOOLS[value] ?? null } : null, error: null };
     } }) }) }),
     auth: { admin: { updateUserById: async (userId, attrs) => {
       calls.push(['ban', userId, attrs.ban_duration]);
@@ -30,17 +35,22 @@ function fakeSupabase({ rpcError = null, banError = null, unbanError = null } = 
 }
 const run = (manager, target, status, options) => {
   const f = fakeSupabase(options);
-  return { f, result: setManagedUserStatus(manager, target, status, f.deps, ROLES[manager]) };
+  return { f, result: setManagedUserStatus(manager, target, status, f.deps, ROLES[manager], SCHOOLS[manager] ?? null) };
 };
 
-test('scope: System Admin manages School Admins and Independent Learners; School Admin manages Teachers and Students', () => {
-  assert.deepEqual(describePermissions('system_admin').statusRoles, ['general_user', 'admin']);
+test('scope: System Admin manages every non-System-Admin account in every school; School Admin manages Teachers and Students of their own school', () => {
+  assert.deepEqual(describePermissions('system_admin').statusRoles, ['general_user', 'admin', 'teacher', 'student']);
   assert.deepEqual(describePermissions('admin').statusRoles, ['teacher', 'student']);
-  for (const [manager, target, allowed] of [['system_admin', 'general_user', true], ['system_admin', 'admin', true], ['system_admin', 'teacher', false],
-    ['system_admin', 'student', false], ['system_admin', 'system_admin', false], ['admin', 'teacher', true], ['admin', 'student', true],
+  for (const [manager, target, allowed] of [['system_admin', 'general_user', true], ['system_admin', 'admin', true], ['system_admin', 'teacher', true],
+    ['system_admin', 'student', true], ['system_admin', 'system_admin', false], ['admin', 'teacher', true], ['admin', 'student', true],
     ['admin', 'admin', false], ['admin', 'system_admin', false], ['admin', 'general_user', false], ['teacher', 'student', false], [null, 'student', false]]) {
-    assert.equal(canChangeAccountStatus({ managerRole: manager, managerId: 'a', targetRole: target, targetId: 'b' }), allowed, `${manager} -> ${target}`);
+    assert.equal(canChangeAccountStatus({ managerRole: manager, managerId: 'a', targetRole: target, targetId: 'b', managerSchoolId: manager === 'admin' ? S1 : null, targetSchoolId: S1 }), allowed, `${manager} -> ${target}`);
   }
+  // M1 multi-tenancy: a School Admin never manages another school's (or a school-less) account; the System Admin does.
+  assert.equal(canChangeAccountStatus({ managerRole: 'admin', managerId: 'a', targetRole: 'student', targetId: 'b', managerSchoolId: S1, targetSchoolId: S2 }), false);
+  assert.equal(canChangeAccountStatus({ managerRole: 'admin', managerId: 'a', targetRole: 'student', targetId: 'b', managerSchoolId: S1, targetSchoolId: null }), false);
+  assert.equal(canChangeAccountStatus({ managerRole: 'admin', managerId: 'a', targetRole: 'student', targetId: 'b', managerSchoolId: null, targetSchoolId: null }), false);
+  assert.equal(canChangeAccountStatus({ managerRole: 'system_admin', managerId: 'a', targetRole: 'student', targetId: 'b', targetSchoolId: S2 }), true);
   assert.equal(canChangeAccountStatus({ managerRole: 'system_admin', managerId: 'a', targetRole: 'admin', targetId: 'a' }), false, 'never self');
 });
 
@@ -56,11 +66,17 @@ test('deactivate bans the Auth user first, then records the status and audit row
   ({ f, result } = run(SA, SCHOOL, 'inactive'));
   await result;
   assert.equal(f.calls.length, 2);
+  // F7 for the System Admin: Teachers and Students of any school.
+  for (const target of [TEACHER, STUDENT, OTHER_STUDENT]) {
+    ({ f, result } = run(SA, target, 'inactive'));
+    assert.equal((await result).status, 'inactive');
+    assert.deepEqual(f.calls, [['ban', target, '876000h'], ['rpc', 'm1_set_account_status', SA, target, 'inactive']]);
+  }
 });
 
 test('refused targets make no Auth or database change', async () => {
   const cases = [
-    [SA, TEACHER, 403, /outside the accounts you can manage/], [SA, STUDENT, 403, /outside/], [SA, UNKNOWN, 403, /outside/],
+    [SA, UNKNOWN, 403, /outside the accounts you can manage/], [SCHOOL, OTHER_STUDENT, 403, /outside/], [OTHER_ADMIN, STUDENT, 403, /outside/],
     [SA, SA2, 409, /System Admin accounts cannot be deactivated/], [SA, SA, 409, /your own account/],
     [SCHOOL, SA, 403, /outside/], [SCHOOL, SCHOOL, 409, /your own account/], [SCHOOL, LEARNER, 403, /outside/], [SCHOOL, UNKNOWN, 403, /outside/],
   ];
@@ -118,7 +134,7 @@ test('route: PATCH /:userId/status authorizes first, validates the id and passes
   const seen = [];
   let authorizeError = null;
   const router = createAdminUsersRouter({
-    authorizeAccountManager: async () => { if (authorizeError) throw authorizeError; return { user: { id: SCHOOL }, profile: { role: 'admin' } }; },
+    authorizeAccountManager: async () => { if (authorizeError) throw authorizeError; return { user: { id: SCHOOL }, profile: { role: 'admin', school_id: S1 } }; },
     setManagedUserStatus: async (...args) => { seen.push(args); if (args[1] === SA) throw new AdminUserOperationError('This account is outside the accounts you can manage.', 403); return { id: args[1], status: args[2] }; },
   });
   const app = express(); app.use(express.json()); app.use('/api/admin/users', router);
@@ -127,7 +143,7 @@ test('route: PATCH /:userId/status authorizes first, validates the id and passes
   try {
     let r = await patch(STUDENT, { status: 'inactive', role: 'system_admin' });
     assert.equal(r.status, 200); assert.equal((await r.json()).message, 'Account deactivated.');
-    assert.deepEqual(seen[0], [SCHOOL, STUDENT, 'inactive', undefined, 'admin'], 'role from the database, never the body');
+    assert.deepEqual(seen[0], [SCHOOL, STUDENT, 'inactive', undefined, 'admin', S1], 'role and school from the database, never the body');
     r = await patch(STUDENT, { status: 'active' }); assert.equal((await r.json()).message, 'Account reactivated.');
     r = await patch('not-a-uuid', { status: 'inactive' }); assert.equal(r.status, 400);
     r = await patch(SA, { status: 'inactive' }); assert.equal(r.status, 403);
@@ -213,9 +229,12 @@ test('account list reports whether Supabase Auth currently blocks sign-in, so a 
   const { listManagedUsers } = require('../services/adminUserService');
   const auth = [{ id: STUDENT, email: 's@x.invalid', banned_until: '2126-01-01T00:00:00Z', created_at: '2026-01-01' },
     { id: TEACHER, email: 't@x.invalid', banned_until: null, created_at: '2026-01-02' }];
-  const profiles = [{ id: STUDENT, role: 'student', status: 'active', created_at: '2026-01-01' }, { id: TEACHER, role: 'teacher', status: 'inactive', created_at: '2026-01-02' }];
+  const profiles = [{ id: STUDENT, role: 'student', status: 'active', created_at: '2026-01-01', school_id: S1 }, { id: TEACHER, role: 'teacher', status: 'inactive', created_at: '2026-01-02', school_id: S1 },
+    { id: OTHER_STUDENT, role: 'student', status: 'active', created_at: '2026-01-03', school_id: S2 }];
   const client = { auth: { admin: { listUsers: async () => ({ data: { users: auth }, error: null }) } },
     from: () => ({ select: () => ({ order: async () => ({ data: profiles, error: null }) }) }) };
-  const list = await listManagedUsers({ getSupabaseAdmin: () => client }, 'admin');
+  const list = await listManagedUsers({ getSupabaseAdmin: () => client }, 'admin', S1);
+  // Another school's Student (profile only, no Auth row here) is never listed for this School Admin.
   assert.deepEqual(list.map(u => [u.id, u.status, u.signInBlocked]).sort(), [[STUDENT, 'active', true], [TEACHER, 'inactive', false]].sort());
+  await assert.rejects(listManagedUsers({ getSupabaseAdmin: () => client }, 'admin', null), AdminAuthorizationError);
 });

@@ -4,9 +4,9 @@
 // Roles in profiles.role: system_admin (System Admin, platform level), admin (School Admin, the existing Admin),
 // teacher, student, general_user (Independent Learner). A null role is an account that has not finished onboarding.
 //
-// School scope: the database has NO school relationship (no schools table, no profiles.school_id). Basa Eskwela is
-// one school, so "the School Admin's school" is every school-associated account: Teachers and Students. Real
-// multi-school isolation needs the relationship in docs/M1_SCHOOL_ISOLATION_PROPOSAL.md; it is not implemented here.
+// School scope (M1 multi-tenancy): every School Admin, Teacher and school Student has one primary school
+// (profiles.school_id). A School Admin sees and manages only the Teachers and Students of their own school; the
+// System Admin is platform level (every school). See services/schoolScope.js.
 //
 // Deny by default: a role or action that is not listed below is refused.
 
@@ -17,12 +17,13 @@ const SCOPES = Object.freeze({
   system_admin: Object.freeze({
     view: "all",
     deletable: Object.freeze(["general_user", "admin"]),
-    // F7 Deactivate/Reactivate: platform-level accounts only. Teachers and Students have no platform-wide rule, so
-    // they are left to the School Admin; System Admin accounts are never deactivated through User Management.
-    statusManageable: Object.freeze(["general_user", "admin"]),
+    // F7 Deactivate/Reactivate (Appendix N, System Admin): every account in every school except System Admins, which
+    // are never deactivated through User Management. Records are never deleted.
+    statusManageable: Object.freeze(["general_user", "admin", "teacher", "student"]),
     canCreateSchoolAdmin: true,
   }),
-  // School level: only school-associated accounts. Never Independent Learners, administrators or unassigned accounts.
+  // School level: only the Teachers and Students of the School Admin's own school. Never Independent Learners,
+  // administrators, unassigned accounts or another school's accounts.
   admin: Object.freeze({
     view: SCHOOL_ROLES,
     deletable: SCHOOL_ROLES,
@@ -39,9 +40,17 @@ function isAccountManager(role) {
   return getAccountScope(role) !== null;
 }
 
-function canViewAccount(managerRole, targetRole) {
+/** School Admins only act inside their own school (both school ids are read from the database). */
+function sameSchool(managerRole, managerSchoolId, targetSchoolId) {
+  if (managerRole !== "admin") return true;
+  return Boolean(managerSchoolId) && targetSchoolId === managerSchoolId;
+}
+
+/** Role scope; with school ids given, a School Admin also needs the same school. */
+function canViewAccount(managerRole, targetRole, managerSchoolId, targetSchoolId) {
   const scope = getAccountScope(managerRole);
   if (!scope) return false;
+  if (managerSchoolId !== undefined && !sameSchool(managerRole, managerSchoolId, targetSchoolId)) return false;
   return scope.view === "all" || scope.view.includes(targetRole);
 }
 
@@ -52,9 +61,10 @@ function canDeleteAccount({ managerRole, managerId, targetRole, targetId }) {
 }
 
 /** F7: may this manager deactivate or reactivate the target? Never their own account; deny by default. */
-function canChangeAccountStatus({ managerRole, managerId, targetRole, targetId }) {
+function canChangeAccountStatus({ managerRole, managerId, targetRole, targetId, managerSchoolId, targetSchoolId }) {
   const scope = getAccountScope(managerRole);
   if (!scope || !managerId || !targetId || managerId === targetId) return false;
+  if (!sameSchool(managerRole, managerSchoolId, targetSchoolId)) return false;
   return scope.statusManageable.includes(targetRole);
 }
 
@@ -68,7 +78,9 @@ function describePermissions(managerRole) {
     deletableRoles: [...scope.deletable],
     statusRoles: [...scope.statusManageable],
     canCreateSchoolAdmin: scope.canCreateSchoolAdmin,
+    // F8 Create School / list schools: System Admin only.
+    canManageSchools: managerRole === "system_admin",
   };
 }
 
-module.exports = { SCHOOL_ROLES, canChangeAccountStatus, canDeleteAccount, canViewAccount, describePermissions, getAccountScope, isAccountManager };
+module.exports = { SCHOOL_ROLES, canChangeAccountStatus, sameSchool, canDeleteAccount, canViewAccount, describePermissions, getAccountScope, isAccountManager };

@@ -179,6 +179,9 @@ function mountCreate(createSchoolAdmin: (input: object) => Promise<object>, dial
     if (id.endsWith("/services/adminUsers")) return { createSchoolAdmin, getAdminUserError: (e: Error) => e.message,
       CONFIRMATION_METHODS: [["official_school_email", "Email from an official school address"], ["official_school_phone", "Call to the school's official phone number"]] };
     if (id.endsWith("/utils/authOnboarding")) return real("utils/authOnboarding.ts");
+    // M1 F9: the School Admin's one school, from the System Admin's school list (active schools only are offered).
+    if (id.endsWith("/services/schools")) return { listSchools: async () => [
+      { id: "s1", name: "School 1", code: "SCHOOL-1", status: "active" }, { id: "s2", name: "Closed School", code: "CLOSED", status: "inactive" }] };
     if (id.endsWith(".css")) return {};
     return require(id);
   });
@@ -186,10 +189,11 @@ function mountCreate(createSchoolAdmin: (input: object) => Promise<object>, dial
   const settle = async () => { for (let i = 0; i < 6; i++) { await tick(); render(); } };
   const inputs = () => findAll(render(), (n) => n.type === "input");
   const type = (index: number, value: string) => { inputs()[index].props.onChange({ target: { value } }); render(); };
-  const choose = (value: string) => { findAll(render(), (n) => n.type === "select")[0].props.onChange({ target: { value } }); render(); };
+  const choose = (value: string) => { findAll(render(), (n) => n.type === "select").at(-1)!.props.onChange({ target: { value } }); render(); };
+  const chooseSchool = (value: string) => { findAll(render(), (n) => n.type === "select")[0].props.onChange({ target: { value } }); render(); };
   const submit = async () => { findAll(render(), (n) => n.type === "form")[0].props.onSubmit({ preventDefault() {} }); await settle(); };
-  const fill = () => { type(0, "Maria Santos"); type(1, "principal@school.example"); type(2, "School Principal"); type(3, "Request letter dated 2026-11-18"); choose("official_school_phone"); };
-  return { render, settle, type, choose, submit, inputs, fill, dialogs, navigations, text: () => textOf(render()) };
+  const fill = () => { type(0, "Maria Santos"); type(1, "principal@school.example"); chooseSchool("s1"); type(2, "School Principal"); type(3, "Request letter dated 2026-11-18"); choose("official_school_phone"); };
+  return { render, settle, type, choose, chooseSchool, submit, inputs, fill, dialogs, navigations, text: () => textOf(render()) };
 }
 
 test("Create School Admin requires an authorization record, sends no role or password, and shows success or the server error", async () => {
@@ -201,8 +205,12 @@ test("Create School Admin requires an authorization record, sends no role or pas
     return { success: true, message: "Authorization recorded and invitation sent. The account gets School Admin access only after the invitee accepts." };
   });
   m.render();
+  await m.settle();
   assert.equal(findAll(m.render(), (n) => n.type === "input" && n.props.type === "password").length, 0, "no password field");
+  const schoolOptions = findAll(findAll(m.render(), (n) => n.type === "select")[0], (n) => n.type === "option").map((n) => n.props.value);
+  assert.deepEqual(schoolOptions, ["", "s1"], "F9: only active schools are offered");
   await m.submit();
+  assert.match(m.text(), /Choose the school this School Admin will manage/);
   assert.match(m.text(), /Enter the School Admin's full name/);
   assert.match(m.text(), /Enter a valid email address/);
   assert.match(m.text(), /Enter the authorization reference/);
@@ -220,8 +228,9 @@ test("Create School Admin requires an authorization record, sends no role or pas
   m.type(2, " School Principal ");
   m.type(3, " Request letter dated 2026-11-18 ");
   m.choose("official_school_phone");
+  m.chooseSchool("s1");
   await m.submit();
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ email: "principal@school.example", fullName: "Maria Santos",
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ email: "principal@school.example", fullName: "Maria Santos", schoolId: "s1",
     authorization: { reference: "Request letter dated 2026-11-18", confirmationMethod: "official_school_phone", authorizingPosition: "School Principal" } }],
     "no role, no password in the request");
   assert.equal(m.inputs()[0].props.value, "", "form clears after success");
@@ -243,6 +252,7 @@ test("Create School Admin success modal: View School Accounts goes to the School
   let answer = true;
   const m = mountCreate(async () => ({ success: true, message: "server text is not shown" }), () => answer);
   m.render();
+  await m.settle();
   m.fill();
   await m.submit();
   assert.equal(m.dialogs.length, 1);
@@ -260,6 +270,7 @@ test("Create School Admin: simplified introduction; two submits in the same tick
   const m = mountCreate(async (input) => { calls.push(input); return { success: true, message: "ok" }; });
   assert.match(m.text(), /The new School Admin will receive an email to set up their account\. Access will be granted only after the invitation is accepted\./);
   assert.doesNotMatch(m.text(), /Record your authorization decision, then send an invitation|may expire sooner/);
+  await m.settle();
   m.fill();
   const form = findAll(m.render(), (n) => n.type === "form")[0];
   form.props.onSubmit({ preventDefault() {} });
@@ -281,13 +292,13 @@ test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4)
   const app = src("App.tsx");
   const block = app.slice(app.indexOf('allowedRoles={["system_admin"]}'), app.indexOf("{/* Admin (School Admin) routes */}"));
   assert.match(block, /path="\/system-admin" element=\{<M3Layout role="system_admin" \/>\}/);
-  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "users", "school-admins/new", "analytics", "independent-learners", "assessment-packages", "assessment/initial", "assessment/reassessment", "assessment-packages/:packageId", "settings"]);
+  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "users", "school-admins/new", "schools", "analytics", "independent-learners", "assessment-packages", "assessment/initial", "assessment/reassessment", "assessment-packages/:packageId", "settings"]);
   assert.equal((app.match(/allowedRoles=\{\["system_admin"\]\}/g) ?? []).length, 1, "System Admin has its own route guard");
   assert.match(app, /<Route element=\{<RequireRole allowedRoles=\{\["admin"\]\} \/>\}>\s*<Route\s+path="\/m3\/admin"/);
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Platform Analytics", "Independent Learners"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Schools", "Platform Analytics", "Independent Learners"]);
   // M2: Assessment (Initial Diagnostic, Reassessment) is an expandable group rendered after these flat items.
   assert.match(layout, /role === "system_admin" && <AssessmentNavigation /);
 });
@@ -300,9 +311,10 @@ test("security: no public System/School Admin registration, no role editing, no 
   const service = src("modules/module1/services/adminUsers.ts");
   const start = service.indexOf("export async function createSchoolAdmin");
   const create = service.slice(start, service.indexOf("\nexport ", start + 1));
-  assert.match(create, /\{ email: input\.email, fullName: input\.fullName, authorization: input\.authorization \}/);
+  assert.match(create, /\{ email: input\.email, fullName: input\.fullName, schoolId: input\.schoolId, authorization: input\.authorization \}/);
   assert.doesNotMatch(create, /role|password/i);
-  for (const path of ["modules/module1/pages/admin/UserManagementPage.tsx", "modules/module1/pages/admin/CreateSchoolAdminPage.tsx", "modules/module1/services/adminUsers.ts"]) {
+  for (const path of ["modules/module1/pages/admin/UserManagementPage.tsx", "modules/module1/pages/admin/CreateSchoolAdminPage.tsx", "modules/module1/services/adminUsers.ts",
+    "modules/module1/pages/admin/SchoolsPage.tsx", "modules/module1/services/schools.ts"]) {
     const file = src(path);
     assert.doesNotMatch(file, /service_role|SERVICE_ROLE|auth\.admin|updateManagedUserRole|handleRoleChange/, path);
   }

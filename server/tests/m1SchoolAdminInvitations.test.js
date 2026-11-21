@@ -9,7 +9,7 @@ const { createAccountInvitationRouter } = require("../routes/accountInvitation")
 const { AdminAuthorizationError } = require("../services/adminUserService");
 
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-const SA = id(1), NEW = id(5), INV = id(9);
+const SA = id(1), NEW = id(5), INV = id(9), SCH = id(70);
 const AUTH = { reference: "Request letter dated 2026-11-18", confirmationMethod: "official_school_phone", authorizingPosition: "School Principal" };
 const deps = (client) => ({ getSupabaseAdmin: () => client, passwordSetupRedirect: () => "https://basaeskwela.com/reset-password" });
 
@@ -27,6 +27,7 @@ function fake({ rpcErrors = {}, emailFails = false, banFails = false, existing =
     },
     rpc: async (name, args) => {
       log.push(["rpc", name, args.p_outcome ?? args.p_link_at ?? args.p_reason ?? null]);
+      if (name === "m1_create_school_admin_invitation") log.push(["school", args.p_school]);
       if (rpcErrors[name]) return { data: null, error: rpcErrors[name] };
       return { data: name === "m1_create_school_admin_invitation" ? INV : name === "m1_accept_school_admin_invitation" ? "admin" : "2099-01-01T00:00:00Z", error: null };
     },
@@ -41,18 +42,19 @@ function fake({ rpcErrors = {}, emailFails = false, banFails = false, existing =
 test("create: validates the authorization record and requires the requesting System Admin", async () => {
   const { client, log } = fake();
   for (const authorization of [undefined, { ...AUTH, reference: "abc" }, { ...AUTH, confirmationMethod: "checkbox" }, { ...AUTH, authorizingPosition: "x" }, { ...AUTH, note: "n".repeat(501) }]) {
-    await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "Ana Reyes", authorization }, deps(client), { userId: SA }), (e) => e.statusCode === 400);
+    await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "Ana Reyes", authorization, schoolId: SCH }, deps(client), { userId: SA }), (e) => e.statusCode === 400);
   }
-  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "Ana Reyes", authorization: AUTH }, deps(client), {}), (e) => e.statusCode === 403);
+  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "Ana Reyes", authorization: AUTH, schoolId: SCH }, deps(client), {}), (e) => e.statusCode === 403);
   assert.deepEqual(log, [], "nothing created for invalid input");
 });
 
 test("create: unconfirmed Auth user, atomic authorization record, send recorded before the email; never sets a role", async () => {
   const { client, log } = fake();
-  const account = await svc.createSchoolAdmin({ email: " New@X.test ", fullName: "  Ana   Reyes ", authorization: AUTH }, deps(client), { userId: SA });
-  assert.deepEqual(account, { id: NEW, invitationId: INV, email: "new@x.test", fullName: "Ana Reyes", role: null, invitationStatus: "pending", setupEmailSent: true, expiresAt: "2099-01-01T00:00:00Z" });
+  const account = await svc.createSchoolAdmin({ email: " New@X.test ", fullName: "  Ana   Reyes ", authorization: AUTH, schoolId: SCH }, deps(client), { userId: SA });
+  assert.deepEqual(account, { id: NEW, invitationId: INV, email: "new@x.test", fullName: "Ana Reyes", schoolId: SCH, role: null, invitationStatus: "pending", setupEmailSent: true, expiresAt: "2099-01-01T00:00:00Z" });
+  assert.deepEqual(log.find((l) => l[0] === "school"), ["school", SCH], "F9: the chosen school is recorded with the invitation (re-checked in the database)");
   assert.deepEqual(log[0][3], { school_admin_invitation: true }, "display marker set with the service role (not used for access)");
-  assert.deepEqual(log.map((l) => l.slice(0, 3)), [
+  assert.deepEqual(log.filter((l) => l[0] !== "school").map((l) => l.slice(0, 3)), [
     ["createUser", "new@x.test", false],
     ["rpc", "m1_create_school_admin_invitation", null],
     ["rpc", "m1_record_school_admin_invitation_email", "sent"],
@@ -60,17 +62,28 @@ test("create: unconfirmed Auth user, atomic authorization record, send recorded 
   ]);
 });
 
+test("F9: a School Admin invitation needs exactly one valid school; an inactive or unknown school is refused and cleaned up", async () => {
+  let f = fake();
+  for (const schoolId of [undefined, "", "not-a-uuid", ["x"]]) {
+    await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH, schoolId }, deps(f.client), { userId: SA }), (e) => e.statusCode === 400 && /school/i.test(e.message));
+  }
+  assert.deepEqual(f.log, [], "nothing created without a school");
+  f = fake({ rpcErrors: { m1_create_school_admin_invitation: { message: "m1_invite_school_inactive" } } });
+  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH, schoolId: SCH }, deps(f.client), { userId: SA }), (e) => e.statusCode === 409);
+  assert.ok(f.log.some((l) => l[0] === "deleteUser"), "the unused Auth user is removed");
+});
+
 test("create: failures never leave a usable account; the unused Auth user is removed; email failure keeps it pending", async () => {
   let f = fake({ existing: ["new@x.test"] });
-  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH }, deps(f.client), { userId: SA }), (e) => e.statusCode === 409);
+  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH, schoolId: SCH }, deps(f.client), { userId: SA }), (e) => e.statusCode === 409);
   f = fake({ rpcErrors: { m1_create_school_admin_invitation: { code: "PGRST202", message: "Could not find the function" } } });
-  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH }, deps(f.client), { userId: SA }), (e) => e.statusCode === 503);
+  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH, schoolId: SCH }, deps(f.client), { userId: SA }), (e) => e.statusCode === 503);
   assert.deepEqual(f.log.at(-1), ["deleteUser", NEW], "cleanup before the migration exists");
   f = fake({ rpcErrors: { m1_create_school_admin_invitation: { message: "m1_invite_actor_not_system_admin" } } });
-  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH }, deps(f.client), { userId: SA }), (e) => e.statusCode === 403);
+  await assert.rejects(svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH, schoolId: SCH }, deps(f.client), { userId: SA }), (e) => e.statusCode === 403);
   assert.ok(f.log.some((l) => l[0] === "deleteUser") && !f.log.some((l) => l[0] === "email"));
   f = fake({ emailFails: true });
-  const account = await svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH }, deps(f.client), { userId: SA });
+  const account = await svc.createSchoolAdmin({ email: "new@x.test", fullName: "A B", authorization: AUTH, schoolId: SCH }, deps(f.client), { userId: SA });
   assert.equal(account.setupEmailSent, false);
   assert.deepEqual(f.log.at(-1).slice(0, 3), ["rpc", "m1_record_school_admin_invitation_email", "failed"]);
   assert.ok(!f.log.some((l) => l[0] === "deleteUser"), "a pending invitation stays for Resend");
