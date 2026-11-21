@@ -605,7 +605,7 @@ test("Filipino feedback never shows a pronunciation score and opens straight to 
   assert.equal(find(wordsModal, node => node.type === "filipino-word-review-panel").props.attempt, attempt);
   const accuracyCard = find(tree, node => node.props?.className?.includes?.("result-panel-card--accuracy"));
   assert.equal(find(accuracyCard, node => node.props?.className === "result-panel-card-title").props.children, "Katumpakan ng Pagbasa");
-  assert.equal(JSON.stringify(find(accuracyCard, node => node.props?.className === "result-panel-card-value").props.children), JSON.stringify([70, "%"]), "the same saved score as F6");
+  assert.equal(find(accuracyCard, node => node.props?.className === "result-panel-card-value").props.children, "70%", "the same saved score as F6");
   const wordsCard = find(tree, node => node.props?.className?.includes?.("result-panel-card--words"));
   assert.equal(find(wordsCard, node => node.props?.className === "result-panel-card-title").props.children, "Mga Salitang Dapat Balikan");
   assert.doesNotMatch(text, /Katumpakan ng Pagbigkas|Mali ang Bigkas/);
@@ -1688,9 +1688,13 @@ async function resultCards(attempt: any, extra: Record<string, any> = {}, role =
   f.render(); await tick();
   const tree = f.render(); f.render();
   const card = (name: string) => find(tree, (node) => node.props?.className?.includes?.(`result-panel-card--${name}`));
+  // [kind, value or status text, caption]: every card ends with one metric block (value + caption).
   const shown = (name: string) => {
-    const node = find(card(name), (n) => n.props?.className === "result-panel-card-value" || n.props?.className === "result-panel-card-status");
-    return [node?.props?.className === "result-panel-card-status" ? "status" : "value", JSON.stringify(node?.props?.children ?? null)];
+    const metric = find(card(name), (n) => n.props?.className === "result-panel-card-metric");
+    const node = find(metric, (n) => ["result-panel-card-value", "result-panel-card-status", "result-panel-card-ready"].includes(n.props?.className));
+    const caption = find(metric, (n) => n.props?.className === "result-panel-card-caption");
+    const kind = { "result-panel-card-status": "status", "result-panel-card-ready": "message" }[node?.props?.className as string] ?? "value";
+    return [kind, String(node?.props?.children ?? ""), caption?.props?.children];
   };
   return { options, shown, tree };
 }
@@ -1700,10 +1704,12 @@ for (const role of ["system_admin", "admin", "teacher", "student", "general_user
     const { options, shown } = await resultCards(englishReading, {}, role);
     assert.deepEqual(options.pronunciationAutoChecks, ["oral"], "started once, for this reading");
     // While it runs: a clear status on the three pronunciation cards, never a fake number or 0.
-    for (const name of ["feedback", "accuracy", "words"]) assert.deepEqual(shown(name), ["status", JSON.stringify("Processing…")], name);
+    assert.deepEqual(shown("feedback"), ["status", "Processing…", "Your feedback"]);
+    assert.deepEqual(shown("accuracy"), ["status", "Processing…", "Pronunciation score"]);
+    assert.deepEqual(shown("words"), ["status", "Processing…", "Words to practice"]);
     // Available numbers appear at once: words transcribed (whitespace-safe) and the unchanged reading accuracy.
-    assert.deepEqual(shown("transcript"), ["value", JSON.stringify("Words transcribed: 2")]);
-    assert.match(shown("result")[1], /70/);
+    assert.deepEqual(shown("transcript"), ["value", "2", "Words transcribed"]);
+    assert.deepEqual(shown("result"), ["value", "70%", "Reading accuracy"]);
   });
 }
 
@@ -1712,26 +1718,30 @@ test("M5 result cards: a finished check shows its score and the FULL flagged-wor
   const { options, shown } = await resultCards(englishReading, { pronunciation: { status: "done", step: "assessing", saved: true,
     summary: { parts: 1, utterances: 3, accuracy: 82, fluency: 70, wordsToPractice: words, practiceWordCount: 14, complete: true } } });
   assert.deepEqual(options.pronunciationAutoChecks ?? [], [], "a saved result is reused: no new check");
-  assert.deepEqual(shown("feedback"), ["value", JSON.stringify("Practice items: 14")]);
-  assert.match(shown("accuracy")[1], /82/);
-  assert.deepEqual(shown("words"), ["value", JSON.stringify("Words flagged: 14")]);
-  assert.deepEqual(shown("transcript"), ["value", JSON.stringify("Words transcribed: 2")]);
+  assert.deepEqual(shown("feedback"), ["message", "Feedback available", "Your feedback"], "no invented tip count");
+  assert.deepEqual(shown("accuracy"), ["value", "82/100", "Pronunciation score"]);
+  assert.deepEqual(shown("words"), ["value", "14", "Words to practice"]);
+  assert.deepEqual(shown("transcript"), ["value", "2", "Words transcribed"], "a count: never /100 or %");
+  assert.deepEqual(shown("result"), ["value", "70%", "Reading accuracy"], "the existing reading accuracy, not the pronunciation score");
 });
 
 test("M5 result cards: a failed automatic check says so (no fake score) and no speech is reported as such", async () => {
   let r = await resultCards(englishReading, { pronunciation: { status: "error", step: "assessing", error: "Azure failed", autoTried: true } });
-  for (const name of ["feedback", "accuracy", "words"]) assert.deepEqual(r.shown(name), ["status", JSON.stringify("Not available yet. Open to try again.")], name);
+  for (const name of ["feedback", "accuracy", "words"]) assert.deepEqual(r.shown(name).slice(0, 2), ["status", "Not available yet. Open to try again."], name);
   r = await resultCards(englishReading, { pronunciation: { status: "done", step: "assessing", saved: true,
     summary: { parts: 1, utterances: 0, accuracy: null, fluency: null, wordsToPractice: [], complete: true } } });
-  assert.deepEqual(r.shown("words"), ["status", JSON.stringify("No speech was detected.")]);
+  assert.deepEqual(r.shown("words"), ["status", "No speech was detected.", "Words to practice"]);
+  assert.deepEqual(r.shown("feedback"), ["status", "No speech was detected.", "Your feedback"]);
 });
 
 test("M5 result cards (Filipino): transcript-based numbers only, no pronunciation check and no Azure score", async () => {
   const filipino = { ...englishReading, language: "fil", transcript: "ang pusa ay", passageSnapshot: "ang aso ay" };
   const { options, shown, tree } = await resultCards(filipino, { filipinoDifferences: 3 });
   assert.deepEqual(options.pronunciationAutoChecks ?? [], [], "no paid pronunciation check for Filipino");
-  assert.deepEqual(shown("feedback"), ["value", JSON.stringify("Mga bahaging dapat tingnan: 3")]);
-  assert.deepEqual(shown("words"), ["value", JSON.stringify("Mga salitang dapat balikan: 3")]);
-  assert.deepEqual(shown("transcript"), ["value", JSON.stringify("Mga salitang naitala: 3")]);
+  assert.deepEqual(shown("feedback"), ["message", "May puna na", "Ang iyong puna"]);
+  assert.deepEqual(shown("accuracy"), ["value", "70%", "Katumpakan ng pagbasa"], "reading accuracy, never a pronunciation score");
+  assert.deepEqual(shown("words"), ["value", "3", "Mga salitang dapat balikan"]);
+  assert.deepEqual(shown("transcript"), ["value", "3", "Mga salitang naitala"]);
+  assert.deepEqual(shown("result"), ["value", "70%", "Katumpakan ng pagbasa"]);
   assert.doesNotMatch(JSON.stringify(tree), /\/100/, "never a pronunciation score");
 });

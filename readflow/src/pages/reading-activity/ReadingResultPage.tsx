@@ -277,8 +277,25 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const practiceTotal = pronunciationSummary && pronunciationSummary.utterances > 0 ? practiceWordTotal(pronunciationSummary) : null;
   const differenceCount = filipino ? filipinoDifferenceCount(attempt) : null;
   const transcribedWords = (attempt.transcript ?? "").trim() ? (attempt.transcript ?? "").trim().split(/\s+/u).length : 0;
-  const cardStatus = (text: string) => (
-    <span className="result-panel-card-status" role="status" aria-live="polite">{text}</span>
+  // Every card ends with the same block at its bottom: the caption (what the value is), then the value (a score, a
+  // percentage or a count) as the card's last line, so the values line up across a row even when a caption wraps.
+  // While the English check runs, or when there is no value, a clear status takes the value's place (never a fake 0).
+  const cardMetric = (value: string | number | null, caption: string, status?: string | null) => (
+    <span className="result-panel-card-metric">
+      <span className="result-panel-card-caption">{caption}</span>
+      {value !== null
+        ? <strong className="result-panel-card-value">{value}</strong>
+        : <span className="result-panel-card-status" role="status" aria-live="polite">{status}</span>}
+    </span>
+  );
+  const noSpeech = t("No speech was detected.");
+  // Card 1 has no number of its own: the Feedback panel holds one message, and the words it points to are Card 3's
+  // count. When that feedback is ready the card says so; otherwise the same statuses as the other cards.
+  const cardMessage = (text: string, caption: string) => (
+    <span className="result-panel-card-metric">
+      <span className="result-panel-card-caption">{caption}</span>
+      <span className="result-panel-card-ready">{text}</span>
+    </span>
   );
   const readAgainTarget = role === "general_user" && attempt.materialId && !attempt.roomId
     ? `/m3/general/materials/${encodeURIComponent(attempt.materialId)}/read-aloud?recordAgain=1`
@@ -324,43 +341,38 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
               <MessageCircle size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{feedbackTitle}</span>
               <span className="result-panel-card-text">{feedbackCardText}</span>
-              {filipino
-                ? differenceCount === null ? cardStatus(t("No speech was detected."))
-                  : <strong className="result-panel-card-value">{t("Places to check: {count}", { count: differenceCount })}</strong>
-                : practiceTotal !== null
-                  ? <strong className="result-panel-card-value">{t("Practice items: {count}", { count: practiceTotal })}</strong>
-                  : cardStatus(englishCardStatus ?? "")}
+              {(filipino ? differenceCount !== null : practiceTotal !== null)
+                ? cardMessage(t("Feedback available"), t("Your feedback"))
+                : cardMetric(null, t("Your feedback"), filipino ? noSpeech : englishCardStatus)}
             </button>
             <button type="button" className="result-panel-card result-panel-card--accuracy" aria-haspopup="dialog" onClick={() => openPanel("accuracy")}>
               <Gauge size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{accuracyTitle}</span>
               <span className="result-panel-card-text">{accuracyCardText}</span>
-              {pronunciationScore !== null && <strong className="result-panel-card-value">{pronunciationScore}/100</strong>}
-              {!filipino && pronunciationScore === null && cardStatus(englishCardStatus ?? t("Score not measured."))}
-              {filipino && <strong className="result-panel-card-value">{accuracy}%</strong>}
+              {filipino
+                ? cardMetric(`${accuracy}%`, t("Reading accuracy"))
+                : cardMetric(pronunciationScore !== null ? `${pronunciationScore}/100` : null, t("Pronunciation score"),
+                  englishCardStatus ?? t("Score not measured."))}
             </button>
             <button type="button" className="result-panel-card result-panel-card--words" aria-haspopup="dialog" onClick={() => openPanel("words")}>
               <ListChecks size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{wordsTitle}</span>
               <span className="result-panel-card-text">{wordsCardText}</span>
               {filipino
-                ? differenceCount === null ? cardStatus(t("No speech was detected."))
-                  : <strong className="result-panel-card-value">{t("Words to review: {count}", { count: differenceCount })}</strong>
-                : practiceTotal !== null
-                  ? <strong className="result-panel-card-value">{t("Words flagged: {count}", { count: practiceTotal })}</strong>
-                  : cardStatus(englishCardStatus ?? "")}
+                ? cardMetric(differenceCount, t("Words to review"), noSpeech)
+                : cardMetric(practiceTotal, t("Words to practice"), englishCardStatus)}
             </button>
             <button type="button" className="result-panel-card result-panel-card--transcript" aria-haspopup="dialog" onClick={() => openPanel("transcript")}>
               <Headphones size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{t("Read-Aloud Transcript")}</span>
               <span className="result-panel-card-text">{t("Compare the story with what we heard.")}</span>
-              <strong className="result-panel-card-value">{t("Words transcribed: {count}", { count: transcribedWords })}</strong>
+              {cardMetric(transcribedWords, t("Words transcribed"))}
             </button>
             <button type="button" className="result-panel-card result-panel-card--result" aria-haspopup="dialog" onClick={() => openPanel("result")}>
               <Star size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{t("Oral Reading Result")}</span>
               <span className="result-panel-card-text">{t("See your reading accuracy, reading speed, and words matched.")}</span>
-              <strong className="result-panel-card-value">{accuracy}%</strong>
+              {cardMetric(`${accuracy}%`, t("Reading accuracy"))}
             </button>
           </nav>
 
