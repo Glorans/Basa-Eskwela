@@ -2,29 +2,31 @@ const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
   OralReadingAuthorizationError,
   OralReadingPersistenceError,
-  isApprovedTeacher,
+  isPracticeStaff,
+  assertPracticeSchool,
   normalizeLanguage,
 } = require("./oralReadingAttemptService");
 
-/** Published passages of modules this Admin created (Admin practice). Lists content only, never learner data. */
-async function listAdminReadingPassages(requester, dependencies = {}) {
-  if (requester.profile.role !== "admin") {
-    throw new OralReadingAuthorizationError("Admin access is required.");
-  }
-  return listPublishedPassages(dependencies, requester.user.id);
-}
-
 /**
- * Reading practice list. Approved Teachers: every published, non-deleted module in the shared
- * catalog (any author). Admins: unchanged, only the published modules they created.
- * Content only: no attempt, result or learner data.
+ * Reading practice list for staff (System Admin, School Admin, approved Teacher): every published, non-deleted
+ * module the account's school may see. Another school's modules are left out (M1 multi-tenancy); platform modules
+ * and, for a School Admin or Teacher, their own school's modules stay. The System Admin has no school: every
+ * published module. Content only: no attempt, result or learner data.
  */
 async function listPracticeReadingPassages(requester, dependencies = {}) {
-  if (requester?.profile?.role === "admin") return listAdminReadingPassages(requester, dependencies);
-  if (!isApprovedTeacher(requester)) {
-    throw new OralReadingAuthorizationError("Approved Teacher access is required.");
+  if (!isPracticeStaff(requester)) {
+    throw new OralReadingAuthorizationError("System Admin, School Admin or approved Teacher access is required.");
   }
+  await assertPracticeSchool(requester, dependencies);
   return listPublishedPassages(dependencies, null, requester);
+}
+
+/** Older School Admin list endpoint: the same practice catalog, for School Admins and the System Admin. */
+async function listAdminReadingPassages(requester, dependencies = {}) {
+  if (!["admin", "system_admin"].includes(requester?.profile?.role)) {
+    throw new OralReadingAuthorizationError("Admin access is required.");
+  }
+  return listPracticeReadingPassages(requester, dependencies);
 }
 
 /**

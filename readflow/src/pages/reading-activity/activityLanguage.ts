@@ -436,6 +436,17 @@ const filipino = {
   "Each question has one final answer. Each correct answer earns one point.": "Isang pinal na sagot ang bawat tanong. Isang puntos ang bawat tamang sagot.",
   "{correct}/{total} correct ({percentage}%)": "{correct}/{total} tama ({percentage}%)",
   "You answered every question correctly. Great work! Review the explanations to see how the passage supports each answer.": "Tama ang lahat ng sagot mo. Mahusay! Balikan ang mga paliwanag upang makita kung paano sinusuportahan ng teksto ang bawat sagot.",
+  // M6 F5 Preview comprehension assessment (2026-11-21).
+  "Preview Questions": "Silipin ang mga Tanong",
+  "Preview Comprehension Assessment": "Silipin ang Pagtatasa sa Pag-unawa",
+  "{count} questions": "{count} tanong",
+  "This is a preview. The answers are not shown, and previewing does not start or use your comprehension assessment.": "Silip lamang ito. Hindi ipinapakita ang mga sagot, at hindi nito sinisimulan o ginagamit ang iyong pagtatasa sa pag-unawa.",
+  "To answer these questions, read the passage aloud first. Then start comprehension from your reading result.": "Para masagutan ang mga tanong na ito, basahin muna nang malakas ang teksto. Pagkatapos, simulan ang pag-unawa mula sa resulta ng iyong pagbasa.",
+  "Loading the questions...": "Kinukuha ang mga tanong...",
+  "Questions unavailable": "Hindi makuha ang mga tanong",
+  "Unable to load the assessment preview.": "Hindi makuha ang silip ng pagtatasa.",
+  "Choices for question {number}": "Mga pagpipilian sa tanong {number}",
+  "Start Read-Aloud": "Simulan ang Pagbasa nang Malakas",
 } as const;
 
 export type ActivityText = keyof typeof filipino;

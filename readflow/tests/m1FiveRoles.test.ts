@@ -292,13 +292,16 @@ test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4)
   const app = src("App.tsx");
   const block = app.slice(app.indexOf('allowedRoles={["system_admin"]}'), app.indexOf("{/* Admin (School Admin) routes */}"));
   assert.match(block, /path="\/system-admin" element=\{<M3Layout role="system_admin" \/>\}/);
-  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "users", "school-admins/new", "schools", "analytics", "independent-learners", "assessment-packages", "assessment/initial", "assessment/reassessment", "assessment-packages/:packageId", "settings"]);
+  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "users", "school-admins/new", "schools", "analytics", "independent-learners", "assessment-packages", "assessment/initial", "assessment/reassessment", "assessment-packages/:packageId",
+    // Appendix N M5/M6: System Admin reading practice (own results only) and the M6 F5 preview.
+    "practice", "practice/modules/:moduleId/read-aloud", "practice/modules/:moduleId/preview", "practice/read-aloud/results/:attemptId",
+    "practice/modules/:moduleId/comprehension", "practice/comprehension/:attemptId", "practice/history", "settings"]);
   assert.equal((app.match(/allowedRoles=\{\["system_admin"\]\}/g) ?? []).length, 1, "System Admin has its own route guard");
   assert.match(app, /<Route element=\{<RequireRole allowedRoles=\{\["admin"\]\} \/>\}>\s*<Route\s+path="\/m3\/admin"/);
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "User Management", "Schools", "Platform Analytics", "Independent Learners"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "Reading Practice", "Practice History", "User Management", "Schools", "Platform Analytics", "Independent Learners"]);
   // M2: Assessment (Initial Diagnostic, Reassessment) is an expandable group rendered after these flat items.
   assert.match(layout, /role === "system_admin" && <AssessmentNavigation /);
 });

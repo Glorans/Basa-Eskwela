@@ -25,7 +25,7 @@ import { PRACTICE_PATHS, comprehensionResultTarget, isPracticeRole, learningArea
 
 type Props = {
   /** "admin": Admin self-practice on the Admin's own published modules (enforced by the server). */
-  role: "student" | "general_user" | "admin" | "teacher";
+  role: "student" | "general_user" | "admin" | "teacher" | "system_admin";
   results?: boolean;
 };
 
@@ -404,7 +404,7 @@ export default function ComprehensionPage({ role, results = false }: Props) {
         onClick={() => navigate(reviewingQuestions ? readingTarget : home, { state: activityState })}
       >
         <ArrowLeft size={18} aria-hidden="true" />
-        {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t(personal ? "Back to Material" : "Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : role === "teacher" ? t("Back to Reading Practice") : t("Back to dashboard")}
+        {reviewingQuestions ? t("Back to reading activity") : readingMaterialId ? t(personal ? "Back to Material" : "Back to Learning Room") : role === "admin" ? t("Back to Oral Reading") : role === "teacher" || role === "system_admin" ? t("Back to Reading Practice") : t("Back to dashboard")}
       </button>
       {attempt && <StoryDrawer key={sourceKey} attempt={attempt} />}
       </div>}

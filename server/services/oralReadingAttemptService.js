@@ -12,9 +12,11 @@ const {
 
 const LEARNER_ROLES = Object.freeze(["student", "general_user"]);
 const SELF_PRACTICE_ROLES = Object.freeze([...LEARNER_ROLES, "admin"]);
-// M5/M6 reading practice also admits APPROVED Teachers (shared published catalog, own results only).
-// M2 diagnostic speech uses DIAGNOSTIC_SPEECH_ROLES below (F7 Practice Mode adds staff there, not here).
-const READING_PRACTICE_ROLES = Object.freeze([...SELF_PRACTICE_ROLES, "teacher"]);
+// M5/M6 reading practice also admits APPROVED Teachers and the System Admin (the published catalog the account may
+// see, own results only). M2 diagnostic speech uses DIAGNOSTIC_SPEECH_ROLES below.
+const READING_PRACTICE_ROLES = Object.freeze([...SELF_PRACTICE_ROLES, "teacher", "system_admin"]);
+// Staff reading practice (M5 read-aloud + M6 comprehension) besides approved Teachers: never classroom work.
+const PRACTICE_STAFF_ROLES = Object.freeze(["system_admin", "admin"]);
 // M2 F7 Practice Mode (Preview / Try Assessment): staff only. Teachers must be APPROVED (checked below).
 const DIAGNOSTIC_PRACTICE_ROLES = Object.freeze(["system_admin", "admin", "teacher"]);
 // M2 diagnostic SPEECH only (stream + upload fallback): learners for the official diagnostic, staff for Practice
@@ -118,6 +120,18 @@ function claimedSubject(req) {
 
 const isApprovedTeacher = (requester) =>
   requester?.profile?.role === "teacher" && requester.profile.teacher_status === "approved";
+// System Admin, School Admin or APPROVED Teacher trying published modules (Appendix N M5/M6 staff practice).
+const isPracticeStaff = (requester) =>
+  PRACTICE_STAFF_ROLES.includes(requester?.profile?.role) || isApprovedTeacher(requester);
+
+// School Admin and Teacher practice is limited to what their school may see, so it requires a school (fail closed:
+// an account of a school role without one is refused rather than shown every school's modules).
+async function assertPracticeSchool(requester, dependencies = {}) {
+  if (!["admin", "teacher"].includes(requester?.profile?.role)) return;
+  if (!(await require("./schoolScope").requesterSchoolOrNull(requester, dependencies))) {
+    throw new OralReadingAuthorizationError("Your account is not assigned to a school. Contact your System Admin.");
+  }
+}
 
 async function authorizeRequesterRole(req, dependencies, roles) {
   const authenticate = dependencies.getAuthenticatedSupabaseUser
@@ -200,6 +214,7 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
   if (moduleRow.deleted_at || moduleRow.status !== "published") {
     throw new OralReadingAuthorizationError("This reading module is not available for oral reading.");
   }
+  if (isPracticeStaff(requester)) await assertPracticeSchool(requester, dependencies);
   // M1 multi-tenancy: another school's module answers "not found" (platform modules stay available).
   if ((await require("./schoolScope").foreignSchoolOwners(requester, [moduleRow.created_by], dependencies)).size) {
     throw new OralReadingPersistenceError("Reading module not found.", 404, "MODULE_NOT_FOUND");
@@ -283,14 +298,14 @@ async function loadAccessiblePublishedModule(requester, moduleId, dependencies =
     }
     personalPractice = roomId === null;
   } else if (
-    !(["general_user", "admin"].includes(requester.profile.role) || isApprovedTeacher(requester))
+    !(requester.profile.role === "general_user" || isPracticeStaff(requester))
     || context.roomId || context.assignmentId
   ) {
-    // Admin and approved-Teacher practice, like general users, read published modules outside any classroom.
+    // Staff practice (System Admin, School Admin, approved Teacher), like general users, reads published modules
+    // outside any classroom: every published module the account's school may see. Another school's module was
+    // already answered "not found" above; platform modules and the School Admin's own school's modules remain; the
+    // System Admin has no school and sees every published module.
     throw new OralReadingAuthorizationError();
-  } else if (requester.profile.role === "admin" && moduleRow.created_by !== requester.user.id) {
-    // Admin practice (M5 and M6) is a test of the Admin's own published modules only.
-    throw new OralReadingAuthorizationError("Admin practice is available only for published modules you created.");
   }
 
   if (context.passageId) requireUuid(context.passageId, "The passage ID");
@@ -891,6 +906,8 @@ module.exports = {
   claimedSubject,
   authorizeTeacherOralReadingRequest,
   isApprovedTeacher,
+  isPracticeStaff,
+  assertPracticeSchool,
   buildAttemptInsert,
   normalizeLanguage,
   createOralReadingAttempt,

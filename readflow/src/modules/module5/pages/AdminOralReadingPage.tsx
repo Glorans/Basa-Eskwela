@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { activityLanguageState } from "../../../pages/reading-activity/activityLanguage";
-import { getAdminReadingPassages, getPracticeReadingPassages, type AdminReadingPassage } from "../services/oralReadingService";
-import { PRACTICE_PATHS, readAloudTarget } from "../services/oralReadingNavigation";
+import { getPracticeReadingPassages, type AdminReadingPassage } from "../services/oralReadingService";
+import { PRACTICE_PATHS, comprehensionPreviewTarget, readAloudTarget } from "../services/oralReadingNavigation";
 import type { PracticeRole } from "../types/oralReading";
 
 /**
- * Practice passage list. Admin (default): the published modules this Admin created.
- * Approved Teacher: every published module in the shared catalog. Own practice results only.
+ * Staff practice passage list (System Admin, School Admin, approved Teacher): the published reading modules the
+ * account may use. A School Admin or Teacher sees their school's modules and platform modules; the System Admin sees
+ * every published module. Never another school's. Own practice results only.
  */
 export default function AdminOralReadingPage({ role = "admin" }: { role?: PracticeRole }) {
   const [passages, setPassages] = useState<AdminReadingPassage[]>([]);
@@ -18,7 +19,7 @@ export default function AdminOralReadingPage({ role = "admin" }: { role?: Practi
     let active = true;
     setLoading(true);
     setError("");
-    void (role === "teacher" ? getPracticeReadingPassages() : getAdminReadingPassages())
+    void getPracticeReadingPassages()
       .then((rows) => {
         if (active) setPassages(rows);
       })
@@ -34,18 +35,16 @@ export default function AdminOralReadingPage({ role = "admin" }: { role?: Practi
   }, [revision, role]);
   return (
     <section className="m-4 rounded-3xl bg-white p-6 text-[#173f3b] md:m-8">
-      <h1 className="text-3xl font-extrabold">{role === "teacher" ? "Reading Practice" : "Oral Reading"}</h1>
-      {role === "teacher" && (
-        <>
-          <p className="mt-2">
-            Practise reading aloud and answering comprehension questions on any published reading module.
-            Your practice results are private to you and are not part of any classroom.
-          </p>
-          <Link className="mt-3 inline-block font-bold underline" to={PRACTICE_PATHS.teacher.history}>
-            My Practice History
-          </Link>
-        </>
-      )}
+      <h1 className="text-3xl font-extrabold">{role === "admin" ? "Oral Reading" : "Reading Practice"}</h1>
+      <p className="mt-2">
+        {role === "system_admin"
+          ? "Try reading aloud and answering comprehension questions on any published reading module, in every school."
+          : "Try reading aloud and answering comprehension questions on your school's published reading modules and the platform's."}
+        {" "}Your practice results are private to you, are not part of any classroom and never count as Student results.
+      </p>
+      <Link className="mt-3 inline-block font-bold underline" to={PRACTICE_PATHS[role].history}>
+        My Practice History
+      </Link>
       {loading ? (
         <p role="status" className="my-4">Loading passages...</p>
       ) : error ? (
@@ -60,12 +59,7 @@ export default function AdminOralReadingPage({ role = "admin" }: { role?: Practi
           </button>
         </div>
       ) : passages.length === 0 ? (
-        // Admin practice uses only published modules this Admin created; Teacher practice uses the published catalog.
-        <p role="status" className="my-4">
-          {role === "teacher"
-            ? "No published reading modules to practise yet."
-            : "No passages to practise yet. Admin practice uses the published modules you created."}
-        </p>
+        <p role="status" className="my-4">No published reading modules to practise yet.</p>
       ) : (
         <ul className="my-4 space-y-4">
           {passages.map((passage) => (
@@ -84,6 +78,15 @@ export default function AdminOralReadingPage({ role = "admin" }: { role?: Practi
               >
                 Start Read-Aloud<span className="sr-only">: {passage.passageTitle}</span>
               </Link>
+              {passage.passageId && (
+                // M6 F5: read-only preview of this passage's comprehension questions (never the answers).
+                <Link
+                  className="ml-3 mt-3 inline-block rounded-xl border border-[#173f3b] px-4 py-2 font-bold"
+                  to={comprehensionPreviewTarget(role, passage.moduleId, { passageId: passage.passageId })}
+                >
+                  Preview Questions<span className="sr-only">: {passage.passageTitle}</span>
+                </Link>
+              )}
             </li>
           ))}
         </ul>

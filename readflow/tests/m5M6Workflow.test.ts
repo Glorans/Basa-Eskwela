@@ -1582,7 +1582,7 @@ test("Admin M6 routes are Admin-only and reuse the existing comprehension page",
   }
   // No other role's block gains an Admin page. Teachers have M6 only as approved-Teacher practice routes.
   const roles = [...app.matchAll(/<ComprehensionPage role="(\w+)"/g)].map((match) => match[1]);
-  assert.deepEqual([...new Set(roles)].sort(), ["admin", "general_user", "student", "teacher"]);
+  assert.deepEqual([...new Set(roles)].sort(), ["admin", "general_user", "student", "system_admin", "teacher"]);
   const teacherBlock = app.slice(app.indexOf("{/* Teacher routes */}"), app.indexOf("{/* Independent learner routes */}"));
   assert.deepEqual([...teacherBlock.matchAll(/path="([^"]+)"\s*element=\{<ComprehensionPage role="(\w+)" \/>\}/g)].map((m) => `${m[1]}|${m[2]}`),
     ["practice/modules/:moduleId/comprehension|teacher", "practice/comprehension/:attemptId|teacher"]);

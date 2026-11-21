@@ -80,6 +80,7 @@ import TeacherOralReadingResultsPage from "./modules/module5/pages/TeacherOralRe
 import TeacherOralReadingAttemptPage from "./modules/module5/pages/TeacherOralReadingAttemptPage";
 
 import ComprehensionPage from "./modules/module6/pages/ComprehensionPage";
+import ComprehensionPreviewPage from "./modules/module6/pages/ComprehensionPreviewPage";
 import TeacherAnalyticsPage from "./modules/module7/TeacherAnalyticsPage";
 import TeacherReportsPage from "./modules/module7/TeacherReportsPage";
 import { StudentProgressPage, AdminAnalyticsPage, TeacherSupportPage } from "./modules/module7/M7Pages";
@@ -268,6 +269,9 @@ function App() {
               path="materials/:moduleId/read-aloud"
               element={<ReadAloudPage role="student" />}
             />
+            {/* M6 F5 - read-only preview of an assigned or personal-practice module's assessment (never answers;
+                does not start or use the one assessment) */}
+            <Route path="materials/:moduleId/preview" element={<ComprehensionPreviewPage role="student" />} />
 
             <Route
               path="materials/:moduleId/comprehension"
@@ -336,6 +340,14 @@ function App() {
             <Route path="content/materials/:materialId/questions" element={<MaterialDetailPage role="system_admin" />} />
             <Route path="content/materials/:materialId/question-sets/:setId" element={<QuestionReviewPage role="system_admin" />} />
             <Route path="content/materials/:materialId/question-sets/:setId/edit" element={<QuestionReviewPage role="system_admin" editing />} />
+            {/* M5/M6 - System Admin reading practice on any published module; own results only (never Student results). */}
+            <Route path="practice" element={<AdminOralReadingPage role="system_admin" />} />
+            <Route path="practice/modules/:moduleId/read-aloud" element={<ReadAloudPage role="system_admin" />} />
+            <Route path="practice/modules/:moduleId/preview" element={<ComprehensionPreviewPage role="system_admin" />} />
+            <Route path="practice/read-aloud/results/:attemptId" element={<ReadingResultPage role="system_admin" />} />
+            <Route path="practice/modules/:moduleId/comprehension" element={<ComprehensionPage role="system_admin" />} />
+            <Route path="practice/comprehension/:attemptId" element={<ComprehensionPage role="system_admin" />} />
+            <Route path="practice/history" element={<ReadingHistoryPage role="system_admin" />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Route>
@@ -416,6 +428,8 @@ function App() {
               path="oral-reading/modules/:moduleId/read-aloud"
               element={<ReadAloudPage role="admin" />}
             />
+            {/* M6 F5 - read-only assessment preview (questions and choices, never answers) */}
+            <Route path="oral-reading/modules/:moduleId/preview" element={<ComprehensionPreviewPage role="admin" />} />
             <Route
               path="read-aloud/results/:attemptId"
               element={<ReadingResultPage role="admin" />}
@@ -557,6 +571,7 @@ function App() {
               path="practice/modules/:moduleId/read-aloud"
               element={<ReadAloudPage role="teacher" />}
             />
+            <Route path="practice/modules/:moduleId/preview" element={<ComprehensionPreviewPage role="teacher" />} />
             <Route
               path="practice/read-aloud/results/:attemptId"
               element={<ReadingResultPage role="teacher" />}
@@ -639,6 +654,7 @@ function App() {
               path="modules/:moduleId/read-aloud"
               element={<ReadAloudPage role="general_user" />}
             />
+            <Route path="modules/:moduleId/preview" element={<ComprehensionPreviewPage role="general_user" />} />
 
             <Route
               path="modules/:moduleId/comprehension"
