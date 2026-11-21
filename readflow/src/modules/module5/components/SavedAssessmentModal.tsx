@@ -33,7 +33,7 @@ export default function SavedAssessmentModal({ role, summary, readingNumber, onC
   const [attempt, setAttempt] = useState<OralReadingAttempt>();
   const [error, setError] = useState<string>();
   const [revision, setRevision] = useState(0);
-  const { t, message, language } = getActivityText(role === "admin" ? "en" : summary.language);
+  const { t, message, language } = getActivityText((role === "admin" || role === "system_admin") ? "en" : summary.language);
 
   useEffect(() => {
     let active = true;

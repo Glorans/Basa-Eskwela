@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Mic } from "lucide-react";
+import { ArrowLeft, BookOpen, ListChecks, Mic } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useM3Content } from "../modules/module3/context/M3ContentContext";
@@ -6,7 +6,7 @@ import {
   adjacentPassageId,
   type StudentModuleDetail,
 } from "../modules/module3/services/studentModuleDetail";
-import { readAloudTarget } from "../modules/module5/services/oralReadingNavigation";
+import { comprehensionPreviewTarget, readAloudTarget } from "../modules/module5/services/oralReadingNavigation";
 import { getOralReadingModule, isStudentAssignmentRefusal } from "../modules/module5/services/oralReadingService";
 import "./StudentModuleViewPage.css";
 
@@ -281,6 +281,21 @@ export default function StudentModuleViewPage({
             <Mic size={18} aria-hidden="true" />
             Start Read-Aloud
           </Link>
+          {activePassage?.id && (
+            // M6 F5: read-only preview of this passage's comprehension questions, in the same classroom or personal
+            // context as the reading. Never the answers; it does not start or use the one assessment.
+            <Link
+              className="basa-reading-module-secondary-action"
+              to={comprehensionPreviewTarget(role, module.id, {
+                passageId: activePassage.id,
+                roomId: cameFromClassroom ? roomId : undefined,
+                assignmentId: cameFromClassroom ? assignmentId : undefined,
+              })}
+            >
+              <ListChecks size={18} aria-hidden="true" />
+              Preview Questions
+            </Link>
+          )}
         </div>
         )}
       </section>

@@ -11,6 +11,10 @@ const MODULE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER_MODULE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab";
 const DRAFT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac";
 const DELETED = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaad";
+const FOREIGN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaae";
+const FOREIGN_ADMIN = "44444444-4444-4444-8444-444444444444";
+const SCHOOL_1 = "00000000-0000-4000-8000-00000000c001";
+const SCHOOL_2 = "00000000-0000-4000-8000-00000000c002";
 const PASSAGE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const ROOM = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const PATH = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -67,11 +71,14 @@ function seed() {
     question_type: type, question_text: `${type} question?`, options: ["A", "B", "C", "D"],
     scaffolding_hint: "Think about the story.", review_status: "reviewed", display_order: index + 1,
   }));
-  const passages = [MODULE, OTHER_MODULE, DRAFT, DELETED].map((moduleId, index) => ({
+  const passages = [MODULE, OTHER_MODULE, DRAFT, DELETED, FOREIGN].map((moduleId, index) => ({
     id: index === 0 ? PASSAGE : randomUUID(), module_id: moduleId, title: "A Helping Hand", passage_text: STORY, display_order: 1 }));
   return database({
     modules: [module(MODULE, ADMIN), module(OTHER_MODULE, OTHER_ADMIN), module(DRAFT, ADMIN, { status: "draft" }),
-      module(DELETED, ADMIN, { deleted_at: "2026-11-01T00:00:00Z" })],
+      module(DELETED, ADMIN, { deleted_at: "2026-11-01T00:00:00Z" }), module(FOREIGN, FOREIGN_ADMIN)],
+    // School 1: both Admins; School 2: the foreign Admin (M1 multi-tenancy).
+    profiles: [{ id: ADMIN, role: "admin", school_id: SCHOOL_1 }, { id: OTHER_ADMIN, role: "admin", school_id: SCHOOL_1 },
+      { id: FOREIGN_ADMIN, role: "admin", school_id: SCHOOL_2 }, { id: STUDENT, role: "student", school_id: SCHOOL_1 }],
     module_passages: passages,
     learning_paths: [{ id: PATH, path_name: "English Easy", language: "English" }],
     oral_reading_attempts: [],
@@ -90,7 +97,7 @@ test.mock.method(require("../services/supabaseAdmin"), "getSupabaseAdmin", () =>
 const { startComprehensionAttempt, getComprehensionAttempt, findComprehensionForReading } = require("../services/comprehensionAttemptService");
 const { applyComprehensionAction } = require("../services/comprehensionActionService");
 
-const admin = (id = ADMIN) => ({ user: { id }, profile: { id, role: "admin" } });
+const admin = (id = ADMIN) => ({ user: { id }, profile: { id, role: "admin", school_id: SCHOOL_1 } });
 const student = { user: { id: STUDENT }, profile: { id: STUDENT, role: "student" } };
 function reading(db, { user = ADMIN, moduleId = MODULE, passageId = PASSAGE, roomId = null } = {}) {
   const row = { id: randomUUID(), user_id: user, module_id: moduleId, passage_id: passageId, room_id: roomId, assignment_id: null,
@@ -115,17 +122,26 @@ test("an Admin starts M6 on their own published module from their own saved read
   assert.deepEqual(await findComprehensionForReading(admin(), oral), { id: attempt.id, status: "in_progress" });
 });
 
-test("an Admin cannot practise on another Admin's, a draft or a deleted module", async () => {
-  for (const moduleId of [OTHER_MODULE, DRAFT, DELETED]) {
+test("an Admin practises another author's module of their own school, never another school's, a draft or a deleted one", async () => {
+  // Same school, another author: access is granted (this seed has no questions for it, so it stops at the question bank).
+  current = seed();
+  let passageId = current.tables.module_passages.find((p) => p.module_id === OTHER_MODULE).id;
+  let oral = reading(current, { moduleId: OTHER_MODULE, passageId });
+  await assert.rejects(start(admin(), { moduleId: OTHER_MODULE, passageId, oralReadingAttemptId: oral }),
+    { statusCode: 422, message: "Comprehension is not available yet. No reviewed questions are available for this story." });
+  for (const moduleId of [DRAFT, DELETED]) {
     current = seed();
-    const passageId = current.tables.module_passages.find((p) => p.module_id === moduleId).id;
-    const oral = reading(current, { moduleId, passageId });
+    passageId = current.tables.module_passages.find((p) => p.module_id === moduleId).id;
+    oral = reading(current, { moduleId, passageId });
     await assert.rejects(start(admin(), { moduleId, passageId, oralReadingAttemptId: oral }), { statusCode: 403 }, moduleId);
     assert.equal(current.tables.m6_comprehension_attempts.length, 0);
   }
+  // Another school's module: "not found", whatever the Admin sends.
   current = seed();
-  await assert.rejects(start(admin(), { moduleId: OTHER_MODULE, passageId: PASSAGE }),
-    { statusCode: 403, message: "Admin comprehension practice is available only for published modules you created." });
+  passageId = current.tables.module_passages.find((p) => p.module_id === FOREIGN).id;
+  oral = reading(current, { moduleId: FOREIGN, passageId });
+  await assert.rejects(start(admin(), { moduleId: FOREIGN, passageId, oralReadingAttemptId: oral }), { statusCode: 404, message: "Reading module not found." });
+  assert.equal(current.tables.m6_comprehension_attempts.length, 0);
 });
 
 test("an Admin cannot use a classroom, assignment or uploaded-material context", async () => {
@@ -192,7 +208,7 @@ test("Students' classroom M6 is unchanged by the Admin rule", async () => {
   assert.equal(current.tables.m6_comprehension_attempts.find((row) => row.id === personal.id).room_id ?? null, null);
 });
 
-test("Admin M5 practice on their own module saves the normal reading results; other Admins' modules are refused", async () => {
+test("Admin M5 practice saves the normal reading results; their school's modules are open, another school's are not", async () => {
   current = seed();
   const { createOralReadingAttempt, getOralReadingAttempt } = require("../services/oralReadingAttemptService");
   const deps = { getSupabaseAdmin: () => current };
@@ -208,9 +224,14 @@ test("Admin M5 practice on their own module saves the normal reading results; ot
   assert.equal((await getOralReadingAttempt(admin(), saved.id, deps)).pronunciationAccuracy, 100);
   await assert.rejects(getOralReadingAttempt(admin(OTHER_ADMIN), saved.id, deps), { statusCode: 403 });
   const otherPassage = current.tables.module_passages.find((p) => p.module_id === OTHER_MODULE).id;
-  await assert.rejects(createOralReadingAttempt(admin(), { moduleId: OTHER_MODULE, passageId: otherPassage, submissionId: randomUUID(),
-    transcript: "Every Saturday", durationSeconds: 3 }, deps), { statusCode: 403 });
-  assert.equal(current.tables.oral_reading_attempts.length, 1);
+  // Another author's module of the same school is practice material too (expanded 2026-11-21).
+  const sameSchool = await createOralReadingAttempt(admin(), { moduleId: OTHER_MODULE, passageId: otherPassage, submissionId: randomUUID(),
+    transcript: "Every Saturday", durationSeconds: 3 }, deps);
+  assert.equal(sameSchool.userId, ADMIN);
+  const foreignPassage = current.tables.module_passages.find((p) => p.module_id === FOREIGN).id;
+  await assert.rejects(createOralReadingAttempt(admin(), { moduleId: FOREIGN, passageId: foreignPassage, submissionId: randomUUID(),
+    transcript: "Every Saturday", durationSeconds: 3 }, deps), { statusCode: 404 });
+  assert.equal(current.tables.oral_reading_attempts.length, 2);
 });
 
 test("a completed Admin M6 result reopens as the same activity with its saved score", async () => {

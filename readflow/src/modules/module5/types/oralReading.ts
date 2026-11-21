@@ -1,9 +1,9 @@
 import type { DiagnosticLanguage, ReadingWordAlignment } from "../../module2/types/diagnostic";
 
-// "admin" and "teacher" are limited to M5/M6 self-practice: own read-alouds, results and recordings.
+// "system_admin", "admin" and "teacher" are limited to M5/M6 self-practice: own read-alouds, results and recordings.
 // Teacher practice is for APPROVED Teachers (enforced by the backend and database).
-export type LearnerM5Role = "student" | "general_user" | "admin" | "teacher";
-export type PracticeRole = Extract<LearnerM5Role, "admin" | "teacher">;
+export type LearnerM5Role = "student" | "general_user" | "admin" | "teacher" | "system_admin";
+export type PracticeRole = Extract<LearnerM5Role, "admin" | "teacher" | "system_admin">;
 
 export interface OralReadingContext {
   materialId?: string | null;

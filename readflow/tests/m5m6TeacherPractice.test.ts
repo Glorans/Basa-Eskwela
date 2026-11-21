@@ -73,29 +73,32 @@ test("Teacher sidebar: one Reading Practice entry, beside the unchanged Reading 
   const teacher = layout.slice(layout.indexOf('if (role === "teacher") {'), layout.indexOf('if (role === "general_user") {'));
   assert.match(teacher, /label: "Reading Practice", to: "\/m3\/teacher\/practice", icon: Mic2, end: false/);
   assert.match(teacher, /label: "Reading Results",\s*to: "\/m3\/teacher\/oral-reading"/);
-  assert.equal((layout.match(/Reading Practice/g) ?? []).length, 1, "no other role gets the entry");
+  // The System Admin has its own entry (Appendix N M5/M6, 2026-11-21); no other role gets one.
+  assert.match(layout, /label: "Reading Practice", to: "\/system-admin\/practice", icon: Mic2, end: false/);
+  assert.equal((layout.match(/Reading Practice/g) ?? []).length, 2, "Teacher and System Admin only");
 });
 
-test("Teacher practice list uses the shared catalog endpoint; the Admin list is unchanged", async () => {
+test("every staff practice list uses the shared, school-scoped catalog endpoint", async () => {
   const [page, service] = await Promise.all([
     read("../src/modules/module5/pages/AdminOralReadingPage.tsx"),
     read("../src/modules/module5/services/oralReadingService.ts"),
   ]);
-  assert.match(page, /role === "teacher" \? getPracticeReadingPassages\(\) : getAdminReadingPassages\(\)/);
+  assert.match(page, /void getPracticeReadingPassages\(\)/);
+  assert.doesNotMatch(page, /getAdminReadingPassages/);
   assert.match(page, /readAloudTarget\(role, passage\.moduleId/);
-  assert.match(page, /to=\{PRACTICE_PATHS\.teacher\.history\}/);
+  assert.match(page, /to=\{PRACTICE_PATHS\[role\]\.history\}/);
   assert.match(service, /"\/api\/oral-reading\/practice\/passages"/);
   assert.match(service, /"\/api\/oral-reading\/admin\/passages"/);
 });
 
-test("language: Teachers get the reading's own (English or Filipino) interface; only Admin forces English", async () => {
+test("language: Teachers get the reading's own (English or Filipino) interface; only the Admin workspaces force English", async () => {
   const [history, modal, language] = await Promise.all([
     read("../src/modules/module5/pages/ReadingHistoryPage.tsx"),
     read("../src/modules/module5/components/SavedAssessmentModal.tsx"),
     read("../src/pages/reading-activity/activityLanguage.ts"),
   ]);
-  assert.match(history, /getActivityText\(role === "admin" \? "en" : attempt\.language\)/);
-  assert.match(modal, /getActivityText\(role === "admin" \? "en" : summary\.language\)/);
+  assert.match(history, /getActivityText\(\(role === "admin" \|\| role === "system_admin"\) \? "en" : attempt\.language\)/);
+  assert.match(modal, /getActivityText\(\(role === "admin" \|\| role === "system_admin"\) \? "en" : summary\.language\)/);
   const { getActivityText } = await import("../src/pages/reading-activity/activityLanguage.ts");
   assert.equal(getActivityText("fil").t("Back to Reading Practice"), "Bumalik sa Pagsasanay sa Pagbasa");
   assert.equal(getActivityText("en").t("Back to Reading Practice"), "Back to Reading Practice");

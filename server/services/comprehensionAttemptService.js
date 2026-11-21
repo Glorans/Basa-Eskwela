@@ -4,7 +4,7 @@ const { getSupabaseAdmin } = require("./supabaseAdmin");
 const {
   authorizeReadingPracticeRequest,
   claimedSubject,
-  isApprovedTeacher,
+  isPracticeStaff,
   loadAccessiblePublishedModule,
 } = require("./oralReadingAttemptService");
 const {
@@ -66,37 +66,17 @@ function normalizeEvidence(value) {
 }
 
 /**
- * M6 is open to Students, Independent Learners and, for self-practice only, Admins and
- * APPROVED Teachers. Pending/rejected Teachers and accounts without a role are refused.
- * Every read and action is scoped to the requester's own attempts (loadOwnedAttempt); an
- * Admin may start an activity only under the narrow rules in assertAdminPracticeModule, and a
- * Teacher only on a published catalog module outside any classroom (loadAccessiblePublishedModule).
+ * M6 is open to Students, Independent Learners and, for self-practice only, staff: the System Admin, School Admins
+ * and APPROVED Teachers. Pending/rejected Teachers and accounts without a role are refused.
+ * Every read and action is scoped to the requester's own attempts (loadOwnedAttempt). Staff start an activity only
+ * on a published module outside any classroom that their school may see (loadAccessiblePublishedModule: another
+ * school's module is "not found"; the System Admin sees every published module).
  */
 async function authorizeComprehensionRequest(req) {
   return authorizeReadingPracticeRequest(req);
 }
 
-const isAdminRequester = (requester) => requester?.profile?.role === "admin";
-const isPracticeRequester = (requester) => isAdminRequester(requester) || isApprovedTeacher(requester);
-
-/**
- * Admin practice (Appendix N M6 for Admin): only a published, non-deleted module the
- * Admin created, as a module activity with no classroom, assignment or uploaded material.
- * Reviewing Students' saved assessments never grants this; it is a separate, read-only API.
- */
-async function assertAdminPracticeModule(db, requester, moduleId) {
-  const { data: owned, error } = await db.from("modules")
-    .select("id,created_by,status,deleted_at")
-    .eq("id", moduleId)
-    .maybeSingle();
-  if (error) throw databaseError(error, "Unable to verify the reading module.");
-  if (!owned || owned.status !== "published" || owned.deleted_at) {
-    throw new ComprehensionError("This reading module is not available for comprehension practice.", 403);
-  }
-  if (owned.created_by !== requester.user.id) {
-    throw new ComprehensionError("Admin comprehension practice is available only for published modules you created.", 403);
-  }
-}
+const isPracticeRequester = (requester) => isPracticeStaff(requester);
 
 async function requireAssignedQuestionSet(db, materialId, questionSetId) {
   const { data, error } = await db
@@ -291,6 +271,43 @@ async function loadReviewedQuestions(
   // each group in its saved order. Only the new snapshot is ordered; saved
   // questions and earlier attempts' snapshots are unchanged.
   return QUESTION_TYPES.flatMap((type) => snapshot.filter((question) => question.type === type));
+}
+
+/**
+ * M6 F5 Preview comprehension assessment: the reviewed questions of ONE published module passage the requester may
+ * open, under exactly the rule for starting it (loadAccessiblePublishedModule: a Student only a module assigned in
+ * their classroom or open for personal practice; staff their school's and platform modules; another school's module is
+ * "not found"), in the order an assessment presents them. Category, question text and choices only: never the
+ * correct answer, explanation, supporting evidence or hint. Reads only: no attempt is created, resumed or consumed.
+ */
+async function previewComprehensionAssessment(requester, query = {}) {
+  requireUuid(query.moduleId, "Module ID");
+  for (const [key, label] of [["passageId", "Passage ID"], ["roomId", "Classroom ID"], ["assignmentId", "Assignment ID"]]) {
+    if (query[key] != null && query[key] !== "") requireUuid(query[key], label);
+  }
+  const module = await loadAccessiblePublishedModule(requester, query.moduleId, {}, {
+    passageId: query.passageId || undefined,
+    roomId: query.roomId || undefined,
+    assignmentId: query.assignmentId || undefined,
+  }, { studentPersonal: true });
+  if (!module.passageId) {
+    throw new ComprehensionError("This passage has no comprehension questions to preview.", 422);
+  }
+  const questions = await loadReviewedQuestions(module.id, module.passageId, module.passage);
+  return {
+    moduleId: module.id,
+    moduleTitle: module.title,
+    passageId: module.passageId,
+    passageTitle: module.passageTitle,
+    language: module.language,
+    // An allow-list, so an answer field can never be added to the preview by accident.
+    questions: questions.map((question) => ({
+      id: question.id,
+      type: question.type,
+      questionText: question.questionText,
+      options: [...question.options],
+    })),
+  };
 }
 
 const ownedAttemptQuery = (attemptId, userId) => getSupabaseAdmin()
@@ -527,9 +544,7 @@ async function startComprehensionAttempt(requester, body = {}) {
   }
 
   if (isPracticeRequester(requester) && (materialId || body.roomId != null || body.assignmentId != null)) {
-    throw new ComprehensionError(isAdminRequester(requester)
-      ? "Admin comprehension practice is available only for published modules you created."
-      : "Teacher comprehension practice is available only for published reading modules.", 403);
+    throw new ComprehensionError("Staff comprehension practice is available only for published reading modules.", 403);
   }
 
   const db = getSupabaseAdmin();
@@ -587,8 +602,6 @@ async function startComprehensionAttempt(requester, body = {}) {
     if (resumeError) throw databaseError(resumeError, "Unable to reopen comprehension.");
     if (resumed) { verifySameRequest(resumed); return openActivity(resumed); }
   }
-
-  if (isAdminRequester(requester)) await assertAdminPracticeModule(db, requester, body.moduleId);
 
   // Check publication, enrollment, assignment, and passage access. A Student may also take the comprehension of a
   // published module outside any classroom (personal practice, like M5): an assigned module keeps the classroom
@@ -811,4 +824,5 @@ module.exports = {
   activityKey,
   loadOwnedAttempt,
   loadReviewedQuestions,
+  previewComprehensionAssessment,
 };

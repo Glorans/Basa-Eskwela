@@ -113,7 +113,7 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   // The reading's Learning Room, or its Reading Module (shared with the M6 results page).
   const backTarget = learningAreaTarget(role, attempt).to;
 
-  const backLabel = role === "admin" ? "Back to Oral Reading" : role === "teacher" ? "Back to Reading Practice" : attempt?.materialId ? (role === "general_user" ? "Back to Material" : "Back to Learning Room") :
+  const backLabel = role === "admin" ? "Back to Oral Reading" : role === "teacher" || role === "system_admin" ? "Back to Reading Practice" : attempt?.materialId ? (role === "general_user" ? "Back to Material" : "Back to Learning Room") :
     role === "student" && attempt?.roomId
       ? "Back to Classroom"
       : "Back to Reading Module";

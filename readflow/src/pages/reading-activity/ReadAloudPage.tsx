@@ -160,7 +160,7 @@ export default function ReadAloudPage({ role }: ReadAloudPageProps) {
     ? `/dashboard/learning-rooms/${module?.roomId ?? roomId}`
     : moduleId ? `${role === "student" ? "/dashboard/materials" : "/m3/general/modules"}/${moduleId}?${searchParams}`
     : role === "student" ? "/dashboard/materials" : "/m3/general/modules";
-  const backLabel = role === "admin" ? "Back to Oral Reading" : role === "teacher" ? "Back to Reading Practice" : materialId ? (role === "general_user" ? "Back to Material" : "Back to Learning Room") : role === "student" && (module?.roomId || roomId) ? "Back to Classroom" : "Back to Reading Module";
+  const backLabel = role === "admin" ? "Back to Oral Reading" : role === "teacher" || role === "system_admin" ? "Back to Reading Practice" : materialId ? (role === "general_user" ? "Back to Material" : "Back to Learning Room") : role === "student" && (module?.roomId || roomId) ? "Back to Classroom" : "Back to Reading Module";
 
   useEffect(() => {
     let active = true;

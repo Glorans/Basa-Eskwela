@@ -17,6 +17,7 @@ const {
   getComprehensionAttempt,
   findComprehensionForReading,
   prefetchOwnedAttempt,
+  previewComprehensionAssessment,
 } = require("../services/comprehensionAttemptService");
 
 const {
@@ -97,6 +98,19 @@ router.get("/attempts/:attemptId", async (req, res) => {
       success: true,
       attempt,
     });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+// M6 F5 read-only preview of a published module passage's assessment: questions and choices, never answers.
+// Same access rule as starting the assessment; nothing is created or consumed.
+router.get("/preview", async (req, res) => {
+  try {
+    const requester = await authorizeComprehensionRequest(req);
+    const preview = await previewComprehensionAssessment(requester, req.query ?? {});
+    res.set("Cache-Control", "no-store");
+    return res.json({ success: true, preview });
   } catch (error) {
     return sendError(res, error);
   }

@@ -214,3 +214,45 @@ export async function sendComprehensionAction(
     throw serviceError(error, "Unable to save your activity.");
   }
 }
+
+/** M6 F5: one question of a published assessment preview. Never an answer, explanation, evidence or hint. */
+export interface ComprehensionPreviewQuestion {
+  id: string;
+  type: QuestionType;
+  questionText: string;
+  options: string[];
+}
+
+export interface ComprehensionPreview {
+  moduleId: string;
+  moduleTitle: string;
+  passageId: string;
+  passageTitle: string;
+  language: "en" | "fil";
+  questions: ComprehensionPreviewQuestion[];
+}
+
+/**
+ * M6 F5 Preview comprehension assessment: read-only. The server applies the same access rule as starting the
+ * assessment and never sends answers; previewing creates, resumes and uses nothing.
+ */
+export async function getComprehensionPreview(context: {
+  moduleId: string;
+  passageId?: string | null;
+  roomId?: string | null;
+  assignmentId?: string | null;
+}): Promise<ComprehensionPreview> {
+  const params = new URLSearchParams({ moduleId: context.moduleId });
+  if (context.passageId) params.set("passageId", context.passageId);
+  if (context.roomId) params.set("roomId", context.roomId);
+  if (context.assignmentId) params.set("assignmentId", context.assignmentId);
+  try {
+    const { data } = await api.get<{ success: boolean; preview: ComprehensionPreview }>(
+      `/api/comprehension/preview?${params}`,
+      { headers: await authHeaders() },
+    );
+    return data.preview;
+  } catch (error) {
+    throw serviceError(error, "Unable to load the assessment preview.");
+  }
+}

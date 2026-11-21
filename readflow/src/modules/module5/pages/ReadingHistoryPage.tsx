@@ -15,7 +15,7 @@ import type { LearnerM5Role } from "../types/oralReading";
  */
 export default function ReadingHistoryPage({ role, embedded = false, language }: { role: LearnerM5Role; embedded?: boolean; language?: ActivityLanguage }) {
   // Embedded shell follows its saved parent activity; mixed standalone history has no single activity language.
-  const ui = getActivityText(role === "admin" ? "en" : language);
+  const ui = getActivityText((role === "admin" || role === "system_admin") ? "en" : language);
   const { t } = ui;
   const [attempts, setAttempts] = useState<OwnOralReadingSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,16 +55,16 @@ export default function ReadingHistoryPage({ role, embedded = false, language }:
 
   return <section lang={ui.language} className={embedded ? "rounded-3xl bg-white p-6 text-[#173f3b]" : "m-4 rounded-3xl bg-white p-6 text-[#173f3b] md:m-8"}>
     {!embedded && <h1 className="text-3xl font-extrabold">{t("Reading History")}</h1>}
-    {role !== "admin" && <p className="my-3">{t("Select a reading to review its saved assessment, including your recording.")}</p>}
+    {!(role === "admin" || role === "system_admin") && <p className="my-3">{t("Select a reading to review its saved assessment, including your recording.")}</p>}
     <p className="my-3 text-sm">{t("Pronunciation checks for English readings are saved. Reopen a reading to review its pronunciation feedback, scores and words to practice.")}</p>
     {loading ? <p role="status" className="flex items-center gap-2 text-sm">
       <span aria-hidden="true" className="h-3 w-3 rounded-full border-2 border-[#173f3b]/20 border-t-[#173f3b] motion-safe:animate-spin" />
       <span>{t(embedded ? "Loading saved assessments…" : "Loading reading history...")}</span>
     </p> : error ? <div role="alert">
       <p>{ui.message(error, "Unable to load reading history.")}</p><button className="mt-3 rounded-xl bg-[#f7cf4a] px-4 py-2 font-bold" onClick={() => setRevision(v => v + 1)}>{t("Retry")}</button>
-    </div> : attempts.length === 0 ? (role !== "admin" && <p role="status">{t("No saved reading attempts yet. Complete a read-aloud activity to see it here.")}</p>) :
+    </div> : attempts.length === 0 ? (!(role === "admin" || role === "system_admin") && <p role="status">{t("No saved reading attempts yet. Complete a read-aloud activity to see it here.")}</p>) :
       <ul className="space-y-4">{ordered.map(attempt => {
-        const rowUi = getActivityText(role === "admin" ? "en" : attempt.language);
+        const rowUi = getActivityText((role === "admin" || role === "system_admin") ? "en" : attempt.language);
         const rowT = rowUi.t;
         const number = numbers.get(attempt.id);
         const title = attempt.passageTitle || attempt.moduleTitle;

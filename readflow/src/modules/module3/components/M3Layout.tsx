@@ -18,6 +18,7 @@ import {
   UserRound,
   X,
   Archive,
+  History,
 } from "lucide-react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import mascot from "../../../assets/mascot.png";
@@ -44,6 +45,9 @@ function getNavItems(role: ShellRole) {
       { label: "Create Module", to: "/system-admin/content/modules/new", icon: PlusCircle, end: true },
       { label: "Reading Materials", to: "/system-admin/content/materials", icon: Files, end: true },
       { label: "Upload Material", to: "/system-admin/content/materials/upload", icon: FilePlus2, end: true },
+      // Appendix N M5 F1-F7 / M6 F1-F5 for the System Admin: try published modules (own practice results only).
+      { label: "Reading Practice", to: "/system-admin/practice", icon: Mic2, end: false },
+      { label: "Practice History", to: "/system-admin/practice/history", icon: History, end: true },
       { label: "User Management", to: "/system-admin/users", icon: Users, end: true },
       // Appendix N M1 F8: Create School and the list of schools.
       { label: "Schools", to: "/system-admin/schools", icon: School, end: true },
