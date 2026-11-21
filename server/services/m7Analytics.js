@@ -335,26 +335,96 @@ async function requireAdminStudent(studentId, load = rows, schoolId) {
   const found = await load('profiles', 'id,role', { id: studentId, role: 'student', school_id: schoolId });
   if (!found.length) throw fail('Student not found.', 404);
 }
+const INTERVENTION_COMPETENCIES = ['word_recognition','fluency','literal','inferential','critical','other'];
+const FOLLOW_UP_OUTCOMES = ['improved','partly_improved','no_change','too_early'];
+const SUGGESTION_ID = /^(en|fil):(word_recognition|fluency|literal|inferential|critical)$/;
+// PostgREST / Postgres "column does not exist": the M7 intervention-suggestions migration is not installed yet.
+const MISSING_COLUMN = new Set(['PGRST204', '42703']);
+const notInstalled = () => fail('The new intervention fields are not installed yet. Apply the M7 intervention migration.', 503);
 /**
  * The author (a Teacher, or an Admin through the Admin routes) is always the signed-in
  * user and is stored in teacher_id. Updates match the author, so nobody edits another
  * author's record. `authorize` checks the author's student scope before any write.
+ *
+ * M7 F11 fields (all optional, so an older client keeps working): competency, language, teacher_notes,
+ * follow_up_outcome, and suggestion_id on a NEW record. A suggestion is never taken from the client: the server
+ * re-evaluates the learner (`suggest`) and stores its own snapshot of that suggestion, which stays fixed afterwards
+ * (also enforced by the database). Saving records a plan only: nothing is completed, scored or awarded automatically.
  */
-async function saveIntervention(teacherId, studentId, id, body, { authorize } = {}) {
+async function saveIntervention(teacherId, studentId, id, body, { authorize, suggest } = {}) {
   await (authorize ? authorize() : requireStudent(teacherId, studentId));
   if (id !== null && id !== undefined && (typeof id !== 'string' || !UUID.test(id))) throw fail('Intervention not found.', 404);
-  const { notes, intervention_date, status, follow_up_date, follow_up_notes } = body || {};
+  const input = body && typeof body === 'object' ? body : {};
+  const { notes, intervention_date, status, follow_up_date, follow_up_notes } = input;
   const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
   if (typeof notes !== 'string' || !notes.trim() || notes.length > 10000 || !validDate(intervention_date)
     || !['planned','in_progress','completed'].includes(status) || (follow_up_date && !validDate(follow_up_date))
     || (follow_up_notes != null && (typeof follow_up_notes !== 'string' || follow_up_notes.length > 10000))) throw fail('Provide valid notes, dates, and intervention status.',400);
+  const has = key => Object.prototype.hasOwnProperty.call(input, key);
+  if ((has('competency') && input.competency !== null && !INTERVENTION_COMPETENCIES.includes(input.competency))
+    || (has('language') && input.language !== null && !['en','fil'].includes(input.language))
+    || (has('teacher_notes') && input.teacher_notes !== null && (typeof input.teacher_notes !== 'string' || input.teacher_notes.length > 10000))
+    || (has('follow_up_outcome') && input.follow_up_outcome !== null && !FOLLOW_UP_OUTCOMES.includes(input.follow_up_outcome))
+    || (has('suggestion_id') && input.suggestion_id !== null && (typeof input.suggestion_id !== 'string' || !SUGGESTION_ID.test(input.suggestion_id)))) {
+    throw fail('Provide a valid competency, language, follow-up outcome and notes.',400);
+  }
   const record = { notes: notes.trim(), intervention_date, status, follow_up_date: follow_up_date || null, follow_up_notes: follow_up_notes || '', updated_at: new Date().toISOString() };
+  if (has('competency')) record.competency = input.competency;
+  if (has('language')) record.language = input.language;
+  if (has('teacher_notes')) record.teacher_notes = (input.teacher_notes || '').trim();
+  if (has('follow_up_outcome')) record.follow_up_outcome = input.follow_up_outcome;
   const db = getSupabaseAdmin();
+  if (id && (has('competency') || has('language'))) {
+    // A record made from a suggestion keeps the competency and language that suggestion was about.
+    const existing = await db.from('m7_interventions').select('suggestion_key,competency,language').eq('id',id).eq('teacher_id',teacherId).eq('student_id',studentId).maybeSingle();
+    if (existing.error) throw MISSING_COLUMN.has(existing.error.code) ? notInstalled() : fail('Unable to save intervention.');
+    if (!existing.data) throw fail('Intervention not found.',404);
+    if (existing.data.suggestion_key) { record.competency = existing.data.competency; record.language = existing.data.language; }
+  }
+  if (!id && has('suggestion_id') && input.suggestion_id) {
+    if (typeof suggest !== 'function') throw fail('Suggestions are not available here.',400);
+    const evaluation = await suggest();
+    const chosen = evaluation.suggestions.find(s => s.id === input.suggestion_id);
+    if (!chosen) throw fail('This suggestion is no longer current for the student. Reload the page and choose again.',409);
+    Object.assign(record, { competency: chosen.competency, language: chosen.language, suggestion_key: chosen.suggestion.key,
+      suggestion_snapshot: { id: chosen.id, competency: chosen.competency, language: chosen.language, title: chosen.suggestion.title,
+        approach: chosen.suggestion.approach, activity: chosen.suggestion.activity, evidenceText: chosen.evidenceText, reason: chosen.reason,
+        level: chosen.level, period: chosen.period, generatedAt: evaluation.generatedAt } });
+  }
   const query = id ? db.from('m7_interventions').update(record).eq('id',id).eq('teacher_id',teacherId).eq('student_id',studentId)
     : db.from('m7_interventions').insert({ ...record, teacher_id: teacherId, student_id: studentId });
   const { data, error } = await query.select().maybeSingle();
+  if (error && MISSING_COLUMN.has(error.code)) throw notInstalled();
   if (error) throw fail('Unable to save intervention.');
   if (!data) throw fail('Intervention not found.',404);
   return data;
 }
-module.exports = { preloadedRows, mapInOrder, TEACHER_STUDENT_CONCURRENCY, rows, quizzes, historicalQuizzes, teacherScope, requireStudent, requireAdminStudent, personal, system, teacher, saveIntervention, fail };
+/**
+ * School Admin, read-only: every intervention recorded for this Student by an author of the given school (Teachers;
+ * older records may have a School Admin author). Newest first. Teachers' private notes are not included.
+ */
+async function schoolInterventionHistory(studentId, schoolId, load = rows) {
+  if (!schoolId) return [];
+  const records = await load('m7_interventions', '*', { student_id: studentId });
+  if (!records.length) return [];
+  const authors = await load('profiles', 'id,full_name,nickname,role,school_id', { id: [...new Set(records.map(r => r.teacher_id))] });
+  const inSchool = new Map(authors.filter(a => a.school_id === schoolId).map(a => [a.id, a]));
+  return records.filter(r => inSchool.has(r.teacher_id)).map(r => {
+    const author = inSchool.get(r.teacher_id);
+    return { id: r.id, intervention_date: r.intervention_date, status: r.status, competency: r.competency ?? null, language: r.language ?? null,
+      suggestion_title: r.suggestion_snapshot?.title ?? null, notes: r.notes, follow_up_date: r.follow_up_date, follow_up_outcome: r.follow_up_outcome ?? null,
+      follow_up_notes: r.follow_up_notes, created_at: r.created_at, updated_at: r.updated_at,
+      author: { name: author.full_name || author.nickname || 'Staff member', role: author.role === 'teacher' ? 'Teacher' : 'School Admin' } };
+  }).sort((a, b) => b.intervention_date.localeCompare(a.intervention_date) || String(b.created_at).localeCompare(String(a.created_at)));
+}
+/** The rooms (ids) of the given school where this Student is enrolled: an Admin's view of the Student's classroom work. */
+async function adminStudentRoomIds(studentId, schoolId, load = rows) {
+  const enrollments = await load('enrollments', 'id,room_id', { student_id: studentId });
+  const roomIds = [...new Set(enrollments.map(e => e.room_id))];
+  if (!roomIds.length) return [];
+  const rooms = await load('rooms', 'id,teacher_id', { id: roomIds });
+  const teachers = rooms.length ? await load('profiles', 'id,school_id', { id: [...new Set(rooms.map(r => r.teacher_id))] }) : [];
+  const inSchool = new Set(teachers.filter(t => t.school_id === schoolId).map(t => t.id));
+  return rooms.filter(r => inSchool.has(r.teacher_id)).map(r => r.id);
+}
+module.exports = { preloadedRows, mapInOrder, TEACHER_STUDENT_CONCURRENCY, rows, quizzes, historicalQuizzes, teacherScope, requireStudent, requireAdminStudent, adminStudentRoomIds, schoolInterventionHistory, personal, system, teacher, saveIntervention, fail };

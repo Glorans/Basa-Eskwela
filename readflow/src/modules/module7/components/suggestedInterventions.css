@@ -1,0 +1,59 @@
+/* M7 F10 suggested interventions: shared by the Teacher Student Support page and the School Admin student detail. */
+.m7s { margin:24px 0; }
+.m7s h2 { font-size:21px; margin:0; }
+.m7s-intro { margin:8px 0 16px; color:#3f5550; }
+.m7s-list { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+.m7s-card { display:grid; gap:12px; align-content:start; padding:18px; background:#f6faf7; border:1px solid #c6dccf; border-radius:14px; min-width:0; overflow-wrap:anywhere; }
+.m7s-card.m7s-primary { grid-column:1/-1; background:#fffaf0; border:2px solid #c9b96e; }
+.m7s-card button { justify-self:start; width:auto; }
+.m7s-headline { margin:0; }
+.m7s-details[open] > * + * { margin-top:12px; }
+.m7s-details[open] { display:grid; }
+.m7s-card-head { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:8px 12px; }
+.m7s-card-head :is(h3,h4) { margin:0; font-size:19px; }
+.m7s-card-head h4 { font-size:17px; font-weight:800; }
+.m7s-kicker { display:block; font-size:12px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#7a5c14; margin-bottom:2px; }
+.m7s-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.m7s-chip { padding:4px 10px; border-radius:999px; background:#dfeee5; font-size:13px; font-weight:700; white-space:nowrap; }
+.m7s-level-pattern { background:#f5dfd8; color:#6b2d1d; }
+.m7s-level-preliminary { background:#f5edcd; color:#5b4a12; }
+.m7s-facts { display:grid; gap:10px; margin:0; }
+.m7s-facts > div { display:grid; grid-template-columns:minmax(120px,170px) minmax(0,1fr); gap:4px 12px; }
+.m7s-facts dt { font-size:13px; font-weight:800; color:#526b63; }
+.m7s-facts dd { margin:0; }
+.m7s-suggestion dd strong { display:block; font-size:17px; }
+.m7s-approach { display:block; font-size:14px; color:#3f5550; }
+.m7s-words p { margin:0 0 8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.m7s-words .m7-field-label { flex-basis:100%; }
+.m7s-word { padding:3px 9px; border-radius:8px; background:#fff; border:1px solid #c6dccf; font-size:14px; }
+.m7s-since { margin:0; padding:8px 12px; background:#e8f1f8; border-radius:10px; }
+.m7s-details summary { font-weight:700; cursor:pointer; min-height:32px; }
+.m7s-evidence { min-width:480px; }
+.m7s-grid { min-width:720px; }
+.m7s :is(.m7s-grid, .m7s-evidence) :is(th,td) { overflow-wrap:normal; word-break:normal; hyphens:manual; }
+.m7s-grid td[data-status="needs_practice"] { background:#fbe9e3; }
+.m7s-grid td[data-status="improving"] { background:#e8f1f8; }
+.m7s-grid td[data-status="on_track"] { background:#e6f2ea; }
+.m7s-figure { display:block; font-size:13px; color:#526b63; }
+.m7s-empty, .m7s-also, .m7s-note { padding:12px 16px; border-radius:12px; background:#f5edcd; }
+.m7s-also { background:#f6faf7; border:1px solid #c6dccf; }
+.m7s-note { background:#fff; border:1px dashed #c6dccf; }
+.m7s-improving { margin:16px 0; padding:12px 16px; border-radius:12px; background:#e8f1f8; }
+.m7s-improving h3 { margin:0 0 8px; font-size:17px; }
+.m7s-rules ul { margin:12px 0 0; padding-left:20px; }
+.m7s-rules li { margin:6px 0; }
+/* Learner practice ideas */
+.m7s-learner-tip { background:#fffaf0; border-color:#e3d6a4; }
+.m7s .m7s-steps { margin:0; padding-left:24px; display:grid; gap:6px; list-style:decimal outside; }
+.m7s .m7s-steps li { margin:0; padding:0; display:list-item; }
+.m7s-words-inline { margin:0; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.m7s-words-inline .m7-field-label { flex-basis:100%; }
+.m7s-summary { min-width:560px; }
+/* Interventions made from a suggestion */
+.m7s-based-on { padding:10px 12px; border-radius:10px; background:#fffaf0; border:1px solid #e3d6a4; }
+.m7s-based-on p { margin:4px 0 0; }
+.m7s-record-meta { display:flex; flex-wrap:wrap; gap:6px; }
+.m7-intervention-form > :is(.m7-form-note, .m7s-based-on) { grid-column:1/-1; }
+.m7-card .m7s-chip { background:#fff; }
+.m7-form-note { margin:0; font-size:14px; color:#3f5550; }
+@media(max-width:700px) { .m7s-facts > div { grid-template-columns:1fr; } }

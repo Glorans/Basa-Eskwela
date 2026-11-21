@@ -29,6 +29,8 @@ function setup(file: string, overrides: Record<string, any> = {}) {
     if (id === 'react/jsx-runtime') return require(id);
     if (id === 'lucide-react') return new Proxy({}, { get: (_, name) => String(name) });
     if (id.endsWith('.css')) return {};
+    if (id.endsWith('/SuggestedInterventions')) return { SuggestedInterventions: 'suggested-interventions' };
+    if (id.endsWith('/LearnerSuggestions')) return { LearnerSuggestions: 'learner-suggestions' };
     if (id.endsWith('analyticsFilters')) return filters;
     if (id.endsWith('scoreDisplay')) return score;
     if (id.endsWith('dateDisplay')) return dates;

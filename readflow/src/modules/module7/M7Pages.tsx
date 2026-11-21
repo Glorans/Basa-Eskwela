@@ -4,7 +4,9 @@ import { formatScore, formatQuizScore, formatComprehension, passageProgressText 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { comprehensionResultTarget, readingResultTarget } from '../module5/services/comprehensionNavigation';
-import { m7Request, PERSONAL_PROGRESS_TIMEOUT_MS, type Metrics, type PersonalData, type TeacherData, type Intervention, type Quiz, type Student } from './services/m7Service';
+import { m7Request, PERSONAL_PROGRESS_TIMEOUT_MS, type Metrics, type PersonalData, type TeacherData, type Intervention, type Quiz, type Student, type SuggestionItem } from './services/m7Service';
+import { SuggestedInterventions } from './components/SuggestedInterventions';
+import { LearnerSuggestions } from './components/LearnerSuggestions';
 import './m7.css';
 import './m7Dashboard.css';
 import './teacherSupport.css';
@@ -66,24 +68,67 @@ function QuizTable({quizzes,own}:{quizzes:Quiz[];own?:LearnerRole}) {return !qui
 export function StudentProgressPage({ role = 'student' }: { role?: LearnerRole } = {}) {
   const {data,error,loading,refresh} = useData<PersonalData>('/personal', false, PERSONAL_PROGRESS_TIMEOUT_MS);
   const empty = data && !data.readings.length && !data.quizzes.length;
-  return <main className="m7-page"><h1>Progress & Result</h1><p>Your saved reading accuracy and comprehension results.</p><State {...{error,loading}} retry={() => void refresh()}/>{data && <><MetricsCards data={data.summary}/>{empty && <p role="status">{role === 'student' ? 'No results yet. Complete a reading activity to see your progress here.' : 'No results yet. Read a story from Reading Modules, then answer its questions, to see your progress here.'}</p>}{role === 'student' && <section><h2>Activity progress</h2><p>{data.activities.filter(a => a.status === 'Completed').length} of {data.activities.length} assigned reading activities completed.</p>{!data.activities.length ? <p>No assigned reading activities yet.</p> : <ul>{data.activities.map((a) => <li key={a.id}><Link to={a.kind === 'module' ? `/dashboard/learning-rooms/${a.roomId}` : `/dashboard/learning-rooms/${a.roomId}/reading-activities/${a.materialId}`}>{a.title}</Link> — {a.status}{passageProgressText(a) && ` (${passageProgressText(a)})`}</li>)}</ul>}</section>}<section><h2>Completed quizzes</h2><QuizTable quizzes={data.quizzes} own={role}/><NotCountedQuizzes quizzes={data.historicalQuizzes} own={role}/></section><section><h2>Reading results</h2>{!data.readings.length ? <p>No saved readings yet. Complete a reading activity to see your results.</p> : <div className="m7-scroll"><table><thead><tr><th>Result</th><th>Reading accuracy</th><th>Speed</th><th>Words different from the story</th></tr></thead><tbody>{[...data.readings].sort((a,b) => b.completed_at.localeCompare(a.completed_at)).map(r => { const target = readingResultTarget(role, r.id); return <tr key={r.id}><td>{target ? <Link to={target}>{date(r.completed_at)}</Link> : date(r.completed_at)}</td><td>{wholePercent(r.pronunciation_accuracy)}</td><td>{wpm(r.reading_speed_wpm)}</td><td>{r.detected_error_count}</td></tr>; })}</tbody></table></div>}</section></>}</main>;
+  return <main className="m7-page"><h1>Progress & Result</h1><p>Your saved reading accuracy and comprehension results.</p><State {...{error,loading}} retry={() => void refresh()}/>{data && <><MetricsCards data={data.summary}/><LearnerSuggestions/>{empty && <p role="status">{role === 'student' ? 'No results yet. Complete a reading activity to see your progress here.' : 'No results yet. Read a story from Reading Modules, then answer its questions, to see your progress here.'}</p>}{role === 'student' && <section><h2>Activity progress</h2><p>{data.activities.filter(a => a.status === 'Completed').length} of {data.activities.length} assigned reading activities completed.</p>{!data.activities.length ? <p>No assigned reading activities yet.</p> : <ul>{data.activities.map((a) => <li key={a.id}><Link to={a.kind === 'module' ? `/dashboard/learning-rooms/${a.roomId}` : `/dashboard/learning-rooms/${a.roomId}/reading-activities/${a.materialId}`}>{a.title}</Link> — {a.status}{passageProgressText(a) && ` (${passageProgressText(a)})`}</li>)}</ul>}</section>}<section><h2>Completed quizzes</h2><QuizTable quizzes={data.quizzes} own={role}/><NotCountedQuizzes quizzes={data.historicalQuizzes} own={role}/></section><section><h2>Reading results</h2>{!data.readings.length ? <p>No saved readings yet. Complete a reading activity to see your results.</p> : <div className="m7-scroll"><table><thead><tr><th>Result</th><th>Reading accuracy</th><th>Speed</th><th>Words different from the story</th></tr></thead><tbody>{[...data.readings].sort((a,b) => b.completed_at.localeCompare(a.completed_at)).map(r => { const target = readingResultTarget(role, r.id); return <tr key={r.id}><td>{target ? <Link to={target}>{date(r.completed_at)}</Link> : date(r.completed_at)}</td><td>{wholePercent(r.pronunciation_accuracy)}</td><td>{wpm(r.reading_speed_wpm)}</td><td>{r.detected_error_count}</td></tr>; })}</tbody></table></div>}</section></>}</main>;
 }
 export { default as AdminAnalyticsPage } from "./AdminAnalyticsPage";
 /** The existing stored status values and their labels. */
 const INTERVENTION_STATUS: Record<string, string> = { planned: 'Planned', in_progress: 'In progress', completed: 'Completed' };
 const statusLabel = (value: string) => INTERVENTION_STATUS[value] ?? value.replace('_', ' ');
-/** Record or update the signed-in author's own intervention. basePath selects the Teacher or Admin route. */
-export function InterventionForm({studentId,existing,onSaved,onCancel,basePath = '/students', teacherLayout = false}:{teacherLayout?:boolean;studentId:string;existing?:Intervention;onSaved:()=>void;onCancel:()=>void;basePath?:string}) {
-  const [notes,setNotes] = useState(existing?.notes || ''), [when,setWhen] = useState(existing?.intervention_date || new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date()));
+/** M7 F11: the competency an intervention addresses (stored values) and the Teacher's follow-up judgement. */
+const COMPETENCY_LABELS: Record<string, string> = { word_recognition: 'Word recognition', fluency: 'Reading fluency', literal: 'Literal comprehension', inferential: 'Inferential comprehension', critical: 'Critical comprehension', other: 'Other' };
+const LANGUAGE_LABELS: Record<string, string> = { en: 'English', fil: 'Filipino' };
+const OUTCOME_LABELS: Record<string, string> = { improved: 'Improved', partly_improved: 'Partly improved', no_change: 'No change yet', too_early: 'Too early to tell' };
+/**
+ * Record or update the signed-in author's own intervention. basePath selects the Teacher or Admin route.
+ * `suggestion` (new records only) pre-fills the form from a rule-based suggestion; the server re-checks it and saves
+ * its own copy of the evidence. The status is always the author's choice: nothing is completed automatically.
+ */
+export function InterventionForm({studentId,existing,suggestion,onSaved,onCancel,basePath = '/students', teacherLayout = false}:{teacherLayout?:boolean;studentId:string;existing?:Intervention;suggestion?:SuggestionItem;onSaved:()=>void;onCancel:()=>void;basePath?:string}) {
+  const fromSuggestion = !existing && suggestion?.suggestion ? suggestion : undefined;
+  const [notes,setNotes] = useState(existing?.notes || (fromSuggestion?.suggestion ? `${fromSuggestion.suggestion.title}: ${fromSuggestion.suggestion.activity}` : '')), [when,setWhen] = useState(existing?.intervention_date || new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila'}).format(new Date()));
   const [status,setStatus] = useState(existing?.status || 'planned'),[follow,setFollow] = useState(existing?.follow_up_date || ''),[followNotes,setFollowNotes] = useState(existing?.follow_up_notes || ''),[busy,setBusy] = useState(false),[error,setError] = useState('');
+  const [competency,setCompetency] = useState<string>(existing?.competency ?? fromSuggestion?.competency ?? ''), [language,setLanguage] = useState<string>(existing?.language ?? fromSuggestion?.language ?? '');
+  const [teacherNotes,setTeacherNotes] = useState(existing?.teacher_notes || ''), [outcome,setOutcome] = useState<string>(existing?.follow_up_outcome ?? '');
+  // A record made from a suggestion keeps that suggestion's competency and language (the server enforces this too).
+  const locked = Boolean(fromSuggestion || existing?.suggestion_key);
+  const snapshot = existing?.suggestion_snapshot ?? null;
+  const basedOn = (fromSuggestion || snapshot) ? <div key="based-on" className="m7s-based-on"><span className="m7-field-label">Based on suggestion</span>
+    <strong>{fromSuggestion?.suggestion?.title ?? snapshot?.title}</strong><p>{fromSuggestion?.evidenceText ?? snapshot?.evidenceText}</p></div> : null;
   const details = <label key="details">{teacherLayout ? 'Intervention details' : 'Notes'}<textarea required maxLength={10000} value={notes} onChange={e => setNotes(e.target.value)}/></label>;
   const recorded = <label key="recorded">{teacherLayout ? 'Date recorded' : 'Date'}<input required type="date" value={when} onChange={e => setWhen(e.target.value)}/></label>;
   const statusField = <label key="status">Status<select value={status} onChange={e => setStatus(e.target.value)}>{Object.entries(INTERVENTION_STATUS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>;
+  const competencyField = <label key="competency">Competency addressed<select value={competency} disabled={locked} onChange={e => setCompetency(e.target.value)}><option value="">Not specified</option>{Object.entries(COMPETENCY_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>;
+  const languageField = <label key="language">Language<select value={language} disabled={locked} onChange={e => setLanguage(e.target.value)}><option value="">Not language-specific</option>{Object.entries(LANGUAGE_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>;
+  const notesField = <label key="teacher-notes">{teacherLayout ? 'Teacher notes (optional)' : 'Additional notes (optional)'}<textarea maxLength={10000} value={teacherNotes} onChange={e => setTeacherNotes(e.target.value)}/></label>;
   const followDate = <label key="follow-date">Follow-up date<input type="date" value={follow} onChange={e => setFollow(e.target.value)}/></label>;
+  const outcomeField = <label key="outcome">Follow-up outcome<select value={outcome} onChange={e => setOutcome(e.target.value)}><option value="">Not yet recorded</option>{Object.entries(OUTCOME_LABELS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>;
   const followInfo = <label key="follow-info">Follow-up information<textarea maxLength={10000} value={followNotes} onChange={e => setFollowNotes(e.target.value)}/></label>;
-  // Teacher layout reads top to bottom: when and status, what was done, then the follow-up. Admin order is unchanged.
-  const fields = teacherLayout ? [recorded, statusField, details, followDate, followInfo] : [details, recorded, statusField, followDate, followInfo];
-  return <form className={teacherLayout ? "m7-form m7-intervention-form" : "m7-form"} aria-busy={busy} aria-label={`${existing ? 'Edit' : 'Record'} intervention`} onSubmit={async e => {e.preventDefault();setBusy(true);setError('');try {await m7Request(`${basePath}/${studentId}/interventions${existing ? `/${existing.id}` : ''}`,existing ? 'PATCH':'POST',{ notes,intervention_date:when,status,follow_up_date:follow || null,follow_up_notes:followNotes });onSaved();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}><h3>{teacherLayout ? `${existing ? 'Edit' : 'Record'} Intervention` : `${existing ? 'Update' : 'Record'} intervention`}</h3>{fields}{error && <p role="alert">{error}</p>}<div><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save intervention'}</button> <button type="button" className={teacherLayout ? 'm7-secondary' : undefined} disabled={busy} onClick={onCancel}>Cancel</button></div></form>;
+  // Teacher layout reads top to bottom: what it addresses, when and status, what was done, then the follow-up.
+  const fields = teacherLayout ? [basedOn, competencyField, languageField, recorded, statusField, details, notesField, followDate, outcomeField, followInfo]
+    : [basedOn, details, competencyField, languageField, recorded, statusField, notesField, followDate, outcomeField, followInfo];
+  // Opened from a suggestion card higher up the page: bring the form into view.
+  const formRef = useRef<HTMLFormElement|null>(null);
+  useEffect(() => { if (fromSuggestion) formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }, [fromSuggestion]);
+  const body = { notes,intervention_date:when,status,follow_up_date:follow || null,follow_up_notes:followNotes,
+    competency: competency || null, language: language || null, teacher_notes: teacherNotes, follow_up_outcome: outcome || null,
+    ...(fromSuggestion ? { suggestion_id: fromSuggestion.id } : {}) };
+  return <form ref={formRef} className={teacherLayout ? "m7-form m7-intervention-form" : "m7-form"} aria-busy={busy} aria-label={`${existing ? 'Edit' : 'Record'} intervention`} onSubmit={async e => {e.preventDefault();setBusy(true);setError('');try {await m7Request(`${basePath}/${studentId}/interventions${existing ? `/${existing.id}` : ''}`,existing ? 'PATCH':'POST',body);onSaved();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}><h3>{teacherLayout ? `${existing ? 'Edit' : 'Record'} Intervention` : `${existing ? 'Update' : 'Record'} intervention`}</h3>{fields}<p className="m7-form-note">You set the status. A suggestion is not a record that an intervention was given, and saving never changes scores, levels or XP.</p>{error && <p role="alert">{error}</p>}<div><button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save intervention'}</button> <button type="button" className={teacherLayout ? 'm7-secondary' : undefined} disabled={busy} onClick={onCancel}>Cancel</button></div></form>;
+}
+/** One saved intervention (Teacher and Admin history): what it addressed, what was done, status and follow-up. */
+export function InterventionRecord({ item, onEdit, disabled }: { item: Intervention; onEdit: () => void; disabled?: boolean }) {
+  const snapshot = item.suggestion_snapshot;
+  return <article className="m7-card">
+    <div className="m7-support-section-heading"><strong>{date(item.intervention_date)}</strong><span className="m7-intervention-status">{statusLabel(item.status)}</span></div>
+    {(item.competency || item.language) && <p className="m7s-record-meta">{item.competency && <span className="m7s-chip">{COMPETENCY_LABELS[item.competency] ?? item.competency}</span>}{item.language && <span className="m7s-chip">{LANGUAGE_LABELS[item.language] ?? item.language}</span>}</p>}
+    {snapshot && <details className="m7s-based-on"><summary>From suggestion: {snapshot.title}</summary><p>{snapshot.evidenceText}</p><p>{snapshot.reason}</p><p className="m7s-figure">Evidence as it was when chosen ({date(snapshot.generatedAt)}).</p></details>}
+    {!snapshot && item.competency && <p className="m7s-figure">Teacher-written intervention</p>}
+    <p className="m7-notes"><span className="m7-field-label">Intervention details</span>{item.notes}</p>
+    {item.teacher_notes && <p className="m7-notes"><span className="m7-field-label">Notes</span>{item.teacher_notes}</p>}
+    {item.follow_up_date && <p>Follow-up date: {date(item.follow_up_date)}</p>}
+    {item.follow_up_outcome && <p>Follow-up outcome: <strong>{OUTCOME_LABELS[item.follow_up_outcome] ?? item.follow_up_outcome}</strong></p>}
+    {item.follow_up_notes && <p className="m7-notes">Follow-up information: {item.follow_up_notes}</p>}
+    <button type="button" disabled={disabled} aria-label={`Edit intervention from ${date(item.intervention_date)}`} onClick={onEdit}>Edit</button>
+  </article>;
 }
 const supportTabs = ['Students Needing Support', 'Competency Reports', 'Student Interventions'];
 const studentName = (student: Student) => student.full_name || student.nickname || 'Student';
@@ -113,11 +158,13 @@ export function TeacherSupportPage() {
   const [tab,setTab] = useState(0), [filter,setFilter] = useState('all'), [search,setSearch] = useState('');
   const [selected,setSelected] = useState(''), [showDetails,setShowDetails] = useState(false);
   const [editing,setEditing] = useState<Intervention|'new'|null>(null), [message,setMessage] = useState(''), [actionError,setActionError] = useState('');
+  // M7 F10: the suggestion a new intervention starts from (null = Teacher-written), and a reload key after saving.
+  const [suggested,setSuggested] = useState<SuggestionItem|null>(null), [suggestionsRevision,setSuggestionsRevision] = useState(0);
   const student = data?.students.find(s => s.id === selected);
   const matches = (s: Student) => studentName(s).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
   const options = data?.students.filter(s => matches(s) || s.id === selected) ?? [];
   const rows = data?.students.filter(s => matches(s) && matchesSupportFilter(s,filter)) ?? [];
-  const selectStudent = (id: string) => {setSelected(id);setEditing(null);setMessage('');};
+  const selectStudent = (id: string) => {setSelected(id);setEditing(null);setSuggested(null);setMessage('');};
   return <main className="m7-page m7-dashboard m7-support-page" aria-label="Student Support and Competencies">
     <div className="m7-dashboard-content">
       <div role="tablist" aria-label="Student Support sections" className="m7-tabs m7-support-tabs">
@@ -187,21 +234,20 @@ export function TeacherSupportPage() {
                 </details>
               </section>
               <section aria-label="Assigned reading progress"><h2>Assigned Reading Progress</h2><AssignedProgress student={student}/></section>
+              <p className="m7s-also">Suggested interventions based on these results are in <button type="button" className="m7-secondary" onClick={()=>setTab(2)}>Student Interventions</button></p>
             </>}
           </div>
           <div role="tabpanel" id="support-panel-2" aria-labelledby="support-tab-2" hidden={tab!==2} tabIndex={0}>
             {!student ? <p>Select a student to review or record interventions.</p> : <>
-              <button type="button" disabled={editing!==null} onClick={()=>{setEditing('new');setMessage('');}}>Record Intervention</button>
-              {editing && <InterventionForm teacherLayout key={`${student.id}-${editing==='new' ? 'new' : editing.id}`} studentId={student.id} existing={editing==='new' ? undefined : editing}
-                onCancel={()=>setEditing(null)} onSaved={()=>{setEditing(null);setMessage('Intervention saved.');void refresh();}}/>}
+              <SuggestedInterventions key={student.id} path={`/students/${student.id}/suggestions`} refreshKey={suggestionsRevision} disabled={editing!==null}
+                onUse={item=>{setSuggested(item);setEditing('new');setMessage('');}}/>
+              <button type="button" disabled={editing!==null} onClick={()=>{setSuggested(null);setEditing('new');setMessage('');}}>Record Intervention</button>
+              {editing && <InterventionForm teacherLayout key={`${student.id}-${editing==='new' ? `new-${suggested?.id ?? 'own'}` : editing.id}`} studentId={student.id} existing={editing==='new' ? undefined : editing}
+                suggestion={editing==='new' ? suggested ?? undefined : undefined}
+                onCancel={()=>{setEditing(null);setSuggested(null);}} onSaved={()=>{setEditing(null);setSuggested(null);setMessage('Intervention saved.');setSuggestionsRevision(v=>v+1);void refresh();}}/>}
               <section aria-label="Intervention history"><h2>Saved Interventions</h2>
-                {!student.interventions.length ? <p>No interventions recorded.</p> : <div className="m7-intervention-history">{[...student.interventions].sort((a,b)=>b.intervention_date.localeCompare(a.intervention_date)).map(i=><article className="m7-card" key={i.id}>
-                  <div className="m7-support-section-heading"><strong>{date(i.intervention_date)}</strong><span className="m7-intervention-status">{statusLabel(i.status)}</span></div>
-                  <p className="m7-notes"><span className="m7-field-label">Intervention details</span>{i.notes}</p>
-                  {i.follow_up_date && <p>Follow-up date: {date(i.follow_up_date)}</p>}
-                  {i.follow_up_notes && <p className="m7-notes">Follow-up information: {i.follow_up_notes}</p>}
-                  <button type="button" disabled={editing!==null} aria-label={`Edit intervention from ${date(i.intervention_date)}`} onClick={()=>{setEditing(i);setMessage('');}}>Edit</button>
-                </article>)}</div>}
+                {!student.interventions.length ? <p>No interventions recorded.</p> : <div className="m7-intervention-history">{[...student.interventions].sort((a,b)=>b.intervention_date.localeCompare(a.intervention_date) || (b.created_at ?? '').localeCompare(a.created_at ?? '')).map(i=>
+                  <InterventionRecord key={i.id} item={i} disabled={editing!==null} onEdit={()=>{setSuggested(null);setEditing(i);setMessage('');}}/>)}</div>}
               </section>
             </>}
           </div>
