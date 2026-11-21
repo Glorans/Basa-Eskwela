@@ -81,14 +81,20 @@ function mount(path: string, params: Record<string, string>, mocks: Record<strin
           return typeof mocks.linkedComprehension === "function" ? mocks.linkedComprehension(readingId) : mocks.linkedComprehension ?? null;
         } };
       if (id.includes("FilipinoReadingFeedback")) return { default: "filipino-reading-feedback",
-        FilipinoReadingAccuracyPanel: "filipino-accuracy-panel", FilipinoWordReviewPanel: "filipino-word-review-panel" };
+        FilipinoReadingAccuracyPanel: "filipino-accuracy-panel", FilipinoWordReviewPanel: "filipino-word-review-panel",
+        filipinoDifferenceCount: () => mocks.filipinoDifferences ?? 0 };
       if (id.includes("PronunciationFeedback")) return {
         PronunciationFeedbackPanel: "pronunciation-feedback-panel", PronunciationAccuracyPanel: "pronunciation-accuracy-panel",
         PronunciationWordsPanel: "pronunciation-words-panel",
-        // The check only runs when a learner presses its button; record the attempt it was offered for.
+        practiceWordTotal: (summary: { wordsToPractice: string[]; practiceWordCount?: number }) =>
+          Math.max(summary.wordsToPractice.length, summary.practiceWordCount ?? 0),
+        // Record the attempt each check was offered for. The result page starts the English check automatically
+        // (autoCheck, once); a manual check() (Try Again) must never run on its own.
         usePronunciationCheck: (attemptId: string | undefined) => {
           (mocks.pronunciationChecks ??= []).push(attemptId);
-          return mocks.pronunciation ?? { status: "idle", step: "loading", check() { throw Error("must not auto-run"); } };
+          // Stable per reading, like the real hook's useCallback.
+          const autoCheck = ((mocks.autoCheckFns ??= {})[attemptId ?? ""] ??= () => { (mocks.pronunciationAutoChecks ??= []).push(attemptId); });
+          return { autoCheck, ...(mocks.pronunciation ?? { status: "idle", step: "loading", check() { throw Error("must not auto-run"); } }) };
         },
       };
       if (id.includes("M5Modal")) return { default: "m5-modal" };
@@ -1663,4 +1669,69 @@ test("Admin M6 on a module the Admin did not create shows the server's refusal a
   assert.match(JSON.stringify(back.props.children), /Back to Oral Reading/);
   back.props.onClick();
   assert.deepEqual(refused.navigations, ["/admin/oral-reading"]);
+});
+
+// M5 result cards (2026-11-22): the English pronunciation check starts when the result opens, not when a card is
+// opened, and every card shows its real number or a clear status.
+const englishReading = { id: "oral", materialId: null, roomId: null, activityAssignmentId: null, moduleId: "module", passageId: null,
+  language: "en", moduleTitle: "Story", readAloudOnly: false, pronunciationAccuracy: 70, readingSpeedWpm: 50,
+  expectedWordCount: 2, transcript: "the  cat", passageSnapshot: "the dog",
+  wordMetrics: [{ type: "match", expected: "the", actual: "the" }, { type: "substitution", expected: "dog", actual: "cat" }] };
+async function resultCards(attempt: any, extra: Record<string, any> = {}, role = "general_user") {
+  const options: Record<string, any> = {
+    oralReadingService: { getOralReadingAttempt: async () => attempt },
+    oralReadingProcessing: { getWordsToPractice: () => [] }, diagnosticTts: {},
+    comprehensionNavigation: { comprehensionTargetForReading },
+    useAuthenticatedProfile: { default: () => ({ profile: { nickname: "Ana" } }) }, ...extra,
+  };
+  const f = mount("pages/reading-activity/ReadingResultPage.tsx", { attemptId: attempt.id }, options, role);
+  f.render(); await tick();
+  const tree = f.render(); f.render();
+  const card = (name: string) => find(tree, (node) => node.props?.className?.includes?.(`result-panel-card--${name}`));
+  const shown = (name: string) => {
+    const node = find(card(name), (n) => n.props?.className === "result-panel-card-value" || n.props?.className === "result-panel-card-status");
+    return [node?.props?.className === "result-panel-card-status" ? "status" : "value", JSON.stringify(node?.props?.children ?? null)];
+  };
+  return { options, shown, tree };
+}
+
+for (const role of ["system_admin", "admin", "teacher", "student", "general_user"]) {
+  test(`M5 result (${role}): the English pronunciation check starts when the result opens, without opening a card`, async () => {
+    const { options, shown } = await resultCards(englishReading, {}, role);
+    assert.deepEqual(options.pronunciationAutoChecks, ["oral"], "started once, for this reading");
+    // While it runs: a clear status on the three pronunciation cards, never a fake number or 0.
+    for (const name of ["feedback", "accuracy", "words"]) assert.deepEqual(shown(name), ["status", JSON.stringify("Processing…")], name);
+    // Available numbers appear at once: words transcribed (whitespace-safe) and the unchanged reading accuracy.
+    assert.deepEqual(shown("transcript"), ["value", JSON.stringify("Words transcribed: 2")]);
+    assert.match(shown("result")[1], /70/);
+  });
+}
+
+test("M5 result cards: a finished check shows its score and the FULL flagged-word count (beyond the saved list of 10)", async () => {
+  const words = Array.from({ length: 10 }, (_, i) => `word${i}`);
+  const { options, shown } = await resultCards(englishReading, { pronunciation: { status: "done", step: "assessing", saved: true,
+    summary: { parts: 1, utterances: 3, accuracy: 82, fluency: 70, wordsToPractice: words, practiceWordCount: 14, complete: true } } });
+  assert.deepEqual(options.pronunciationAutoChecks ?? [], [], "a saved result is reused: no new check");
+  assert.deepEqual(shown("feedback"), ["value", JSON.stringify("Practice items: 14")]);
+  assert.match(shown("accuracy")[1], /82/);
+  assert.deepEqual(shown("words"), ["value", JSON.stringify("Words flagged: 14")]);
+  assert.deepEqual(shown("transcript"), ["value", JSON.stringify("Words transcribed: 2")]);
+});
+
+test("M5 result cards: a failed automatic check says so (no fake score) and no speech is reported as such", async () => {
+  let r = await resultCards(englishReading, { pronunciation: { status: "error", step: "assessing", error: "Azure failed", autoTried: true } });
+  for (const name of ["feedback", "accuracy", "words"]) assert.deepEqual(r.shown(name), ["status", JSON.stringify("Not available yet. Open to try again.")], name);
+  r = await resultCards(englishReading, { pronunciation: { status: "done", step: "assessing", saved: true,
+    summary: { parts: 1, utterances: 0, accuracy: null, fluency: null, wordsToPractice: [], complete: true } } });
+  assert.deepEqual(r.shown("words"), ["status", JSON.stringify("No speech was detected.")]);
+});
+
+test("M5 result cards (Filipino): transcript-based numbers only, no pronunciation check and no Azure score", async () => {
+  const filipino = { ...englishReading, language: "fil", transcript: "ang pusa ay", passageSnapshot: "ang aso ay" };
+  const { options, shown, tree } = await resultCards(filipino, { filipinoDifferences: 3 });
+  assert.deepEqual(options.pronunciationAutoChecks ?? [], [], "no paid pronunciation check for Filipino");
+  assert.deepEqual(shown("feedback"), ["value", JSON.stringify("Mga bahaging dapat tingnan: 3")]);
+  assert.deepEqual(shown("words"), ["value", JSON.stringify("Mga salitang dapat balikan: 3")]);
+  assert.deepEqual(shown("transcript"), ["value", JSON.stringify("Mga salitang naitala: 3")]);
+  assert.doesNotMatch(JSON.stringify(tree), /\/100/, "never a pronunciation score");
 });

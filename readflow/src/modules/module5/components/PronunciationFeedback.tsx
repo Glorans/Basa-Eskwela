@@ -22,6 +22,7 @@ import {
   pronunciationOverview,
   type PronunciationCheckStep,
   type PronunciationSummary,
+  practiceWordTotal,
 } from "../services/pronunciationSummary";
 import { placePracticeWords, practiceExcerpt, type TextPiece } from "../services/resultWords";
 
@@ -70,6 +71,9 @@ const loadSavedCheck: SavedPronunciationLoader = (attemptId) => getSavedPronunci
 // saved result now and then. These reads never start a check.
 const PENDING_RELOAD_MS = 10_000;
 const PENDING_MAX_RELOADS = 60;
+
+/** Re-exported for the result cards: the full number of words flagged for practice. */
+export { practiceWordTotal };
 
 export interface PronunciationCheck extends PronunciationCheckState {
   /** Starts (or retries) the check: the F2 Try Again button. */

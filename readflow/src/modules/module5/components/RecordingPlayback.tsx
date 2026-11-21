@@ -18,6 +18,9 @@ export default function RecordingPlayback({ attemptId, teacher = false, admin = 
   const [error, setError] = useState<"load" | "playback">();
   const [retry, setRetry] = useState(0);
   const audioRefs = useRef<(HTMLAudioElement | null)[]>([]);
+  // The signed recording links expire after a few minutes: the first playback error fetches fresh links once,
+  // through the same authorized endpoint, before an error is shown. Reset by every successful load.
+  const refreshedAfterError = useRef(false);
   const { t } = getActivityText(language);
   const queue = useMemo(
     () => createSegmentPlaybackQueue((index) => audioRefs.current[index], () => audioRefs.current.length),
@@ -39,6 +42,15 @@ export default function RecordingPlayback({ attemptId, teacher = false, admin = 
       active = false;
     };
   }, [attemptId, reviewer, retry]);
+  useEffect(() => { refreshedAfterError.current = false; }, [attemptId]);
+  const handlePlaybackError = () => {
+    if (!refreshedAfterError.current) {
+      refreshedAfterError.current = true;
+      setRetry((value) => value + 1);
+      return;
+    }
+    setError("playback");
+  };
 
   audioRefs.current.length = segments?.length ?? 0;
 
@@ -65,16 +77,17 @@ export default function RecordingPlayback({ attemptId, teacher = false, admin = 
             src={src}
             aria-label={segments.length > 1 ? t("Read-aloud recording part {index}", { index: index + 1 }) : t("Read-aloud recording")}
             style={{ width: "100%" }}
-            onLoadedMetadata={(event) => resolveRecordingDuration(event.currentTarget)}
+            onLoadedMetadata={(event) => { refreshedAfterError.current = false; resolveRecordingDuration(event.currentTarget); }}
             onPlay={() => queue.handlePlay(index)}
             onEnded={() => queue.handleEnded(index)}
-            onError={() => setError("playback")}
+            onError={handlePlaybackError}
           />
         </div>
       ))}
       {error && <p role="alert">{error === "playback" ? t("Audio could not load or its link expired. Reload the recording to try again.") : t("Unable to load recording. Please retry.")}</p>}
-      {(error || !!segments?.length) && (
-        <button type="button" onClick={() => setRetry((value) => value + 1)}>
+      {/* Only after a real error: a loaded player that has not read its length yet is not broken. */}
+      {error && (
+        <button type="button" onClick={() => { refreshedAfterError.current = false; setRetry((value) => value + 1); }}>
           {t("Reload recording")}
         </button>
       )}

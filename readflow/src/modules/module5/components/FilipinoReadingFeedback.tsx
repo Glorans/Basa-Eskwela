@@ -28,6 +28,13 @@ interface PanelProps {
 type Translate = ReturnType<typeof getActivityText>["t"];
 
 /** F2: a short personal summary and a practice suggestion. Scores are in F3; the word list is in F4. */
+/** Result card number for a Filipino reading: the differences Words to Review lists (the same rule, nothing new). */
+export function filipinoDifferenceCount(attempt: Parameters<typeof buildFilipinoFeedback>[0]) {
+  const feedback = buildFilipinoFeedback(attempt);
+  // No saved transcript to compare: no number (never a misleading 0).
+  return feedback.status === "unavailable" ? null : feedback.differences.length;
+}
+
 export default function FilipinoReadingFeedback({ attempt, uiLanguage = "fil", title }: PanelProps & {
   /** Replaces the heading where the view needs its own wording. */
   title?: string;

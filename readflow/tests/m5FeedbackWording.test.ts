@@ -158,6 +158,11 @@ test("the pronunciation panels never auto-run the check and never name the provi
   assert.match(feedback, /pronunciationChecks\.autoStart\(key, attemptId, runPronunciationCheck, sessionMarker\)/);
   // Only F2 receives autoStart, and only while it is the open panel; F3-F7 never start a check.
   assert.equal(result.match(/autoStart=/g)?.length, 1);
+  // 2026-11-22: the result page itself starts the English check once when it opens (the store and the server
+  // dedupe it); no card starts one, and Try Again (check.check) stays the only manual start.
+  assert.equal(result.match(/startPronunciationCheck\(\)/g)?.length, 1);
+  assert.match(result, /if \(attempt\?\.language === "en" && pronunciationStatus === "idle" && !pronunciationLoadError\) startPronunciationCheck\(\);/);
+  assert.doesNotMatch(code(result), /\.check\(\)/);
   assert.doesNotMatch(feedback.slice(feedback.indexOf("function ResultWaiting"), feedback.indexOf("/** The story the learner read")), /check\.check|autoCheck|<button[^>]*onClick=\{check\.check/);
   assert.doesNotMatch(code(feedback), /Azure|Microsoft/);
   assert.doesNotMatch(code(result), /Azure|Microsoft/);

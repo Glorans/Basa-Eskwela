@@ -436,6 +436,16 @@ const filipino = {
   "Each question has one final answer. Each correct answer earns one point.": "Isang pinal na sagot ang bawat tanong. Isang puntos ang bawat tamang sagot.",
   "{correct}/{total} correct ({percentage}%)": "{correct}/{total} tama ({percentage}%)",
   "You answered every question correctly. Great work! Review the explanations to see how the passage supports each answer.": "Tama ang lahat ng sagot mo. Mahusay! Balikan ang mga paliwanag upang makita kung paano sinusuportahan ng teksto ang bawat sagot.",
+  // M5 result cards: the numbers shown on each card (2026-11-22).
+  "Processing…": "Pinoproseso…",
+  "Not available yet. Open to try again.": "Wala pang resulta. Buksan para subukang muli.",
+  "No speech was detected.": "Walang narinig na pananalita.",
+  "Score not measured.": "Hindi nasukat ang marka.",
+  "Practice items: {count}": "Mga dapat sanayin: {count}",
+  "Words flagged: {count}": "Mga salitang namarkahan: {count}",
+  "Words transcribed: {count}": "Mga salitang naitala: {count}",
+  "Places to check: {count}": "Mga bahaging dapat tingnan: {count}",
+  "Words to review: {count}": "Mga salitang dapat balikan: {count}",
   // M6 F5 Preview comprehension assessment (2026-11-21).
   "Preview Questions": "Silipin ang mga Tanong",
   "Preview Comprehension Assessment": "Silipin ang Pagtatasa sa Pag-unawa",
