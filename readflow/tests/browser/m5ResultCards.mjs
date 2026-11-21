@@ -103,7 +103,7 @@ const shot = async (name) => fs.writeFileSync(path.join(output, name + '.png'), 
 // What each card shows, and its geometry: rows, heights, where the value block sits, whether a value wraps.
 const CARDS = `(() => [...document.querySelectorAll('.result-panel-card')].map((card) => {
   const box = card.getBoundingClientRect(), metric = card.querySelector('.result-panel-card-metric').getBoundingClientRect();
-  const value = card.querySelector('.result-panel-card-value, .result-panel-card-status');
+  const value = card.querySelector('.result-panel-card-value, .result-panel-card-status, .result-panel-card-ready');
   const v = value.getBoundingClientRect(), line = parseFloat(getComputedStyle(value).lineHeight) || parseFloat(getComputedStyle(value).fontSize) * 1.2;
   return { title: card.querySelector('.result-panel-card-title').textContent, value: value.textContent,
     status: value.classList.contains('result-panel-card-status'), caption: card.querySelector('.result-panel-card-caption').textContent,
@@ -130,14 +130,14 @@ try {
   for (const [name, width, height] of [['desktop-1366', 1366, 900], ['desktop-1280', 1280, 900], ['tablet-1024', 1024, 1366], ['tablet-820', 820, 1180], ['mobile-390', 390, 844]]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 900 });
     await send('Page.navigate', { url: `http://127.0.0.1:5199/m3/general/read-aloud/results/${EN}` });
-    await until(`document.querySelectorAll('.result-panel-card-value').length === 5`);
+    await until(`document.querySelectorAll('.result-panel-card-value').length === 4 && !!document.querySelector('.result-panel-card-ready')`);
     const cards = await evaluate(CARDS), grid = rows(cards);
     report[name] = { perRow: grid.map((r) => r.length), cards: cards.map((c) => `${c.title}: ${c.value} | ${c.caption}`) };
     for (const row of grid) {
       assert.ok(Math.max(...row.map((c) => c.height)) - Math.min(...row.map((c) => c.height)) <= 1, `${name}: equal heights in a row`);
       assert.ok(Math.max(...row.map((c) => c.bottomGap)) - Math.min(...row.map((c) => c.bottomGap)) <= 1, `${name}: the values themselves line up at the bottom ${JSON.stringify(row.map((c) => c.bottomGap))}`);
     }
-    assert.ok(cards.every((c) => c.valueLines === 1), `${name}: every value on one line ${JSON.stringify(cards.map((c) => c.valueLines))}`);
+    assert.ok(cards.filter((c) => c.valueLines !== null).every((c) => c.valueLines === 1), `${name}: every numeric value on one line ${JSON.stringify(cards.map((c) => c.valueLines))}`);
     assert.equal(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'), true, `${name}: no horizontal scroll`);
     await shot(`en-${name}`);
   }
@@ -145,7 +145,7 @@ try {
   // The detail modals still open from each card.
   await send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:5199/m3/general/read-aloud/results/${EN}` });
-  await until(`document.querySelectorAll('.result-panel-card-value').length === 5`);
+  await until(`document.querySelectorAll('.result-panel-card-value').length === 4 && !!document.querySelector('.result-panel-card-ready')`);
   for (let i = 0; i < 5; i++) {
     await evaluate(`document.querySelectorAll('.result-panel-card')[${i}].click()`);
     await until(`[...document.querySelectorAll('[role="dialog"]')].some((d) => d.checkVisibility())`);
@@ -157,14 +157,14 @@ try {
   for (const [name, width, height] of [['desktop-1366', 1366, 900], ['mobile-390', 390, 844]]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 900 });
     await send('Page.navigate', { url: `http://127.0.0.1:5199/m3/general/read-aloud/results/${FIL}` });
-    await until(`document.querySelectorAll('.result-panel-card-value').length === 5`);
+    await until(`document.querySelectorAll('.result-panel-card-value').length === 4 && !!document.querySelector('.result-panel-card-ready')`);
     const cards = await evaluate(CARDS);
     report[`fil-${name}`] = cards.map((c) => `${c.title}: ${c.value} | ${c.caption}`);
     for (const row of rows(cards)) {
       assert.ok(Math.max(...row.map((c) => c.height)) - Math.min(...row.map((c) => c.height)) <= 1, `fil ${name}: equal heights in a row`);
       assert.ok(Math.max(...row.map((c) => c.bottomGap)) - Math.min(...row.map((c) => c.bottomGap)) <= 1, `fil ${name}: values line up ${JSON.stringify(row.map((c) => c.bottomGap))}`);
     }
-    assert.ok(cards.every((c) => c.valueLines === 1), `fil ${name}: every value on one line`);
+    assert.ok(cards.filter((c) => c.valueLines !== null).every((c) => c.valueLines === 1), `fil ${name}: every numeric value on one line`);
     assert.ok(cards.every((c) => !c.value.includes('/100')), 'Filipino: no pronunciation score');
     await shot(`fil-${name}`);
   }

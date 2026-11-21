@@ -442,12 +442,12 @@ const filipino = {
   "No speech was detected.": "Walang narinig na pananalita.",
   "Score not measured.": "Hindi nasukat ang marka.",
   // Card captions: what each card's value is (a score, a percentage or a count).
-  "Practice tips": "Mga tip sa pagsasanay",
+  "Your feedback": "Ang iyong puna",
+  "Feedback available": "May puna na",
   "Pronunciation score": "Marka sa pagbigkas",
   "Words to practice": "Mga salitang sasanayin",
   "Words transcribed": "Mga salitang naitala",
   "Reading accuracy": "Katumpakan ng pagbasa",
-  "Places to check": "Mga bahaging dapat tingnan",
   "Words to review": "Mga salitang dapat balikan",
   // M6 F5 Preview comprehension assessment (2026-11-21).
   "Preview Questions": "Silipin ang mga Tanong",

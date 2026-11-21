@@ -289,6 +289,14 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
     </span>
   );
   const noSpeech = t("No speech was detected.");
+  // Card 1 has no number of its own: the Feedback panel holds one message, and the words it points to are Card 3's
+  // count. When that feedback is ready the card says so; otherwise the same statuses as the other cards.
+  const cardMessage = (text: string, caption: string) => (
+    <span className="result-panel-card-metric">
+      <span className="result-panel-card-caption">{caption}</span>
+      <span className="result-panel-card-ready">{text}</span>
+    </span>
+  );
   const readAgainTarget = role === "general_user" && attempt.materialId && !attempt.roomId
     ? `/m3/general/materials/${encodeURIComponent(attempt.materialId)}/read-aloud?recordAgain=1`
     : attempt.materialId && attempt.roomId && attempt.activityAssignmentId
@@ -333,9 +341,9 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
               <MessageCircle size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{feedbackTitle}</span>
               <span className="result-panel-card-text">{feedbackCardText}</span>
-              {filipino
-                ? cardMetric(differenceCount, t("Places to check"), noSpeech)
-                : cardMetric(practiceTotal, t("Practice tips"), englishCardStatus)}
+              {(filipino ? differenceCount !== null : practiceTotal !== null)
+                ? cardMessage(t("Feedback available"), t("Your feedback"))
+                : cardMetric(null, t("Your feedback"), filipino ? noSpeech : englishCardStatus)}
             </button>
             <button type="button" className="result-panel-card result-panel-card--accuracy" aria-haspopup="dialog" onClick={() => openPanel("accuracy")}>
               <Gauge size={28} aria-hidden="true" />

@@ -1691,9 +1691,10 @@ async function resultCards(attempt: any, extra: Record<string, any> = {}, role =
   // [kind, value or status text, caption]: every card ends with one metric block (value + caption).
   const shown = (name: string) => {
     const metric = find(card(name), (n) => n.props?.className === "result-panel-card-metric");
-    const node = find(metric, (n) => n.props?.className === "result-panel-card-value" || n.props?.className === "result-panel-card-status");
+    const node = find(metric, (n) => ["result-panel-card-value", "result-panel-card-status", "result-panel-card-ready"].includes(n.props?.className));
     const caption = find(metric, (n) => n.props?.className === "result-panel-card-caption");
-    return [node?.props?.className === "result-panel-card-status" ? "status" : "value", String(node?.props?.children ?? ""), caption?.props?.children];
+    const kind = { "result-panel-card-status": "status", "result-panel-card-ready": "message" }[node?.props?.className as string] ?? "value";
+    return [kind, String(node?.props?.children ?? ""), caption?.props?.children];
   };
   return { options, shown, tree };
 }
@@ -1703,7 +1704,7 @@ for (const role of ["system_admin", "admin", "teacher", "student", "general_user
     const { options, shown } = await resultCards(englishReading, {}, role);
     assert.deepEqual(options.pronunciationAutoChecks, ["oral"], "started once, for this reading");
     // While it runs: a clear status on the three pronunciation cards, never a fake number or 0.
-    assert.deepEqual(shown("feedback"), ["status", "Processing…", "Practice tips"]);
+    assert.deepEqual(shown("feedback"), ["status", "Processing…", "Your feedback"]);
     assert.deepEqual(shown("accuracy"), ["status", "Processing…", "Pronunciation score"]);
     assert.deepEqual(shown("words"), ["status", "Processing…", "Words to practice"]);
     // Available numbers appear at once: words transcribed (whitespace-safe) and the unchanged reading accuracy.
@@ -1717,7 +1718,7 @@ test("M5 result cards: a finished check shows its score and the FULL flagged-wor
   const { options, shown } = await resultCards(englishReading, { pronunciation: { status: "done", step: "assessing", saved: true,
     summary: { parts: 1, utterances: 3, accuracy: 82, fluency: 70, wordsToPractice: words, practiceWordCount: 14, complete: true } } });
   assert.deepEqual(options.pronunciationAutoChecks ?? [], [], "a saved result is reused: no new check");
-  assert.deepEqual(shown("feedback"), ["value", "14", "Practice tips"]);
+  assert.deepEqual(shown("feedback"), ["message", "Feedback available", "Your feedback"], "no invented tip count");
   assert.deepEqual(shown("accuracy"), ["value", "82/100", "Pronunciation score"]);
   assert.deepEqual(shown("words"), ["value", "14", "Words to practice"]);
   assert.deepEqual(shown("transcript"), ["value", "2", "Words transcribed"], "a count: never /100 or %");
@@ -1730,13 +1731,14 @@ test("M5 result cards: a failed automatic check says so (no fake score) and no s
   r = await resultCards(englishReading, { pronunciation: { status: "done", step: "assessing", saved: true,
     summary: { parts: 1, utterances: 0, accuracy: null, fluency: null, wordsToPractice: [], complete: true } } });
   assert.deepEqual(r.shown("words"), ["status", "No speech was detected.", "Words to practice"]);
+  assert.deepEqual(r.shown("feedback"), ["status", "No speech was detected.", "Your feedback"]);
 });
 
 test("M5 result cards (Filipino): transcript-based numbers only, no pronunciation check and no Azure score", async () => {
   const filipino = { ...englishReading, language: "fil", transcript: "ang pusa ay", passageSnapshot: "ang aso ay" };
   const { options, shown, tree } = await resultCards(filipino, { filipinoDifferences: 3 });
   assert.deepEqual(options.pronunciationAutoChecks ?? [], [], "no paid pronunciation check for Filipino");
-  assert.deepEqual(shown("feedback"), ["value", "3", "Mga bahaging dapat tingnan"]);
+  assert.deepEqual(shown("feedback"), ["message", "May puna na", "Ang iyong puna"]);
   assert.deepEqual(shown("accuracy"), ["value", "70%", "Katumpakan ng pagbasa"], "reading accuracy, never a pronunciation score");
   assert.deepEqual(shown("words"), ["value", "3", "Mga salitang dapat balikan"]);
   assert.deepEqual(shown("transcript"), ["value", "3", "Mga salitang naitala"]);
