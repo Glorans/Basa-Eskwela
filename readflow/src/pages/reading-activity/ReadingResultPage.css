@@ -595,7 +595,19 @@
 .result-panel-card-value {
   margin-top: auto;
   font-family: "Fredoka", sans-serif;
-  font-size: 1.6rem;
+  /* Every card shows its number (2026-11-22); labelled values such as "Words flagged: 3" stay on small screens. */
+  font-size: clamp(1.2rem, 1.05rem + 0.5vw, 1.6rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+/* While the English pronunciation check runs, or when a number is not available: a clear status, never a fake 0. */
+.result-panel-card-status {
+  margin-top: auto;
+  color: var(--basa-text);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .result-feedback-status {

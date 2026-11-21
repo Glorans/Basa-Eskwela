@@ -97,7 +97,7 @@ test("1. a check is saved from the server's own assessment, with coverage and wo
   assert.equal(result.status, 200);
   assert.equal(result.body.saved, true);
   assert.deepEqual(result.body.check.summary, {
-    parts: 1, utterances: 1, accuracy: 88, fluency: 80, wordsToPractice: ["orchard"],
+    parts: 1, utterances: 1, accuracy: 88, fluency: 80, wordsToPractice: ["orchard"], practiceWordCount: 1,
     assessedSeconds: 36, complete: true, unassessedSeconds: 0,
     // Derived on read from the saved parts: 2 of the story's 8 words were scored,
     // and "orchard" was flagged at story word 7.
@@ -263,7 +263,7 @@ test("multi-file recordings are assessed in order in one request and saved as on
   const result = await app.check(EN, { parts: 2 });
   assert.equal(app.calls.length, 2);
   assert.deepEqual(result.body.check.summary, {
-    parts: 2, utterances: 2, accuracy: 80, fluency: 80, wordsToPractice: ["orchard"],
+    parts: 2, utterances: 2, accuracy: 80, fluency: 80, wordsToPractice: ["orchard"], practiceWordCount: 1,
     assessedSeconds: 38, complete: false, unassessedSeconds: 2,
     storyWords: 8, assessedStoryWords: 2, practiceOccurrences: [{ word: "orchard", storyWordIndex: 7 }],
   });
@@ -284,7 +284,7 @@ test("summary rules match the result screen's previous rules", () => {
     part([{ text: "b", accuracy: 60, fluency: 50, words: [{ word: "Saturday!", accuracy: 59, errorType: "None" }, { word: "ORCHARD", accuracy: 80, errorType: "Mispronunciation" }] }]),
   ], [44 + 32000 * 10, 44 + 32000 * 5]);
   assert.deepEqual(summary, {
-    parts: 2, utterances: 2, accuracy: 75, fluency: 65, wordsToPractice: ["saturday", "orchard"],
+    parts: 2, utterances: 2, accuracy: 75, fluency: 65, wordsToPractice: ["saturday", "orchard"], practiceWordCount: 2,
     assessedSeconds: 15, complete: true, unassessedSeconds: 0, unassessedSegments: 0,
   });
   const unmeasured = summarizePronunciationParts([part([], { complete: false, unassessedSegments: 1, unassessedSeconds: null })], [44]);

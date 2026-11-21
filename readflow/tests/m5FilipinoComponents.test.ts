@@ -71,10 +71,18 @@ for (const language of ['en', 'fil'] as const) {
     assert.equal(audio.props.controls, true);
     assert.equal(audio.props.src, '/part-one.wav');
     assert.equal(audio.props['aria-label'], ui.t('Read-aloud recording part {index}', { index: 1 }));
-    audio.props.onError();
+    // No Reload button while the recording is fine (a player that has not read its length yet is not broken).
+    assert.ok(!text(tree).includes(ui.t('Reload recording')));
+    // First playback error (e.g. the signed link expired): fresh links are fetched once, with no error shown.
+    audio.props.onError(); f.render();
+    assert.ok(!text(f.render()).includes(ui.t('Audio could not load or its link expired. Reload the recording to try again.')));
+    assert.deepEqual(f.calls, [['saved', false], ['saved', false]]);
+    f.resolve({ available: true, segments: ['/part-one.wav', '/part-two.wav'] }); await tick();
+    // A second error is real: the message and the Reload button appear; Reload fetches the links again.
+    find(f.render(), n => n.type === 'audio').props.onError();
     assert.ok(text(f.render()).includes(ui.t('Audio could not load or its link expired. Reload the recording to try again.')));
     find(f.render(), n => n.type === 'button').props.onClick(); f.render();
-    assert.deepEqual(f.calls, [['saved', false], ['saved', false]]);
+    assert.deepEqual(f.calls, [['saved', false], ['saved', false], ['saved', false]]);
     f.resolve({ available: false }); await tick();
     assert.ok(text(f.render()).includes(ui.t('Recording unavailable for this activity. Older results may not have saved audio.')));
     const failed = playback(language); failed.render(); failed.reject(); await tick();

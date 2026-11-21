@@ -37,8 +37,10 @@ export interface PronunciationSummary {
   accuracy: number | null;
   /** Word-weighted mean of the utterance fluency scores, or null if none were given. */
   fluency: number | null;
-  /** Words marked as mispronounced or scored below 60. */
+  /** Words marked as mispronounced or scored below 60 (the saved list keeps at most MAX_SAVED_PRACTICE_WORDS). */
   wordsToPractice: string[];
+  /** Newer servers: how many distinct words were flagged in total, read from the saved detailed results. */
+  practiceWordCount?: number;
   /** Seconds of saved recording that were sent for assessment. */
   assessedSeconds?: number;
   /** True only when every part covered all of its speech. */
@@ -171,15 +173,28 @@ export function pronunciationOverview(summary: PronunciationSummary, { wordsBelo
 }
 
 /** F4's summary line, from the same count as F2. */
+/**
+ * How many distinct words were flagged for practice: the server's full count when it sends one (the saved list is
+ * limited to MAX_SAVED_PRACTICE_WORDS), otherwise the saved list itself. Never fewer than the listed words.
+ */
+export function practiceWordTotal(summary: PronunciationSummary) {
+  const listed = distinctPracticeWords(summary.wordsToPractice).length;
+  return typeof summary.practiceWordCount === "number" && Number.isFinite(summary.practiceWordCount)
+    ? Math.max(listed, summary.practiceWordCount) : listed;
+}
+
 export function practiceWordsSummary(summary: PronunciationSummary) {
   const flagged = distinctPracticeWords(summary.wordsToPractice).length;
+  const total = practiceWordTotal(summary);
   if (flagged === 0) {
     return isPartialCheck(summary)
       ? "No words were flagged for pronunciation practice in the part checked."
       : "No words were flagged for pronunciation practice. Great job!";
   }
   if (summary.wordsToPractice.length >= MAX_SAVED_PRACTICE_WORDS) {
-    return `Here are the first ${wordCount(flagged)} flagged for pronunciation practice.`;
+    return total > flagged
+      ? `Here are the first ${flagged} of the ${wordCount(total)} flagged for pronunciation practice.`
+      : `Here are the first ${wordCount(flagged)} flagged for pronunciation practice.`;
   }
   return `The computer flagged ${wordCount(flagged)} for more pronunciation practice.`;
 }

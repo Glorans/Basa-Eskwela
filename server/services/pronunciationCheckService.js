@@ -109,17 +109,25 @@ function sanitizePart(part) {
  * The learner-facing summary of a whole reading's parts. `partBytes` are the
  * uploaded WAV sizes, used for a part's length only when the service gave none.
  */
-function summarizePronunciationParts(parts, partBytes = []) {
-  const utterances = parts.flatMap((part) => part.utterances ?? []);
+/** Every distinct word flagged for practice in the saved parts (before the saved list's MAX_PRACTICE_WORDS cap). */
+function practiceWordSet(parts) {
   const practice = new Set();
-  for (const utterance of utterances) {
-    for (const word of utterance.words) {
-      const text = String(word.word ?? "").normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}'-]/gu, "");
-      if (!text) continue;
-      if (word.errorType === "Mispronunciation"
-        || (typeof word.accuracy === "number" && word.accuracy < PRACTICE_THRESHOLD)) practice.add(text);
+  for (const part of Array.isArray(parts) ? parts : []) {
+    for (const utterance of part?.utterances ?? []) {
+      for (const word of utterance?.words ?? []) {
+        const text = String(word?.word ?? "").normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}'-]/gu, "");
+        if (!text) continue;
+        if (word.errorType === "Mispronunciation"
+          || (typeof word.accuracy === "number" && word.accuracy < PRACTICE_THRESHOLD)) practice.add(text);
+      }
     }
   }
+  return practice;
+}
+
+function summarizePronunciationParts(parts, partBytes = []) {
+  const utterances = parts.flatMap((part) => part.utterances ?? []);
+  const practice = practiceWordSet(parts);
   let assessedSeconds = 0;
   let unassessedSeconds = 0;
   let unassessedSegments = 0;
@@ -137,6 +145,8 @@ function summarizePronunciationParts(parts, partBytes = []) {
     accuracy: weightedMean(utterances, (utterance) => utterance.accuracy),
     fluency: weightedMean(utterances, (utterance) => utterance.fluency),
     wordsToPractice: [...practice].slice(0, MAX_PRACTICE_WORDS),
+    // The full count of flagged words; wordsToPractice keeps at most MAX_PRACTICE_WORDS of them.
+    practiceWordCount: practice.size,
     assessedSeconds: Math.round(assessedSeconds),
     complete: parts.every((part) => part.complete !== false),
     unassessedSeconds: unassessedSeconds === null ? null : Math.round(unassessedSeconds),
@@ -196,12 +206,15 @@ function storyPlacement(parts, attempt, wordsToPractice = []) {
 }
 
 function rowSummary(row) {
+  const wordsToPractice = Array.isArray(row.words_to_practice) ? row.words_to_practice : [];
   return {
     parts: row.part_count,
     utterances: row.utterance_count,
     accuracy: row.accuracy == null ? null : Number(row.accuracy),
     fluency: row.fluency == null ? null : Number(row.fluency),
-    wordsToPractice: Array.isArray(row.words_to_practice) ? row.words_to_practice : [],
+    wordsToPractice,
+    // Read from the saved detailed parts (the saved row is unchanged); never fewer than the saved list.
+    practiceWordCount: Math.max(practiceWordSet(row.parts).size, wordsToPractice.length),
     assessedSeconds: Number(row.assessed_seconds),
     complete: row.complete === true,
     unassessedSeconds: row.unassessed_seconds == null ? null : Number(row.unassessed_seconds),

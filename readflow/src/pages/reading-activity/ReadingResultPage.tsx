@@ -11,12 +11,13 @@ import useAuthenticatedProfile from "../../hooks/useAuthenticatedProfile";
 import { getFeedbackSpeech } from "../../services/feedbackSpeech";
 import { markStory, markTranscript, readingAccuracyMessage } from "../../modules/module5/services/resultWords";
 import { getOralReadingAttempt, peekOralReadingAttempt, getOralReadingAttemptNumber, peekOralReadingAttemptNumber } from "../../modules/module5/services/oralReadingService";
-import FilipinoReadingFeedback, { FilipinoReadingAccuracyPanel, FilipinoWordReviewPanel } from "../../modules/module5/components/FilipinoReadingFeedback";
+import FilipinoReadingFeedback, { FilipinoReadingAccuracyPanel, FilipinoWordReviewPanel, filipinoDifferenceCount } from "../../modules/module5/components/FilipinoReadingFeedback";
 import RecordingPlayback from "../../modules/module5/components/RecordingPlayback";
 import {
   PronunciationAccuracyPanel,
   PronunciationFeedbackPanel,
   PronunciationWordsPanel,
+  practiceWordTotal,
   usePronunciationCheck,
 } from "../../modules/module5/components/PronunciationFeedback";
 import M5Modal from "../../modules/module5/components/M5Modal";
@@ -99,9 +100,17 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   // F5: the orange heard word the learner selected, to show the story word in its place.
   const [selectedWord, setSelectedWord] = useState<number>();
   const speech = getFeedbackSpeech();
-  // English only, started by the learner; one shared check per account and attempt feeds the
-  // F2, F3 and F4 panels and survives closing, switching or remounting them.
+  // English only; one shared check per account and attempt feeds the F2, F3 and F4 panels and the result cards, and
+  // survives closing, switching or remounting them.
   const pronunciation = usePronunciationCheck(attempt?.language === "en" ? attempt.id : undefined, attempt?.userId);
+  // The English pronunciation check starts as soon as the result opens (the recording was saved before this page),
+  // not when Pronunciation Feedback is opened. Once per reading: a saved result is reused and never re-checked, a
+  // check already running (another tab, a refresh) is joined by the server, and a failed automatic check is not
+  // repeated on its own in this browser session (Try Again stays in the Feedback panel). Opening a card only shows it.
+  const { autoCheck: startPronunciationCheck, status: pronunciationStatus, loadError: pronunciationLoadError } = pronunciation;
+  useEffect(() => {
+    if (attempt?.language === "en" && pronunciationStatus === "idle" && !pronunciationLoadError) startPronunciationCheck();
+  }, [attempt?.language, pronunciationStatus, pronunciationLoadError, startPronunciationCheck]);
 
   const moduleRoot =
     isPracticeRole(role)
@@ -258,6 +267,19 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
   const selectedPiece = selectedWord === undefined ? undefined : heard.pieces[selectedWord];
   const pronunciationStory = { passage: attempt.passageSnapshot ?? "", title: storyTitle };
   const pronunciationScore = pronunciation.status === "done" ? pronunciation.summary?.accuracy ?? null : null;
+  // Result cards: real numbers only, or a status while the English check is still running (never a fake 0).
+  const pronunciationSummary = pronunciation.status === "done" ? pronunciation.summary : undefined;
+  const pronunciationWorking = !filipino && !pronunciationSummary && (pronunciation.status === "loading" || pronunciation.status === "checking"
+    || pronunciation.status === "pending" || (pronunciation.status === "idle" && !pronunciation.loadError && !pronunciation.autoTried));
+  const englishCardStatus = !pronunciationSummary
+    ? (pronunciationWorking ? t("Processing…") : t("Not available yet. Open to try again."))
+    : pronunciationSummary.utterances === 0 ? t("No speech was detected.") : null;
+  const practiceTotal = pronunciationSummary && pronunciationSummary.utterances > 0 ? practiceWordTotal(pronunciationSummary) : null;
+  const differenceCount = filipino ? filipinoDifferenceCount(attempt) : null;
+  const transcribedWords = (attempt.transcript ?? "").trim() ? (attempt.transcript ?? "").trim().split(/\s+/u).length : 0;
+  const cardStatus = (text: string) => (
+    <span className="result-panel-card-status" role="status" aria-live="polite">{text}</span>
+  );
   const readAgainTarget = role === "general_user" && attempt.materialId && !attempt.roomId
     ? `/m3/general/materials/${encodeURIComponent(attempt.materialId)}/read-aloud?recordAgain=1`
     : attempt.materialId && attempt.roomId && attempt.activityAssignmentId
@@ -302,23 +324,37 @@ export default function ReadingResultPage({ role }: ReadingResultPageProps) {
               <MessageCircle size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{feedbackTitle}</span>
               <span className="result-panel-card-text">{feedbackCardText}</span>
+              {filipino
+                ? differenceCount === null ? cardStatus(t("No speech was detected."))
+                  : <strong className="result-panel-card-value">{t("Places to check: {count}", { count: differenceCount })}</strong>
+                : practiceTotal !== null
+                  ? <strong className="result-panel-card-value">{t("Practice items: {count}", { count: practiceTotal })}</strong>
+                  : cardStatus(englishCardStatus ?? "")}
             </button>
             <button type="button" className="result-panel-card result-panel-card--accuracy" aria-haspopup="dialog" onClick={() => openPanel("accuracy")}>
               <Gauge size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{accuracyTitle}</span>
               <span className="result-panel-card-text">{accuracyCardText}</span>
               {pronunciationScore !== null && <strong className="result-panel-card-value">{pronunciationScore}/100</strong>}
+              {!filipino && pronunciationScore === null && cardStatus(englishCardStatus ?? t("Score not measured."))}
               {filipino && <strong className="result-panel-card-value">{accuracy}%</strong>}
             </button>
             <button type="button" className="result-panel-card result-panel-card--words" aria-haspopup="dialog" onClick={() => openPanel("words")}>
               <ListChecks size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{wordsTitle}</span>
               <span className="result-panel-card-text">{wordsCardText}</span>
+              {filipino
+                ? differenceCount === null ? cardStatus(t("No speech was detected."))
+                  : <strong className="result-panel-card-value">{t("Words to review: {count}", { count: differenceCount })}</strong>
+                : practiceTotal !== null
+                  ? <strong className="result-panel-card-value">{t("Words flagged: {count}", { count: practiceTotal })}</strong>
+                  : cardStatus(englishCardStatus ?? "")}
             </button>
             <button type="button" className="result-panel-card result-panel-card--transcript" aria-haspopup="dialog" onClick={() => openPanel("transcript")}>
               <Headphones size={28} aria-hidden="true" />
               <span className="result-panel-card-title">{t("Read-Aloud Transcript")}</span>
               <span className="result-panel-card-text">{t("Compare the story with what we heard.")}</span>
+              <strong className="result-panel-card-value">{t("Words transcribed: {count}", { count: transcribedWords })}</strong>
             </button>
             <button type="button" className="result-panel-card result-panel-card--result" aria-haspopup="dialog" onClick={() => openPanel("result")}>
               <Star size={28} aria-hidden="true" />
