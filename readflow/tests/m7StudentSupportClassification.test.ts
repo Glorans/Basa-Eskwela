@@ -23,3 +23,9 @@ test('historical alert visibility is independent of current classification', () 
     assert.equal(matchesSupportFilter({classification, history: []}, 'history'), false);
   }
 });
+
+test('priority support is exactly At Risk and Needs Support', async () => {
+  const { needsPrioritySupport } = await import('../src/modules/module7/services/studentSupportClassification.ts');
+  for (const c of ['At Risk', 'Needs Support']) assert.equal(needsPrioritySupport(c), true);
+  for (const c of ['On Track', 'Early Warning', 'No assessment data', 'Evaluation unavailable', 'Unknown state']) assert.equal(needsPrioritySupport(c), false);
+});

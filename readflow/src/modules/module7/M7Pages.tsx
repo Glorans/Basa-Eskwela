@@ -1,5 +1,5 @@
 import { formatAnalyticsDate as dayLabel, formatAnalyticsDateTime as date } from './services/dateDisplay';
-import { matchesSupportFilter, recoveryNote, NOT_COUNTED_NOTE, RISK_RULES, RISK_RULES_INTRO } from './services/studentSupportClassification';
+import { needsPrioritySupport, NO_PRIORITY_SUPPORT_MESSAGE, recoveryNote, NOT_COUNTED_NOTE, RISK_RULES, RISK_RULES_INTRO } from './services/studentSupportClassification';
 import { formatScore, formatQuizScore, formatComprehension, passageProgressText } from './services/scoreDisplay';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -216,7 +216,7 @@ function SupportHistory({ student }: { student: Student }) {
 }
 export function TeacherSupportPage() {
   const {data,error,loading,refresh} = useData<TeacherData>('/teacher',true);
-  const [tab,setTab] = useState(0), [filter,setFilter] = useState('all'), [search,setSearch] = useState('');
+  const [tab,setTab] = useState(0), [search,setSearch] = useState('');
   const [selected,setSelected] = useState(''), [showDetails,setShowDetails] = useState(false);
   const [editing,setEditing] = useState<Intervention|'new'|null>(null), [message,setMessage] = useState(''), [actionError,setActionError] = useState('');
   // M7 F10: the suggestion a new intervention starts from (null = Teacher-written), and a reload key after saving.
@@ -224,7 +224,10 @@ export function TeacherSupportPage() {
   const student = data?.students.find(s => s.id === selected);
   const matches = (s: Student) => studentName(s).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
   const options = data?.students.filter(s => matches(s) || s.id === selected) ?? [];
-  const rows = data?.students.filter(s => matches(s) && matchesSupportFilter(s,filter)) ?? [];
+  // Students Needing Support lists only At Risk and Needs Support (backend classification); search narrows within them.
+  // Competency Reports and Student Interventions still offer every authorized Student through `options`.
+  const priority = data?.students.filter(s => needsPrioritySupport(s.classification)) ?? [];
+  const rows = priority.filter(matches);
   const selectStudent = (id: string) => {setSelected(id);setEditing(null);setSuggested(null);setMessage('');};
   return <main className="m7-page m7-dashboard m7-support-page" aria-label="Student Support and Competencies">
     <div className="m7-dashboard-content">
@@ -246,9 +249,7 @@ export function TeacherSupportPage() {
         {!data.students.length ? <p role="status">No enrolled students in your classrooms.</p> : <>
           <div className="m7-support-controls">
             <label>Find a student<input type="search" value={search} placeholder="Student name" disabled={editing!==null} onChange={e=>setSearch(e.target.value)}/></label>
-            {tab===0 ? <label>Show<select value={filter} onChange={e=>setFilter(e.target.value)}>
-              <option value="all">All students</option><option value="active">Active warnings and risk</option><option value="history">Students with alert history</option>
-            </select></label> : <label>Select Student<select id="support-student" value={student?.id ?? ''} disabled={editing!==null} onChange={e=>selectStudent(e.target.value)}>
+            {tab!==0 && <label>Select Student<select id="support-student" value={student?.id ?? ''} disabled={editing!==null} onChange={e=>selectStudent(e.target.value)}>
               <option value="">Select a student</option>{options.map(s=><option key={s.id} value={s.id}>{studentName(s)}</option>)}
             </select></label>}
           </div>
@@ -264,7 +265,7 @@ export function TeacherSupportPage() {
                 <span>{date(n.occurred_at)}</span>
                 <button type="button" className="m7-secondary" onClick={async()=>{setActionError('');try{await m7Request(`/notifications/${n.id}/read`,'PATCH');await refresh();}catch(e){setActionError((e as Error).message);}}}>Mark read</button>
               </li>; })}</ul></section>}
-            {!rows.length ? <p role="status">No students match these filters.</p> : <div className="m7-scroll" role="region" aria-label="Students needing support" tabIndex={0}><table>
+            {!priority.length ? <p role="status">{NO_PRIORITY_SUPPORT_MESSAGE}</p> : !rows.length ? <p role="status">No At Risk or Needs Support students match this search.</p> : <div className="m7-scroll" role="region" aria-label="Students needing support" tabIndex={0}><table>
               <thead><tr><th>Student</th><th>Support classification</th><th>Latest comprehension</th><th>Reading progress</th><th>Actions</th></tr></thead>
               <tbody>{rows.map(s=>{
                 const latest = [...s.quizzes].sort((a,b)=>(b.completedAt || '').localeCompare(a.completedAt || ''))[0];

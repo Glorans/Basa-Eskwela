@@ -140,3 +140,35 @@ test('M7 F11: saved records show competency, language, the chosen suggestion and
   const own=textOf(app.module.InterventionRecord({item:{...item,suggestion_key:null,suggestion_snapshot:null},onEdit(){}}));
   assert.match(own,/Teacher-written intervention/);
 });
+
+// Students Needing Support: only At Risk and Needs Support; the other tabs keep every authorized Student.
+const everyState=['On Track','Early Warning','No assessment data','Evaluation unavailable','At Risk','Needs Support'];
+const mixed={...teacherSupport,students:everyState.map((classification,i)=>({...teacherSupport.students[1],id:`s${i}`,full_name:`${classification} Pupil`,classification}))};
+const tableNames=(tree:any)=>findAll(byId(tree,'support-panel-0'),n=>n.type==='th'&&n.props.scope==='row').map(textOf);
+test('Students Needing Support lists only At Risk and Needs Support, with no Show filter',async()=>{
+  const app=setup(false,mixed);app.render();await tick();let tree=app.render();
+  assert.deepEqual(tableNames(tree),['At Risk Pupil','Needs Support Pupil']);
+  assert.equal(findAll(tree,n=>n.type==='select').length,0,'the Show: All students filter is removed');
+  assert.doesNotMatch(textOf(byId(tree,'support-panel-0')),/All students|Active warnings and risk/);
+  findAll(tree,n=>n.props['aria-label']==='View details for Needs Support Pupil')[0].props.onClick();tree=app.render();
+  assert.match(textOf(findAll(tree,n=>n.props['aria-label']==='Student support details')[0]),/Needs Support Pupil/);
+  // Competency Reports and Student Interventions still offer all six authorized Students.
+  for(const index of [1,2]) {tab(tree,index);tree=app.render();
+    assert.deepEqual(byId(tree,'support-student').props.children[1].map((o:any)=>o.props.value),everyState.map((_,i)=>`s${i}`));}
+});
+test('Find a student searches only within At Risk and Needs Support Students',async()=>{
+  const app=setup(false,mixed);app.render();await tick();let tree=app.render();
+  const search=()=>findAll(tree,n=>n.type==='input'&&n.props.type==='search')[0];
+  search().props.onChange({target:{value:'needs'}});tree=app.render();
+  assert.deepEqual(tableNames(tree),['Needs Support Pupil']);
+  search().props.onChange({target:{value:'on track'}});tree=app.render();
+  assert.deepEqual(tableNames(tree),[]);
+  assert.match(textOf(byId(tree,'support-panel-0')),/No At Risk or Needs Support students match this search\./);
+});
+test('Empty state when no Student is At Risk or Needs Support',async()=>{
+  const none={...mixed,students:mixed.students.filter(s=>!classification.needsPrioritySupport(s.classification))};
+  const app=setup(false,none);app.render();await tick();const tree=app.render();
+  assert.deepEqual(tableNames(tree),[]);
+  assert.match(textOf(byId(tree,'support-panel-0')),/No students currently classified as At Risk or Needs Support\./);
+  assert.equal(byId(tree,'support-panel-1').props.hidden,true);
+});
