@@ -43,6 +43,10 @@ test("old navigation wording is gone from navigation and page headings", async (
   const learnerPhrases = /Back to My Materials|is back in My Materials\.|It leaves My Materials|It is still in My Materials\./g;
   assert.equal((files[3].match(learnerPhrases) ?? []).length, 4);
   files[3] = files[3].replace(learnerPhrases, "");
+  // Document-55 (2026-11-23) names the learner Progress page heading exactly "My Progress & Results"; only that heading
+  // (and the page landmark with the same name) may use it. Navigation labels are unchanged.
+  assert.equal((files[4].match(/My Progress & Results/g) ?? []).length, 2);
+  files[4] = files[4].replace(/My Progress & Results/g, "");
   for (const text of files) {
     assert.doesNotMatch(text, /My Materials|My Badges|My Progress|My Results|Progress & Results/);
   }

@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { confirmReadFlow } from "../../../../components/ReadFlowDialog";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../../../auth/useAuth";
@@ -38,6 +38,12 @@ const NO_PERMISSIONS: AccountPermissions = {
 export default function UserManagementPage() {
   const { user: currentUser } = useAuth();
   const [params] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Opened from a Platform Analytics card (M7): an optional role hint and a way back. Display only; the server still
+  // decides which accounts are listed.
+  const roleHint = params.get("role") ?? "";
+  const fromPlatformAnalytics = params.get("from") === "platform-analytics";
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [permissions, setPermissions] = useState<AccountPermissions>(NO_PERMISSIONS);
   const [loading, setLoading] = useState(true);
@@ -110,14 +116,15 @@ export default function UserManagementPage() {
 
   // Category navigation starts at the default school tab; no additional API request.
   useEffect(() => {
-    setSchoolTab("admin");
+    setSchoolTab(roleHint === "teacher" || roleHint === "student" ? roleHint : "admin");
+    if (section === "all" && (APP_ROLES as readonly string[]).includes(roleHint)) setRoleFilter(roleHint as UserRoleFilter);
     setSchoolSearch("");
     setSchoolStatus("");
     setSchoolPage(1);
     setLearnerSearch("");
     setLearnerStatus("");
     setLearnerPage(1);
-  }, [section]);
+  }, [section, roleHint]);
 
   // Clamp after refresh or a status action removes the last row on the current page.
   useEffect(() => {
@@ -211,6 +218,15 @@ export default function UserManagementPage() {
 
   return (
     <section className={`admin-users-page${isSchoolAdmin ? " school-admin-users" : ""}`}>
+      {isSystemAdmin && fromPlatformAnalytics && (
+        <button type="button" className="admin-users-back" onClick={() => {
+          // Browser history returns to the same analytics tab and scroll position; a direct link falls back to the route.
+          if ((location.state as { fromPlatformAnalytics?: boolean } | null)?.fromPlatformAnalytics) navigate(-1);
+          else navigate(`/system-admin/analytics?tab=${encodeURIComponent(params.get("tab") || "overview")}`);
+        }}>
+          ← Back to Platform Analytics
+        </button>
+      )}
       <header className="admin-users-header">
         <div>
           <h1>User Management</h1>

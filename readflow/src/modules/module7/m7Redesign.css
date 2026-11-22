@@ -1,0 +1,96 @@
+/* M7 redesign (Platform Analytics, learner Progress & Results, Teacher Analytics). Page-scoped: every rule sits
+   under .m7r, so other pages are unaffected. Colours follow the Basa Eskwela palette. */
+.m7r { --m7r-forest:#17483c; --m7r-green:#79bd62; --m7r-soft:#b9d8ae; --m7r-sage:#dde9e8; --m7r-cream:#f5f8f1; --m7r-yellow:#ffca59; --m7r-coral:#f46f62; --m7r-muted:#54736a; color:var(--m7r-forest); }
+.m7r .m7r-header { background:var(--m7r-sage); border-radius:20px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; box-shadow:none; }
+.m7r .m7r-header h1 { color:var(--m7r-forest); font-size:clamp(24px,2.6vw,32px); font-weight:800; line-height:1.2; margin:0; }
+.m7r .m7r-header p { color:var(--m7r-muted); margin:4px 0 0; font-size:15px; line-height:1.5; }
+.m7r .m7r-header > button { flex-shrink:0; }
+.m7r .m7r-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; }
+.m7r.m7r .m7r-tabs button[role="tab"] { min-height:44px; padding:8px 18px; border-radius:999px; border:1px solid #c9dcd3; background:#fff; color:var(--m7r-forest); font-weight:700; cursor:pointer; box-shadow:none; }
+.m7r.m7r .m7r-tabs button[role="tab"][aria-selected="true"] { background:var(--m7r-forest); border-color:var(--m7r-forest); color:#fff; }
+.m7r .m7r-tabs [role="tab"]:focus-visible, .m7r :is(a,button,summary,select,input):focus-visible { outline:3px solid var(--m7r-yellow); outline-offset:2px; }
+.m7r .m7r-panel { display:grid; gap:16px; }
+/* An inactive tab panel stays mounted (its data is kept) but is never shown. */
+.m7r [role="tabpanel"][hidden] { display:none; }
+.m7r .m7r-section { background:#fff; border:1px solid #dbe7e1; border-radius:16px; padding:16px 20px; margin:0; box-shadow:none; }
+.m7r .m7r-section > h2, .m7r .m7r-section-head h2 { font-size:19px; margin:0 0 12px; color:var(--m7r-forest); }
+.m7r .m7r-section-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.m7r .m7r-section-head h2 { margin:0; }
+.m7r .m7r-note { color:var(--m7r-muted); font-size:13px; line-height:1.5; margin:8px 0 0; }
+.m7r .m7r-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+.m7r .m7r-kpi { display:flex; flex-direction:column; gap:4px; background:#fff; border:1px solid #dbe7e1; border-radius:14px; padding:12px 14px; min-width:0; color:var(--m7r-forest); text-decoration:none; box-shadow:none; }
+.m7r .m7r-kpi span { font-size:13px; font-weight:700; color:var(--m7r-muted); }
+.m7r .m7r-kpi strong { font-size:clamp(20px,2.2vw,26px); line-height:1.2; overflow-wrap:anywhere; }
+.m7r .m7r-kpi small { font-size:12px; color:var(--m7r-muted); }
+.m7r a.m7r-kpi { border-left:4px solid var(--m7r-green); }
+.m7r a.m7r-kpi:hover { background:var(--m7r-cream); }
+.m7r a.m7r-kpi small.m7r-kpi-link { color:var(--m7r-forest); font-weight:700; }
+.m7r .m7r-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.m7r .m7r-chart { margin:0; min-width:0; }
+.m7r .m7r-chart figcaption { display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; margin-bottom:6px; }
+.m7r .m7r-chart figcaption span { font-size:13px; color:var(--m7r-muted); }
+.m7r .m7r-chart svg { display:block; width:100%; height:auto; max-height:320px; }
+.m7r .m7r-axis { font-size:14px; fill:var(--m7r-muted); }
+.m7r .m7r-value { font-size:14px; font-weight:700; fill:var(--m7r-forest); }
+.m7r .m7r-nodata { font-size:13px; fill:var(--m7r-muted); font-style:italic; }
+.m7r .m7r-legend { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:13px; margin-bottom:4px; }
+.m7r .m7r-legend span, .m7r .m7r-donut-legend li { display:inline-flex; align-items:center; gap:6px; }
+.m7r .m7r-legend i, .m7r .m7r-donut-legend i { width:12px; height:12px; border-radius:3px; display:inline-block; flex-shrink:0; }
+.m7r .m7r-donut { display:grid; grid-template-columns:minmax(150px,220px) 1fr; gap:16px; align-items:center; }
+.m7r .m7r-donut-total { font-size:30px; font-weight:800; fill:var(--m7r-forest); }
+.m7r .m7r-donut-legend { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.m7r .m7r-donut-legend li { display:grid; grid-template-columns:12px 1fr auto 56px; gap:8px; font-size:14px; }
+.m7r .m7r-donut-legend small { color:var(--m7r-muted); text-align:right; }
+.m7r .m7r-empty { color:var(--m7r-muted); background:var(--m7r-cream); border-radius:12px; padding:12px 14px; margin:0; }
+.m7r .m7r-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+.m7r details.m7r-details { background:#fff; border:1px solid #dbe7e1; border-radius:16px; padding:0 20px; }
+.m7r details.m7r-details > summary { cursor:pointer; font-weight:800; font-size:17px; min-height:48px; display:flex; align-items:center; gap:8px; list-style-position:inside; }
+.m7r details.m7r-details[open] { padding-bottom:16px; }
+.m7r .m7-scroll table { width:100%; }
+.m7r .m7r-select { display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:14px; }
+.m7r .m7r-select select { min-height:40px; border-radius:10px; border:1px solid #9fbcb0; padding:6px 10px; background:#fff; color:var(--m7r-forest); }
+.m7r .m7r-progress { height:12px; border-radius:999px; background:var(--m7r-sage); overflow:hidden; }
+.m7r .m7r-progress > span { display:block; height:100%; background:var(--m7r-green); border-radius:999px; }
+.m7r .m7r-progress-summary { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; font-weight:700; margin-bottom:8px; }
+/* Teacher Analytics: compact header, filters and classroom rows */
+.m7r.m7-teacher-dashboard section[aria-label="Analytics filters"] { padding:14px 16px; margin:0 0 16px; border-radius:16px; box-shadow:none; }
+.m7r.m7-teacher-dashboard .m7-filter-form { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px; }
+.m7r.m7-teacher-dashboard .m7-filter-actions { grid-column:1 / -1; display:flex; gap:10px; }
+.m7r .m7r-rooms { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.m7r .m7r-room { border:1px solid #dbe7e1; border-radius:12px; padding:10px 14px; background:var(--m7r-cream); }
+.m7r .m7r-room-main { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1.6fr) auto; gap:12px; align-items:center; }
+.m7r .m7r-room-name strong { display:block; overflow-wrap:anywhere; }
+.m7r .m7r-room-name small { color:var(--m7r-muted); }
+.m7r .m7r-room-figures { display:grid; gap:4px; font-size:14px; }
+.m7r .m7r-room button { min-height:40px; padding:6px 12px; }
+.m7r .m7r-room dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin:10px 0 0; }
+.m7r .m7r-room dl div { background:#fff; border-radius:10px; padding:8px 10px; }
+.m7r .m7r-room dt { font-size:12px; color:var(--m7r-muted); }
+.m7r .m7r-room dd { margin:0; font-weight:800; }
+.m7r .asp-combobox { position:relative; min-width:0; max-width:560px; }
+.m7r .asp-combobox > label { display:block; margin-bottom:6px; font-weight:700; font-size:14px; }
+.m7r .asp-combobox-field { display:flex; gap:8px; align-items:center; }
+.m7r .asp-combobox-field input { min-width:0; flex:1; min-height:44px; box-sizing:border-box; padding:8px 12px; border:1px solid #9fbcb0; border-radius:10px; }
+.m7r .asp-combobox-field button { min-height:44px; }
+.m7r .asp-combobox-menu { position:absolute; top:100%; left:0; right:0; z-index:10; background:#fff; border:1px solid #9eb7a8; border-radius:12px; box-shadow:0 8px 24px rgb(23 72 60 / 12%); padding:8px; margin-top:6px; }
+.m7r .asp-combobox-menu ul { list-style:none; padding:0; margin:0; max-height:260px; overflow-y:auto; overscroll-behavior:contain; }
+.m7r .asp-combobox-menu li { margin:0; padding:10px 12px; min-height:44px; box-sizing:border-box; border-radius:8px; cursor:pointer; display:flex; gap:6px 14px; flex-wrap:wrap; align-items:center; overflow-wrap:anywhere; }
+.m7r .asp-combobox-menu li:hover, .m7r .asp-combobox-menu li[aria-selected="true"] { background:#ddeae4; }
+.m7r .asp-combobox-menu small, .m7r .asp-meta { color:var(--m7r-muted); font-size:13px; }
+.m7r .asp-combobox-menu > button { margin-top:6px; }
+/* Learner pages: practice idea cards that expand */
+.m7r details.m7r-tip { border:1px solid #dbe7e1; border-radius:14px; background:#fff; padding:0 16px; }
+.m7r details.m7r-tip > summary { cursor:pointer; min-height:48px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-weight:800; }
+.m7r details.m7r-tip[open] { padding-bottom:12px; }
+@media (max-width:900px) {
+  .m7r .m7r-grid-2 { grid-template-columns:1fr; }
+  .m7r .m7r-room-main { grid-template-columns:1fr; }
+}
+@media (max-width:560px) {
+  .m7r .m7r-header { flex-direction:column; align-items:flex-start; padding:16px; }
+  .m7r .m7r-donut { grid-template-columns:1fr; }
+  .m7r .m7r-donut svg { max-width:220px; margin:0 auto; }
+  .m7r.m7-teacher-dashboard .m7-filter-form { grid-template-columns:1fr; }
+  .m7r .m7r-section { padding:14px; }
+  .m7r .m7r-tabs [role="tab"] { flex:1 1 auto; padding:8px 12px; }
+}

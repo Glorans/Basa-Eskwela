@@ -6,7 +6,7 @@ import type { TeacherCompletionAnalytics } from "./teacherAnalyticsService";
  */
 export interface ActiveClassroomScope {
   /** Active rooms owned by the Teacher, newest first, as the classroom service returns them. */
-  rooms: { id: string; name: string }[];
+  rooms: { id: string; name: string; code?: string }[];
   roomIds: Set<string>;
   /** Learners currently enrolled in at least one active room. */
   studentIds: Set<string>;

@@ -33,6 +33,8 @@ function load(path: string, responses: Record<string, unknown>, requests: string
     if (id === "react-router-dom") return navigation.module;
     if (id.endsWith(".css")) return {};
     if (id.endsWith('/SuggestedInterventions')) return { SuggestedInterventions: 'suggested-interventions' };
+    if (id.endsWith('/M7Tabs')) return { default: 'm7-tabs' };
+    if (id.endsWith('/M7Charts')) return { BarChart: 'bar-chart', LineChart: 'line-chart', DonutChart: 'donut-chart', M7_COLORS: { forest: '#17483C', green: '#79BD62', yellow: '#FFCA59', coral: '#F46F62', muted: '#54736A', soft: '#B9D8AE', blue: '#356A91' } };
     if (id.endsWith('/LearnerSuggestions')) return { LearnerSuggestions: 'learner-suggestions' };
     if (id.endsWith("/PerformanceSelector")) return { default: "selector" };
     if (id.endsWith("/classroomService")) return { getRoomEnrollments: async () => [] };
@@ -64,10 +66,10 @@ test("function 1: Independent Learners get Progress & Result with their own rout
     assert.deepEqual(requests, ["/personal"], "only the signed-in learner's endpoint");
     const all = text(tree);
     if (role === "general_user") {
-      assert.doesNotMatch(all, /Activity progress|assigned reading activities/);
+      assert.doesNotMatch(all, /[Aa]ctivity progress|assigned reading activities/);
       assert.deepEqual(links(tree), ["/m3/general/read-aloud/results/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]);
     } else {
-      assert.match(all, /Activity progress/);
+      assert.match(all, /My activity progress/);
       assert.deepEqual(links(tree), ["/dashboard/learning-rooms/room/reading-activities/mat", "/dashboard/read-aloud/results/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]);
     }
     // The quiz table (a child component) links each result with the learner's own role.

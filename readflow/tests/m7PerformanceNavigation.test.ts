@@ -38,6 +38,8 @@ function setup(file: string, overrides: Record<string, any> = {}) {
     if (id === 'lucide-react') return new Proxy({}, { get: (_, name) => String(name) });
     if (id.endsWith('.css')) return {};
     if (id.endsWith('/SuggestedInterventions')) return { SuggestedInterventions: 'suggested-interventions' };
+    if (id.endsWith('/M7Tabs')) return { default: 'm7-tabs' };
+    if (id.endsWith('/M7Charts')) return { BarChart: 'bar-chart', LineChart: 'line-chart', DonutChart: 'donut-chart', M7_COLORS: { forest: '#17483C', green: '#79BD62', yellow: '#FFCA59', coral: '#F46F62', muted: '#54736A', soft: '#B9D8AE', blue: '#356A91' } };
     if (id.endsWith('/LearnerSuggestions')) return { LearnerSuggestions: 'learner-suggestions' };
     if (id.endsWith('analyticsFilters')) return filters;
     if (id.endsWith('scoreDisplay')) return score;
@@ -91,18 +93,30 @@ test('Teacher function navigation mounts only one dashboard and preserves refres
   await tick(); assert.ok(app.calls.length > calls.length);
 });
 
-test('Teacher selects students, searches, and opens existing scoped progress', async () => {
+test('Teacher chooses a student from one searchable dropdown; nothing is selected automatically', async () => {
   const app = setup('TeacherAnalyticsPage.tsx'); app.render(); await tick(); let tree = app.render();
   byId(tree, 'analytics-tab-1').props.onClick(); tree = app.render();
+  assert.equal(findAll(tree, n => n.type === 'input').length, 0, 'the separate Find a student field is gone');
+  assert.equal(selectors(tree, 'teacher-student').value, '', 'no automatic selection');
+  assert.equal(selectors(tree, 'teacher-student').placeholder, 'Type a name or choose a student...');
+  assert.match(text(tree), /Choose a student from the dropdown to view their performance\./);
+  assert.deepEqual(selectors(tree, 'teacher-student').options.map((s: any) => [s.id, s.name, s.detail]), [['ana', 'Ana', 'Grade 5, Grade 5'], ['ben', 'Ben', 'Grade 5']],
+    'unique IDs select; classroom names tell same-name students apart');
   selectors(tree, 'teacher-student').onChange('ben'); tree = app.render();
   assert.equal(selectors(tree, 'teacher-student').value, 'ben');
   assert.match(text(tree), /No results yet/);
+  assert.match(text(tree), /Reading Speed/);
   findAll(tree, n => n.props['aria-label'] === 'View progress for Ben')[0].props.onClick(); tree = app.render();
   assert.ok(byId(tree, 'student-progress-details'));
   assert.match(text(tree), /No completed assessments/);
-  findAll(tree, n => n.type === 'input')[0].props.onChange({target:{value:'no match'}}); tree = app.render();
-  assert.match(text(tree), /No students match this name/);
-  assert.equal(byId(tree, 'student-progress-details'), undefined);
+  selectors(tree, 'teacher-student').onChange(''); tree = app.render();
+  assert.equal(byId(tree, 'student-progress-details'), undefined, 'Clear removes the selection and its details');
+  // A classroom filter that leaves the selected student out of scope clears the selection.
+  selectors(tree, 'teacher-student').onChange('ben'); tree = app.render();
+  findAll(tree, n => n.type === 'global-filters')[0].props.onApply({ ...filters.allTime, roomId: 'room-a' });
+  app.render(); await tick(); app.render(); await tick(); tree = app.render();
+  assert.equal(selectors(tree, 'teacher-student').value, '');
+  assert.deepEqual(selectors(tree, 'teacher-student').options.map((s: any) => s.id), ['ana']);
 });
 
 test('Teacher applies classroom scope and distinguishes failed and empty results', async () => {
@@ -124,7 +138,7 @@ test('Teacher Analytics lists active classrooms only and totals completion from 
   assert.deepEqual(bar.rooms.map((room: any) => room.id), ['room-a', 'room-b']);
   assert.equal(bar.resetMissingRoom, true);
   const rows = findAll(tree, n => n.props?.['aria-label'] === 'Completion by Classroom')[0];
-  assert.equal(findAll(rows, n => n.type === 'article').length, 2);
+  assert.equal(findAll(rows, n => n.props?.room && n.props?.onToggle).length, 2);
   assert.doesNotMatch(text(tree), /Empty classroom/);
   assert.match(text(tree), /4 of 8/, 'completion totals are recomputed from active rooms only');
 });
@@ -239,4 +253,16 @@ test('Admin ignores a late enrollment response after switching classrooms', asyn
   assert.deepEqual(selectors(tree, 'admin-student').options.map((s: any) => s.id), ['ben']);
   finishA([{ student_id: 'ana' }]); await tick(); tree = app.render();
   assert.deepEqual(selectors(tree, 'admin-student').options.map((s: any) => s.id), ['ben']);
+});
+
+test('Completion by Classroom sorts for display only and lists classrooms without activities last', () => {
+  const app = setup('TeacherAnalyticsPage.tsx');
+  const row = (roomId: string, roomName: string, total: number, done: number) => ({ roomId, roomName, totalAssignments: total, completedAssignments: done,
+    inProgressAssignments: 0, notStartedAssignments: total - done, incompleteAssignments: total - done, completionRate: total ? Math.round(done / total * 10000) / 100 : null });
+  const rows = [row('r1', 'Grade-5', 4, 4), row('r2', 'Grade-5', 4, 1), row('r3', 'Alpha', 0, 0), row('r4', 'Beta', 3, 2)];
+  const ids = (sort: string) => Array.from(app.module.sortClassroomRows(rows, sort), (r: any) => String(r.roomId));
+  assert.deepEqual(ids('lowest'), ['r2', 'r4', 'r1', 'r3']);
+  assert.deepEqual(ids('highest'), ['r1', 'r4', 'r2', 'r3']);
+  assert.deepEqual(ids('name'), ['r3', 'r4', 'r1', 'r2']);
+  assert.deepEqual(rows.map(r => r.roomId), ['r1', 'r2', 'r3', 'r4'], 'the loaded data is not reordered');
 });
