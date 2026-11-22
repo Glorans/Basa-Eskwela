@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   { label: "Leaderboard", to: "/dashboard/leaderboard", icon: Trophy },
   { label: "Badges", to: "/dashboard/badges", icon: Award },
   { label: "Progress & Result", to: "/dashboard/progress", icon: BookOpen },
-  { label: "Assessment History", to: "/dashboard/assessment-history", icon: ClipboardList },
+  { label: "Reading Assessment", to: "/dashboard/assessment-history", icon: ClipboardList },
   // M2 F8: reassessments assigned by the Student's teacher.
   { label: "My Reassessments", to: "/dashboard/reassessments", icon: ClipboardList },
   { label: "Reading History", to: "/dashboard/reading-history", icon: BookOpen },
