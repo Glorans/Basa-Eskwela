@@ -1,0 +1,29 @@
+/* System Admin Dashboard inside the cream System Admin theme. The shared dashboard kit assumes the dark green
+   Basa background; here the hero follows the other System Admin page headers (light, forest text) and the primary
+   quick actions use the theme's green. Scoped to .system-admin-ui, so other role dashboards are unchanged. */
+.system-admin-ui .rd-hero {
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
+  color: var(--sa-forest);
+}
+.system-admin-ui .rd-hero .rd-hero-eyebrow {
+  color: var(--sa-green);
+}
+.system-admin-ui .rd-hero p {
+  color: var(--sa-muted);
+}
+.system-admin-ui .rd-action:not(.rd-action--secondary) {
+  background: var(--sa-green);
+  color: #ffffff;
+}
+.system-admin-ui .rd-action:not(.rd-action--secondary):focus-visible {
+  outline: 3px solid var(--sa-forest);
+  outline-offset: 2px;
+}
+/* Six platform cards: three per row on wide screens (no single orphan card); the shared rules handle narrower widths. */
+@media (min-width: 1000px) {
+  .system-admin-ui .rd-stats[aria-label="Platform summary"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

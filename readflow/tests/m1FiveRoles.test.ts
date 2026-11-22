@@ -33,10 +33,10 @@ test("five roles with the Appendix N labels; each signs in to its own home", () 
   assert.deepEqual(ROLE_LABELS, {
     system_admin: "System Admin", admin: "School Admin", teacher: "Teacher", student: "Student", general_user: "Independent Learner",
   });
-  assert.equal(getRoleHomePath("system_admin"), "/system-admin/users");
+  assert.equal(getRoleHomePath("system_admin"), "/system-admin/dashboard", "System Admin lands on its Dashboard");
   assert.equal(getRoleHomePath("admin"), "/m3/admin/dashboard", "School Admin keeps the existing Admin home");
   const go = (role: string) => resolveUserDestination({ role, nickname: "N", fullName: "Full Name", hasCompletedDiagnostic: true, teacherStatus: "approved" });
-  assert.equal(go("system_admin"), "/system-admin/users");
+  assert.equal(go("system_admin"), "/system-admin/dashboard");
   assert.equal(go("admin"), "/m3/admin/dashboard");
   assert.equal(go("teacher"), "/m3/teacher/dashboard");
   assert.equal(go("student"), "/dashboard");
@@ -292,7 +292,7 @@ test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4)
   const app = src("App.tsx");
   const block = app.slice(app.indexOf('allowedRoles={["system_admin"]}'), app.indexOf("{/* Admin (School Admin) routes */}"));
   assert.match(block, /path="\/system-admin" element=\{<M3Layout role="system_admin" \/>\}/);
-  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "users", "school-admins/new", "schools", "analytics", "independent-learners", "assessment-packages", "assessment/initial", "assessment/reassessment", "assessment-packages/:packageId",
+  assert.deepEqual([...block.matchAll(/path="([^"]+)"/g)].map((m) => m[1]).filter(path => !path.startsWith("content")), ["/system-admin", "dashboard", "users", "school-admins/new", "schools", "analytics", "independent-learners", "assessment-packages", "assessment/initial", "assessment/reassessment", "assessment-packages/:packageId",
     // Appendix N M5/M6: System Admin reading practice (own results only) and the M6 F5 preview.
     "practice", "practice/modules/:moduleId/read-aloud", "practice/modules/:moduleId/preview", "practice/read-aloud/results/:attemptId",
     "practice/modules/:moduleId/comprehension", "practice/comprehension/:attemptId", "practice/history", "settings"]);
@@ -301,7 +301,7 @@ test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4)
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Content Management", "Create Module", "Reading Materials", "Upload Material", "Reading Practice", "Practice History", "User Management", "Schools", "Platform Analytics", "Independent Learners"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Dashboard", "Content Management", "Create Module", "Reading Materials", "Upload Material", "Reading Practice", "Practice History", "User Management", "Schools", "Platform Analytics", "Independent Learners"]);
   // M2: Assessment (Initial Diagnostic, Reassessment) is an expandable group rendered after these flat items.
   assert.match(layout, /role === "system_admin" && <AssessmentNavigation /);
 });

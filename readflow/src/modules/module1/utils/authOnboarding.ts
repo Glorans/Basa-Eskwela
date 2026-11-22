@@ -61,7 +61,7 @@ export function isAssignableUserRole(value: unknown): value is AssignableUserRol
   );
 }
 
-export const SYSTEM_ADMIN_HOME_PATH = "/system-admin/users";
+export const SYSTEM_ADMIN_HOME_PATH = "/system-admin/dashboard";
 
 // Each role lands on its dashboard. The workspace roots (/m3/admin, /m3/teacher, /m3/general)
 // keep their existing pages and stay usable as deep links.

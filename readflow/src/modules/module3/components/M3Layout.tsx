@@ -41,6 +41,7 @@ function getNavItems(role: ShellRole) {
   if (role === "system_admin") {
     // Appendix N M1 for the System Admin: F6/F7 (User Management), F8 (Create School Admin), F4/F5 (profile).
     return [
+      { label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true },
       { label: "Content Management", to: "/system-admin/content", icon: Files, end: true },
       { label: "Create Module", to: "/system-admin/content/modules/new", icon: PlusCircle, end: true },
       { label: "Reading Materials", to: "/system-admin/content/materials", icon: Files, end: true },
