@@ -87,6 +87,7 @@ import { StudentProgressPage, AdminAnalyticsPage, TeacherSupportPage } from "./m
 import AdminStudentPerformancePage from "./modules/module7/AdminStudentPerformancePage";
 import AdminReportsPage from "./modules/module7/AdminReportsPage";
 import { SystemAdminLearnerPerformancePage, SystemAdminOverviewPage } from "./modules/module7/SystemAdminAnalyticsPage";
+import SystemAdminDashboard from "./pages/dashboard/SystemAdminDashboard";
 
 function App() {
   return (
@@ -318,7 +319,8 @@ function App() {
         {/* System Admin: account management and the shared M3 content workspace. */}
         <Route element={<RequireRole allowedRoles={["system_admin"]} />}>
           <Route path="/system-admin" element={<M3Layout role="system_admin" />}>
-            <Route index element={<Navigate to="users" replace />} />
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<SystemAdminDashboard />} />
             <Route path="users" element={<UserManagementPage />} />
             <Route path="school-admins/new" element={<CreateSchoolAdminPage />} />
             {/* M1 F8 Create School (System Admin only; re-checked on the server). */}
