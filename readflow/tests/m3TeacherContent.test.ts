@@ -167,9 +167,12 @@ test("Teachers can find module authoring from every usual entry point, like the 
   // Root cause of "Teachers cannot create modules": the feature existed but was reachable only through
   // "My Reading Modules". These are the same entry points the School Admin has.
   const layout = read("modules/module3/components/M3Layout.tsx");
-  assert.match(layout, /\{ label: "My Reading Modules", to: "\/m3\/teacher\/content", icon: FilePlus2, end: true \}/);
-  assert.match(layout, /\{ label: "Create Module", to: "\/m3\/teacher\/content\/new", icon: PlusCircle, end: true \}/);
-  assert.match(layout, /\{ label: "Create Module", to: "\/m3\/admin\/modules\/new", icon: PlusCircle, end: true \}/, "Admin item unchanged");
+  // Sidebar simplification (2026-11-22): Create Module is the button on My Reading Modules / Content Management, which
+  // stays highlighted on the create page; the sidebar no longer repeats it.
+  assert.match(layout, /\{ label: "My Reading Modules", to: "\/m3\/teacher\/content", icon: FilePlus2, end: true, alsoActive: \["\/m3\/teacher\/content\/new"\] \}/);
+  assert.match(layout, /\{ label: "Content Management", to: "\/m3\/admin", icon: Files, end: true, alsoActive: \["\/m3\/admin\/modules\/new"\] \}/);
+  assert.doesNotMatch(layout, /label: "Create Module"/);
+  assert.match(read("modules/module3/pages/Module3Page.tsx"), /to=\{`\$\{paths\.module\}\/new`\}><PlusCircle[^>]*\/> Create Module<\/Link>/, "the page button remains");
 
   const dashboard = read("pages/dashboard/TeacherDashboard.tsx");
   assert.match(dashboard, /\{ label: "Create Reading Module", to: "\/m3\/teacher\/content\/new", icon: PlusCircle \}/);

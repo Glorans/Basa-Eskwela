@@ -301,7 +301,7 @@ test("routes: System Admin M1 pages remain isolated alongside M3 and M7 (F2, F4)
 
   const layout = src("modules/module3/components/M3Layout.tsx");
   const nav = layout.slice(layout.indexOf('if (role === "system_admin") {'), layout.indexOf("return [{ label: \"Dashboard\""));
-  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Dashboard", "Content Management", "Create Module", "Reading Materials", "Upload Material", "Reading Practice", "Practice History", "User Management", "Schools", "Platform Analytics", "Independent Learners"]);
+  assert.deepEqual([...nav.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]), ["Dashboard", "Content Management", "Reading Materials", "Reading Practice", "Practice History", "User Management", "Schools", "Platform Analytics", "Independent Learners"]);
   // M2: Assessment (Initial Diagnostic, Reassessment) is an expandable group rendered after these flat items.
   assert.match(layout, /role === "system_admin" && <AssessmentNavigation /);
 });
