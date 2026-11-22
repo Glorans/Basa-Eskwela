@@ -169,3 +169,19 @@ test("Student one-line choice explains when names are not approved yet or the ni
   assert.doesNotMatch(textOf(tree), /approves them/, "no approval note for an anonymous choice");
   assert.equal(await (await mountControl(null)).view(), null, "nothing until the migration is deployed");
 });
+
+test("nickname safety (m8_leaderboard_alias_safety_v1): the rules live in the database and the panel states them", () => {
+  const panel = read("src/modules/module8/LeaderboardPrivacyPanel.tsx");
+  assert.match(panel, /No real name, e-mail, links, phone numbers or rude words\./);
+  const sql = read("../supabase/proposed/m8_leaderboard_alias_safety_v1_PROPOSED.sql");
+  // Guarded against drift from the released m8_leaderboard_privacy_v1 functions; switches are never touched.
+  assert.match(sql, /02353e946e14f9b44d61f8b96f82c8d1/);
+  assert.match(sql, /800637d76a0d4cafb12a5f3480c7f71f/);
+  assert.doesNotMatch(sql, /m8_leaderboard_settings\s+SET|UPDATE\s+public\.m8_leaderboard_settings|INSERT INTO public\.m8_leaderboard_settings/i);
+  // Display goes through the same check, so a stored nickname that breaks a rule is shown as a Reader code.
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.m8_leaderboard_alias\(p_alias text\)[\s\S]*m8_leaderboard_alias_issue\(p_alias\) is null/);
+  assert.match(sql, /m8_leaderboard_alias_reveals_identity\(v_alias, v_me\)/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.m8_leaderboard_alias_issue\(text\), public\.m8_leaderboard_alias_reveals_identity\(text, uuid\) FROM PUBLIC, anon, authenticated/);
+  const rollback = read("../supabase/proposed/m8_leaderboard_alias_safety_v1_ROLLBACK_PROPOSED.sql");
+  assert.match(rollback, /DROP FUNCTION public\.m8_leaderboard_alias_issue\(text\)/);
+});
