@@ -63,7 +63,7 @@ function mountUsers(permissions: object, users: object[], changes: string[][] = 
   const runtime = createHookRuntime(require("react"));
   const page = loadComponentModule(new URL("../src/modules/module1/pages/admin/UserManagementPage.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
-    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()] };
+    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()], useLocation: () => ({ state: null, key: "default" }), useNavigate: () => () => {} };
     if (id.endsWith("/components/ReadFlowDialog")) return { confirmReadFlow: async (message: string, labels: { confirm: string }) => { changes.push(["confirm", labels.confirm, message]); return confirmAnswer; } };
     if (id.endsWith("/auth/useAuth")) return { useAuth: () => ({ user: { id: "me" } }) };
     if (id.endsWith("/services/adminUsers")) {
@@ -172,7 +172,7 @@ function mountCreate(createSchoolAdmin: (input: object) => Promise<object>, dial
   const navigations: string[] = [];
   const page = loadComponentModule(new URL("../src/modules/module1/pages/admin/CreateSchoolAdminPage.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
-    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()], useNavigate: () => (to: string) => navigations.push(to) };
+    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [new URLSearchParams()], useLocation: () => ({ state: null, key: "default" }), useNavigate: () => (to: string) => navigations.push(to) };
     if (id.endsWith("/components/ReadFlowDialog")) return {
       showReadFlowDialog: async (message: string, kind: string, labels: DialogCall["labels"]) => { dialogs.push({ message, kind, labels }); return dialogAnswer(); },
     };

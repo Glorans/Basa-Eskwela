@@ -118,7 +118,7 @@ export async function getActiveClassroomScope(): Promise<ActiveClassroomScope> {
   const rooms = (await getTeacherClassrooms(user.id)).filter(isActiveClassroom);
   const enrollments = await Promise.all(rooms.map(room => getRoomEnrollments(room.id)));
   return {
-    rooms: rooms.map(room => ({ id: room.id, name: room.room_name })),
+    rooms: rooms.map(room => ({ id: room.id, name: room.room_name, ...(room.room_code ? { code: room.room_code } : {}) })),
     roomIds: new Set(rooms.map(room => room.id)),
     studentIds: new Set(enrollments.flat().map(student => student.student_id)),
   };

@@ -52,7 +52,7 @@ test("support filters: No assessment data is not an active warning", () => {
 
 test("Independent Learners have no classroom section; module activities link to their Learning Room", () => {
   const page = source("M7Pages.tsx");
-  assert.match(page, /role === 'student' && <section><h2>Activity progress/);
+  assert.match(page, /role === 'student' && <section[^>]*><h2[^>]*>My activity progress/);
   assert.match(page, /a\.kind === 'module' \? `\/dashboard\/learning-rooms\/\$\{a\.roomId\}`/);
   assert.match(page, /passageProgressText\(a\)/);
 });

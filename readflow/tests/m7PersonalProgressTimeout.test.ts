@@ -52,6 +52,8 @@ function mountPage(page: 'StudentProgressPage' | 'TeacherSupportPage', props: Re
     if (id === 'react-router-dom') return { Link: 'link' };
     if (id.endsWith('.css') || id.endsWith('/comprehensionNavigation')) return { comprehensionResultTarget: () => '#', readingResultTarget: () => '#' };
     if (id.endsWith('/SuggestedInterventions')) return { SuggestedInterventions: 'suggested-interventions' };
+    if (id.endsWith('/M7Tabs')) return { default: 'm7-tabs' };
+    if (id.endsWith('/M7Charts')) return { BarChart: 'bar-chart', LineChart: 'line-chart', DonutChart: 'donut-chart', M7_COLORS: { forest: '#17483C', green: '#79BD62', yellow: '#FFCA59', coral: '#F46F62', muted: '#54736A', soft: '#B9D8AE', blue: '#356A91' } };
     if (id.endsWith('/LearnerSuggestions')) return { LearnerSuggestions: 'learner-suggestions' };
     if (id.endsWith('/AdminAnalyticsPage')) return { default: 'admin' };
     if (id.endsWith('/dateDisplay')) return dates;

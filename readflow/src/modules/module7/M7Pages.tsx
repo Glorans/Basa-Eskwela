@@ -1,4 +1,4 @@
-import { formatAnalyticsDateTime as date } from './services/dateDisplay';
+import { formatAnalyticsDate as dayLabel, formatAnalyticsDateTime as date } from './services/dateDisplay';
 import { matchesSupportFilter, recoveryNote, NOT_COUNTED_NOTE, RISK_RULES, RISK_RULES_INTRO } from './services/studentSupportClassification';
 import { formatScore, formatQuizScore, formatComprehension, passageProgressText } from './services/scoreDisplay';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -7,9 +7,12 @@ import { comprehensionResultTarget, readingResultTarget } from '../module5/servi
 import { m7Request, PERSONAL_PROGRESS_TIMEOUT_MS, type Metrics, type PersonalData, type TeacherData, type Intervention, type Quiz, type Student, type SuggestionItem } from './services/m7Service';
 import { SuggestedInterventions } from './components/SuggestedInterventions';
 import { LearnerSuggestions } from './components/LearnerSuggestions';
+import M7Tabs from './components/M7Tabs';
+import { BarChart, LineChart, M7_COLORS, type LinePoint } from './components/M7Charts';
 import './m7.css';
 import './m7Dashboard.css';
 import './teacherSupport.css';
+import './m7Redesign.css';
 // Display rounding only; saved values and calculations are unchanged.
 const percent = (value:number|null) => value === null ? 'No data' : formatScore(Math.round(value * 100) / 100);
 const wholePercent = (value:unknown) => typeof value === 'number' && Number.isFinite(value) ? formatScore(Math.round(value)) : 'No data';
@@ -60,6 +63,19 @@ export function MetricsCards({data}:{data:Metrics}) {return <div className="m7-m
 // No Hints column: M6 no longer records hints (one final answer per question), so the
 // count is 0 for every current activity. Saved hint_used values are left unchanged.
 function QuizTable({quizzes,own}:{quizzes:Quiz[];own?:LearnerRole}) {return !quizzes.length ? <p>No completed quizzes yet.</p> : <div className="m7-scroll"><table><thead><tr><th>Activity</th><th>Completed (PHT)</th><th>First-answer score</th></tr></thead><tbody>{[...quizzes].reverse().map(q => <tr key={q.id}><td>{own ? <Link to={comprehensionResultTarget(own, q.id)}>{q.title || 'Comprehension activity'}</Link> : q.title || 'Comprehension activity'}</td><td>{date(q.completedAt)}</td><td>{formatQuizScore(q)}</td></tr>)}</tbody></table></div>;}
+/** The five learner KPI cards: the same values and formatting as MetricsCards, in the redesigned card style. */
+function LearnerKpis({data}:{data:Metrics}) {return <div className="m7r-kpis" aria-label="My results summary">{([
+  ['Saved readings',data.readingAttempts],['Completed quizzes',data.completedQuizzes],['Comprehension',formatComprehension(data)],['Reading accuracy',percent(data.pronunciationAccuracy)],['Reading speed',wpm(data.readingSpeedWpm)],
+] as [string,string|number][]).map(([label,value]) => <div className="m7r-kpi" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>;}
+const LEARNER_TABS = ['Overview', 'Reading', 'Quizzes'];
+const tabMemory = (role: LearnerRole) => `m7-progress-tab-${role}`;
+/** Chart points for saved readings: one per attempt, by completion time. Values are rounded for display like the table. */
+function readingPoints(readings: PersonalData['readings'], metric: 'pronunciation_accuracy' | 'reading_speed_wpm'): LinePoint[] {
+  return readings.filter(r => Number.isFinite(Date.parse(r.completed_at))).map(r => {
+    const raw = r[metric];
+    return { key: r.id, time: Date.parse(r.completed_at), label: dayLabel(r.completed_at), value: typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw) : null };
+  });
+}
 /**
  * View Personal Learning Progress (Appendix N M7 function 1) for Students and Independent
  * Learners. The API returns only the signed-in learner's records. Independent Learners have
@@ -67,8 +83,53 @@ function QuizTable({quizzes,own}:{quizzes:Quiz[];own?:LearnerRole}) {return !qui
  */
 export function StudentProgressPage({ role = 'student' }: { role?: LearnerRole } = {}) {
   const {data,error,loading,refresh} = useData<PersonalData>('/personal', false, PERSONAL_PROGRESS_TIMEOUT_MS);
+  // The chosen tab survives a visit to a result page and back (this browser tab only; nothing is saved elsewhere).
+  const [tab,setTabState] = useState(() => { try { return Math.min(2, Math.max(0, Number(sessionStorage.getItem(tabMemory(role))) || 0)); } catch { return 0; } });
+  const setTab = (index: number) => { setTabState(index); try { sessionStorage.setItem(tabMemory(role), String(index)); } catch { /* optional */ } };
   const empty = data && !data.readings.length && !data.quizzes.length;
-  return <main className="m7-page"><h1>Progress & Result</h1><p>Your saved reading accuracy and comprehension results.</p><State {...{error,loading}} retry={() => void refresh()}/>{data && <><MetricsCards data={data.summary}/><LearnerSuggestions/>{empty && <p role="status">{role === 'student' ? 'No results yet. Complete a reading activity to see your progress here.' : 'No results yet. Read a story from Reading Modules, then answer its questions, to see your progress here.'}</p>}{role === 'student' && <section><h2>Activity progress</h2><p>{data.activities.filter(a => a.status === 'Completed').length} of {data.activities.length} assigned reading activities completed.</p>{!data.activities.length ? <p>No assigned reading activities yet.</p> : <ul>{data.activities.map((a) => <li key={a.id}><Link to={a.kind === 'module' ? `/dashboard/learning-rooms/${a.roomId}` : `/dashboard/learning-rooms/${a.roomId}/reading-activities/${a.materialId}`}>{a.title}</Link> — {a.status}{passageProgressText(a) && ` (${passageProgressText(a)})`}</li>)}</ul>}</section>}<section><h2>Completed quizzes</h2><QuizTable quizzes={data.quizzes} own={role}/><NotCountedQuizzes quizzes={data.historicalQuizzes} own={role}/></section><section><h2>Reading results</h2>{!data.readings.length ? <p>No saved readings yet. Complete a reading activity to see your results.</p> : <div className="m7-scroll"><table><thead><tr><th>Result</th><th>Reading accuracy</th><th>Speed</th><th>Words different from the story</th></tr></thead><tbody>{[...data.readings].sort((a,b) => b.completed_at.localeCompare(a.completed_at)).map(r => { const target = readingResultTarget(role, r.id); return <tr key={r.id}><td>{target ? <Link to={target}>{date(r.completed_at)}</Link> : date(r.completed_at)}</td><td>{wholePercent(r.pronunciation_accuracy)}</td><td>{wpm(r.reading_speed_wpm)}</td><td>{r.detected_error_count}</td></tr>; })}</tbody></table></div>}</section></>}</main>;
+  const completed = data ? data.activities.filter(a => a.status === 'Completed').length : 0, assigned = data?.activities.length ?? 0;
+  const completion = assigned ? Math.round(completed / assigned * 100) : null;
+  const quizzes = data ? [...data.quizzes].filter(q => q.completedAt).sort((a,b) => (a.completedAt ?? '').localeCompare(b.completedAt ?? '')) : [];
+  const recentQuizzes = quizzes.slice(-12);
+  return <main className="m7-page m7-dashboard m7r m7r-learner" aria-label="My Progress & Results">
+    <header className="m7r-header"><div><h1>My Progress & Results</h1><p>See how your reading and understanding are improving!</p></div></header>
+    <State {...{error,loading}} retry={() => void refresh()}/>
+    {data && <>
+      <LearnerKpis data={data.summary}/>
+      {empty && <p role="status" className="m7r-empty">{role === 'student' ? 'No results yet. Complete a reading activity to see your progress here.' : 'No results yet. Read a story from Reading Modules, then answer its questions, to see your progress here.'}</p>}
+      <div className="m7r-panel" style={{marginTop:16}}>
+        <M7Tabs idPrefix="progress" label="My progress sections" tabs={LEARNER_TABS} value={tab} onChange={setTab}/>
+        <div role="tabpanel" id="progress-panel-0" aria-labelledby="progress-tab-0" hidden={tab!==0} tabIndex={0} className="m7r-panel">
+          {role === 'student' && <section className="m7r-section" aria-labelledby="my-activity-progress"><h2 id="my-activity-progress">My activity progress</h2>
+            {!assigned ? <p className="m7r-empty">No assigned reading activities yet.</p> : <>
+              <div className="m7r-progress-summary"><span>{completed} of {assigned} assigned reading activities completed</span><span>{completion}%</span></div>
+              <div className="m7r-progress" role="progressbar" aria-label="Assigned activities completed" aria-valuemin={0} aria-valuemax={assigned} aria-valuenow={completed} aria-valuetext={`${completed} of ${assigned}`}><span style={{width:`${completion}%`}}/></div>
+              <details className="m7r-details" style={{marginTop:12}}><summary>View Assigned Activities</summary>
+                <ul>{data.activities.map((a) => <li key={a.id}><Link to={a.kind === 'module' ? `/dashboard/learning-rooms/${a.roomId}` : `/dashboard/learning-rooms/${a.roomId}/reading-activities/${a.materialId}`}>{a.title}</Link> — {a.status}{passageProgressText(a) && ` (${passageProgressText(a)})`}</li>)}</ul>
+              </details></>}
+          </section>}
+          <div className="m7r-section"><LearnerSuggestions expandable/></div>
+        </div>
+        <div role="tabpanel" id="progress-panel-1" aria-labelledby="progress-tab-1" hidden={tab!==1} tabIndex={0} className="m7r-panel">
+          <div className="m7r-grid-2">
+            <section className="m7r-section"><LineChart title="My reading accuracy" note="Each saved reading, oldest to newest" unit="%" points={readingPoints(data.readings,'pronunciation_accuracy')} emptyText="No saved readings yet."/></section>
+            <section className="m7r-section"><LineChart title="My reading speed" note="Words per minute" unit="WPM" color={M7_COLORS.blue} points={readingPoints(data.readings,'reading_speed_wpm')} emptyText="No saved readings yet."/></section>
+          </div>
+          <details className="m7r-details" open><summary>My Reading Results</summary>
+            {!data.readings.length ? <p>No saved readings yet. Complete a reading activity to see your results.</p> : <div className="m7-scroll" role="region" aria-label="My reading results" tabIndex={0}><table><thead><tr><th>Result</th><th>Reading accuracy</th><th>Speed</th><th>Words different from the story</th></tr></thead><tbody>{[...data.readings].sort((a,b) => b.completed_at.localeCompare(a.completed_at)).map(r => { const target = readingResultTarget(role, r.id); return <tr key={r.id}><td>{target ? <Link to={target}>{date(r.completed_at)}</Link> : date(r.completed_at)}</td><td>{wholePercent(r.pronunciation_accuracy)}</td><td>{wpm(r.reading_speed_wpm)}</td><td>{r.detected_error_count}</td></tr>; })}</tbody></table></div>}
+          </details>
+        </div>
+        <div role="tabpanel" id="progress-panel-2" aria-labelledby="progress-tab-2" hidden={tab!==2} tabIndex={0} className="m7r-panel">
+          <section className="m7r-section"><BarChart title="My comprehension scores" note={`First-answer score of each completed quiz${quizzes.length > recentQuizzes.length ? `; the ${recentQuizzes.length} most recent` : ''}`} unit="%"
+            categories={recentQuizzes.map(q => q.title || 'Comprehension activity')} emptyText="No completed quizzes yet."
+            series={[{label:'Comprehension score', color:M7_COLORS.forest, values:recentQuizzes.map(q => typeof q.score === 'number' ? Math.round(q.score * 100) / 100 : null)}]}/></section>
+          <details className="m7r-details" open><summary>My Completed Quizzes</summary>
+            <QuizTable quizzes={data.quizzes} own={role}/><NotCountedQuizzes quizzes={data.historicalQuizzes} own={role}/>
+          </details>
+        </div>
+      </div>
+    </>}
+  </main>;
 }
 export { default as AdminAnalyticsPage } from "./AdminAnalyticsPage";
 /** The existing stored status values and their labels. */

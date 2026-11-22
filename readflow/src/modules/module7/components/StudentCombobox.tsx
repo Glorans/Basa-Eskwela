@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type Option = { id: string; name: string };
+/** `detail` (optional) tells apart students with the same name, for example their classrooms. */
+type Option = { id: string; name: string; detail?: string };
 /** A selection is committed only by clicking an option or pressing Enter. Names are never identifiers. */
-export default function StudentCombobox({ id, value, options, onChange, disabled = false, describedBy }: {
-  id: string; value: string; options: Option[]; onChange: (id: string) => void; disabled?: boolean; describedBy?: string;
+export default function StudentCombobox({ id, value, options, onChange, disabled = false, describedBy, placeholder = "Type a student's name or choose from the list..." }: {
+  id: string; value: string; options: Option[]; onChange: (id: string) => void; disabled?: boolean; describedBy?: string; placeholder?: string;
 }) {
   const [open, setOpen] = useState(false), [query, setQuery] = useState<string | null>(null);
   const [active, setActive] = useState(-1), [limit, setLimit] = useState(50);
@@ -23,7 +24,7 @@ export default function StudentCombobox({ id, value, options, onChange, disabled
     <div className="asp-combobox-field">
       <input ref={input} id={id} role="combobox" autoComplete="off" aria-autocomplete="list" aria-expanded={expanded}
         aria-controls={`${id}-options`} aria-activedescendant={expanded && activeIndex >= 0 ? `${id}-option-${matches[activeIndex].id}` : undefined}
-        aria-describedby={describedBy} disabled={disabled} placeholder="Type a student's name or choose from the list..."
+        aria-describedby={describedBy} disabled={disabled} placeholder={placeholder}
         value={query ?? selected?.name ?? ''} onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
         onChange={e => { setQuery(e.target.value); setOpen(true); setActive(-1); setLimit(50); }}
         onKeyDown={event => {
@@ -40,7 +41,7 @@ export default function StudentCombobox({ id, value, options, onChange, disabled
       <ul ref={list} id={`${id}-options`} role="listbox" aria-label="Eligible students">
         {matches.slice(0, limit).map((option, index) => <li key={option.id} id={`${id}-option-${option.id}`} role="option" aria-selected={activeIndex === index}
           aria-posinset={index + 1} aria-setsize={matches.length} onMouseDown={event => event.preventDefault()} onClick={() => choose(option)}>
-          <span>{option.name}</span>{(nameCounts.get(option.name) ?? 0) > 1 && <small>ID: {option.id}</small>}
+          <span>{option.name}</span>{(nameCounts.get(option.name) ?? 0) > 1 && <small>{option.detail ?? `ID: ${option.id}`}</small>}
           {value === option.id && <small>Selected</small>}
         </li>)}
       </ul>
