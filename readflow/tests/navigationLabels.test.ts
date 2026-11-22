@@ -57,6 +57,8 @@ function renderHeader(props: Record<string, unknown>) {
     (id) => {
       if (id === "react-router-dom") return { useNavigate: () => (to: string) => navigations.push(to) };
       if (id.endsWith(".css")) return {};
+      if (id.endsWith('/SuggestedInterventions')) return { SuggestedInterventions: 'suggested-interventions' };
+      if (id.endsWith('/LearnerSuggestions')) return { LearnerSuggestions: 'learner-suggestions' };
       if (id.endsWith("/activityLanguage")) return { getActivityText: () => ({ t: (text: string) => text }) };
       if (id === "lucide-react") return { ArrowLeft: "arrow-left", User: "user" };
       return require(id);

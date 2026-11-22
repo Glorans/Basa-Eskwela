@@ -23,7 +23,7 @@ test("System Admin M7 routes live only under /system-admin and use the System Ad
   assert.match(systemAdmin, /<Route path="independent-learners" element=\{<SystemAdminLearnerPerformancePage \/>\} \/>/);
   assert.equal(app.match(/SystemAdminOverviewPage \/>/g)?.length, 1, "not mounted for any other role");
   const page = read("modules/module7/SystemAdminAnalyticsPage.tsx");
-  assert.deepEqual([...page.matchAll(/'(\/system-admin\/[^'`]*)/g)].map(m => m[1]), ["/system-admin/overview", "/system-admin/independent-learners"]);
+  assert.deepEqual([...page.matchAll(/'(\/system-admin\/[^'`]*)/g)].map(m => m[1]), ["/system-admin/overview", "/system-admin/suggestions", "/system-admin/independent-learners"]);
   assert.match(page, /`\/system-admin\/independent-learners\/\$\{encodeURIComponent\(selected\)\}`/);
   assert.doesNotMatch(page, /profile\.role|useAuth|role ===/, "no client-side role decisions: the server authorizes");
 });

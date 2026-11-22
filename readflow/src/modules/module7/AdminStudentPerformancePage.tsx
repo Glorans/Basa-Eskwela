@@ -5,8 +5,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatAnalyticsDate as displayDate, formatAnalyticsDateTime as date } from './services/dateDisplay';
 import { formatComprehension, formatQuizScore, formatScore, passageProgressText } from './services/scoreDisplay';
 import { isActiveWarning, recoveryNote } from './services/studentSupportClassification';
-import { m7Request, type AdminSystemData, type AdminStudentDetail, type AdminStudentRow, type Intervention } from './services/m7Service';
-import { InterventionForm, MetricsCards, NotCountedQuizzes, RiskGuidance } from './M7Pages';
+import { m7Request, type AdminSystemData, type AdminStudentDetail, type AdminStudentRow } from './services/m7Service';
+import { SuggestedInterventions } from './components/SuggestedInterventions';
+import { MetricsCards, NotCountedQuizzes, RiskGuidance } from './M7Pages';
 import './m7.css';
 import './m7Dashboard.css';
 
@@ -106,9 +107,13 @@ export default function AdminStudentPerformancePage() {
   </main>;
 }
 
-export function StudentDetail({ studentId, onClose, onSaved }: { studentId: string; onClose: () => void; onSaved: () => void }) {
+const STATUS_LABELS: Record<string, string> = { planned: 'Planned', in_progress: 'In progress', completed: 'Completed' };
+const COMPETENCY_LABELS: Record<string, string> = { word_recognition: 'Word recognition', fluency: 'Reading fluency', literal: 'Literal comprehension', inferential: 'Inferential comprehension', critical: 'Critical comprehension', other: 'Other' };
+const OUTCOME_LABELS: Record<string, string> = { improved: 'Improved', partly_improved: 'Partly improved', no_change: 'No change yet', too_early: 'Too early to tell' };
+/** M7 F10/F11 for the School Admin: read-only suggestions and the school's intervention history (Teachers record). */
+export function StudentDetail({ studentId, onClose }: { studentId: string; onClose: () => void; onSaved?: () => void }) {
   const [detail, setDetail] = useState<AdminStudentDetail | null>(null);
-  const [error, setError] = useState(''), [editing, setEditing] = useState<Intervention | 'new' | null>(null), [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const load = useCallback(async () => {
     try { setDetail(await m7Request<AdminStudentDetail>(`/admin/students/${studentId}`)); setError(''); }
     catch (e) { setError(e instanceof Error ? e.message : 'Unable to load this student.'); }
@@ -116,7 +121,7 @@ export function StudentDetail({ studentId, onClose, onSaved }: { studentId: stri
   useEffect(() => { void load(); }, [load]);
   if (error) return <section role="alert" className="m7-error">{error} <button onClick={() => void load()}>Retry</button></section>;
   if (!detail) return <section><p role="status">Loading student…</p></section>;
-  const others = detail.interventions.others;
+  const history = detail.interventions.history ?? [];
   return <section aria-labelledby="admin-student-detail">
     <h2 id="admin-student-detail">{detail.name} — {detail.classification}</h2>
     <p><button className="m7-secondary" onClick={onClose}>Close student</button></p>
@@ -148,18 +153,18 @@ export function StudentDetail({ studentId, onClose, onSaved }: { studentId: stri
     {!detail.readings.length ? <p>No saved readings yet.</p> : <div className="m7-scroll"><table><thead><tr><th>Reading</th><th>Completed (PHT)</th><th>Reading accuracy</th><th>Reading speed</th></tr></thead>
       <tbody>{detail.readings.map(r => <tr key={r.id}><td>{r.title}</td><td>{date(r.completedAt)}</td><td>{percent(r.readingAccuracy)}</td><td>{wpm(r.readingSpeedWpm)}</td></tr>)}</tbody></table></div>}
 
-    <h3>Interventions</h3>
-    <p>Interventions you record are saved under your Admin account and only you can edit them. Teacher interventions stay private to their authors; their totals are shown below.</p>
-    <p>Teacher interventions: {others.total ? `${others.total} (${others.planned} planned, ${others.inProgress} in progress, ${others.completed} completed)` : 'none recorded'}.</p>
-    {message && <p role="status">{message}</p>}
-    {!detail.interventions.own.length && <p>You have not recorded an intervention for this student.</p>}
-    {[...detail.interventions.own].sort((a, b) => b.intervention_date.localeCompare(a.intervention_date)).map(i => <article className="m7-card" key={i.id}>
-      <strong>{displayDate(i.intervention_date)} — {i.status.replace('_', ' ')}</strong><p className="m7-notes">{i.notes}</p>
-      {i.follow_up_date && <p>Follow up: {displayDate(i.follow_up_date)}</p>}{i.follow_up_notes && <p className="m7-notes">{i.follow_up_notes}</p>}
-      <button onClick={() => setEditing(i)}>Edit intervention</button></article>)}
-    {editing ? <InterventionForm key={editing === 'new' ? 'new' : editing.id} studentId={detail.id} basePath="/admin/students"
-      existing={editing === 'new' ? undefined : editing} onCancel={() => setEditing(null)}
-      onSaved={() => { setEditing(null); setMessage('Intervention saved.'); void load(); onSaved(); }} />
-      : <button onClick={() => setEditing('new')}>Record intervention</button>}
+    <SuggestedInterventions readOnly path={`/admin/students/${detail.id}/suggestions`} scope="your school's classrooms" />
+
+    <h3>Intervention history</h3>
+    <p>Interventions recorded for this student in your school, newest first. Teachers record and update interventions; this view is read-only. Teachers' private notes are not shown.</p>
+    {!history.length ? <p>No interventions recorded for this student yet.</p> : <div className="m7-intervention-history-admin">{history.map(i => <article className="m7-card" key={i.id} aria-label={`Intervention from ${displayDate(i.intervention_date)}`}>
+      <strong>{displayDate(i.intervention_date)} — {STATUS_LABELS[i.status] ?? i.status}</strong>
+      <p className="m7-performance-scope">Recorded by {i.author.name} ({i.author.role}){i.competency ? ` · ${COMPETENCY_LABELS[i.competency] ?? i.competency}` : ''}{i.language ? ` · ${i.language === 'fil' ? 'Filipino' : 'English'}` : ''}</p>
+      {i.suggestion_title && <p>From suggestion: {i.suggestion_title}</p>}
+      <p className="m7-notes">{i.notes}</p>
+      {i.follow_up_date && <p>Follow-up date: {displayDate(i.follow_up_date)}</p>}
+      {i.follow_up_outcome && <p>Follow-up outcome: {OUTCOME_LABELS[i.follow_up_outcome] ?? i.follow_up_outcome}</p>}
+      {i.follow_up_notes && <p className="m7-notes">Follow-up information: {i.follow_up_notes}</p>}
+    </article>)}</div>}
   </section>;
 }

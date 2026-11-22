@@ -24,6 +24,8 @@ function load(path: string, responses: Record<string, unknown>, requests: string
     if (id === "react/jsx-runtime") return require("react/jsx-runtime");
     if (id === "react-router-dom") return { Link: "a" };
     if (id.endsWith(".css")) return {};
+    if (id.endsWith('/SuggestedInterventions')) return { SuggestedInterventions: 'suggested-interventions' };
+    if (id.endsWith('/LearnerSuggestions')) return { LearnerSuggestions: 'learner-suggestions' };
     if (id.endsWith("/PerformanceSelector")) return { default: "selector" };
     if (id.endsWith("/classroomService")) return { getRoomEnrollments: async () => [] };
     if (id.endsWith("/comprehensionNavigation")) return comprehensionNavigation;
@@ -113,7 +115,7 @@ test("functions 4, 8, 9: Admin student list shows every Student, risk classifica
   assert.doesNotMatch(all, /"0%"|NaN|undefined/, "missing data is never shown as zero");
 });
 
-test("functions 9 and 10: Admin student detail shows competency counts, own interventions and only totals for others", async () => {
+test("functions 9, 10 and 11: Admin student detail shows competency counts, read-only suggestions and the school intervention history (Teachers record)", async () => {
   const detail = {
     id: "s1", name: "Ana", classrooms: ["Grade 5"], classification: "Early Warning", readingAttempts: 1, completedQuizzes: 2, pronunciationAccuracy: 86.486,
     readingSpeedWpm: 100.4, comprehensionScore: 50, invalidCompletedQuizzes: 0, completion: { assigned: 1, completed: 1, completionRate: 100 },
@@ -122,7 +124,10 @@ test("functions 9 and 10: Admin student detail shows competency counts, own inte
     quizzes: [{ id: "q", title: "Story", completedAt: "2026-11-04T03:00:00Z", score: 50, firstCorrect: 1, totalQuestions: 2 }],
     readings: [{ id: "r", title: "Seeds", completedAt: "2026-11-03T02:00:00Z", readingAccuracy: 86.486, readingSpeedWpm: 100.4 }],
     activities: [{ id: "a", roomName: "Grade 5", status: "Completed" }],
-    interventions: { own: [{ id: "i", notes: "Admin note", intervention_date: "2026-11-04", status: "planned", follow_up_date: null, follow_up_notes: "" }], others: { total: 1, planned: 1, inProgress: 0, completed: 0 } },
+    interventions: { own: [], others: { total: 1, planned: 1, inProgress: 0, completed: 0 }, history: [
+      { id: "i", intervention_date: "2026-11-04", status: "in_progress", competency: "critical", language: "en", suggestion_title: "Evidence-Based Reading Practice",
+        notes: "Small-group evidence practice", follow_up_date: null, follow_up_outcome: "too_early", follow_up_notes: "", created_at: "2026-11-04T01:00:00Z", updated_at: "2026-11-04T01:00:00Z",
+        author: { name: "Teacher T", role: "Teacher" } }] },
   };
   const { runtime, module, requests } = load("AdminStudentPerformancePage.tsx", { "/admin/students/s1": detail });
   const props = { studentId: "s1", onClose() {}, onSaved() {} };
@@ -133,14 +138,13 @@ test("functions 9 and 10: Admin student detail shows competency counts, own inte
   assert.match(all, /"2 of 2 correct"/);
   assert.match(all, /"0 of 2 correct"/);
   assert.match(all, /"No questions answered"/);
-  assert.match(all, /Admin note/);
-  assert.match(all, /Teacher interventions: .*1 \(1 planned, 0 in progress, 0 completed\)/);
+  for (const part of [/Small-group evidence practice/, /Recorded by ","Teacher T"," \(","Teacher"/, /Critical comprehension/, /From suggestion: ","Evidence-Based Reading Practice/, /In progress/, /Too early to tell/]) assert.match(all, part);
   assert.match(all, /\[1," of ",1," assigned activities completed"/);
-  // The record form posts to the Admin route.
-  const record = findAll(tree, (node: any) => node.type === "button" && node.props.children === "Record intervention")[0];
-  record.props.onClick();
-  const form = findAll(runtime.render(module.StudentDetail, props), (node: any) => node.type === "intervention-form")[0];
-  assert.deepEqual([form.props.basePath, form.props.studentId], ["/admin/students", "s1"]);
+  // F11 is Teacher-only: no record or edit controls and no form; the suggestions are read-only (no "Use" action).
+  assert.equal(findAll(tree, (node: any) => node.type === "button" && /Record|Edit/i.test(String(node.props.children))).length, 0);
+  assert.equal(findAll(tree, (node: any) => node.type === "intervention-form").length, 0);
+  const suggestions = findAll(tree, (node: any) => node.type === "suggested-interventions")[0];
+  assert.deepEqual([suggestions.props.path, suggestions.props.readOnly, suggestions.props.onUse], ["/admin/students/s1/suggestions", true, undefined]);
 });
 
 test("functions 6 and 7: Admin reports use the Admin-only routes and add school-wide sections", () => {

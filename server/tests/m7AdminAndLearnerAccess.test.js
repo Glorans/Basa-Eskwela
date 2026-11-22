@@ -240,3 +240,31 @@ test('Admin report routes: Admin only, saved under the Admin as owner, and kept 
   assert.equal((await call(teacherRouter, 'get', '/', {})).status, 403);
   assert.ok(typeof saveWeeklyReport === 'function');
 });
+
+test('M7 F11 is Teacher-only: School Admin create and update routes refuse (403) before any write', async () => {
+  const log = [];
+  currentDb = interventionDb(log);
+  signedIn = { user: { id: ADMIN }, profile: { role: 'admin', school_id: id(900) }, schoolId: id(900) };
+  const body = { notes: 'x', intervention_date: '2026-11-05', status: 'planned' };
+  const created = await call(m7Router, 'post', '/admin/students/:studentId/interventions', { params: { studentId: S1 }, body });
+  const updated = await call(m7Router, 'patch', '/admin/students/:studentId/interventions/:id', { params: { studentId: S1, id: id(80) }, body });
+  assert.deepEqual([created.status, updated.status], [403, 403]);
+  assert.match(created.body.message, /Only Teachers record student interventions/);
+  assert.equal(log.filter((entry) => entry.table === 'm7_interventions' && entry.action !== 'select').length, 0, 'nothing is written');
+});
+
+test('School Admin intervention history: own school authors only, newest first, no Teacher private notes', async () => {
+  const SCHOOL = id(900);
+  const records = [
+    { id: id(70), teacher_id: T1, student_id: S1, notes: 'Teacher plan', teacher_notes: 'PRIVATE', intervention_date: '2026-11-03', status: 'completed', created_at: 'a', suggestion_snapshot: { title: 'Story Details Practice' }, competency: 'literal', language: 'en', follow_up_outcome: 'improved', follow_up_notes: '' },
+    { id: id(71), teacher_id: ADMIN, student_id: S1, notes: 'Older Admin record', teacher_notes: '', intervention_date: '2026-11-04', status: 'planned', created_at: 'b', follow_up_notes: '' },
+    { id: id(72), teacher_id: id(77), student_id: S1, notes: 'Other school', teacher_notes: '', intervention_date: '2026-11-05', status: 'planned', created_at: 'c', follow_up_notes: '' },
+  ];
+  const load = async (table, _c, filters) => table === 'm7_interventions' ? records.filter((r) => r.student_id === filters.student_id)
+    : [{ id: T1, role: 'teacher', full_name: 'Teacher One', school_id: SCHOOL }, { id: ADMIN, role: 'admin', full_name: 'Admin', school_id: SCHOOL }, { id: id(77), role: 'teacher', full_name: 'Elsewhere', school_id: id(901) }].filter((p) => filters.id.includes(p.id));
+  const history = await analytics.schoolInterventionHistory(S1, SCHOOL, load);
+  assert.deepEqual(history.map((h) => [h.notes, h.author.role]), [['Older Admin record', 'School Admin'], ['Teacher plan', 'Teacher']]);
+  assert.equal(history[1].suggestion_title, 'Story Details Practice');
+  assert.doesNotMatch(JSON.stringify(history), /PRIVATE|Other school/);
+  assert.deepEqual(await analytics.schoolInterventionHistory(S1, null, load), []);
+});

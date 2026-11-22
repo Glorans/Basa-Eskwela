@@ -26,6 +26,8 @@ function setup() {
     if (id === 'react/jsx-runtime') return require(id);
     if (id === 'react-router-dom') return { Link: 'link' };
     if (id.endsWith('.css') || id.endsWith('/comprehensionNavigation')) return {};
+    if (id.endsWith('/SuggestedInterventions')) return { SuggestedInterventions: 'suggested-interventions' };
+    if (id.endsWith('/LearnerSuggestions')) return { LearnerSuggestions: 'learner-suggestions' };
     if (id.endsWith('/AdminAnalyticsPage')) return { default: 'admin' };
     if (id.endsWith('/dateDisplay')) return dates;
     if (id.endsWith('/scoreDisplay')) return scores;
