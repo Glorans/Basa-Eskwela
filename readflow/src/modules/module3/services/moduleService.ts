@@ -37,11 +37,20 @@ const MODULE_SELECT = `
   comprehension_questions(count)
 ` as const;
 
+/** The database content check's own message (categories and line only), or null for any other error. */
+export function contentCheckMessage(error: unknown): string | null {
+  const value = error as { code?: unknown; message?: unknown } | null;
+  return value && value.code === "PT422" && typeof value.message === "string" && value.message.startsWith("Content check:")
+    ? value.message
+    : null;
+}
+
 export class ModuleServiceError extends Error {
   readonly causeValue?: unknown;
 
   constructor(message: string, causeValue?: unknown) {
-    super(message);
+    // The database content check (m3_content_screen_v1) explains what to edit; show it instead of the generic text.
+    super(contentCheckMessage(causeValue) ?? message);
     this.name = "ModuleServiceError";
     this.causeValue = causeValue;
   }

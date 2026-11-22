@@ -2,6 +2,7 @@ const fs = require("fs/promises");
 const mammoth = require("mammoth");
 const { PDFParse } = require("pdf-parse");
 const { MaterialOcrError, extractImageText } = require("./materialOcrService");
+const { ImageValidationError, validateImageFile } = require("./imageValidation");
 const {
   hasReadableText,
   normalizeExtractedText,
@@ -108,6 +109,8 @@ async function extractReadingMaterial({ filePath, fileType, language, maxPages }
 
   if (fileType === "JPG" || fileType === "PNG") {
     try {
+      // Damaged, incomplete or oversized images are refused before OCR decodes them.
+      await validateImageFile(filePath, fileType);
       const result = await extractImageText({ filePath, language });
       return {
         status: "completed",
@@ -115,7 +118,7 @@ async function extractReadingMaterial({ filePath, fileType, language, maxPages }
         ocrConfidence: result.ocrConfidence,
       };
     } catch (error) {
-      if (error instanceof MaterialOcrError) {
+      if (error instanceof MaterialOcrError || error instanceof ImageValidationError) {
         throw new MaterialExtractionError(error.code, error.message, error);
       }
 

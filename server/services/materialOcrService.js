@@ -30,6 +30,11 @@ class MaterialOcrError extends Error {
 }
 
 let workerPromise;
+
+function ocrWorkerErrorHandler(error) {
+  // Bounded, payload-free log line; the failed recognize() call reports the error to the uploader.
+  console.error("OCR worker job failed:", String(error?.message ?? error ?? "").slice(0, 120));
+}
 let activeOcrLanguage;
 let ocrQueue = Promise.resolve();
 
@@ -77,6 +82,9 @@ async function getWorker(ocrLanguage) {
       cacheMethod: "none",
       gzip: true,
       langPath: getOcrModelPath(ocrLanguage),
+      // Without a handler tesseract.js rethrows a failed job (for example an unreadable image) as an uncaught
+      // exception, which stops the whole backend. The job's own promise is still rejected and handled below.
+      errorHandler: ocrWorkerErrorHandler,
     });
     workerPromise = startingWorker;
     activeOcrLanguage = ocrLanguage;
@@ -178,6 +186,7 @@ async function terminateOcrWorker() {
 
 module.exports = {
   MaterialOcrError,
+  ocrWorkerErrorHandler,
   OCR_LANGUAGE_MAP,
   extractImageText,
   getOcrLanguage,
