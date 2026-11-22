@@ -395,6 +395,17 @@ export default function UploadMaterialForm({
           )}
         </dl>
 
+        {uploadedMaterial.contentScreening?.flagged && (
+          <div className="m3-inline-notice m3-content-check" role="note" style={{ display: "block" }}>
+            <strong>Content check:</strong>{" "}
+            the extracted text may not be suitable for young learners
+            ({(uploadedMaterial.contentScreening.categories ?? []).join("; ")})
+            {uploadedMaterial.contentScreening.firstLine ? `, first found on line ${uploadedMaterial.contentScreening.firstLine}` : ""}.
+            {" "}Edit the reviewed text below before saving; it cannot be saved while it is flagged. This automatic check
+            is preliminary, so please also review the text yourself.
+          </div>
+        )}
+
         <label className="m3-field m3-review-language" htmlFor={languageFieldId}>
           <span>Reading Language</span>
           {detectionNote && (

@@ -35,6 +35,9 @@ export interface TemporaryUploadedMaterial {
   ocrConfidence: number | null;
   pageCount?: number;
   pagesWithoutText?: number[];
+  /** Preliminary content check of the extracted text (categories and first line only; never the matched words).
+   * Advisory here: the database checks the reviewed text again when it is saved. */
+  contentScreening?: { checked: boolean; flagged?: boolean; categories?: string[]; firstLine?: number | null } | null;
 }
 
 interface MaterialUploadResponse {

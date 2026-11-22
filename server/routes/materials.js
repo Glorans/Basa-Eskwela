@@ -49,6 +49,9 @@ const { extractTeacherMaterial } = require("../services/teacherMaterialExtractio
 const { MAX_MATERIAL_TEXT_LENGTH } = require("../services/materialTextLimits");
 
 const materialStorageBucket = "reading-materials";
+const { ContentScreenError, contentScreenMessage, isContentScreenError, screenText } = require("../services/contentScreen");
+// Uploads run file extraction (and OCR for images) on the server, so each account is limited per 10 minutes.
+const MATERIAL_UPLOAD_RATE_LIMIT = Object.freeze({ limit: 20, windowMs: 10 * 60 * 1000 });
 const uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const materialIdPattern = new RegExp(`^${uuidPattern}$`, "i");
 // Independent Learner private generation: at most 10 requests per learner per hour.
@@ -65,6 +68,9 @@ function sanitizeOriginalFilename(originalFilename) {
 }
 
 function sendMaterialError(res, error, fallbackMessage) {
+  if (error instanceof ContentScreenError) {
+    return res.status(422).json({ success: false, code: error.code, message: error.message });
+  }
   if (error instanceof QuestionGenerationError) {
     const safeValidation = {
       MISSING_CONTENT_TEXT: "Reviewed material text is required before generating questions.",
@@ -166,6 +172,10 @@ async function storedMaterialMatchesExtraction(supabase, storagePath, material) 
     && storedObject.contentType === material.mimeType;
 }
 
+function safeSupabaseAdmin() {
+  try { return getSupabaseAdmin(); } catch { return undefined; }
+}
+
 function requireMaterialId(value) {
   if (!materialIdPattern.test(value || "")) {
     throw new MaterialPersistenceError("The material ID is invalid.", 400, "INVALID_MATERIAL_ID");
@@ -189,6 +199,9 @@ function createMaterialsRouter(dependencies = {}) {
   // (success, reuse or failure) is also bounded per learner. Per process; resets on restart.
   const personalGenerationLimiter = dependencies.personalGenerationLimiter
     ?? require("../services/speechAccess").createRequestLimiter({ ...PERSONAL_GENERATION_RATE_LIMIT });
+  const uploadLimiter = dependencies.uploadLimiter
+    ?? require("../services/speechAccess").createRequestLimiter({ ...MATERIAL_UPLOAD_RATE_LIMIT });
+  const screen = dependencies.screenText ?? screenText;
 
   router.post("/upload", async (req, res) => {
     let requester;
@@ -197,6 +210,12 @@ function createMaterialsRouter(dependencies = {}) {
       requireUploadRole(requester.profile);
     } catch (error) {
       return sendMaterialError(res, error, "Unable to authorize the material upload.");
+    }
+    const decision = uploadLimiter.take(requester.user.id);
+    if (!decision.allowed) {
+      res.set("Retry-After", String(decision.retryAfterSeconds));
+      return res.status(429).json({ success: false, code: "UPLOAD_RATE_LIMITED",
+        message: "Too many uploads in a short time. Please wait a few minutes and try again." });
     }
 
     // The teacher removed or replaced the file, or closed the page, before extraction finished.
@@ -232,6 +251,8 @@ function createMaterialsRouter(dependencies = {}) {
           ocrConfidence: extraction.ocrConfidence,
           pageCount: extraction.pageCount,
           pagesWithoutText: extraction.pagesWithoutText,
+          // Advisory only: the database checks the reviewed text again when it is saved.
+          contentScreening: await screen(dependencies.getSupabaseAdmin?.() ?? safeSupabaseAdmin(), extraction.extractedText),
         };
         // Nobody can save this result any more, so it is not kept.
         if (clientGone) {
@@ -324,6 +345,7 @@ function createMaterialsRouter(dependencies = {}) {
         .select("id, created_at")
         .single();
       if (insertError) {
+        const screened = isContentScreenError(insertError);
         const { error: cleanupError } = await supabaseAdmin.storage
           .from(materialStorageBucket)
           .remove([request.storagePath]);
@@ -336,6 +358,7 @@ function createMaterialsRouter(dependencies = {}) {
             "The material could not be added, and its uploaded file could not be cleaned up. Please contact support.",
           );
         }
+        if (screened) throw new ContentScreenError(contentScreenMessage(insertError));
         throw new MaterialPersistenceError(
           "The material could not be added. Its uploaded file was cleaned up; please try again.",
         );

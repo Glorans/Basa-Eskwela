@@ -219,7 +219,8 @@ export async function reviseModule(moduleId: string): Promise<string> {
   const { data, error } = await (client as unknown as { rpc: (n: string, a: Record<string, unknown>) => Promise<{ data: unknown; error: { message?: string; code?: string } | null }> })
     .rpc("m3_revise_module", { source_id: moduleId });
   if (error) {
-    throw new Error(error.code === "22023" && error.message ? error.message : "The revision could not be created. The published module was not changed.");
+    // 22023: the database's own refusal; PT422: the content check (categories and line only).
+    throw new Error((error.code === "22023" || error.code === "PT422") && error.message ? error.message : "The revision could not be created. The published module was not changed.");
   }
   return String(data);
 }

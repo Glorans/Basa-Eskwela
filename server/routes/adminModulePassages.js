@@ -90,6 +90,9 @@ const BANK_SAVE_REFUSALS = [
 ];
 
 function bankSaveFailure(error) {
+  const screen = require("../services/contentScreen");
+  // Generated questions refused by the database content screen: say so (categories only), nothing was saved.
+  if (screen.isContentScreenError(error)) return { status: 422, message: screen.contentScreenMessage(error) };
   const message = String(error?.message ?? "");
   const [, status, text] = BANK_SAVE_REFUSALS.find(([pattern]) => pattern.test(message)) ?? [
     null, 500,

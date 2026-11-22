@@ -59,6 +59,8 @@ const ANSWERED_SET_MESSAGE =
 
 function databaseError(error) {
   if (!error) return;
+  // Generated or edited questions refused by the database content screen (m3_content_screen_v1).
+  require("./contentScreen").throwIfContentScreen(error);
 
   // 23503: assignment NO ACTION FK; 23001: existing RESTRICT foreign keys.
   if (["23001", "23503"].includes(error.code)) {

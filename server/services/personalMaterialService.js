@@ -1,3 +1,4 @@
+const { throwIfContentScreen } = require('./contentScreen');
 // Private practice is an additional source, never a classroom or a catalog module.
 const { randomUUID } = require('node:crypto');
 const { getSupabaseAdmin } = require('./supabaseAdmin');
@@ -18,6 +19,7 @@ async function rpc(requester, materialId, action, extra = {}, deps = {}) {
   const { data, error } = await dbFor(deps).rpc('personal_material_access', {
     actor: requester.user.id, material: materialId, operation: action, ...extra,
   });
+  throwIfContentScreen(error);
   if (error) throw Object.assign(new PersonalMaterialError(
     ['PGRST202', '42883'].includes(error.code) ? 'Personal practice is not installed yet.'
       : error.code === '42501' ? 'This personal material is unavailable to your account.'
@@ -51,6 +53,7 @@ async function generatePersonalQuestions(requester, materialId, deps = {}, { rep
   const db = dbFor(deps);
   const call = async (operation, token = null, bank = null) => {
     const { data, error } = await db.rpc('personal_material_generation', { actor: requester.user.id, material: materialId, operation, token, bank });
+    throwIfContentScreen(error);
     if (error) throw new PersonalMaterialError(error.code === 'P0001' ? error.message : 'Private question generation is unavailable. Please retry.', error.code === '42501' ? 403 : 409);
     return data;
   };
@@ -193,6 +196,7 @@ async function updatePersonalMaterialText(requester, materialId, { contentText, 
   // Compare-and-set on the text read above: a concurrent change is refused, never overwritten.
   const { data: saved, error } = await db.from('uploaded_materials').update({ content_text: text })
     .eq('id', materialId).eq('uploaded_by', requester.user.id).eq('content_text', current.content_text).select('id').maybeSingle();
+  throwIfContentScreen(error);
   if (error) {
     const message = error.code === 'P0001' ? error.message ?? '' : '';
     throw new PersonalMaterialError(/practice has started/i.test(message) ? PRACTICE_STARTED_MESSAGE
