@@ -1,0 +1,7 @@
+-- m8_leaderboard_alias_safety_v1 PREFLIGHT (read-only). Every row must say PASS before the PROPOSED file is run.
+SELECT CASE WHEN to_regclass('public.m8_leaderboard_privacy') IS NOT NULL AND to_regclass('public.m8_leaderboard_settings') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS result, 'm8_leaderboard_privacy_v1 installed' AS check
+UNION ALL SELECT CASE WHEN md5(pg_get_functiondef('public.m8_leaderboard_alias(text)'::regprocedure)) = '02353e946e14f9b44d61f8b96f82c8d1' THEN 'PASS' ELSE 'FAIL' END, 'm8_leaderboard_alias is the reviewed version'
+UNION ALL SELECT CASE WHEN md5(pg_get_functiondef('public.m8_set_leaderboard_privacy(text,text)'::regprocedure)) = '800637d76a0d4cafb12a5f3480c7f71f' THEN 'PASS' ELSE 'FAIL' END, 'm8_set_leaderboard_privacy is the reviewed version'
+UNION ALL SELECT CASE WHEN to_regprocedure('public.m8_leaderboard_alias_issue(text)') IS NULL AND to_regprocedure('public.m8_leaderboard_alias_reveals_identity(text,uuid)') IS NULL THEN 'PASS' ELSE 'FAIL' END, 'helpers not installed yet'
+UNION ALL SELECT 'INFO', 'switches: ' || coalesce((SELECT string_agg(audience || '=' || names_enabled, ', ' ORDER BY audience) FROM public.m8_leaderboard_settings), 'none')
+UNION ALL SELECT 'INFO', 'saved choices: ' || coalesce((SELECT string_agg(visibility || '=' || n, ', ' ORDER BY visibility) FROM (SELECT visibility, count(*) n FROM public.m8_leaderboard_privacy GROUP BY 1) c), 'none');

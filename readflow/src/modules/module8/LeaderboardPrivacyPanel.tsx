@@ -117,7 +117,7 @@ export default function LeaderboardPrivacyPanel({ audience, onChange }: {
             disabled={busy}
             style={aliasInputStyle}
           />
-          <small style={hintStyle}>2 to 20 letters or numbers. Do not use your full name.</small>
+          <small style={hintStyle}>2 to 20 letters or numbers. No real name, e-mail, links, phone numbers or rude words.</small>
         </label>
       )}
 
