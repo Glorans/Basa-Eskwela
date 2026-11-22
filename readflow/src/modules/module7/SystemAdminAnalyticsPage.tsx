@@ -6,6 +6,7 @@ import { formatAnalyticsDate as displayDate, formatAnalyticsDateTime as date } f
 import { formatQuizScore, formatScore } from './services/scoreDisplay';
 import { m7Request, type IndependentLearnerDetail, type IndependentLearnerRow, type PlatformOverview, type PlatformSuggestionSummary } from './services/m7Service';
 import { SuggestedInterventions } from './components/SuggestedInterventions';
+import { improvingNote, suggestionCategoryCards } from './services/suggestionSummary';
 import './components/suggestedInterventions.css';
 import './m7.css';
 import './m7Dashboard.css';
@@ -91,19 +92,19 @@ function PlatformSuggestions() {
     <p>Learners whose own saved results currently lead to a rule-based suggestion. Counts only; no names. Read-only: Teachers record interventions.</p>
     <Status loading={loading} error={error} retry={retry} what="suggestion summary" />
     {data && <>
-      <h3>Students ({data.students.learners})</h3>
-      <Cards items={[['Repeated learning difficulty', data.students.withRepeated], ['Preliminary observations only', data.students.preliminaryOnly],
-        ['Improving (keep monitoring)', data.students.improving], ['More data needed or no results yet', data.students.moreDataNeeded + data.students.noData]]} />
-      <h3>Independent Learners ({data.independentLearners.learners})</h3>
-      <Cards items={[['Repeated learning difficulty', data.independentLearners.withRepeated], ['Preliminary observations only', data.independentLearners.preliminaryOnly],
-        ['Improving (keep monitoring)', data.independentLearners.improving], ['More data needed or no results yet', data.independentLearners.moreDataNeeded + data.independentLearners.noData]]} />
-      <p className="m7-performance-scope">A repeated learning difficulty: at least two recent assessments below 75% with at least four questions of that type, or at least two recent readings below 90% word accuracy. A preliminary observation is based on one assessment or reading and needs more evidence. Each learner is counted once, by their strongest evidence.</p>
+      {([['Students', data.students], ['Independent Learners', data.independentLearners]] as const).map(([label, group]) => <div key={label}>
+        <h3>{label} ({group.learners})</h3>
+        <Cards items={suggestionCategoryCards(group)} />
+        <p className="m7-performance-scope" role="note">{improvingNote(group.improving)}</p>
+      </div>)}
+      <p className="m7-performance-scope">The four categories add up to the registered learner total: each learner is counted in exactly one, by their strongest evidence. A repeated learning difficulty: at least two recent assessments below 75% with at least four questions of that type, or at least two recent readings below 90% word accuracy. A preliminary observation is based on one assessment or reading and needs more evidence. On track: saved results meet the benchmarks. Improving is a progress indicator shown separately.</p>
       {!data.needs.length ? <p>No suggested practice areas right now.</p> : <div className="m7-scroll"><table className="m7s-summary">
         <thead><tr><th rowSpan={2}>Practice area</th><th rowSpan={2}>Language</th><th colSpan={2}>Students</th><th colSpan={2}>Independent Learners</th></tr>
           <tr><th>Repeated</th><th>Preliminary</th><th>Repeated</th><th>Preliminary</th></tr></thead>
         <tbody>{data.needs.map(n => <tr key={`${n.language}:${n.competency}`}><td>{n.competencyName}</td><td>{n.languageName}</td>
           <td>{n.student.pattern}</td><td>{n.student.preliminary}</td><td>{n.general_user.pattern}</td><td>{n.general_user.preliminary}</td></tr>)}</tbody>
       </table></div>}
+      {data.needs.length > 0 && <p className="m7-performance-scope">A learner with several practice areas may be counted in multiple rows.</p>}
       <p className="m7-performance-scope">Same rules as the Teacher view (75% comprehension benchmark, 90% word recognition, fluency not evaluated). Updated {date(data.generatedAt)}.</p>
     </>}
   </section>;
