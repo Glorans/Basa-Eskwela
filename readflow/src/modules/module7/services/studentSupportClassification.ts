@@ -2,6 +2,13 @@ export function isActiveWarning(classification: string): boolean {
   return ['Early Warning', 'At Risk', 'Needs Support'].includes(classification);
 }
 
+/** Teacher "Students Needing Support" list: only the two priority states from the backend classification. */
+export const PRIORITY_SUPPORT_CLASSIFICATIONS = ['At Risk', 'Needs Support'] as const;
+export function needsPrioritySupport(classification: string): boolean {
+  return (PRIORITY_SUPPORT_CLASSIFICATIONS as readonly string[]).includes(classification);
+}
+export const NO_PRIORITY_SUPPORT_MESSAGE = 'No students currently classified as At Risk or Needs Support.';
+
 /** Basa Eskwela's own intervention guide; the backend (m7Risk.js) applies these rules. */
 export const RISK_RULES_INTRO = "Basa Eskwela's intervention guide, using 75% as the minimum comprehension benchmark. It is a project-defined classification for this system, not a DepEd classification.";
 export const RISK_RULES = [
