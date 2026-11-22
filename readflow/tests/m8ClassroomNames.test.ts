@@ -1,5 +1,6 @@
 // M8 F4 classroom display names on the real Leaderboard page (the database decides the names; the page shows them).
 import assert from "node:assert/strict";
+import * as leaderboardRooms from "../src/modules/module8/leaderboardRooms.ts";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { createHookRuntime, findAll, loadComponentModule, textOf, tick } from "./helpers/hookRuntime.ts";
@@ -9,10 +10,12 @@ const require = createRequire(import.meta.url);
 
 const ACTIVE_ROOM = { id: "room", room_name: "Reading class", section: null, archived_at: null };
 
-async function mountLeaderboard(rankings: unknown[] | null, legacy: unknown[] = [], rooms: unknown[] = [ACTIVE_ROOM]) {
+async function mountLeaderboard(rankings: unknown[] | null, legacy: unknown[] = [], rooms: unknown[] = [ACTIVE_ROOM], personal: Set<string> = new Set()) {
   const runtime = createHookRuntime(require("react"));
   const page = loadComponentModule(new URL("../src/pages/Leaderboard.tsx", import.meta.url), (id) => {
     if (id === "react") return runtime.react;
+    if (id.endsWith("/module8/leaderboardRooms")) return leaderboardRooms;
+    if (id.endsWith("/studentRoomArchive")) return { getMyArchivedRooms: async () => ({ supported: true, roomIds: personal }) };
     if (id.endsWith("/gamificationService") || id.endsWith("/classroomService")) {
       return {
         rankByXp,
@@ -23,6 +26,8 @@ async function mountLeaderboard(rankings: unknown[] | null, legacy: unknown[] = 
       };
     }
     if (id.endsWith("/supabaseClient")) return { supabase: { auth: { getUser: async () => ({ data: { user: { id: "reader" } }, error: null }) } } };
+    // The one-line visibility choice loads the Student's own choice from the database; covered in m8LeaderboardPrivacy.test.ts.
+    if (id.endsWith("/ClassroomVisibilityControl")) return { default: () => null };
     if (id.endsWith(".css")) return {};
     return require(id);
   }, { Error, console: { error() {} } });
@@ -62,8 +67,9 @@ test("an archived classroom is labelled, explains the hidden names, and its rank
   const view = await mountLeaderboard([
     { user_id: "a1", display_name: "Reader 97E0E0", xp: 40, rank: 0, is_me: false },
     { user_id: "a2", display_name: "You", xp: 10, rank: 0, is_me: true },
-  ], [], [archived, { ...ACTIVE_ROOM, id: "now" }]);
-  assert.deepEqual(view.options, ["Grade 5 - Kamonggay (Archived)", "Reading class"]);
+  ], [], [archived]);
+  // Only an archived room: it is selected (history stays viewable with reader codes).
+  assert.deepEqual(view.options, ["Grade 5 - Kamonggay (Archived)"]);
   assert.deepEqual(view.notes, ["This classroom is archived. Student names are hidden to protect privacy."]);
   assert.equal(view.length, 2, "historical rankings still shown");
   assert.match(view[0], /Reader 97E0E0.*40/);
@@ -74,4 +80,20 @@ test("an active classroom has no archived label or note", async () => {
   const view = await mountLeaderboard([{ user_id: "me", display_name: "You (Maria)", xp: 10, rank: 0, is_me: true }]);
   assert.deepEqual(view.options, ["Reading class"]);
   assert.deepEqual(view.notes, []);
+});
+
+test("M8 F4: a personally archived room is not offered; Teacher-archived rooms follow the active ones; an active room is selected first", async () => {
+  const archivedByTeacher = { id: "old", room_name: "Last year", section: null, archived_at: "2026-11-01T00:00:00Z" };
+  const mine = { id: "mine", room_name: "Hidden by me", section: null, archived_at: null };
+  const view = await mountLeaderboard([{ user_id: "me", display_name: "You (Maria)", xp: 10, rank: 0, is_me: true }], [],
+    [archivedByTeacher, mine, ACTIVE_ROOM], new Set(["mine"]));
+  assert.deepEqual(view.options, ["Reading class", "Last year (Archived)"], "personally archived room removed; archived after active");
+  assert.deepEqual(view.notes, [], "the active room is selected, not the archived one");
+});
+
+test("M8 F4: leaderboardRooms keeps classmates' rooms untouched and falls back to an archived room only when nothing is active", () => {
+  const a = { id: "a", archived_at: null }, b = { id: "b", archived_at: "2026-11-01" };
+  assert.deepEqual(leaderboardRooms.leaderboardRooms([b, a], new Set()), { active: [a], archived: [b], defaultId: "a" });
+  assert.deepEqual(leaderboardRooms.leaderboardRooms([b, a], new Set(["a"])), { active: [], archived: [b], defaultId: "b" });
+  assert.deepEqual(leaderboardRooms.leaderboardRooms([a], new Set(["a"])), { active: [], archived: [], defaultId: "" });
 });

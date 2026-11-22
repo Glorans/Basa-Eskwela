@@ -32,6 +32,12 @@ import type {
   Classroom,
 } from "../modules/module4/services/classroomService";
 
+import { getMyArchivedRooms } from "../modules/module4/services/studentRoomArchive";
+import { leaderboardRooms } from "../modules/module8/leaderboardRooms";
+import ClassroomVisibilityControl from "../modules/module8/ClassroomVisibilityControl";
+import "./ClassroomLeaderboard.css";
+import type { LeaderboardVisibility } from "../modules/module8/gamificationService";
+
 // ========================================
 // CONSTANTS
 // ========================================
@@ -84,6 +90,10 @@ export default function Leaderboard() {
 
   const [error, setError] = useState("");
 
+  // The learner's own leaderboard choice; a save reloads the rankings so the change shows at once.
+  const [visibility, setVisibility] = useState<LeaderboardVisibility | null>(null);
+  const [refresh, setRefresh] = useState(0);
+
   // ========================================
   // LOAD STUDENT CLASSROOMS AND LEADERBOARD
   // ========================================
@@ -107,17 +117,18 @@ export default function Leaderboard() {
           throw new Error("Please log in first.");
         }
 
-        const joinedRooms =
-          await getStudentClassrooms(user.id);
+        // Rooms the Student archived for themselves are not offered; Teacher-archived rooms follow the active ones.
+        const [joinedRooms, personal] = await Promise.all([
+          getStudentClassrooms(user.id),
+          getMyArchivedRooms(),
+        ]);
 
         if (!active) return;
 
+        const offered = leaderboardRooms(joinedRooms, personal.roomIds);
         setCurrentUserId(user.id);
-        setClassrooms(joinedRooms);
-
-        if (joinedRooms.length > 0) {
-          setSelectedClassroomId(joinedRooms[0].id);
-        }
+        setClassrooms([...offered.active, ...offered.archived]);
+        setSelectedClassroomId(offered.defaultId);
       } catch (err) {
         if (!active) return;
 
@@ -208,7 +219,7 @@ export default function Leaderboard() {
     return () => {
       active = false;
     };
-  }, [selectedClassroomId, language]);
+  }, [selectedClassroomId, language, refresh]);
 
   // Only the fallback combines classmates from every joined classroom.
   const combinesClassrooms =
@@ -223,7 +234,7 @@ export default function Leaderboard() {
   // ========================================
 
   return (
-    <main style={pageStyle}>
+    <main className="classroom-leaderboard-page" style={pageStyle}>
       {/* PAGE HEADER */}
       <header style={pageHeaderStyle}>
         <h1 style={pageTitleStyle}>
@@ -265,15 +276,29 @@ export default function Leaderboard() {
               No classrooms available
             </option>
           ) : (
-            classrooms.map((room) => (
-              <option key={room.id} value={room.id}>
-                {room.room_name}
-                {room.section
-                  ? ` - ${room.section}`
-                  : ""}
-                {room.archived_at ? " (Archived)" : ""}
-              </option>
-            ))
+            (() => {
+              const option = (room: Classroom) => (
+                <option key={room.id} value={room.id}>
+                  {room.room_name}
+                  {room.section
+                    ? ` - ${room.section}`
+                    : ""}
+                  {room.archived_at ? " (Archived)" : ""}
+                </option>
+              );
+              const current = classrooms.filter((room) => !room.archived_at);
+              const archived = classrooms.filter((room) => room.archived_at);
+              return (
+                <>
+                  {current.map(option)}
+                  {archived.length > 0 && (
+                    <optgroup label="Archived classrooms (history)">
+                      {archived.map(option)}
+                    </optgroup>
+                  )}
+                </>
+              );
+            })()
           )}
         </select>
 
@@ -301,7 +326,7 @@ export default function Leaderboard() {
       </section>
 
       {/* LEADERBOARD CARD */}
-      <section style={leaderboardCardStyle}>
+      <section className="classroom-leaderboard-card" style={leaderboardCardStyle}>
         <div style={headerStyle}>
           <h2 style={sectionTitleStyle}>
             <Medal
@@ -399,6 +424,7 @@ export default function Leaderboard() {
               return (
                 <li
                   key={learner.user_id}
+                  className="classroom-leaderboard-row"
                   style={{
                     ...rowStyle,
                     ...(isCurrentUser
@@ -425,6 +451,8 @@ export default function Leaderboard() {
 
                   {/* AVATAR */}
                   <div
+                    className="classroom-leaderboard-avatar"
+                    aria-hidden="true"
                     style={{
                       ...avatarStyle,
                       backgroundColor:
@@ -441,6 +469,10 @@ export default function Leaderboard() {
                     <span style={userNameStyle}>
                       {displayName}
                     </span>
+
+                    {isCurrentUser && visibility === "hidden" && (
+                      <small style={hiddenNoteStyle}>Hidden from classmates. Only you see this row.</small>
+                    )}
 
                     {difficulty && (
                       <span
@@ -477,6 +509,17 @@ export default function Leaderboard() {
               );
             })}
           </ol>
+        )}
+
+        {/* ONE-LINE CHOICE: classroom nickname (default, only when approved), Reader code or hidden. Enforced by the
+            database; nothing to type. */}
+        {classrooms.length > 0 && (
+          <ClassroomVisibilityControl
+            onChange={(privacy, reason) => {
+              setVisibility(privacy.visibility);
+              if (reason === "saved") setRefresh((n) => n + 1);
+            }}
+          />
         )}
       </section>
 
@@ -702,7 +745,15 @@ const userNameStyle: CSSProperties = {
   fontSize: "15px",
   fontWeight: 600,
   color: "#172b25",
-  overflowWrap: "anywhere",
+  // Wrap between words; a single long word still breaks rather than widening the page.
+  overflowWrap: "break-word",
+  minWidth: 0,
+  maxWidth: "100%",
+};
+
+const hiddenNoteStyle: CSSProperties = {
+  fontSize: "12px",
+  color: "#64748b",
 };
 
 const difficultyStyle: CSSProperties = {

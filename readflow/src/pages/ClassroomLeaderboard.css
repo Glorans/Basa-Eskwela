@@ -1,0 +1,20 @@
+/* Classroom Leaderboard on phones: give classmates' names the room (as on the Independent Learner page). The page
+   styles are inline, so these narrow-screen overrides use !important. The avatar is a generic icon (no information). */
+@media (max-width: 480px) {
+  .classroom-leaderboard-page {
+    padding: 12px !important;
+  }
+
+  .classroom-leaderboard-card {
+    padding: 16px !important;
+  }
+
+  .classroom-leaderboard-row {
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  .classroom-leaderboard-avatar {
+    display: none !important;
+  }
+}

@@ -34,6 +34,8 @@ export interface Badge {
   claimed_at: string | null;
   /** Awarded automatically before claiming began: claimed_at is the original award date. */
   preserved: boolean;
+  /** Retired from earning (Graduate, Diamond, Level Up). Listed only when the learner claimed it earlier. */
+  retired: boolean;
 }
 
 export interface LeaderboardEntry {
@@ -190,6 +192,7 @@ export async function getMyGamification(): Promise<{
         state: earnedMap.has(badge.id) ? "claimed" : "locked",
         claimed_at: earnedMap.get(badge.id) ?? null,
         preserved: earnedMap.has(badge.id),
+        retired: false,
       })
     );
 
@@ -249,11 +252,14 @@ interface MyBadgeRow {
   eligible: boolean;
   claimed_at: string | null;
   preserved?: boolean;
+  /** m8_final_corrections_v1; absent before that migration (then nothing is retired). */
+  retired?: boolean;
 }
 const toBadge = (row: MyBadgeRow): Badge => ({
   id: row.badge_id, name: row.name, description: row.description, icon: row.icon,
   state: badgeState({ eligible: row.eligible === true, claimed_at: row.claimed_at ?? null }), claimed_at: row.claimed_at ?? null,
   preserved: row.preserved === true,
+  retired: row.retired === true,
 });
 
 /**
@@ -404,4 +410,42 @@ export async function getIndependentLeaderboard(
       rank: index + 1,
     })
   );
+}
+
+// ========================================
+// LEADERBOARD PRIVACY (m8_leaderboard_privacy_v1)
+// ========================================
+
+/** How the learner appears to other learners: a chosen nickname, a "Reader" code (default) or not at all. */
+export type LeaderboardVisibility = "nickname" | "anonymous" | "hidden";
+
+export interface LeaderboardPrivacy {
+  visibility: LeaderboardVisibility;
+  alias: string | null;
+  /** False until nicknames are switched on after the privacy approval: everyone stays anonymous meanwhile. */
+  namesAllowed: boolean;
+}
+
+type PrivacyRow = { visibility?: string; alias?: string | null; names_allowed?: boolean };
+const toPrivacy = (rows: PrivacyRow[] | null): LeaderboardPrivacy => {
+  const row = (rows ?? [])[0] ?? {};
+  const visibility = (["nickname", "anonymous", "hidden"] as const).find((v) => v === row.visibility) ?? "anonymous";
+  return { visibility, alias: row.alias ?? null, namesAllowed: row.names_allowed === true };
+};
+
+/** The learner's own leaderboard choice; null until m8_leaderboard_privacy_v1 is deployed. */
+export async function getMyLeaderboardPrivacy(): Promise<LeaderboardPrivacy | null> {
+  const { data, error } = await db.rpc("m8_my_leaderboard_privacy");
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return toPrivacy(data);
+}
+
+/** Saves the learner's own choice. XP, badges, achievements and streaks are not affected. */
+export async function setMyLeaderboardPrivacy(visibility: LeaderboardVisibility, alias: string | null): Promise<LeaderboardPrivacy> {
+  const { data, error } = await db.rpc("m8_set_leaderboard_privacy", { p_visibility: visibility, p_alias: alias });
+  if (error) throw error;
+  return toPrivacy(data);
 }

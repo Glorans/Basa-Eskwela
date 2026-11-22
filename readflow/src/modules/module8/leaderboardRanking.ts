@@ -18,10 +18,14 @@ export function rankByXp<T extends RankedEntry>(entries: T[]): T[] {
 }
 
 /**
- * The signed-in learner's own row. Other learners stay anonymous ("Reader XXXXXX", from the database): there is no
- * public-display consent for Independent Learners. Only the viewer's OWN nickname, which only they see, is shown.
+ * The signed-in learner's own row. Other learners are anonymous ("Reader XXXXXX") unless they chose a leaderboard
+ * nickname and nicknames are approved (m8_leaderboard_privacy_v1); the database decides. Without a chosen nickname,
+ * the viewer's OWN profile nickname, which only they see, is shown.
  */
 export function ownLeaderboardLabel(displayName: string, ownNickname: string | null | undefined): string {
+  // The learner chose a leaderboard nickname that others see: the database sends "You (ReadingStar)".
+  const shown = /^You \((.+)\)$/.exec(displayName);
+  if (shown) return `${shown[1]} (You)`;
   const nickname = ownNickname?.trim();
   if (nickname) return `${nickname} (You)`;
   return displayName && displayName !== "You" ? `${displayName} (You)` : "You";

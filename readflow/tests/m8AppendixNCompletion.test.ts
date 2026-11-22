@@ -137,12 +137,12 @@ test("achievement guide: one entry per badge, and its targets match the database
   assert.match(consistent, /WHERE user_id=NEW\.user_id\) >= 7/);
   const stats = { totalXp: 0, readAloudCount: 0, completedModules: 0, readingDays: 0, longestStreak: 0 };
   assert.deepEqual(["first_read", "bookworm", "diamond", "streak_3", "consistent_reader", "brave_reader"].map((id) => achievementProgress(id, stats)?.target),
-    [1, 5, 2000, 3, 7, 10]);
+    [1, 3, 2000, 3, 7, 10]);
 });
 
 test("achievement progress is capped, and badges without a simple count show none", () => {
   const stats = { totalXp: 2600, readAloudCount: 4, completedModules: 0, readingDays: 2, longestStreak: 2 };
-  assert.deepEqual(achievementProgress("brave_reader", stats), { current: 4, target: 10, unit: "read-alouds" });
+  assert.deepEqual(achievementProgress("brave_reader", stats), { current: 4, target: 10, unit: "verified readings" });
   assert.deepEqual(achievementProgress("diamond", stats), { current: 2000, target: 2000, unit: "XP" });
   for (const id of ["level_up", "graduate", "unknown_badge"]) assert.equal(achievementProgress(id, stats), null, id);
   assert.equal(earnedDate("2026-11-04T16:30:00Z"), "Nov 5, 2026", "earned dates are shown in Philippine time");
@@ -156,7 +156,7 @@ test("the achievements page explains badges, the streak and the reading level ho
   assert.match(page, /Badges \{claimedWord\}/);
   assert.match(page, /const claimedWord = claiming \? "Claimed" : "Earned";/);
   assert.match(page, /getMyAchievements/);
-  assert.match(page, /Longest: \{progress\?\.longest_streak/);
+  assert.match(page, /Best streak: \{progress\?\.longest_streak/);
   assert.match(page, /Read today to keep your streak going!/);
   assert.match(page, /Reading Level/);
   assert.match(page, /Earning XP does not change your level\./);
@@ -167,11 +167,12 @@ test("the achievements page explains badges, the streak and the reading level ho
 
 test("F3: Bronze, Silver and Gold come from the count, in one place, without repeating a badge", () => {
   const { milestoneProgress, MILESTONE_GUIDE } = achievements;
-  assert.deepEqual(milestoneProgress(0), { count: 0, reached: null, next: { tier: "Bronze", target: 3 } });
-  assert.deepEqual(milestoneProgress(3), { count: 3, reached: "Bronze", next: { tier: "Silver", target: 10 } });
-  assert.deepEqual(milestoneProgress(10), { count: 10, reached: "Silver", next: { tier: "Gold", target: 25 } });
-  assert.deepEqual(milestoneProgress(30), { count: 30, reached: "Gold", next: null });
-  assert.deepEqual(milestoneProgress(Number.NaN), { count: 0, reached: null, next: { tier: "Bronze", target: 3 } });
+  // Capstone tiers (m8_final_corrections_v1): Bronze 1, Silver 2, Gold 3 qualifying stories.
+  assert.deepEqual(milestoneProgress(0), { count: 0, reached: null, next: { tier: "Bronze", target: 1 } });
+  assert.deepEqual(milestoneProgress(1), { count: 1, reached: "Bronze", next: { tier: "Silver", target: 2 } });
+  assert.deepEqual(milestoneProgress(2), { count: 2, reached: "Silver", next: { tier: "Gold", target: 3 } });
+  assert.deepEqual(milestoneProgress(5), { count: 5, reached: "Gold", next: null });
+  assert.deepEqual(milestoneProgress(Number.NaN), { count: 0, reached: null, next: { tier: "Bronze", target: 1 } });
   assert.deepEqual(Object.keys(MILESTONE_GUIDE).sort(), ["accurate_reader", "comprehension_star"]);
   for (const id of Object.keys(MILESTONE_GUIDE)) assert.equal(id in ACHIEVEMENT_GUIDE, false, "not also a badge");
 });
@@ -179,7 +180,8 @@ test("F3: Bronze, Silver and Gold come from the count, in one place, without rep
 test("F2: First Read and Bookworm count activities when known, and old data still shows a number", () => {
   const stats = { totalXp: 0, readAloudCount: 0, completedModules: 1, readingDays: 0, longestStreak: 0 };
   assert.equal(achievementProgress("bookworm", stats)?.current, 1);
-  assert.equal(achievementProgress("bookworm", { ...stats, completedActivities: 4 })?.current, 4);
+  assert.equal(achievementProgress("bookworm", { ...stats, completedActivities: 2 })?.current, 2);
+  assert.deepEqual(achievementProgress("bookworm", { ...stats, completedActivities: 4 }), { current: 3, target: 3, unit: "different activities" }, "Bookworm: 3 activities");
   assert.match(ACHIEVEMENT_GUIDE.diamond.note ?? "", /Daily login XP does not count/);
 });
 
@@ -208,4 +210,25 @@ test("leaderboards share ranks for equal XP on both the Student and Independent 
   assert.match(independent, /const rank = entry\.rank;/);
   assert.doesNotMatch(independent, /const rank = index \+ 1;/);
   assert.match(read("src/pages/Leaderboard.tsx"), /rankByXp/);
+});
+
+test("M8 final corrections: badge counter counts active badges and keeps past (retired) claims separate", async () => {
+  const { badgeCounts, RETIRED_BADGE_NOTE } = await import("../src/modules/module8/achievements.ts");
+  const badges = [
+    { state: "claimed" as const, retired: false }, { state: "ready" as const, retired: false }, { state: "locked" as const, retired: false },
+    { state: "locked" as const, retired: false }, { state: "locked" as const, retired: false }, { state: "claimed" as const, retired: true },
+  ];
+  assert.deepEqual(badgeCounts(badges), { claimed: 1, total: 5, past: 1 });
+  assert.match(RETIRED_BADGE_NOTE, /no longer awarded/);
+  const page = read("src/pages/MyBadges.tsx");
+  assert.doesNotMatch(page, /\/ 8|badges\.length\}/, "the counter is not hard-coded and does not count retired badges");
+  assert.match(read("src/modules/module8/achievements.ts"), /best streak/);
+});
+
+test("M8: badge requirements and progress are shown in every state (Locked, Claim, Claimed), not only while locked", () => {
+  const page = read("src/pages/MyBadges.tsx");
+  assert.match(page, /REQUIREMENT PROGRESS: shown in every state/);
+  assert.doesNotMatch(page, /badge\.state === "locked" && stats && \(\(\) => \{/, "progress is no longer limited to locked badges");
+  const guide = read("src/modules/module8/achievements.ts");
+  for (const unit of ['"reading activity"', '"different activities"', '"verified readings"', '"reading days"', '"consecutive days (best streak)"']) assert.ok(guide.includes(unit), unit);
 });

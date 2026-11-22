@@ -12,6 +12,8 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import useAuthenticatedProfile from "../hooks/useAuthenticatedProfile";
 import { ownLeaderboardLabel, rankByXp } from "../modules/module8/leaderboardRanking";
+import LeaderboardPrivacyPanel from "../modules/module8/LeaderboardPrivacyPanel";
+import type { LeaderboardVisibility } from "../modules/module8/gamificationService";
 import "./IndependentLeaderboard.css";
 
 type Entry = {
@@ -53,6 +55,9 @@ export default function IndependentLeaderboard() {
   const { profile } = useAuthenticatedProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // The learner's own leaderboard choice; a save reloads the rankings so the change shows at once.
+  const [visibility, setVisibility] = useState<LeaderboardVisibility | null>(null);
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -111,7 +116,7 @@ export default function IndependentLeaderboard() {
     return () => {
       active = false;
     };
-  }, [period, language]);
+  }, [period, language, refresh]);
 
   const title =
     period === "weekly"
@@ -135,6 +140,15 @@ export default function IndependentLeaderboard() {
           See your global rankings against independent learners.
         </p>
       </header>
+
+      {/* HOW THE LEARNER APPEARS: nickname (only when approved), anonymous or hidden. Enforced by the database. */}
+      <LeaderboardPrivacyPanel
+        audience="independent"
+        onChange={(privacy, reason) => {
+          setVisibility(privacy.visibility);
+          if (reason === "saved") setRefresh((n) => n + 1);
+        }}
+      />
 
       {/* LEADERBOARD CARD */}
       <section style={leaderboardCardStyle}>
@@ -297,6 +311,10 @@ export default function IndependentLeaderboard() {
                         ? ownLeaderboardLabel(entry.display_name, profile?.nickname)
                         : entry.display_name}
                     </strong>
+
+                    {isYou && visibility === "hidden" && (
+                      <small style={{ fontSize: 12, color: "#64748b" }}>Hidden from other learners. Only you see this row.</small>
+                    )}
 
                     {difficulty && (
                       <span
