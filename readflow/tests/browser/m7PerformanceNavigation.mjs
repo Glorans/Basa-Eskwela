@@ -8,20 +8,22 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import * as fixture from '../fixtures/m7Performance.ts';
+import { studentDetail, studentSuggestions } from '../fixtures/adminStudentPerformance.ts';
 import { teacherSupport } from '../fixtures/m7Support.ts';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 process.chdir(root);
-const captures = path.resolve(root, '../.tmp/m7-function-redesign');
+const captures = process.env.CAPTURES_PATH || path.join(os.tmpdir(), 'basa-m7-function-redesign');
 fs.mkdirSync(captures, { recursive: true });
 const vite = await createServer({ root, configFile: false, plugins: [react(), {
   name: 'm7-saved-response-fixtures', enforce: 'pre',
   resolveId(id) { if (id === '/m7-fixture.tsx') return '\0m7-fixture.tsx'; },
   load(id) { if (id === '\0m7-fixture.tsx') return `
     import React from 'react'; import { createRoot } from 'react-dom/client';
-    import { MemoryRouter } from 'react-router-dom';
+    import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
     import { TeacherSupportPage } from '/src/modules/module7/M7Pages.tsx';
     import Reports from '/src/modules/module7/TeacherReportsPage.tsx';
+    import AdminReports from '/src/modules/module7/AdminReportsPage.tsx';
     import Teacher from '/src/modules/module7/TeacherAnalyticsPage.tsx';
     import AdminSystem from '/src/modules/module7/AdminAnalyticsPage.tsx';
     import AdminStudents from '/src/modules/module7/AdminStudentPerformancePage.tsx';
@@ -29,10 +31,25 @@ const vite = await createServer({ root, configFile: false, plugins: [react(), {
     const p = new URLSearchParams(location.search), page = p.get('page'), scenario = p.get('scenario');
     window.f = ${JSON.stringify(fixture)};
     window.support = ${JSON.stringify(teacherSupport)};
+    // Test-only observations exercise charts and inline details, never production fallbacks.
+    if (page === 'system' && scenario !== 'empty') {
+      window.f.adminSystem.details.trends = ['2026-10-26', '2026-11-02', '2026-11-16'].map(weekStart => ({...window.f.metrics, weekStart}));
+      window.f.adminSystem.details.riskCounts = {'On Track':0, 'Early Warning':1, 'At Risk':0, 'Needs Support':1, 'No assessment data':1, 'Evaluation unavailable':0};
+      window.f.adminSystem.details.supportStudents = ['Ana', 'Ben'].map((name, i) => ({ id:name.toLowerCase(), name, classification:i ? 'Early Warning':'Needs Support',
+        contexts:[{teacherId:'t',teacherName:'Teacher T',classrooms:['Grade 5'],classification:i ? 'Early Warning':'Needs Support',completedQuizzes:3,latestScores:[{score:55,completedAt:'2026-11-02T00:00:00Z'},{score:75,completedAt:'2026-11-03T00:00:00Z'}]}],
+        interventions:{total:3,planned:1,inProgress:1,completed:1} }));
+    }
+
+    window.studentDetail = ${JSON.stringify(studentDetail)};
+    window.studentSuggestions = ${JSON.stringify(studentSuggestions)};
     window.supportWrites = [];
-    window.calls = [];
+    window.calls = []; window.requestTimings = [];
+    const measured = ${process.env.STUDENT_PERF_TRACE === '1'};
     window.respond = async (key, value) => {
       window.calls.push(key);
+      const timing = {key,start:performance.now()};window.requestTimings.push(timing);
+      if (measured && key.startsWith('/admin/students/')) await new Promise(resolve=>setTimeout(resolve,400));
+      timing.end=performance.now();
       if (scenario === 'error') throw Error('Fixture unavailable');
       if (scenario === 'slow') await new Promise(resolve => setTimeout(resolve, 600));
       return structuredClone(value);
@@ -46,12 +63,18 @@ const vite = await createServer({ root, configFile: false, plugins: [react(), {
       window.f.adminSystem.details.classroomOptions = [];
       window.f.adminSystem.details.classroomComparisons = [];
     }
-    const Page = page === 'support' ? TeacherSupportPage : page === 'reports' ? Reports : page === 'system' ? AdminSystem : page === 'students' ? AdminStudents : Teacher;
+    const Page = page === 'support' ? TeacherSupportPage : page === 'reports' ? Reports : page === 'admin-reports' ? AdminReports : page === 'system' ? AdminSystem : page === 'students' ? AdminStudents : Teacher;
     document.body.style.background = '#173f3b';
-    createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter, null, React.createElement(Page)));
+    function RoutedFixture() {
+      const location=useLocation();window.fixtureNavigate=useNavigate();window.fixtureLocation=location.pathname+location.search;
+      return React.createElement(location.pathname==='/admin/student-performance' ? AdminStudents : Page);
+    }
+    const initialEntry=page==='students' ? '/admin/student-performance'+(p.has('studentId') ? '?studentId='+encodeURIComponent(p.get('studentId')) : '') : '/';
+    createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter, {initialEntries:[initialEntry]}, React.createElement(React.StrictMode,null,React.createElement(RoutedFixture))));
   `; },
   transform(code, id) {
     const file = id.replaceAll('\\', '/');
+    if (file.endsWith('/auth/useAuth.ts')) return { code: `const user={id:'test-admin'}; const profile={id:'test-admin',role:'admin'}; export const useAuth=()=>({user,profile,loading:false,profileError:false}); export default useAuth;`, map:null };
     if (file.endsWith('/module7/WeeklyReportSection.tsx')) {
       // Replace only the request boundary in this local fixture; real report UI and handlers run.
       const start = code.indexOf('async function requestWeeklyReports(');
@@ -86,7 +109,7 @@ const vite = await createServer({ root, configFile: false, plugins: [react(), {
     if (file.endsWith('/module7/services/studentPerformanceService.ts')) return { code: `export const getStudentPerformance = () => window.respond('students', window.f.studentPerformance);`, map: null };
     if (file.endsWith('/module7/services/quizScoreService.ts')) return { code: `export const getQuizScores = () => window.respond('quizzes', window.f.quizzes);`, map: null };
     if (file.endsWith('/module4/services/classroomService.ts')) return { code: `export const getClassroomById = async id => ({id,room_code:id === 'room-a' ? 'ABC123' : 'XYZ789'}); export const getRoomEnrollments = id => window.respond('enrollment:'+id, (window.f.memberships[id] || []).map(student_id=>({student_id})));`, map: null };
-    if (file.endsWith('/module7/services/m7Service.ts')) return { code: `export const m7Request = (url,method='GET',body) => {
+    if (file.endsWith('/module7/services/m7Service.ts')) return { code: `export const PERSONAL_PROGRESS_TIMEOUT_MS = 60_000; export const ANALYTICS_TIMEOUT_MESSAGE = 'Fixture timed out'; export const m7Request = (url,method='GET',body) => {
       if (url === '/teacher' && method === 'GET') return window.respond(url,window.support);
       if (method !== 'GET' && new URLSearchParams(location.search).get('page') === 'support') {
         const parts=url.split('/'), student=window.support.students.find(s=>s.id===parts[2]);
@@ -103,6 +126,8 @@ const vite = await createServer({ root, configFile: false, plugins: [react(), {
         if(roomId){data.details.filters.roomId=roomId;data.details.classroomComparisons=data.details.classroomComparisons.filter(r=>r.id===roomId);}
         return window.respond(url, data);
       }
+      if (url.endsWith('/suggestions') && url.startsWith('/admin/students/')) return window.respond(url, url.includes('/ana/') ? window.studentSuggestions : {...window.studentSuggestions, suggestions:[], hasAnyData:false});
+      if (url === '/admin/students/ana') return window.respond(url, window.studentDetail);
       if (url === '/admin/students') return window.respond(url, window.f.adminStudents);
       const student=window.f.adminStudents.find(s=>url==='/admin/students/'+s.id);
       if (!student) throw Error('Unauthorized fixture request');
@@ -147,10 +172,20 @@ try {
   });
   await send('Runtime.enable'); await send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
   const navigate = async (page, scenario = '') => { await send('Page.navigate', { url: `http://127.0.0.1:${port}/fixture?page=${page}&scenario=${scenario}` }); await until('!!document.querySelector(".m7-dashboard")'); };
-  const select = async (id, value) => { await evaluate(`(() => { const e=document.getElementById(${JSON.stringify(id)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await pause(40); };
+  const select = async (id, value) => {
+    if (id === 'admin-student') { await evaluate(`document.getElementById('admin-student').focus()`); await pause(40); await evaluate(`document.getElementById('admin-student-option-${value}').click()`); await pause(40); return; }
+    await evaluate(`(() => { const e=document.getElementById(${JSON.stringify(id)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`); await pause(40); };
   const key = async (key, code, keyCode) => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: keyCode }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode }); };
   const panelText = id => evaluate(`document.getElementById('${id}').innerText`);
   const shots = [];
+  const headerStyle = () => evaluate(`(() => {
+    const properties={header:['backgroundColor','borderRadius','paddingTop','paddingRight','paddingBottom','paddingLeft','marginBottom','boxShadow'],h1:['color','fontSize','fontFamily','fontWeight','lineHeight'],p:['color','fontSize','fontFamily','lineHeight','marginTop','marginBottom']};
+    return Object.fromEntries(Object.entries(properties).map(([part,props])=>{
+      const node=document.querySelector(part==='header'?'.m7-dashboard-header':'.m7-dashboard-header '+part), style=getComputedStyle(node);
+      return [part,Object.fromEntries(props.map(property=>[property,style[property]]))];
+    }));
+  })()`);
+
   const snapshot = async (name, selector) => {
     await evaluate(`(() => {const e=document.querySelector('${selector}'); (e.closest('label') || e).scrollIntoView({block:'start'});})()`); await pause(100);
     assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth + 1'), false, `${name}: no page overflow: ${JSON.stringify(await evaluate(`Array.from(document.querySelectorAll('body *')).filter(e=>e.getClientRects().length && e.getBoundingClientRect().right>innerWidth+1 && getComputedStyle(e).overflowX!=='auto' && !Array.from((function*(n){while(n){yield n;n=n.parentElement;}})(e.parentElement)).some(n=>['auto','scroll','hidden'].includes(getComputedStyle(n).overflowX))).slice(0,12).map(e=>[e.tagName,e.className,e.getBoundingClientRect().width])`))}`);
@@ -159,8 +194,27 @@ try {
     const screenshot = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(captures, name + '.png'), Buffer.from(screenshot.data, 'base64')); shots.push(name);
   };
+  if (process.env.STUDENT_PERF_TRACE === '1') {
+    await navigate('students'); await until(`!!document.getElementById('admin-student') && !document.getElementById('admin-student').disabled`);
+    const start=await evaluate('performance.now()');
+    await select('admin-student','ana'); await until(`!!document.getElementById('admin-student-detail')`);
+    const profileMs=(await evaluate('performance.now()'))-start;
+    await until(`!!document.querySelector('.asp-dashboard .m7s-card')`);
+    const supportMs=(await evaluate('performance.now()'))-start;
+    const firstRequests=await evaluate('window.requestTimings');
+    await select('admin-student','ben');await until(`document.getElementById('admin-student-detail')?.textContent==='Ben'`);
+    const beforeReturn=await evaluate('window.calls.length'),returnStart=await evaluate('performance.now()');
+    await select('admin-student','ana');await until(`document.getElementById('admin-student-detail')?.textContent==='Ana'`);
+    const returnMs=(await evaluate('performance.now()'))-returnStart;
+    assert.equal(await evaluate('window.calls.length'),beforeReturn,'return to cached student adds no requests');
+    for(const path of ['/system','/admin/students','/admin/students/ana','/admin/students/ana/suggestions']) assert.equal(firstRequests.filter(r=>r.key===path).length,1,path);
+    console.log(JSON.stringify({profileMs,supportMs,returnMs,requests:firstRequests},null,2));
+  } else {
   for (const width of [390, 768, 1366]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await navigate('admin-reports'); await until(`document.querySelector('.m7-dashboard-header h1')?.textContent==='Reports'`);
+    const referenceHeader=await headerStyle();
+    await snapshot(`${width}-reports-header`, '.m7-dashboard-header');
     await navigate('teacher'); await until('!!document.querySelector(".m7-compact-metric")');
     assert.equal(await evaluate('document.querySelectorAll("[role=tabpanel]").length'), 1);
     assert.equal(await evaluate('!!document.getElementById("analytics-panel-0")'), true);
@@ -251,26 +305,143 @@ try {
     await evaluate(`document.getElementById('support-tab-1').click()`);
     assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('.m7-competency-cards strong')).map(e=>e.textContent)`),['No data','No data','No data']);
     await navigate('system'); await until(`!!document.getElementById('admin-classroom')`);
+    assert.deepEqual(await headerStyle(),referenceHeader,'System Performance matches Reports header');
+    assert.equal(await evaluate(`!!document.querySelector('.sp-eyebrow')`),false);
+    await snapshot(`${width}-system-header`, '.m7-dashboard-header');
     assert.deepEqual(await evaluate(`Array.from(document.getElementById('admin-classroom').options).slice(0,2).map(e=>[e.value,e.textContent.trim()])`), [['room-a','Grade 5 \u2014 Teacher T \u00b7 Room ABC123'],['room-b','Grade 5 \u2014 Teacher T \u00b7 Room XYZ789']]);
     assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('[aria-label="Analytics filters"] select')[1].options).slice(1,3).map(e=>e.textContent.trim())`), ['Grade 5 \u2014 Teacher T \u00b7 Room ABC123','Grade 5 \u2014 Teacher T \u00b7 Room XYZ789']);
-    const systemBefore = await evaluate(`document.querySelector('.m7-dashboard-content > .m7-metrics').innerText`);
+    await snapshot(`${width}-admin-overview`, '.sp-tabs');
+    await evaluate(`document.getElementById('system-tab-2').click()`);
+    const systemBefore = await evaluate(`document.querySelector('.sp-system-cards').textContent`);
     await select('admin-classroom', 'room-b');
-    assert.equal(await evaluate(`document.querySelector('.m7-dashboard-content > .m7-metrics').innerText`), systemBefore);
+    assert.equal(await evaluate(`document.querySelector('.sp-system-cards').textContent`), systemBefore);
     await evaluate(`Array.from(document.querySelectorAll('summary')).find(e=>e.textContent==='Compare classrooms').click()`);
     assert.equal(await evaluate(`Array.from(document.querySelectorAll('details')).find(e=>e.textContent.includes('Compare classrooms')).querySelectorAll('tbody tr').length`), 3);
     await snapshot(`${width}-admin-class`, '#admin-classroom');
+    const callsBeforeTabs = await evaluate('window.calls.length');
+    await evaluate(`document.getElementById('system-tab-2').focus()`); await key('Home', 'Home', 36);
+    await until(`document.activeElement.id === 'system-tab-0'`);
+    await key('ArrowRight', 'ArrowRight', 39);
+    await until(`!document.getElementById('system-panel-1').hidden`);
+    assert.equal(await evaluate(`document.querySelectorAll('#system-panel-1 svg').length`), 3);
+    assert.equal(await evaluate(`document.querySelectorAll('[role="tabpanel"]:not([hidden])').length`), 1);
+    await snapshot(`${width}-admin-trends`, '#system-panel-1');
+    await evaluate(`Array.from(document.querySelectorAll('.sp-view-switch button')).find(e=>e.textContent==='Table').click()`);
+    assert.equal(await evaluate(`document.querySelector('#system-panel-1 details').open`), true);
+    assert.equal(await evaluate(`document.querySelectorAll('#system-panel-1 tbody tr').length`), 3);
+    await evaluate(`document.getElementById('system-tab-3').click()`);
+    assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('#system-panel-3 progress')).map(e=>e.value)`), [33.33, 50]);
+    await snapshot(`${width}-admin-participation`, '#system-panel-3');
+    await evaluate(`document.getElementById('system-tab-4').focus()`); await key('End', 'End', 35);
+    await until(`!document.getElementById('system-panel-4').hidden`);
+    assert.equal(await evaluate(`document.querySelector('.sp-classification-guide').open`), false);
+    await evaluate(`document.querySelector('[aria-label="View details for Ana"]').focus()`); await key(' ', 'Space', 32);
+    await until(`document.querySelector('[aria-label="Hide details for Ana"]')?.getAttribute('aria-expanded') === 'true'`);
+    assert.match(await evaluate(`document.getElementById('support-detail-ana').innerText`), /55%/);
+    await snapshot(`${width}-admin-support`, '.sp-support-table');
+    await evaluate(`document.querySelector('.sp-support-controls input').focus()`);
+    await send('Input.insertText', {text:'ana'});
+    await until(`document.querySelector('.sp-support .sp-meta').textContent.includes('1 of 2')`);
+    await evaluate(`const e=document.querySelector('.sp-support-controls select'); e.value='Early Warning';e.dispatchEvent(new Event('change',{bubbles:true}));`);
+    await until(`document.querySelector('.sp-support').innerText.includes('No students match')`);
+    await evaluate(`Array.from(document.querySelectorAll('.sp-support-controls button')).find(e=>e.textContent.includes('Clear')).click()`);
+    await evaluate(`document.getElementById('system-tab-2').click()`);
+    assert.equal(await evaluate(`document.getElementById('admin-classroom').value`), 'room-b');
+    assert.equal(await evaluate('window.calls.length'), callsBeforeTabs);
+    await evaluate(`document.getElementById('system-tab-4').click()`);
+    await until(`!document.getElementById('system-panel-4').hidden`);
+    const linkedButton='[aria-label="View Student Performance for Ana"]';
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('${linkedButton}')).backgroundColor`),'rgb(255, 202, 89)');
+    assert.equal(await evaluate(`document.querySelector('${linkedButton}').getAttribute('href')`),'/admin/student-performance?studentId=ana');
+    await evaluate(`document.querySelector('${linkedButton}').click()`);
+    await until(`document.getElementById('admin-student-detail')?.textContent==='Ana'`);
+    assert.equal(await evaluate('window.fixtureLocation'),'/admin/student-performance?studentId=ana');
+    assert.equal(await evaluate(`document.getElementById('admin-student').value`),'Ana');
+    await evaluate(`document.querySelector('[aria-label="Clear student selection"]').click()`);
+    await until(`!document.getElementById('admin-student-detail')`);
+    assert.equal(await evaluate('window.fixtureLocation'),'/admin/student-performance');
+    await evaluate(`window.fixtureNavigate('/')`);await until(`!!document.getElementById('system-tab-4')`);
+    await evaluate(`document.getElementById('system-tab-4').click()`);
+    await until(`!!document.querySelector('[aria-label="View details for Ben"]')`);
+    await evaluate(`document.querySelector('[aria-label="View details for Ben"]').click()`);
+    await evaluate(`document.querySelector('[aria-label="View Student Performance for Ben"]').click()`);
+    await until(`document.getElementById('admin-student-detail')?.textContent==='Ben'`);
+    assert.equal(await evaluate(`document.querySelectorAll('#admin-student-detail').length`),1);
+    const beforeInvalid=await evaluate('window.calls.length');
+    await evaluate(`window.fixtureNavigate('/admin/student-performance?studentId=not-authorized')`);
+    await until(`document.body.innerText.includes('requested student is unavailable')`);
+    assert.equal(await evaluate(`!!document.getElementById('admin-student-detail')`),false);
+    assert.equal(await evaluate('window.calls.length'),beforeInvalid);
+    await evaluate(`window.fixtureNavigate('/admin/student-performance')`);
+    await until(`document.body.innerText.includes('Select a student to view performance')`);
+    assert.equal(await evaluate(`document.getElementById('admin-student').value`),'');
+
+
 
     await navigate('students'); await until(`!!document.getElementById('admin-student') && !document.getElementById('admin-student-classroom').disabled`);
+    assert.deepEqual(await headerStyle(),referenceHeader,'Student Performance matches Reports header');
+    await snapshot(`${width}-student-header`, '.m7-dashboard-header');
+    assert.equal(await evaluate(`document.getElementById('admin-student').value`), '');
+    assert.equal(await evaluate(`document.getElementById('admin-student-detail')`), null);
+    assert.equal(await evaluate(`window.calls.some(c=>c.startsWith('/admin/students/'))`), false);
+    assert.equal(await evaluate(`document.querySelector('.asp-classification-guide').open`), false);
+    await snapshot(`${width}-student-empty`, '.asp-find');
+    await evaluate(`document.getElementById('admin-student').focus()`);
+    await send('Input.insertText', {text:'ana'});
+    await until(`document.querySelectorAll('#admin-student-options [role=option]').length === 1`);
+    await key('ArrowDown','ArrowDown',40); await key('Enter','Enter',13);
+    await until(`!!document.getElementById('admin-student-detail')`);
+    await snapshot(`${width}-student-profile`, '.asp-profile');
+    assert.equal(await evaluate(`document.querySelectorAll('#student-detail-panel-0 tbody tr').length`), 2, 'repeated titles retained');
+    assert.equal(await evaluate(`document.querySelectorAll('#student-detail-panel-0 svg').length`), 2);
+    await snapshot(`${width}-student-readings`, '#student-detail-panel-0');
+    const detailCalls = await evaluate('window.calls.length');
+    await evaluate(`document.getElementById('student-detail-tab-0').focus()`); await key('ArrowRight','ArrowRight',39);
+    await until(`!document.getElementById('student-detail-panel-1').hidden`);
+    assert.match(await panelText('student-detail-panel-1'), /3 of 4 correct/);
+    assert.match(await panelText('student-detail-panel-1'), /Earlier extra attempt/);
+    await snapshot(`${width}-student-comprehension`, '#student-detail-panel-1');
+    await key('End','End',35); await until(`!document.getElementById('student-detail-panel-2').hidden`);
+    await until(`!!document.querySelector('.asp-dashboard .m7s-card')`);
+    assert.equal(await evaluate(`document.querySelector('.asp-dashboard .m7s-card > details').open`), false);
+    assert.equal(await evaluate(`document.querySelector('.asp-dashboard .m7s-rules').open`),false);
+    assert.match(await panelText('student-detail-panel-2'),/2 \/ 4 completed/);
+    await snapshot(`${width}-learning-support-collapsed`, '#student-detail-panel-2');
+    await evaluate(`document.querySelector('.asp-dashboard .m7s-card > details > summary').click()`);
+    assert.match(await panelText('student-detail-panel-2'), /seed ×2/);
+    assert.match(await panelText('student-detail-panel-2'), /growing/);
+    await evaluate(`Array.from(document.querySelectorAll('.asp-dashboard .m7s-card summary')).find(e=>e.textContent==='Supporting results').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('.asp-dashboard .m7s-evidence tbody tr').length`),2);
+    await evaluate(`document.querySelector('.asp-dashboard .m7s-rules > summary').click()`);
+    assert.match(await panelText('student-detail-panel-2'),/Comprehension: first answers/);
+    await evaluate(`document.querySelector('.asp-dashboard .m7s-rules > summary').click()`);
+
+    await evaluate(`document.querySelector('.asp-teacher-contexts summary').click()`);
+    assert.match(await panelText('student-detail-panel-2'), /Recovery in progress: 1 of 2/);
+    await evaluate(`document.querySelector('.asp-history summary').click()`);
+    assert.match(await panelText('student-detail-panel-2'), /Read together in class/);
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('#student-detail-panel-2 button')).some(e=>/Use|Save|Edit|Record/.test(e.textContent))`), false);
+    await snapshot(`${width}-student-learning-support`, '#student-detail-panel-2');
+    assert.equal(await evaluate('window.calls.length'), detailCalls, 'tab switching never refetches');
+    await evaluate(`document.querySelector('[aria-label="Clear student selection"]').click()`);
+    await until(`!document.getElementById('admin-student-detail')`);
+
     await select('admin-student', 'ana'); await until(`!!document.getElementById('admin-student-detail')`);
     const adminBefore = await evaluate(`document.getElementById('admin-student-detail').closest('section').innerText`);
     await select('admin-student-classroom', 'room-b');
-    await until(`document.getElementById('admin-student').options.length===3`);
-    assert.deepEqual(await evaluate(`Array.from(document.getElementById('admin-student').options).map(e=>e.value)`), ['', 'ana', 'ben']);
+    await until(`!document.getElementById('admin-student').disabled`);
+    assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('#admin-student-options [role=option]')).map(e=>e.id)`), ['admin-student-option-ana', 'admin-student-option-ben']);
     await select('admin-student', 'ana'); await until(`!!document.getElementById('admin-student-detail')`);
     assert.equal(await evaluate(`document.getElementById('admin-student-detail').closest('section').innerText`), adminBefore);
     await select('admin-student', 'ben'); await until(`document.getElementById('admin-student-detail')?.textContent.includes('Ben')`);
     assert.equal(await evaluate(`document.querySelectorAll('#admin-student-detail').length`), 1);
     await snapshot(`${width}-admin-student`, '#admin-student-classroom');
+    await select('admin-student-classification', 'Early Warning');
+    await until(`!document.getElementById('admin-student-detail')`);
+    assert.equal(await evaluate(`document.querySelectorAll('#admin-student-options [role=option]').length`), 1);
+    await evaluate(`Array.from(document.querySelectorAll('.asp-find button')).find(e=>e.textContent==='Reset Filters').click()`);
+    await until(`document.getElementById('admin-student-classroom').value === ''`);
+    assert.equal(await evaluate(`document.getElementById('admin-student').value`), '');
     await select('admin-student-classroom', 'room-empty');
     await until(`document.body.innerText.includes('No students match these filters')`);
   }
@@ -292,4 +463,5 @@ try {
   assert.deepEqual(blocked, [], 'No remote access'); assert.deepEqual(errors, [], 'No browser runtime exceptions');
   fs.writeFileSync(path.join(captures, 'results.json'), JSON.stringify({ widths: [390, 768, 1366], shots, blocked, errors }, null, 2));
   console.log(JSON.stringify({ screenshots: shots.length, captures, status: 'passed', blocked, errors }, null, 2));
+  }
 } finally { ws?.close(); chrome?.kill(); await vite.close(); }

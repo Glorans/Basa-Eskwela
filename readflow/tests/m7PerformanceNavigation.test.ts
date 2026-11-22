@@ -1,3 +1,5 @@
+import { searchParamsRouter } from './helpers/searchParamsRouter.ts';
+import * as studentRequests from '../src/modules/module7/services/studentPerformanceRequests.ts';
 import * as adminLabels from '../src/modules/module7/services/adminClassroomLabels.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -19,13 +21,19 @@ const activeScope = (rooms: { id: string; name: string }[]) => ({
 
 function setup(file: string, overrides: Record<string, any> = {}) {
   const runtime = createHookRuntime(require('react'));
+  const navigation = searchParamsRouter("link");
   const calls: string[] = [];
   const scopes: any[] = [];
   const response = async (name: string, value: any) => { calls.push(name); if (overrides[name] instanceof Error) throw overrides[name]; return overrides[name] ?? value; };
   const module = loadComponentModule(new URL(`../src/modules/module7/${file}`, import.meta.url), id => {
     if (id.endsWith('/adminClassroomLabels')) return adminLabels;
+    if (id.endsWith('/useAuth')) return { useAuth: () => ({user:{id:'admin'},profile:{id:'admin',role:'admin'},loading:false,profileError:false}) };
+    if (id.endsWith('/studentPerformanceRequests')) return studentRequests;
+    if (id.endsWith('/StudentCombobox')) return { default: 'selector' };
+    if (id.endsWith('/StudentReadingChart')) return { default: 'reading-chart' };
+    if (id === 'lucide-react') return { Search: 'search-icon' };
     if (id === 'react') return runtime.react;
-    if (id === 'react-router-dom') return { Link: 'link' };
+    if (id === 'react-router-dom') return navigation.module;
     if (id === 'react/jsx-runtime') return require(id);
     if (id === 'lucide-react') return new Proxy({}, { get: (_, name) => String(name) });
     if (id.endsWith('.css')) return {};
@@ -36,6 +44,8 @@ function setup(file: string, overrides: Record<string, any> = {}) {
     if (id.endsWith('dateDisplay')) return dates;
     if (id.endsWith('assessmentSource.ts')) return source;
     if (id.endsWith('studentSupportClassification')) return risk;
+    if (id.endsWith('PerformanceTrendCharts')) return { default: 'trend-charts' };
+    if (id.endsWith('StudentSupportTable')) return { default: 'support-table' };
     if (id.endsWith('PerformanceSelector')) return { default: 'selector' };
     if (id.endsWith('PerformanceTabs')) return { default: 'performance-tabs' };
     if (id.endsWith('AnalyticsFilterBar')) return { default: 'global-filters' };
@@ -55,8 +65,8 @@ function setup(file: string, overrides: Record<string, any> = {}) {
     if (id.endsWith('classroomService')) return { getClassroomById: async (id: string) => ({id,room_code:id === 'room-a' ? 'ABC123' : 'XYZ789'}), getRoomEnrollments: (id: string) => response(`enrollment:${id}`, (fixtures.memberships[id] ?? []).map(student_id => ({ student_id }))) };
     if (id.endsWith('m7Service')) return { m7Request: (path: string) => response(path, path === '/system' ? fixtures.adminSystem : fixtures.adminStudents) };
     throw Error(`Unexpected import ${id}`);
-  }, { Error, requestAnimationFrame: (callback: () => void) => callback(), document: { getElementById: () => null } });
-  const render = (props = {}) => runtime.render(module.default ?? module.PerformanceSections, props);
+  }, { Error, URLSearchParams, requestAnimationFrame: (callback: () => void) => callback(), document: { getElementById: () => null } });
+  const render = (props = {}) => runtime.render(module.StudentPerformanceWorkspace ?? module.default ?? module.PerformanceSections, props);
   return { ...runtime, module, render, calls, scopes };
 }
 const byId = (tree: any, id: string) => findAll(tree, node => node.props?.id === id)[0];
