@@ -133,8 +133,12 @@ async function personal(userId, { includeActivities = true } = {}) {
     : rows(table, columns, filters);
   // Classroom work needs only the learner's assignments and enrollments, so it starts now, alongside the
   // comprehension reads, instead of after them.
-  const assignmentsRead = includeActivities ? rows('reading_activity_assignments', '*', { student_id: userId }) : null;
   const enrollmentsRead = includeActivities ? rows('enrollments', 'id,room_id', { student_id: userId }) : null;
+  // Only activities of Learning Rooms the Student is still enrolled in, the same rule the backend uses to open one
+  // (assignedReadingSource.js). Saved readings and quiz results stay in the learner's history either way.
+  const assignmentsRead = includeActivities
+    ? Promise.all([rows('reading_activity_assignments', '*', { student_id: userId }), enrollmentsRead]).then(([a, e]) => inEnrolledRooms(a, e))
+    : null;
   const [readings, quizResults, extraResults, attempts, assignments, materials, modules] = await Promise.all([
     rows('oral_reading_attempts', PERSONAL_READING_COLUMNS, { user_id: userId }),
     quizzes({ user_id: userId }, { rows: load }), historicalQuizzes({ user_id: userId }, { rows: load }), attemptsRead,
@@ -145,10 +149,16 @@ async function personal(userId, { includeActivities = true } = {}) {
   return { summary: metrics(readings, quizResults), readings, quizzes: quizResults, historicalQuizzes: extraResults, activities };
 }
 /** Current progress on a learner's active assigned activities and modules, from saved work only. */
-async function activityProgress(userId, assignments, enrollments, readings, attempts, load = rows) {
+async function activityProgress(userId, allAssignments, enrollments, readings, attempts, load = rows) {
+  const assignments = inEnrolledRooms(allAssignments, enrollments);
   // Material titles and module assignments are independent reads, so they load together.
   const [materials, modules] = await Promise.all([materialTitles(assignments, load), learnerModuleAssignments(userId, enrollments, load)]);
   return activityList(assignments, materials, modules, readings, attempts);
+}
+/** Material assignments of rooms the Student is currently enrolled in (removed Students keep only their history). */
+function inEnrolledRooms(assignments, enrollments) {
+  const rooms = new Set((enrollments ?? []).map(e => e.room_id));
+  return (assignments ?? []).filter(a => rooms.has(a.room_id));
 }
 /** Titles of the learner's active assigned materials. */
 async function materialTitles(assignments, load = rows) {

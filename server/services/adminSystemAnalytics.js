@@ -180,8 +180,14 @@ function scopedAdminData(schoolMembers, all) {
   const studentIds = new Set(profiles.filter(p => p.role === 'student').map(p => p.id));
   const enrolledIn = roomId => enrollments.filter(e => e.room_id === roomId && studentIds.has(e.student_id)).map(e => e.student_id);
   const titleOf = (list, id) => list.find((row) => row.id === id)?.title;
+  // A material activity counts while the Student is still enrolled in its room (the rule for opening it). After the
+  // Student leaves, only a completed one still counts (history kept); an unfinished one is no longer pending.
+  const enrolledPairs = new Set(enrollments.map((e) => `${e.room_id}|${e.student_id}`));
+  const readingsBy = groupBy(readings, (r) => r.user_id), attemptsBy = groupBy(attempts, (a) => a.user_id);
+  const stillCounts = (a) => enrolledPairs.has(`${a.room_id}|${a.student_id}`)
+    || deriveActivityProgress(a, readingsBy.get(a.student_id) || [], attemptsBy.get(a.student_id) || []).status === 'Completed';
   const assignments = [
-    ...activeMaterialAssignments(materialAssignments).map((a) => ({ ...a, title: titleOf(materials, a.material_id) })),
+    ...activeMaterialAssignments(materialAssignments).filter(stillCounts).map((a) => ({ ...a, title: titleOf(materials, a.material_id) })),
     ...expandModuleAssignments(activeRoomModules(roomModules, modules), recipients, withAssessmentRequirement(passages, questions), enrolledIn)
       .map((a) => ({ ...a, title: titleOf(modules, a.module_id) })),
   ];
