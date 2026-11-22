@@ -80,8 +80,27 @@ function withLegacyContentLinks(tree:any, role:string){
  };
  const result=walk(tree); assert.equal(added,links.length,`${role}: removed links restored for comparison`); return result;
 }
+// M2 F3/F4/F5 redesign (2026-11-23): the Independent Learner link "Assessment History" was renamed "Reading Assessment"
+// (same URL). The old label is put back before comparing, so everything else in the frozen shell must still match exactly.
+function withLegacyLearnerLabels(tree:any, role:string){
+ if(role!=='general_user')return tree;
+ let renamed=0;
+ const walk=(value:any):any=>{
+  if(Array.isArray(value))return value.map(walk);
+  if(value&&typeof value==='object'&&value.type){
+   const props=Object.fromEntries(Object.entries(value.props).map(([k,v])=>[k,k==='ref'?v:walk(v)]));
+   if(value.type==='NavLink'&&value.props?.to==='/m3/general/assessment-history'&&value.props['aria-label']==='Reading Assessment'){
+    renamed++;props['aria-label']='Assessment History';props.title='Assessment History';
+    props.children=props.children.map((c:any)=>c?.type==='span'&&c.props?.children==='Reading Assessment'?{...c,props:{...c.props,children:'Assessment History'}}:c);
+   }
+   return {type:value.type,props};
+  }
+  return value;
+ };
+ const result=walk(tree); assert.equal(renamed,1,`${role}: Reading Assessment link renamed back for comparison`); return result;
+}
 for(const role of ['admin','teacher','general_user']) for(const [label,mobile,open,collapsed] of [['desktop',false,false,false],['rail',false,false,true],['mobile',true,false,false],['drawer',true,true,false]] as const)
- test(`${role} ${label}: rendered shell matches pre-redesign snapshot`,()=>assert.equal(fingerprint(withLegacyAssessmentLinks(withLegacyContentLinks(mount(role,mobile,open,collapsed).tree,role),role)),baseline[`${role}:${label}`]));
+ test(`${role} ${label}: rendered shell matches pre-redesign snapshot`,()=>assert.equal(fingerprint(withLegacyLearnerLabels(withLegacyAssessmentLinks(withLegacyContentLinks(mount(role,mobile,open,collapsed).tree,role),role),role)),baseline[`${role}:${label}`]));
 
 test('System Admin alone opts into the theme, with existing Settings, Logout and all navigation targets',()=>{
  const {tree,calls}=mount('system_admin');

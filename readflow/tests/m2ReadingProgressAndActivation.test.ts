@@ -87,21 +87,14 @@ function mountPage(url: string, stubs: Record<string, Record<string, unknown>>, 
   return { render, panels };
 }
 
-test("F5 learner page: own progress and history; link to Assessment History; no rooms or Teacher information", async () => {
-  const progress = { en: lang("en"), fil: lang("fil") };
-  const page = mountPage("../src/modules/module2/pages/DiagnosticHistoryPage.tsx", {
-    "/services/diagnosticHistory": { getMyDiagnosticHistory: async () => [], getDiagnosticHistoryError: () => "x" },
-    "/services/readingProgress": { getMyReadingProgress: async () => progress },
-  });
-  page.render();
-  await settle(page.render);
-  const tree = page.render();
-  const text = textOf(tree);
-  assert.match(text, /Reading Progress.*All Results/s);
-  assert.ok(findAll(tree, (n) => n.type === "a" && n.props.href === "#assessment-history").length === 1);
-  assert.ok(findAll(tree, (n) => n.props?.id === "assessment-history").length === 1);
-  assert.deepEqual(plain(page.panels(tree)[0].progress), progress);
-  assert.doesNotMatch(text, /Teacher|Learning Room|rank|compare/i);
+test("F5 learner page: own progress and history in the three-tab Reading Assessment page; no rooms or Teacher information", () => {
+  const page = src("modules/module2/pages/DiagnosticHistoryPage.tsx");
+  assert.match(page, /Promise\.all\(\[getMyDiagnosticHistory\(\), getMyReadingProgress\(\)\]\)/);
+  assert.match(page, /<h1>My Reading Assessment<\/h1>/);
+  assert.match(page, /progress\.change\.message/);
+  assert.match(page, /progress\.placementNote/);
+  assert.doesNotMatch(page, /Teacher|Learning Room|rank|compare/i);
+  // Behaviour (tabs, language, F4 official level, F5 timeline, F3 history): m2ReadingAssessmentPage.test.ts
 });
 
 test("F5 Teacher page: the shared class view with the Teacher's progress list (official results, active rooms)", () => {

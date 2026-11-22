@@ -140,7 +140,7 @@ function getWorkspaceNavItems(role: M3Role): NavItem[] {
     items.push({ label: "Reading History", to: "/m3/general/reading-history", icon: Mic2, end: true });
     items.push({ label: "Progress & Result", to: "/m3/general/progress", icon: ChartNoAxesCombined, end: true });
     // M2 F3: own diagnostic results and history.
-    items.push({ label: "Assessment History", to: "/m3/general/assessment-history", icon: ClipboardList, end: true });
+    items.push({ label: "Reading Assessment", to: "/m3/general/assessment-history", icon: ClipboardList, end: true });
     // M2 F8: centrally approved reassessments the Independent Learner can start.
     items.push({ label: "My Reassessments", to: "/m3/general/reassessments", icon: ClipboardList, end: true });
   }

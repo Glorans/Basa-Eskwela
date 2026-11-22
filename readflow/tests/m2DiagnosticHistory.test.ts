@@ -50,9 +50,9 @@ test("routes: Students and Independent Learners get Assessment History; approved
 });
 
 test("navigation: learner and Teacher entries; the services call only the F3 endpoints", () => {
-  assert.match(src("components/basa/BasaSidebar.tsx"), /\{ label: "Assessment History", to: "\/dashboard\/assessment-history", icon: ClipboardList \}/);
+  assert.match(src("components/basa/BasaSidebar.tsx"), /\{ label: "Reading Assessment", to: "\/dashboard\/assessment-history", icon: ClipboardList \}/);
   const layout = src("modules/module3/components/M3Layout.tsx");
-  assert.match(layout, /label: "Assessment History", to: "\/m3\/general\/assessment-history"/);
+  assert.match(layout, /label: "Reading Assessment", to: "\/m3\/general\/assessment-history"/);
   assert.match(layout, /label: "Diagnostic Results", to: "\/m3\/teacher\/diagnostic-results"/);
   // Code only (comments removed): the browser asks the server; it never reads tables, keys or transcripts itself.
   const service = src("modules/module2/services/diagnosticHistory.ts").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
@@ -86,9 +86,9 @@ test("tables: English and Filipino sections with type, date, both scores, level 
   assert.equal(englishRows[0][2], "98.3%");
   assert.equal(englishRows[1][0], "Initial");
   assert.equal(englishRows[1][5], "Version 3.0");
-  assert.match(textOf(sections[1]), /not verified/);
-  assert.deepEqual(findAll(tree, (n) => n.type === "th").slice(0, 6).map(textOf),
-    ["Assessment", "Date Completed", "Word Recognition", "Comprehension", "Reading Level", "Version"]);
+  assert.match(textOf(sections[1]), /Not verified/);
+  assert.deepEqual(findAll(tree, (n) => n.type === "th").slice(0, 7).map(textOf),
+    ["Assessment", "Date Completed", "Word Recognition", "Comprehension", "Reading Level", "Version", "Status"]);
 });
 
 test("tables: empty languages say so, and nothing is invented", () => {
@@ -113,6 +113,8 @@ function mountPage(path: string, service: Record<string, unknown>, progressServi
     if (id.endsWith("/services/readingProgress")) return progressService;
     if (id.endsWith("/components/DiagnosticHistoryTables")) return { default: () => null };
     if (id.endsWith("/components/ReadingProgressPanel")) return { default: () => null };
+    if (id.endsWith("/M7Tabs")) return { default: () => null };
+    if (id.startsWith("../utils/")) return require(new URL(`../src/modules/module2/utils/${id.slice(9)}.ts`, import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
     return require(id);
   });
   const render = () => runtime.render(mod.default, {});
@@ -135,7 +137,7 @@ test("learner page: loads own history; a failure shows a retry", async () => {
   assert.equal(tables.length, 1);
   assert.equal(tables[0].props.results.length, 1);
   assert.equal(tables[0].props.owner, "self");
-  assert.match(textOf(page.render()), /Assessment History/);
+  assert.match(textOf(page.render()), /My Reading Assessment/);
 });
 
 test("Teacher page: the shared class view; empty state explained; no Initial Diagnostic practice link", () => {

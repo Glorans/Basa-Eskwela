@@ -1,0 +1,71 @@
+/* M2 "My Reading Assessment" (learner F3/F4/F5). Builds on the M7 redesign styles (.m7r); every rule is scoped to
+   .ra-page so other pages are unaffected. */
+.ra-page { --ra-independent:#1f6b46; --ra-independent-bg:#e3f3e6; --ra-instructional:#7a5a00; --ra-instructional-bg:#fff3d1;
+  --ra-frustration:#9b2c2c; --ra-frustration-bg:#fde6e3; }
+
+/* Language selector: one segmented control (native radios, so arrow keys work). */
+.ra-page .ra-language { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; border:0; margin:0 0 12px; padding:0; min-width:0; }
+.ra-page .ra-language legend { float:left; font-weight:700; font-size:14px; color:var(--m7r-muted); margin-right:4px; padding:0; }
+.ra-page .ra-language-options { display:inline-flex; background:#fff; border:1px solid #c9dcd3; border-radius:999px; padding:3px; }
+.ra-page .ra-language-option { position:relative; }
+.ra-page .ra-language-option input { position:absolute; opacity:0; inset:0; margin:0; cursor:pointer; }
+.ra-page .ra-language-option span { display:inline-flex; align-items:center; min-height:36px; padding:0 16px; border-radius:999px; font-weight:700; font-size:14px; color:var(--m7r-forest); }
+.ra-page .ra-language-option input:checked + span { background:var(--m7r-green); color:#0f3329; }
+.ra-page .ra-language-option input:focus-visible + span { outline:3px solid var(--m7r-yellow); outline-offset:2px; }
+
+.ra-page .m7r-section > h2 { font-weight:800; }
+.ra-page .diagnostic-history-table td[data-label="Version"], .ra-page .diagnostic-history-table td[data-label="Status"],
+.ra-page .diagnostic-history-table td[data-label="Date Completed"] { white-space:nowrap; }
+
+/* Level badge (text always present; colour is only a second cue). */
+.ra-page .ra-level { display:inline-flex; align-items:center; min-height:28px; padding:2px 12px; border-radius:999px; font-weight:800; font-size:14px; white-space:nowrap; background:var(--m7r-sage); color:var(--m7r-forest); }
+.ra-page .ra-level[data-level="Independent"] { background:var(--ra-independent-bg); color:var(--ra-independent); }
+.ra-page .ra-level[data-level="Instructional"] { background:var(--ra-instructional-bg); color:var(--ra-instructional); }
+.ra-page .ra-level[data-level="Frustration"] { background:var(--ra-frustration-bg); color:var(--ra-frustration); }
+
+/* Tab 1 — Reading Level */
+.ra-page .ra-official-body { display:grid; grid-template-columns:minmax(180px,240px) minmax(0,1fr); gap:16px 24px; align-items:start; }
+.ra-page .ra-official-level { display:grid; justify-items:start; gap:8px; background:var(--m7r-cream); border-radius:14px; padding:14px 16px; border-left:5px solid var(--m7r-green); }
+.ra-page .ra-official-level[data-level="Instructional"] { border-left-color:var(--m7r-yellow); }
+.ra-page .ra-official-level[data-level="Frustration"] { border-left-color:var(--m7r-coral); }
+.ra-page .ra-official-level .ra-level { font-size:17px; min-height:34px; }
+.ra-page .ra-official-level strong { font-size:16px; }
+.ra-page .ra-meaning { margin:0 0 12px; font-size:16px; line-height:1.5; }
+.ra-page .ra-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin:0; }
+.ra-page .ra-facts div { background:var(--m7r-cream); border-radius:10px; padding:8px 12px; min-width:0; }
+.ra-page .ra-facts dt { font-size:12px; font-weight:700; color:var(--m7r-muted); }
+.ra-page .ra-facts dd { margin:2px 0 0; font-weight:700; overflow-wrap:anywhere; }
+.ra-page .ra-latest { border-style:dashed; }
+.ra-page .ra-latest h2 { font-size:17px; }
+.ra-page .ra-latest-line { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0; font-weight:600; }
+
+/* Tab 2 — Reading Progress: a compact vertical timeline, oldest first. */
+.ra-page .ra-change { margin:0 0 12px; font-weight:600; }
+.ra-page .ra-timeline { list-style:none; margin:0; padding:0 0 0 22px; position:relative; display:grid; gap:10px; }
+.ra-page .ra-timeline::before { content:""; position:absolute; left:7px; top:8px; bottom:8px; width:2px; background:#c9dcd3; }
+.ra-page .ra-step { position:relative; margin:0; background:var(--m7r-cream); border:1px solid #dbe7e1; border-radius:12px; padding:10px 14px; }
+.ra-page .ra-step::before { content:""; position:absolute; left:-21px; top:14px; width:12px; height:12px; border-radius:50%; background:#fff; border:3px solid var(--m7r-forest); box-sizing:border-box; }
+.ra-page .ra-step[data-type="reassessment"]::before { border-color:var(--m7r-green); }
+.ra-page .ra-step-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; font-size:14px; }
+.ra-page .ra-step-label { font-weight:800; }
+.ra-page .ra-step-head time { color:var(--m7r-muted); }
+.ra-page .ra-step-body { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:6px; }
+.ra-page .ra-step-title { color:var(--m7r-muted); font-size:14px; overflow-wrap:anywhere; }
+.ra-page .ra-step-scores { margin:6px 0 0; font-size:13px; color:var(--m7r-muted); }
+
+/* Tab 3 — Assessment History: the table sits directly in the tab's white panel (no second box). */
+.ra-page .m7r-section .diagnostic-history-language { border:0; padding:0; background:none; border-radius:0; }
+.ra-page .diagnostic-history-status { font-size:13px; font-weight:700; color:var(--ra-independent); }
+.ra-page .diagnostic-history-status[data-verified="false"] { color:var(--m7r-muted); }
+
+.ra-page .ra-error { background:#fff; border:1px solid #f1c4bd; border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+.ra-page .ra-error p { margin:0 0 8px; }
+
+@media (max-width:640px) {
+  .ra-page .ra-official-body { grid-template-columns:1fr; }
+  .ra-page .ra-language { margin-bottom:10px; }
+  /* One compact row of three tabs instead of three stacked full-width buttons. */
+  .ra-page.m7r .m7r-tabs { flex-wrap:nowrap; gap:6px; }
+  .ra-page.m7r.m7r .m7r-tabs button[role="tab"] { flex:1 1 0; min-width:0; padding:6px 8px; font-size:13px; line-height:1.2; }
+  .ra-page .m7r-section .diagnostic-history-language { padding:0; }
+}
