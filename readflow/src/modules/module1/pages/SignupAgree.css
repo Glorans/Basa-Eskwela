@@ -1,0 +1,46 @@
+/* Sign Up: required Terms of Use / Privacy Notice checkbox (below Confirm Password, above Sign Up). */
+.auth-agree {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 2px 0 18px;
+  padding: 12px 14px;
+  border: 1.5px solid #cfe3da;
+  border-radius: 12px;
+  background: #f4faf6;
+}
+.auth-agree-invalid {
+  border-color: #f5b700;
+  background: #fff9e6;
+}
+.auth-agree-box {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0;
+  accent-color: #1f6b52;
+  cursor: pointer;
+}
+.auth-agree-box:focus-visible {
+  outline: 3px solid #f5b700;
+  outline-offset: 2px;
+}
+.auth-agree-label {
+  min-width: 0;
+  color: #1f3a36;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.auth-agree-label .auth-text-link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

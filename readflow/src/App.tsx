@@ -1,6 +1,9 @@
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 
 import LandingPage from "./pages/LandingPage";
+import TermsPage from "./pages/TermsPage";
+import PrivacyPage from "./pages/PrivacyPage";
+import PolicyAcknowledgmentPage from "./modules/module1/pages/PolicyAcknowledgmentPage";
 
 import ForgotPasswordPage from "./modules/module1/pages/ForgotPasswordPage";
 import LoginPage from "./modules/module1/pages/LoginPage";
@@ -94,6 +97,9 @@ function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      {/* Terms of Use and Privacy Notice: public, marked "Awaiting approval" until approved. */}
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
 
       <Route
         path="/forgot-password"
@@ -118,6 +124,10 @@ function App() {
         <Route
           path="/select-role"
           element={<RoleSelectionPage />}
+        />
+        <Route
+          path="/acknowledge-policy"
+          element={<PolicyAcknowledgmentPage />}
         />
       </Route>
 

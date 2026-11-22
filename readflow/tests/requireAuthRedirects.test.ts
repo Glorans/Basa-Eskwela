@@ -21,6 +21,8 @@ function Outlet() { return null; }
 type AuthState = { user: unknown; profile: unknown; loading: boolean; profileError: boolean };
 let auth: AuthState;
 let pathname = "/";
+// The one-time policy acknowledgment gate (usePolicyGate): its state for the next render.
+let policyGate: "required" | "ok" | null = "ok";
 
 const module = { exports: {} as any };
 vm.runInNewContext(code, {
@@ -28,6 +30,9 @@ vm.runInNewContext(code, {
   exports: module.exports,
   require: (id: string) => {
     if (id === "react-router-dom") return { Navigate, Outlet, useLocation: () => ({ pathname }) };
+    // Rendered as a plain function: useState returns the gate result directly, effects do not run.
+    if (id === "react") return { useState: () => [policyGate === null ? null : { userId: "user-1", gate: policyGate }, () => {}], useEffect: () => {} };
+    if (id.endsWith("/policyAcknowledgment")) return { getPolicyStatus: async () => ({ state: "acknowledged" }) };
     if (id.endsWith("/useAuth")) return { useAuth: () => auth };
     if (id.endsWith("/authOnboarding")) return onboarding;
     if (id.endsWith(".css")) return {};
@@ -44,8 +49,9 @@ const profile = (fields: Record<string, unknown>) => ({
 const student = (nickname: string | null = "Reader") => profile({ role: "student", nickname });
 const teacher = (teacher_status: string | null, full_name = "Ana Cruz") => profile({ role: "teacher", full_name, teacher_status });
 
-function render(state: Partial<AuthState>, path: string, props: Record<string, unknown> = {}) {
+function render(state: Partial<AuthState>, path: string, props: Record<string, unknown> = {}, gate: "required" | "ok" | null = "ok") {
   auth = { user, profile: null, loading: false, profileError: false, ...state };
+  policyGate = gate;
   pathname = path;
   return RequireAuth(props);
 }
@@ -146,4 +152,19 @@ test("a role outside allowedRoles is sent to its home page", () => {
 
 test("an approved teacher on an allowed route renders the route", () => {
   assertOutlet(render({ profile: teacher("approved") }, "/m3/teacher", { allowedRoles: ["teacher"] }));
+});
+
+test("policy acknowledgment: a set-up account that has not pressed I Agree goes to /acknowledge-policy once", () => {
+  assertRedirect(render({ profile: student() }, "/dashboard", {}, "required"), "/acknowledge-policy");
+  assertRedirect(render({ profile: teacher("approved") }, "/m3/teacher/student-support", {}, "required"), "/acknowledge-policy");
+  // Already acknowledged (or the step is not installed): unchanged.
+  assertOutlet(render({ profile: student() }, "/dashboard", {}, "ok"));
+  // While the check is loading nothing is shown, so no protected page flashes before the redirect.
+  assert.equal(render({ profile: student() }, "/dashboard", {}, null), null);
+});
+
+test("policy acknowledgment: never before profile setup, never a loop, and an unapproved Teacher can still acknowledge", () => {
+  assertRedirect(render({ profile: student(null) }, "/dashboard", {}, "required"), "/setup-profile");
+  assertOutlet(render({ profile: student() }, "/acknowledge-policy", { allowUnassignedRole: true }, "required"));
+  assertOutlet(render({ profile: teacher("pending") }, "/acknowledge-policy", { allowUnassignedRole: true }, "required"));
 });

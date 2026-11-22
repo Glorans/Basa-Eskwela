@@ -13,6 +13,10 @@ import {
   isValidSignupEmail,
   normalizeAuthEmail,
 } from "../utils/authOnboarding.ts";
+import { acknowledgePolicyAtSignup } from "../services/policyAcknowledgment.ts";
+import "./SignupAgree.css";
+
+const AGREE_MESSAGE = "Please tick the box to show you have read the Terms of Use and Privacy Notice.";
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -20,11 +24,15 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  // Required Terms of Use / Privacy Notice checkbox: unchecked by default, never pre-ticked.
+  const [agreed, setAgreed] = useState(false);
+  const [agreeError, setAgreeError] = useState(false);
   const [showAccountHelp, setShowAccountHelp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // Set synchronously, so even submits fired before React re-renders (and disables the
   // button) send only one sign-up request. Cleared after a failure so the user can retry.
   const inFlight = useRef(false);
+  const agreeBox = useRef<HTMLInputElement>(null);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -53,6 +61,13 @@ export default function SignupPage() {
       return;
     }
 
+    if (!agreed) {
+      setAgreeError(true);
+      setError(AGREE_MESSAGE);
+      agreeBox.current?.focus();
+      return;
+    }
+
     inFlight.current = true;
     setSubmitting(true);
     try {
@@ -65,6 +80,9 @@ export default function SignupPage() {
         return;
       }
 
+      // The account has its own session, so the ticked box can be saved with it now. If it cannot be saved, the
+      // first-login I Agree screen asks instead (no agreement is ever assumed).
+      await acknowledgePolicyAtSignup();
       navigate("/select-role", { replace: true });
     } catch (signupError) {
       setShowAccountHelp(signupError instanceof AuthServiceError && signupError.kind === "account_help");
@@ -124,6 +142,33 @@ export default function SignupPage() {
           showPasswordToggle
           disabled={submitting}
         />
+
+        <div className={`auth-agree${agreeError ? " auth-agree-invalid" : ""}`}>
+          <input
+            id="policyAgree"
+            ref={agreeBox}
+            type="checkbox"
+            className="auth-agree-box"
+            checked={agreed}
+            onChange={(e) => {
+              setAgreed(e.target.checked);
+              if (e.target.checked) {
+                setAgreeError(false);
+                setError((current) => (current === AGREE_MESSAGE ? "" : current));
+              }
+            }}
+            aria-invalid={agreeError || undefined}
+            required
+            disabled={submitting}
+          />
+          <label htmlFor="policyAgree" className="auth-agree-label">
+            I have read and agree to the{" "}
+            {/* New tab, so the details typed above stay on this page. */}
+            <a href="/terms" target="_blank" rel="noreferrer" className="auth-text-link">Terms of Use<span className="auth-visually-hidden"> (opens in a new tab)</span></a>
+            {" and "}
+            <a href="/privacy" target="_blank" rel="noreferrer" className="auth-text-link">Privacy Notice<span className="auth-visually-hidden"> (opens in a new tab)</span></a>.
+          </label>
+        </div>
 
         <AuthFormError message={error} />
 

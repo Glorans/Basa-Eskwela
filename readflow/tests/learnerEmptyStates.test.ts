@@ -16,6 +16,7 @@ async function mountLearnerPage(name: string, services: Record<string, unknown>,
     // Real M8 display helpers (badge explanations); they read nothing and award nothing.
     if (id.endsWith("/module8/achievements")) return achievements;
     if (id.endsWith("/module8/leaderboardRooms")) return leaderboardRooms;
+    if (id.endsWith("/policyAcknowledgment")) return { getPolicyStatus: async () => ({ state: "acknowledged" }), acknowledgePolicy: async () => "", forgetPolicyStatus() {} };
     if (id.endsWith("/studentRoomArchive")) return { getMyArchivedRooms: async () => ({ supported: true, roomIds: new Set<string>() }) };
     if (id.endsWith("/supabaseClient")) return { supabase: { auth: { getUser: async () => ({ data: { user }, error: null }) } } };
     // The leaderboard visibility choices load the learner's own choice from the database; covered in m8LeaderboardPrivacy.test.ts.
@@ -201,6 +202,7 @@ test("Independent Learner leaderboard and badges remain within authenticated rol
   const app = loadComponentModule(new URL("../src/App.tsx", import.meta.url), id => {
     if (id === "react/jsx-runtime") return require(id);
     if (id === "react-router-dom") return { Routes: "Routes", Route: "Route", Navigate: "Navigate", Outlet: "Outlet" };
+    if (id.endsWith("/policyAcknowledgment")) return { getPolicyStatus: async () => ({ state: "acknowledged" }), acknowledgePolicy: async () => "", forgetPolicyStatus() {} };
     const name = id.split("/").at(-1)!;
     return new Proxy({ __esModule: true, default: name } as Record<string, unknown>, {
       get(target, key: string) { return key in target ? target[key] : key; },
@@ -226,6 +228,9 @@ test("Independent Learner leaderboard and badges remain within authenticated rol
   for (const role of [null, "general_user", "student", "teacher", "admin"]) {
     const guard = loadComponentModule(new URL("../src/components/auth/RequireAuth.tsx", import.meta.url), id => {
       if (id === "react-router-dom") return { Navigate: "Navigate", Outlet: "Outlet", useLocation: () => ({ pathname: "/m3/general/leaderboard" }) };
+      // Policy acknowledgment gate: already acknowledged (rendered as a plain function, so hooks are stubbed).
+      if (id === "react") return { useState: () => [{ userId: "reader", gate: "ok" }, () => {}], useEffect: () => {} };
+      if (id.endsWith("/policyAcknowledgment")) return { getPolicyStatus: async () => ({ state: "acknowledged" }) };
       if (id.endsWith("/useAuth")) return { useAuth: () => ({
         loading: false, profileError: null, user: role ? { id: "reader" } : null,
         profile: role ? { role, nickname: "Reader", full_name: "Reader", teacher_status: "approved" } : null,

@@ -10,7 +10,7 @@ import { createHookRuntime, findAll, loadComponentModule, textOf, tick } from ".
 const require = createRequire(import.meta.url);
 const pageUrl = new URL("../src/modules/module1/pages/SignupPage.tsx", import.meta.url);
 
-function mount(register: () => Promise<unknown>) {
+function mount(register: () => Promise<unknown>, { tick: tickBox = true } = {}) {
   const runtime = createHookRuntime(require("react"));
   const calls: string[] = [];
   const navigations: string[] = [];
@@ -19,7 +19,9 @@ function mount(register: () => Promise<unknown>) {
     if (id === "react") return runtime.react;
     if (id === "react-router-dom") return { Link: "a", useNavigate: () => (to: string) => navigations.push(to) };
     if (id.endsWith("/authService.ts")) return { AuthServiceError, register: async () => { calls.push("register"); return register(); } };
+    if (id.endsWith("/policyAcknowledgment.ts")) return { acknowledgePolicyAtSignup: async () => { calls.push("acknowledge"); return true; } };
     if (id.endsWith("/authOnboarding.ts")) return require(fileURLToPath(new URL("../src/modules/module1/utils/authOnboarding.ts", import.meta.url)));
+    if (id.endsWith(".css")) return {};
     if (id.endsWith(".tsx")) return { default: function Stub(props: any) { return { type: "stub", props }; } };
     return require(id);
   }, { Error });
@@ -29,6 +31,7 @@ function mount(register: () => Promise<unknown>) {
     field("email").props.onChange({ target: { value: "new.learner@example.test" } });
     field("password").props.onChange({ target: { value: "Str0ng-Passw0rd!" } });
     field("confirmPassword").props.onChange({ target: { value: "Str0ng-Passw0rd!" } });
+    if (tickBox) field("policyAgree").props.onChange({ target: { checked: true } });
     render();
   };
   const submit = () => findAll(render(), (n) => n.type === "form")[0].props.onSubmit({ preventDefault() {} });
@@ -46,7 +49,8 @@ test("submits arriving before the page re-renders send a single sign-up request"
   form.props.onSubmit({ preventDefault() {} });
   assert.deepEqual(m.calls, ["register"]);
   finish({ hasSession: true, confirmationSent: false });
-  await tick(); await tick();
+  await tick(); await tick(); await tick();
+  assert.deepEqual(m.calls, ["register", "acknowledge"], "ticked box saved with the new session");
   assert.deepEqual(m.navigations, ["/select-role"]);
 });
 
@@ -63,7 +67,33 @@ test("after a failed attempt the user can retry", async () => {
   const shownError = findAll(m.render(), (n) => typeof n.props?.message === "string" && n.props.message)[0];
   assert.match(shownError.props.message, /couldn't finish account setup/);
   m.submit();
-  await tick(); await tick();
-  assert.deepEqual(m.calls, ["register", "register"]);
+  await tick(); await tick(); await tick();
+  assert.deepEqual(m.calls, ["register", "register", "acknowledge"]);
   assert.deepEqual(m.navigations, ["/select-role"]);
+});
+
+test("Sign Up does nothing until the Terms/Privacy box is ticked, then works", async () => {
+  const m = mount(async () => ({ hasSession: true, confirmationSent: false }), { tick: false });
+  m.fill();
+  assert.equal(findAll(m.render(), (n) => n.props?.id === "policyAgree")[0].props.checked, false, "unticked by default");
+  m.submit();
+  await tick(); await tick();
+  assert.deepEqual(m.calls, [], "no account is created");
+  const shown = findAll(m.render(), (n) => typeof n.props?.message === "string" && n.props.message)[0];
+  assert.match(shown.props.message, /Please tick the box/);
+  findAll(m.render(), (n) => n.props?.id === "policyAgree")[0].props.onChange({ target: { checked: true } });
+  assert.equal(findAll(m.render(), (n) => typeof n.props?.message === "string" && n.props.message).length, 0, "message clears when ticked");
+  m.submit();
+  await tick(); await tick(); await tick();
+  assert.deepEqual(m.calls, ["register", "acknowledge"]);
+  assert.deepEqual(m.navigations, ["/select-role"]);
+});
+
+test("email confirmation (no session yet): nothing is saved, so the first-login I Agree screen still asks", async () => {
+  const m = mount(async () => ({ hasSession: false, confirmationSent: true }));
+  m.fill();
+  m.submit();
+  await tick(); await tick(); await tick();
+  assert.deepEqual(m.calls, ["register"]);
+  assert.deepEqual(m.navigations, ["/login"]);
 });
