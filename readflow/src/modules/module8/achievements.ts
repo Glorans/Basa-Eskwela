@@ -29,11 +29,11 @@ interface AchievementGuide {
 export const ACHIEVEMENT_GUIDE: Readonly<Record<string, AchievementGuide>> = {
   first_read: {
     howToEarn: "Finish your first reading activity.",
-    goal: (s) => ({ current: s.completedActivities ?? s.completedModules, target: 1, unit: "activity" }),
+    goal: (s) => ({ current: s.completedActivities ?? s.completedModules, target: 1, unit: "reading activity" }),
   },
   bookworm: {
-    howToEarn: "Finish 5 different reading activities.",
-    goal: (s) => ({ current: s.completedActivities ?? s.completedModules, target: 5, unit: "activities" }),
+    howToEarn: "Finish 3 different reading activities.",
+    goal: (s) => ({ current: s.completedActivities ?? s.completedModules, target: 3, unit: "different activities" }),
   },
   diamond: {
     howToEarn: "Collect 2,000 XP from reading activities.",
@@ -45,7 +45,8 @@ export const ACHIEVEMENT_GUIDE: Readonly<Record<string, AchievementGuide>> = {
   },
   streak_3: {
     howToEarn: "Read on 3 days in a row.",
-    goal: (s) => ({ current: s.longestStreak, target: 3, unit: "days in a row" }),
+    note: "Uses your best streak, so it counts even if your current streak is shorter.",
+    goal: (s) => ({ current: s.longestStreak, target: 3, unit: "consecutive days (best streak)" }),
   },
   consistent_reader: {
     howToEarn: "Read on 7 different days.",
@@ -53,7 +54,7 @@ export const ACHIEVEMENT_GUIDE: Readonly<Record<string, AchievementGuide>> = {
   },
   brave_reader: {
     howToEarn: "Read a story aloud 10 times.",
-    goal: (s) => ({ current: s.readAloudCount, target: 10, unit: "read-alouds" }),
+    goal: (s) => ({ current: s.readAloudCount, target: 10, unit: "verified readings" }),
   },
   graduate: {
     howToEarn: "Finish every published reading module.",
@@ -67,10 +68,11 @@ export function achievementProgress(badgeId: string, stats: AchievementStats) {
   return { ...goal, current: Math.max(0, Math.min(goal.current, goal.target)) };
 }
 
-// Provisional project rules, pending adviser approval (docs/M8_F2_F5_RELEASE_NOTES.md).
+// Capstone rules (m8_final_corrections_v1): Bronze 1, Silver 2, Gold 3 qualifying stories, attainable with the
+// published content. The database (m8_my_achievements) decides; these targets only label the progress bars.
 export type AchievementTier = "Bronze" | "Silver" | "Gold";
 const TIERS: readonly { tier: AchievementTier; target: number }[] = [
-  { tier: "Bronze", target: 3 }, { tier: "Silver", target: 10 }, { tier: "Gold", target: 25 },
+  { tier: "Bronze", target: 1 }, { tier: "Silver", target: 2 }, { tier: "Gold", target: 3 },
 ];
 
 export const MILESTONE_GUIDE: Readonly<Record<string, { name: string; howToEarn: string; unit: string }>> = {
@@ -146,13 +148,32 @@ export function milestoneTiers(
   });
 }
 
-/** The database refused a claim because the reward is not unlocked (code 55000). */
-export const isLockedError = (error: unknown) => String((error as { code?: unknown } | null)?.code ?? "") === "55000";
+/** The database refused a claim because the reward is locked or retired: HTTP 409 (PT409), or 55000 before
+ * m8_final_corrections_v1. */
+export const isLockedError = (error: unknown) => ["PT409", "55000"].includes(String((error as { code?: unknown } | null)?.code ?? ""));
 
 /** A learner-friendly message for a refused claim. */
 export function claimErrorMessage(error: unknown): string {
   const code = String((error as { code?: unknown } | null)?.code ?? "");
-  if (code === "55000") return "This reward is still locked. Keep reading to unlock it!";
+  const message = String((error as { message?: unknown } | null)?.message ?? "");
+  if (code === "PT409" && /no longer awarded/i.test(message)) return "This badge is no longer awarded.";
+  if (code === "PT409" || code === "55000") return "This reward is still locked. Keep reading to unlock it!";
   if (code === "42501") return "Only Students and Independent Learners can claim rewards. Please log in again.";
   return "We could not claim this reward right now. Please try again.";
+}
+
+/** Retired badges (m8_final_corrections_v1): no longer earned; a learner's earlier claim stays as a past badge. */
+export const RETIRED_BADGE_NOTE = "This badge is no longer awarded. You keep it as a past badge.";
+/** A retired badge the learner unlocked before it was retired: it can still be claimed once. */
+export const RETIRED_UNLOCKED_NOTE = "This badge is no longer awarded, but you unlocked it before. You can claim it once as a past badge.";
+export const retiredBadgeNote = (state: RewardState) => (state === "claimed" ? RETIRED_BADGE_NOTE : RETIRED_UNLOCKED_NOTE);
+
+/** Badge counter: claimed active badges out of all active badges, and past (retired) badges kept separately. */
+export function badgeCounts(badges: readonly { state: RewardState; retired?: boolean }[]) {
+  const active = badges.filter((badge) => !badge.retired);
+  return {
+    claimed: active.filter((badge) => badge.state === "claimed").length,
+    total: active.length,
+    past: badges.filter((badge) => badge.retired && badge.state === "claimed").length,
+  };
 }

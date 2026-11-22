@@ -33,6 +33,8 @@ import type {
 import {
   ACHIEVEMENT_GUIDE,
   achievementProgress,
+  badgeCounts,
+  retiredBadgeNote,
   claimErrorMessage,
   earnedDate,
   isLockedError,
@@ -44,6 +46,7 @@ import {
   type RewardState,
   type TierKey,
 } from "../modules/module8/achievements";
+import { storyUnit } from "../modules/module8/leaderboardRooms";
 
 // ========================================
 // BADGE ICONS
@@ -136,9 +139,8 @@ export default function MyBadges() {
     };
   }, []);
 
-  const earnedBadges = badges.filter(
-    (badge) => badge.state === "claimed"
-  ).length;
+  // Active badges only; past (retired) badges a learner claimed earlier are counted separately.
+  const counts = badgeCounts(badges);
 
   // Claiming: the database rechecks the rule and saves the claim once. The card updates in place.
   async function handleClaimBadge(badge: Badge) {
@@ -262,7 +264,7 @@ export default function MyBadges() {
             {progress?.current_streak ?? 0} {(progress?.current_streak ?? 0) === 1 ? "day" : "days"}
           </strong>
           <small style={statNoteStyle}>
-            Longest: {progress?.longest_streak ?? 0} {(progress?.longest_streak ?? 0) === 1 ? "day" : "days"}
+            Best streak: {progress?.longest_streak ?? 0} {(progress?.longest_streak ?? 0) === 1 ? "day" : "days"}
           </small>
           {reading && !reading.readToday && (progress?.current_streak ?? 0) > 0 && (
             <small style={statNoteStyle}>Read today to keep your streak going!</small>
@@ -274,8 +276,11 @@ export default function MyBadges() {
             🏅 Badges {claimedWord}
           </span>
           <strong style={statValueStyle}>
-            {earnedBadges} / {badges.length}
+            {counts.claimed} / {counts.total}
           </strong>
+          {counts.past > 0 && (
+            <small style={statNoteStyle}>+ {counts.past} past {counts.past === 1 ? "badge" : "badges"}</small>
+          )}
         </div>
 
         <div style={statCardStyle}>
@@ -329,19 +334,22 @@ export default function MyBadges() {
                 {badge.name}
               </h3>
 
-              {/* HOW TO EARN IT */}
+              {/* HOW TO EARN IT (a retired badge is a past reward instead) */}
+              <div style={cardTextAreaStyle}>
               <p style={badgeDescriptionStyle}>
-                {ACHIEVEMENT_GUIDE[badge.id]?.howToEarn ?? badge.description}
+                {badge.retired ? retiredBadgeNote(badge.state) : ACHIEVEMENT_GUIDE[badge.id]?.howToEarn ?? badge.description}
               </p>
-              {ACHIEVEMENT_GUIDE[badge.id]?.note && (
+              {!badge.retired && ACHIEVEMENT_GUIDE[badge.id]?.note && (
                 <small style={{ color: "#64748b" }}>{ACHIEVEMENT_GUIDE[badge.id]?.note}</small>
               )}
+              </div>
 
-              {/* PROGRESS TOWARD A LOCKED BADGE */}
-              {badge.state === "locked" && stats && (() => {
+              {/* REQUIREMENT PROGRESS: shown in every state (Locked, Claim, Claimed), from the saved counts */}
+              <div style={progressAreaStyle}>
+              {!badge.retired && stats && (() => {
                 const goal = achievementProgress(badge.id, stats);
                 return goal && (
-                  <div style={{ width: "100%" }}>
+                  <>
                     <progress
                       value={goal.current}
                       max={goal.target}
@@ -351,11 +359,16 @@ export default function MyBadges() {
                     <small style={{ color: "#64748b" }}>
                       {goal.current.toLocaleString()} / {goal.target.toLocaleString()} {goal.unit}
                     </small>
-                  </div>
+                    {badge.state !== "locked" && goal.current < goal.target && (
+                      <small style={{ color: "#64748b" }}>Unlocked earlier</small>
+                    )}
+                  </>
                 );
               })()}
+              </div>
 
               {/* BADGE STATUS: LOCKED, READY TO CLAIM OR CLAIMED */}
+              <div style={statusAreaStyle}>
               {rewardStatus({
                 state: badge.state,
                 claimedWord,
@@ -377,6 +390,7 @@ export default function MyBadges() {
                   {claiming ? (badge.preserved ? "Awarded" : "Claimed") : "Earned"}: {earnedDate(badge.claimed_at)}
                 </small>
               )}
+              </div>
             </article>
           ))}
         </section>
@@ -404,17 +418,20 @@ export default function MyBadges() {
                   {next ? (
                     <div style={{ width: "100%" }}>
                       <progress value={count} max={next.target} style={{ width: "100%" }}
-                        aria-label={`${guide.name}: ${count} of ${next.target} ${guide.unit} for ${next.tier}`} />
-                      <small style={{ color: "#64748b" }}>{count} / {next.target} {guide.unit} for {next.tier}</small>
+                        aria-label={`${guide.name}: ${count} of ${next.target} ${storyUnit(guide.unit, next.target)} for ${next.tier}`} />
+                      <small style={{ color: "#64748b" }}>{count} / {next.target} {storyUnit(guide.unit, next.target)} for {next.tier}</small>
                     </div>
                   ) : (
-                    <small style={{ color: "#64748b" }}>{count} {guide.unit}</small>
+                    <div style={{ width: "100%" }}>
+                      <progress value={3} max={3} style={{ width: "100%" }} aria-label={`${guide.name}: all tiers reached`} />
+                      <small style={{ color: "#64748b" }}>{count} {storyUnit(guide.unit, count)} · all tiers reached</small>
+                    </div>
                   )}
                   <ul style={tierListStyle} aria-label={`${guide.name} tiers`}>
                     {tiers.map((t) => (
                       <li key={t.key} style={tierRowStyle}>
                         <span style={tierNameStyle}>
-                          {t.tier} <small style={{ color: "#64748b", fontWeight: 400 }}>· {t.target} {guide.unit}</small>
+                          {t.tier} <small style={{ color: "#64748b", fontWeight: 400 }}>· {t.target} {storyUnit(guide.unit, t.target)}</small>
                         </span>
                         {t.state === "ready" && !canClaim ? (
                           <span style={{ ...badgeStatusStyle, marginBottom: 0, color: "#64748b" }}>Reached</span>
@@ -667,11 +684,16 @@ const badgeGridStyle: CSSProperties = {
 };
 
 // BADGE CARDS
+// Requirement text grows; the progress row and the status row keep the same place on every card.
+const cardTextAreaStyle: CSSProperties = { flex: 1, width: "100%", display: "flex", flexDirection: "column", alignItems: "center" };
+const progressAreaStyle: CSSProperties = { width: "100%", minHeight: "48px", display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: "2px" };
+const statusAreaStyle: CSSProperties = { width: "100%", minHeight: "70px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", gap: "4px", marginTop: "8px" };
+
 const badgeCardStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
-  justifyContent: "center",
+  justifyContent: "flex-start",
   minHeight: "225px",
   padding: "24px 18px",
   border: "1px solid",

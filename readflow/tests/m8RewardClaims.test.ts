@@ -17,7 +17,7 @@ test("badge state: Locked, Ready to claim, Claimed", () => {
 test("achievement tiers are independent: reaching never claims, claiming one claims no other", () => {
   const row = { achievement_id: "comprehension_star", bronze_at: "2026-11-01T00:00:00Z", silver_at: "2026-11-05T00:00:00Z", gold_at: null };
   const none = milestoneTiers(row, []);
-  assert.deepEqual(none.map((t) => [t.key, t.target, t.state]), [["bronze", 3, "ready"], ["silver", 10, "ready"], ["gold", 25, "locked"]]);
+  assert.deepEqual(none.map((t) => [t.key, t.target, t.state]), [["bronze", 1, "ready"], ["silver", 2, "ready"], ["gold", 3, "locked"]]);
   const silverOnly = milestoneTiers(row, [{ achievement_id: "comprehension_star", tier: "silver", claimed_at: "2026-11-09T00:00:00Z" }]);
   assert.deepEqual(silverOnly.map((t) => t.state), ["ready", "claimed", "locked"]);
   assert.equal(silverOnly[1].claimedAt, "2026-11-09T00:00:00Z");
@@ -65,4 +65,15 @@ test("before claiming is deployed, the page keeps the earlier display", async ()
   const service = await read("../src/modules/module8/gamificationService.ts");
   assert.match(service, /if \(claimResult\.error && !isMissingFunction\(claimResult\.error\)\)/);
   assert.match(service, /state: earnedMap\.has\(badge\.id\) \? "claimed" : "locked"/);
+});
+
+test("M8 final corrections: a locked or retired claim answers 409 (PT409) and reads clearly; the old 55000 still works", async () => {
+  const { claimErrorMessage, isLockedError, retiredBadgeNote } = await import("../src/modules/module8/achievements.ts");
+  assert.equal(isLockedError({ code: "PT409" }), true);
+  assert.equal(isLockedError({ code: "55000" }), true);
+  assert.equal(isLockedError({ code: "42501" }), false);
+  assert.match(claimErrorMessage({ code: "PT409", message: "This badge is still locked" }), /still locked/);
+  assert.equal(claimErrorMessage({ code: "PT409", message: "This badge is no longer awarded" }), "This badge is no longer awarded.");
+  assert.match(retiredBadgeNote("ready"), /unlocked it before\. You can claim it once/);
+  assert.match(retiredBadgeNote("claimed"), /You keep it as a past badge/);
 });

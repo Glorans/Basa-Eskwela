@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import * as leaderboardRooms from "../src/modules/module8/leaderboardRooms.ts";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createRequire } from "node:module";
@@ -14,7 +15,12 @@ async function mountLearnerPage(name: string, services: Record<string, unknown>,
     if (id.endsWith("/gamificationService") || id.endsWith("/classroomService")) return services;
     // Real M8 display helpers (badge explanations); they read nothing and award nothing.
     if (id.endsWith("/module8/achievements")) return achievements;
+    if (id.endsWith("/module8/leaderboardRooms")) return leaderboardRooms;
+    if (id.endsWith("/studentRoomArchive")) return { getMyArchivedRooms: async () => ({ supported: true, roomIds: new Set<string>() }) };
     if (id.endsWith("/supabaseClient")) return { supabase: { auth: { getUser: async () => ({ data: { user }, error: null }) } } };
+    // The leaderboard visibility choices load the learner's own choice from the database; covered in m8LeaderboardPrivacy.test.ts.
+    if (id.endsWith("/LeaderboardPrivacyPanel")) return { default: () => null };
+    if (id.endsWith("/ClassroomVisibilityControl")) return { default: () => null };
     if (id.endsWith(".css")) return {};
     return require(id);
   }, { Error, console: { error() {} } });
