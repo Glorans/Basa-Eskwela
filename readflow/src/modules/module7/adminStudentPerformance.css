@@ -1,0 +1,146 @@
+/* School Admin Student Performance only. Shell, teachers and other dashboards keep their own styles. */
+.asp-dashboard { --asp-ink:#17483c; --asp-muted:#54736a; --asp-line:#d5e2d8; color:var(--asp-ink); font-family:'Nunito',sans-serif; }
+.asp-dashboard .m7-dashboard-header { font-family:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif; }
+.asp-dashboard .m7-dashboard-content { background:#f5f8f1; padding:clamp(14px,2vw,24px); border-radius:22px; box-shadow:none; }
+.asp-dashboard section { background:#fff; border:1px solid var(--asp-line); border-radius:16px; padding:clamp(16px,2vw,24px); margin:20px 0; box-shadow:none; }
+.asp-dashboard h2 { font-size:1.35rem; margin:0 0 12px; }
+.asp-dashboard h3 { font-size:1.15rem; margin:24px 0 12px; }
+.asp-dashboard h4 { font-size:1rem; margin:16px 0 8px; font-weight:800; }
+.asp-dashboard p { line-height:1.65; color:var(--asp-muted); }
+.asp-dashboard .asp-meta { font-size:.875rem; line-height:1.65; margin:12px 0 0; }
+.asp-dashboard .asp-section-heading { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:20px; }
+.asp-dashboard .asp-section-heading h2 { margin:0; }
+.asp-dashboard .asp-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.asp-dashboard .m7-performance-selector { gap:6px; font-size:.875rem; }
+.asp-dashboard :is(input,select) { width:100%; border:1px solid #98b1a3; box-sizing:border-box; padding:10px 12px; min-height:46px; }
+.asp-dashboard button,.asp-dashboard button[type="button"] { min-height:44px; border-radius:10px; padding:9px 14px; background:#e8f0e2; border:1px solid #bfd2b7; color:var(--asp-ink); font-size:.875rem; font-weight:800; }
+.asp-dashboard button.m7-secondary { background:#fff; border-color:var(--asp-line); }
+.asp-dashboard button:disabled { background:#edf1ed; border-color:#d4ddd5; color:#52665e; cursor:not-allowed; }
+.asp-dashboard button:hover:not(:disabled) { filter:brightness(.96); }
+.asp-dashboard .asp-combobox { grid-column:1/-1; position:relative; min-width:0; }
+.asp-dashboard .asp-combobox > label { display:block; margin-bottom:6px; font-size:.875rem; }
+.asp-dashboard .asp-combobox-field { display:flex; gap:8px; align-items:center; }
+.asp-dashboard .asp-combobox-field input { min-width:0; flex:1; }
+.asp-dashboard .asp-combobox-menu { position:absolute; top:100%; left:0; right:0; z-index:10; background:#fff; border:1px solid #9eb7a8; border-radius:12px; box-shadow:0 8px 24px rgb(23 72 60 / 12%); padding:8px; margin-top:6px; }
+.asp-dashboard .asp-combobox-menu ul { list-style:none; padding:0; margin:0; max-height:260px; overflow-y:auto; overscroll-behavior:contain; }
+.asp-dashboard .asp-combobox-menu li { margin:0; padding:12px; min-height:44px; box-sizing:border-box; border-radius:8px; cursor:pointer; display:flex; gap:8px 14px; flex-wrap:wrap; align-items:center; overflow-wrap:anywhere; }
+.asp-dashboard .asp-combobox-menu li:hover,.asp-dashboard .asp-combobox-menu li[aria-selected="true"] { background:#ddeae4; }
+.asp-dashboard .asp-combobox-menu small { color:var(--asp-muted); font-size:.875rem; }
+.asp-dashboard .asp-combobox-menu .asp-meta { margin:8px; }
+.asp-dashboard .asp-empty { display:flex; flex-direction:column; align-items:center; text-align:center; padding:36px 20px; background:#fff; border:1px dashed #a8c0ae; }
+.asp-dashboard .asp-empty svg { color:#54736a; margin-bottom:16px; }
+.asp-dashboard .asp-empty p { margin:0; max-width:500px; }
+.asp-dashboard .asp-profile { background:#ddeae4; }
+.asp-dashboard .asp-profile-heading { display:flex; align-items:center; gap:16px; }
+.asp-dashboard .asp-profile-heading > div { flex:1; min-width:0; overflow-wrap:anywhere; }
+.asp-dashboard .asp-profile-heading h2 { margin:0; font-family:'Fredoka',sans-serif; font-size:1.7rem; font-weight:500; }
+.asp-dashboard .asp-profile-heading p { margin:4px 0 10px; }
+.asp-dashboard .asp-avatar { display:flex; align-items:center; justify-content:center; width:64px; height:64px; flex-shrink:0; border-radius:18px; background:#17483c; color:white; font-size:1.5rem; font-weight:800; }
+.asp-dashboard .m7-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:20px 0; }
+.asp-dashboard .m7-card { margin:0; background:#fff; padding:20px; border:1px solid var(--asp-line); box-shadow:none; border-radius:12px; min-width:0; }
+.asp-dashboard .m7-card > span { font-size:.875rem; color:var(--asp-muted); font-weight:700; }
+.asp-dashboard .m7-card strong { font-size:1.5rem; font-variant-numeric:tabular-nums; color:var(--asp-ink); }
+.asp-dashboard .asp-completion { display:grid; gap:8px; font-size:.875rem; font-weight:800; max-width:600px; }
+.asp-dashboard progress { width:100%; height:12px; border:0; border-radius:10px; overflow:hidden; background:#c7d9cc; accent-color:#367744; }
+.asp-dashboard progress::-webkit-progress-bar { background:#c7d9cc; }
+.asp-dashboard progress::-webkit-progress-value { background:#367744; }
+.asp-dashboard progress::-moz-progress-bar { background:#367744; }
+.asp-dashboard summary { cursor:pointer; font-weight:800; min-height:44px; padding:10px 0; box-sizing:border-box; overflow-wrap:anywhere; }
+.asp-dashboard .asp-directory-snapshot { margin-top:16px; border-top:1px solid #b9cebf; }
+.asp-dashboard .asp-tabs { display:flex; gap:6px; padding:6px; background:#f0f5eb; border:1px solid var(--asp-line); border-radius:12px; margin:20px 0; }
+.asp-dashboard .asp-tabs button { flex:1; background:transparent; border-color:transparent; }
+.asp-dashboard .asp-tabs button[aria-selected="true"] { background:#17483c; color:white; }
+.asp-dashboard [role="tabpanel"] { min-height:220px; }
+.asp-dashboard [hidden] { display:none; }
+.asp-dashboard table { color:var(--asp-ink); background:#fff; font-size:.875rem; }
+.asp-dashboard th { background:#edf3e9; }
+.asp-dashboard :is(td,th) { padding:14px 12px; line-height:1.6; }
+.asp-dashboard .m7-scroll { border:1px solid var(--asp-line); border-radius:12px; }
+.asp-dashboard .asp-reading-charts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:20px 0; }
+.asp-dashboard .asp-reading-charts figure { background:#f8faf6; margin:0; padding:16px; border:1px solid var(--asp-line); border-radius:12px; min-width:0; }
+.asp-dashboard .asp-reading-charts figcaption { font-weight:800; }
+.asp-dashboard .asp-reading-charts svg { width:100%; display:block; }
+.asp-dashboard .asp-reading-charts text { fill:var(--asp-muted); font-family:'Nunito',sans-serif; font-size:16px; }
+.asp-dashboard .asp-teacher-contexts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:12px; }
+.asp-dashboard .asp-teacher-contexts details { padding:12px 16px; border:1px solid var(--asp-line); border-radius:12px; background:#f5f8f1; }
+.asp-dashboard .asp-teacher-contexts summary .m7-classification { margin:4px 8px; }
+.asp-dashboard .asp-recovery { background:#fff2cc; padding:10px 12px; border-radius:8px; }
+.asp-dashboard .asp-activities { padding:12px 16px; margin:20px 0; background:#f5f8f1; border:1px solid var(--asp-line); border-radius:12px; }
+.asp-dashboard .asp-activities h3 { margin-top:12px; }
+.asp-dashboard .m7-intervention-history-admin { display:grid; gap:12px; }
+.asp-dashboard .m7-card.asp-history { display:block; background:#f8faf6; }
+.asp-dashboard .asp-history summary { padding:0; min-height:32px; }
+.asp-dashboard .asp-history p { margin:10px 0; }
+.asp-dashboard .asp-classification-guide { padding:12px 20px; border:1px solid var(--asp-line); border-radius:14px; background:#fff; }
+.asp-dashboard .asp-classification-guide section { padding:0; border:0; }
+.asp-dashboard .m7-classification[data-classification="Needs Support"] { background:#f9dce0; color:#842632; }
+.asp-dashboard .m7-classification[data-classification="No assessment data"],.asp-dashboard .m7-classification[data-classification="Evaluation unavailable"] { background:#e8ece9; color:#495b52; }
+.asp-dashboard section.m7s { border:0; padding:0; background:transparent; }
+.asp-dashboard .m7s-card { background:#f8faf6; border:1px solid var(--asp-line); }
+.asp-dashboard .m7s-card.m7s-primary { background:#fffaf0; border:1px solid #d6c58e; }
+.asp-dashboard .m7s-card h3,.asp-dashboard .m7s-card h4 { font-size:1.1rem; margin:0; }
+.asp-dashboard :is(.m7s-chip,.m7s-kicker,.m7s-facts dt,.m7s-figure) { font-size:.875rem; }
+.asp-dashboard .m7s-facts { padding:16px 0; }
+.asp-dashboard .m7s-facts dd { line-height:1.6; }
+.asp-dashboard :is(button,input,select,a,summary):focus-visible,.asp-dashboard [role="tabpanel"]:focus-visible { outline:3px solid #17483c; outline-offset:3px; box-shadow:0 0 0 5px #ffca59; }
+@media(max-width:1000px) { .asp-dashboard .asp-reading-charts { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:700px) {
+ .asp-dashboard .m7-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .asp-dashboard .asp-profile-heading { display:grid; grid-template-columns:64px minmax(0,1fr); align-items:start; }
+ .asp-dashboard .asp-profile-heading > button { grid-column:1/-1; justify-self:end; }
+ .asp-dashboard .asp-filters { grid-template-columns:minmax(0,1fr); }
+ .asp-dashboard .asp-tabs { flex-direction:column; }
+ .asp-dashboard .asp-reading-charts svg text { font-size:24px; }
+}
+@media(max-width:480px) {
+ .asp-dashboard .m7-dashboard-content { padding:12px; }
+ .asp-dashboard .m7-card { padding:16px; }
+ .asp-dashboard .m7-card strong { font-size:1.3rem; }
+ .asp-dashboard .asp-reading-charts svg text { font-size:34px; }
+ .asp-dashboard .asp-combobox-menu { padding:6px; }
+}
+@media(max-width:360px) { .asp-dashboard .m7-metrics { grid-template-columns:minmax(0,1fr); } }
+
+/* Compact, read-only Learning Support; all evidence remains in native disclosures. */
+.asp-dashboard .asp-teacher-contexts { grid-template-columns:minmax(0,1fr); gap:8px; }
+.asp-dashboard .asp-teacher-contexts details { background:#fff; padding:8px 16px; }
+.asp-dashboard .asp-teacher-contexts summary { line-height:1.5; }
+.asp-dashboard .asp-context-title { display:inline-block; vertical-align:middle; margin-right:12px; }
+.asp-dashboard .asp-context-meta { display:block; margin-top:2px; font-size:.875rem; font-weight:500; color:var(--asp-muted); }
+.asp-dashboard .asp-teacher-contexts summary .m7-classification { font-size:.875rem; padding:4px 9px; vertical-align:middle; }
+.asp-dashboard .asp-context-scores { display:flex; flex-wrap:wrap; gap:8px 24px; list-style:none; padding:0; margin:8px 0; }
+.asp-dashboard .asp-context-scores li { display:grid; gap:2px; margin:0; font-size:.875rem; }
+.asp-dashboard .asp-context-scores li span { color:var(--asp-muted); }
+.asp-dashboard .asp-recovery { margin:8px 0; padding:8px 12px; font-size:.875rem; }
+.asp-dashboard .asp-activities { padding:8px 16px; margin:16px 0; }
+.asp-dashboard .asp-completion-summary { display:inline-block; margin:4px 0 4px 12px; font-size:.875rem; color:var(--asp-muted); font-weight:700; }
+.asp-dashboard .asp-activities li { padding:10px 0; margin:0; border-bottom:1px solid var(--asp-line); }
+.asp-dashboard .asp-activities li:last-child { border-bottom:0; }
+.asp-dashboard .asp-activities ul { list-style:none; padding:0; }
+.asp-dashboard .asp-support-history { padding:16px; margin:20px 0 0; background:#f8faf6; }
+.asp-dashboard .asp-support-history > h3 { margin:0 0 8px; }
+.asp-dashboard .asp-support-history > p { margin:8px 0 16px; font-size:.875rem; }
+.asp-dashboard .asp-support-history .asp-history { background:#fff; padding:12px 16px; }
+.asp-dashboard .m7s-intro { font-size:.875rem; }
+.asp-dashboard .m7s-card { padding:16px; gap:8px; background:#fff; grid-template-columns:minmax(0,1fr); }
+.asp-dashboard .m7s-details { min-width:0; grid-template-columns:minmax(0,1fr); }
+.asp-dashboard .m7s-card.m7s-primary { background:#fff; border:1px solid var(--asp-line); border-left:4px solid #ffca59; }
+.asp-dashboard .m7s-kicker { display:inline-block; margin:0 8px 4px 0; font-size:.875rem; letter-spacing:0; text-transform:none; }
+.asp-dashboard .m7s-card-head { gap:8px; align-items:center; }
+.asp-dashboard .m7s-headline { font-size:.875rem; line-height:1.5; margin:0; }
+.asp-dashboard .m7s-details summary { min-height:44px; padding:10px 0; font-size:.875rem; }
+.asp-dashboard .m7s-facts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:12px 0; }
+.asp-dashboard .m7s-facts > div { display:block; padding:12px; background:#f5f8f1; border-radius:9px; }
+.asp-dashboard .m7s-facts dt { margin-bottom:5px; }
+.asp-dashboard .m7s-facts dd { font-size:.9375rem; }
+.asp-dashboard .m7s-word { padding:4px 10px; border-radius:8px; font-size:.875rem; background:#fff; border:1px solid #c6d8ca; line-height:1.5; }
+.asp-dashboard .m7s-words { margin:8px 0; }
+.asp-dashboard .m7s-words .m7-field-label { font-size:.875rem; font-weight:700; }
+.asp-dashboard .m7s-rules { padding:8px 16px; background:#f5f8f1; border:1px solid var(--asp-line); border-radius:12px; margin-top:16px; }
+.asp-dashboard .m7s-rules > ul { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); list-style:none; padding:0; gap:12px; }
+.asp-dashboard .m7s-rules > ul > li { margin:0; padding:12px; border-left:3px solid #bfd3c3; background:#fff; border-radius:0 8px 8px 0; font-size:.875rem; line-height:1.6; }
+.asp-dashboard .m7s-grid :is(th,td),.asp-dashboard .m7s-evidence :is(th,td) { padding:12px; line-height:1.6; }
+@media(max-width:700px) {
+ .asp-dashboard .m7s-facts,.asp-dashboard .m7s-rules > ul { grid-template-columns:minmax(0,1fr); }
+ .asp-dashboard .asp-completion-summary { display:block; margin-left:0; }
+}

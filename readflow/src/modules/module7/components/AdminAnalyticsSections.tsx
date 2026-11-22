@@ -1,5 +1,7 @@
 import type { AdminRoomLabel } from '../services/adminClassroomLabels';
 import { useState } from 'react';
+import PerformanceTrendCharts from './PerformanceTrendCharts';
+import StudentSupportTable from './StudentSupportTable';
 import PerformanceSelector from './PerformanceSelector';
 import { RiskGuidance } from '../M7Pages';
 import { formatAnalyticsDate as displayDate } from '../services/dateDisplay';
@@ -8,27 +10,39 @@ import { formatScore, formatComprehension } from '../services/scoreDisplay';
 import type { AdminSystemData, Metrics } from '../services/m7Service';
 export const percentage = (value: number | null) => value === null ? 'No data' : formatScore(value);
 const number = (value: number | null) => value === null ? 'No data' : value.toLocaleString();
+export function MetricCard({ label, value }: { label: string; value: string | number }) {
+  return <div className="m7-card"><span>{label}</span><strong>{value}</strong></div>;
+}
 export function AdminMetrics({ data }: { data: Metrics }) {
   const entries = [['Saved readings', data.readingAttempts], ['Completed quizzes', data.completedQuizzes],
-    ['Comprehension', formatComprehension(data)], ['Reading accuracy', percentage(data.pronunciationAccuracy)],
-    ['Reading speed', data.readingSpeedWpm === null ? 'No data' : `${data.readingSpeedWpm} WPM`]];
-  return <div className="m7-metrics">{entries.map(([label, value]) => <div className="m7-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>;
+    ['Average comprehension', formatComprehension(data)], ['Average reading accuracy', percentage(data.pronunciationAccuracy)],
+    ['Average reading speed', data.readingSpeedWpm === null ? 'No data' : `${data.readingSpeedWpm} WPM`]];
+  return <div className="m7-metrics">{entries.map(([label, value]) => <MetricCard key={label} label={String(label)} value={value ?? 'No data'} />)}</div>;
 }
 type Details = AdminSystemData['details'];
+export function OverviewSection({ data }: { data: Details }) {
+  return <section><h2>Performance in the selected period</h2><AdminMetrics data={data.performance} />
+      {!data.performance.readingAttempts && !data.performance.completedQuizzes && <p>No saved results match these filters.</p>}
+      {!data.filters.roomId && <p>Includes {data.independentPerformance.readingAttempts} Student readings and {data.independentPerformance.completedQuizzes} Student quizzes completed outside a classroom assignment.</p>}
+      {data.unassignedClassroomReadings > 0 && <p>{data.unassignedClassroomReadings} readings reference classrooms that are no longer available. They remain included in system totals.</p>}
+    </section>;
+}
+export function PerformanceTrendsSection({ data }: { data: Details }) {
+  const [view, setView] = useState<'charts' | 'table'>('charts');
+  return <section><h2>Weekly performance trends</h2><p>Weeks start Monday in Philippine time. Averages use saved attempts, with sample counts shown. Weeks without results are omitted; no scores are inferred.</p>
+      <div className="sp-view-switch" role="group" aria-label="Weekly display"><button type="button" aria-pressed={view === 'charts'} onClick={() => setView('charts')}>Charts</button><button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')}>Table</button></div>
+      {view === 'charts' && <PerformanceTrendCharts weeks={data.trends} />}
+      <details open={view === 'table'}><summary>Weekly data table · all recorded weeks</summary>
+      {!data.trends.length ? <p>No results available for a trend.</p> : <div className="m7-scroll"><table><thead><tr><th>Week starting</th><th>Readings</th><th>Reading accuracy</th><th>Speed (WPM)</th><th>Quizzes</th><th>Comprehension</th></tr></thead><tbody>{data.trends.map(row => <tr key={row.weekStart}><td>{displayDate(row.weekStart)}</td><td>{row.readingAttempts}</td><td>{percentage(row.pronunciationAccuracy)}</td><td>{number(row.readingSpeedWpm)}</td><td>{row.completedQuizzes}</td><td>{formatComprehension(row)}</td></tr>)}</tbody></table></div>}
+      </details>
+    </section>;
+}
 export function PerformanceSections({ data, labels = [] }: { data: Details; labels?: AdminRoomLabel[] }) {
   const roomLabel = (room: {id:string;name:string;teacherName:string}) => labels.find(label => label.id === room.id)?.label ?? `${room.name} \u2014 ${room.teacherName}`;
   const [selectedClassroom, setSelectedClassroom] = useState('');
   const selected = data.classroomComparisons.find(room => room.id === selectedClassroom) ?? data.classroomComparisons[0];
   return <>
-    <section><h2>Performance in the selected period</h2><AdminMetrics data={data.performance} />
-      {!data.performance.readingAttempts && !data.performance.completedQuizzes && <p>No saved results match these filters.</p>}
-      {!data.filters.roomId && <p>Includes {data.independentPerformance.readingAttempts} Student readings and {data.independentPerformance.completedQuizzes} Student quizzes completed outside a classroom assignment.</p>}
-      {data.unassignedClassroomReadings > 0 && <p>{data.unassignedClassroomReadings} readings reference classrooms that are no longer available. They remain included in system totals.</p>}
-    </section>
-    <section><h2>Weekly performance trends</h2><p>Weeks start Monday in Philippine time. Averages use saved attempts, with sample counts shown. Weeks without results are omitted; no scores are inferred.</p>
-      {!data.trends.length ? <p>No results available for a trend.</p> : <div className="m7-scroll"><table><thead><tr><th>Week starting</th><th>Readings</th><th>Reading accuracy</th><th>Speed (WPM)</th><th>Quizzes</th><th>Comprehension</th></tr></thead><tbody>{data.trends.map(row => <tr key={row.weekStart}><td>{displayDate(row.weekStart)}</td><td>{row.readingAttempts}</td><td>{percentage(row.pronunciationAccuracy)}</td><td>{number(row.readingSpeedWpm)}</td><td>{row.completedQuizzes}</td><td>{formatComprehension(row)}</td></tr>)}</tbody></table></div>}
-    </section>
-    <section><h2>Classroom comparisons</h2><p>Results are attributed by their saved classroom ID. Participation uses current enrollment; students enrolled in multiple rooms may appear in each room.</p>
+    <section><h2>Classroom performance</h2><p>Results are attributed by their saved classroom ID. Participation uses current enrollment; students enrolled in multiple rooms may appear in each room. Completion is a current snapshot for activities assigned in the selected period.</p>
       {!!data.classroomComparisons.length && <>
         {!data.filters.roomId && <div className="m7-performance-controls">
           <PerformanceSelector id="admin-classroom" label="Select Classroom" value={selected?.id ?? ''}
@@ -41,7 +55,7 @@ export function PerformanceSections({ data, labels = [] }: { data: Details; labe
           <AdminMetrics data={selected} />
           <div className="m7-metrics">{[['Enrolled Students', selected.enrolledStudents], ['Participating Students', selected.participatingStudents],
             ['Completed / assigned', `${selected.completed} / ${selected.assigned}`], ['Completion Rate', percentage(selected.completionRate)],
-            ['Incomplete Assignments', selected.incomplete]].map(([label, value]) => <div className="m7-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+            ['Incomplete Assignments', selected.incomplete]].map(([label, value]) => <MetricCard key={label} label={String(label)} value={value ?? 'No data'} />)}</div>
           {!selected.readingAttempts && !selected.completedQuizzes && <p>No saved results for this classroom in the selected period.</p>}
         </article>}
       </>}
@@ -52,27 +66,35 @@ export function PerformanceSections({ data, labels = [] }: { data: Details; labe
     </section>
   </>;
 }
+function RateProgress({ label, value }: { label: string; value: number | null }) {
+  return <div className="sp-progress"><div><span>{label}</span><strong>{percentage(value)}</strong></div>
+    {value !== null && <progress aria-label={label} value={value} max={100}>{percentage(value)}</progress>}
+  </div>;
+}
 export function ParticipationSection({ data }: { data: Details }) {
   const p = data.participation, c = data.completion;
-  return <section><h2>Student participation and assignment completion</h2>
-    <p>Participation means at least one saved reading or completed quiz in the selected period. The denominator is current students, or current classroom enrollment when filtered.</p>
-    <div className="m7-metrics">{[['Participating students', p.participatingStudents], ['Students in scope', p.students], ['Without recorded activity', p.withoutRecordedActivity], ['Participation rate', percentage(p.participationRate)]].map(([label, value]) => <div className="m7-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-    <p>Current completion of reading activities assigned during the selected period: <strong>{c.completed} / {c.assigned}</strong> ({percentage(c.completionRate)}). {c.incomplete} remain incomplete.</p>
-    <p>Completion requires saved assessment evidence. This is a current snapshot, not completion as of the reporting-period end.</p>
-    {!c.assigned && <p>No reading assignments match these filters.</p>}
+  return <section><h2>Student participation</h2>
+    <p>At least one saved reading or completed quiz in the selected period. Students in scope uses current accounts or current classroom enrollment.</p>
+    <div className="m7-metrics">{[['Participating students', p.participatingStudents], ['Students in scope', p.students], ['Students without recorded activity', p.withoutRecordedActivity]].map(([label, value]) => <MetricCard key={label} label={String(label)} value={value} />)}</div>
+    <RateProgress label="Participation rate" value={p.participationRate} />
+    <h3>Assignment completion <span className="sp-scope-tag">Current snapshot</span></h3>
+    <p>Reading activities assigned during the selected period. Completion requires saved assessment evidence; it is not completion as of the reporting-period end.</p>
+    <div className="m7-metrics">{[['Assigned activities', c.assigned], ['Completed assigned activities', c.completed], ['Incomplete assigned activities', c.incomplete]].map(([label, value]) => <MetricCard key={label} label={String(label)} value={value} />)}</div>
+    <RateProgress label="Assignment completion rate" value={c.completionRate} />
+    {!c.assigned && <p className="sp-empty">No reading assignments match these filters.</p>}
   </section>;
 }
 export function RiskSection({ data }: { data: Details }) {
-  return <section><h2>Current risk and learning support</h2>
-    <RiskGuidance />
-    <p>Uses full quiz history regardless of reporting dates. Each student is counted once at their highest-priority classification across relevant approved teachers. Classroom selection chooses students and the classroom's teacher; that teacher's full eligible quiz history is retained.</p>
-    <p>No assessment data means no completed quizzes in an eligible approved-teacher context. Students without such a context are not assumed to be On Track.</p>
-    <div className="m7-metrics">{Object.entries(data.riskCounts).map(([label, count]) => <div className="m7-card" key={label}><span>{label}</span><strong>{count}</strong></div>)}</div>
-    <h3>Students needing additional support</h3>
-    {!data.supportStudents.length ? <p>No students with an active warning or risk in the selected scope.</p> : <div className="m7-scroll"><table><thead><tr><th>Student</th><th>Current classification</th><th>Teacher context and recent scores</th><th>Interventions</th></tr></thead><tbody>{data.supportStudents.map(student => <tr key={student.id}>
-      <td>{student.name}</td><td>{student.classification}</td>
-      <td>{student.contexts.map(context => <details key={context.teacherId}><summary>{context.teacherName}: {context.classification}</summary><p>{context.classrooms.join(', ')} · {context.completedQuizzes} completed quizzes</p><ul>{context.latestScores.map((score, index) => <li key={index}>{formatScore(score.score)} — {displayDate(score.completedAt)}</li>)}</ul></details>)}</td>
-      <td>{student.interventions.total ? `${student.interventions.planned} planned, ${student.interventions.inProgress} in progress, ${student.interventions.completed} completed` : 'None recorded'}</td>
-    </tr>)}</tbody></table></div>}
+  const primary = ['On Track', 'Early Warning', 'At Risk', 'Needs Support'];
+  return <section><h2>Learning support <span className="sp-scope-tag">Full eligible history</span></h2>
+    <p>Current classifications in the selected classroom scope. Reporting dates do not limit the quiz history used.</p>
+    <div className="m7-metrics sp-risk-cards">{primary.map(label => <div className="m7-card" data-classification={label} key={label}><span>{label}</span><strong>{data.riskCounts[label] ?? 'No data'}</strong></div>)}</div>
+    <div className="sp-other-status">{Object.entries(data.riskCounts).filter(([label]) => !primary.includes(label)).map(([label, count]) => <span key={label}>{label}: <strong>{count}</strong></span>)}</div>
+    <details className="sp-classification-guide"><summary>How Classifications Are Calculated</summary>
+      <RiskGuidance />
+      <p>Uses full quiz history regardless of reporting dates. Each student is counted once at their highest-priority classification across relevant approved teachers. Classroom selection chooses students and the classroom's teacher; that teacher's full eligible quiz history is retained.</p>
+      <p>No assessment data means no completed quizzes in an eligible approved-teacher context. Students without such a context are not assumed to be On Track. Invalid assessment evidence is shown as Evaluation unavailable, never as a low score.</p>
+    </details>
+    <StudentSupportTable students={data.supportStudents} />
   </section>;
 }

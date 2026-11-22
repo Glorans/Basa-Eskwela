@@ -1,3 +1,5 @@
+import { searchParamsRouter } from './helpers/searchParamsRouter.ts';
+import * as studentRequests from '../src/modules/module7/services/studentPerformanceRequests.ts';
 import * as adminLabels from '../src/modules/module7/services/adminClassroomLabels.ts';
 // M7 Appendix N completion: Independent Learner progress, Admin student performance, Admin reports,
 // navigation and labels. No network: the analytics request function is a stub.
@@ -18,11 +20,17 @@ const links = (tree: unknown) => findAll(tree, (node: any) => node.type === "a")
 
 function load(path: string, responses: Record<string, unknown>, requests: string[] = []) {
   const runtime = createHookRuntime(require("react"));
+  const navigation = searchParamsRouter("a");
   const module = loadComponentModule(new URL(`../src/modules/module7/${path}`, import.meta.url), (id) => {
     if (id.endsWith('/adminClassroomLabels')) return adminLabels;
+    if (id.endsWith('/useAuth')) return { useAuth: () => ({user:{id:'admin'},profile:{id:'admin',role:'admin'},loading:false,profileError:false}) };
+    if (id.endsWith('/studentPerformanceRequests')) return studentRequests;
+    if (id.endsWith('/StudentCombobox')) return { default: 'selector' };
+    if (id.endsWith('/StudentReadingChart')) return { default: 'reading-chart' };
+    if (id === 'lucide-react') return { Search: 'search-icon' };
     if (id === "react") return runtime.react;
     if (id === "react/jsx-runtime") return require("react/jsx-runtime");
-    if (id === "react-router-dom") return { Link: "a" };
+    if (id === "react-router-dom") return navigation.module;
     if (id.endsWith(".css")) return {};
     if (id.endsWith('/SuggestedInterventions')) return { SuggestedInterventions: 'suggested-interventions' };
     if (id.endsWith('/LearnerSuggestions')) return { LearnerSuggestions: 'learner-suggestions' };
@@ -36,7 +44,8 @@ function load(path: string, responses: Record<string, unknown>, requests: string
     if (id.endsWith("/AdminAnalyticsPage")) return { default: "admin-analytics-page" };
     if (id.endsWith("/M7Pages")) return { MetricsCards: "metrics-cards", InterventionForm: "intervention-form" };
     throw new Error(`Unexpected import ${id}`);
-  });
+  }, { URLSearchParams });
+  if (module.StudentPerformanceWorkspace) module.default = module.StudentPerformanceWorkspace;
   return { runtime, module, requests };
 }
 
@@ -108,10 +117,9 @@ test("functions 4, 8, 9: Admin student list shows every Student, risk classifica
   assert.match(all, /Independent Learners are not included/);
   assert.match(all, /"Early Warning"/);
   assert.match(all, /"No assessment data"/);
-  assert.match(all, /"86\.49%"/);
-  assert.match(all, /"100 WPM"/);
-  assert.match(all, /"Not enrolled"/);
-  assert.match(all, /"None assigned"/);
+  const selectedDetail = findAll(tree, (node: any) => node.props?.studentId === 's2')[0];
+  assert.equal(selectedDetail.props.summary, rows[1], 'the selected list snapshot is preserved without recomputing it');
+  assert.equal(findAll(tree, (node: any) => node.props?.studentId === 's1').length, 0);
   assert.doesNotMatch(all, /"0%"|NaN|undefined/, "missing data is never shown as zero");
 });
 

@@ -46,9 +46,9 @@ export interface SystemData extends Metrics { students:number;teachers:number;cl
 export const PERSONAL_PROGRESS_TIMEOUT_MS = 60_000;
 export const ANALYTICS_TIMEOUT_MESSAGE = 'Loading is taking too long. Check your internet connection, then select Retry.';
 /** `timeoutMs` is opt-in: requests without it behave exactly as before (no time limit). */
-export async function m7Request<T>(path:string, method = 'GET', data?:unknown, { timeoutMs }: { timeoutMs?: number } = {}):Promise<T> {
+export async function m7Request<T>(path:string, method = 'GET', data?:unknown, { timeoutMs, signal }: { timeoutMs?: number; signal?: AbortSignal } = {}):Promise<T> {
   try {
-    const response = await api.request({ url:`/api/analytics${path}`, method, data, headers: await getSessionAuthHeaders('Please sign in again.'), ...(timeoutMs ? { timeout: timeoutMs } : {}) });
+    const response = await api.request({ url:`/api/analytics${path}`, method, data, ...(signal ? { signal } : {}), headers: await getSessionAuthHeaders('Please sign in again.'), ...(timeoutMs ? { timeout: timeoutMs } : {}) });
     return response.data.data as T;
   } catch(error) {
     if (timeoutMs && axios.isAxiosError(error) && !error.response && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')) throw new Error(ANALYTICS_TIMEOUT_MESSAGE);
@@ -80,7 +80,7 @@ export interface ClassroomComparison extends Metrics, CompletionSummary {
 }
 export interface SupportStudent {
   id: string; name: string; classification: string;
-  contexts: { teacherId: string; teacherName: string; classrooms: string[]; classification: string; completedQuizzes: number; latestScores: { score: number | null; completedAt: string | null }[] }[];
+  contexts: { teacherId: string; teacherName: string; classrooms: string[]; classification: string; recoveryCount?: number; completedQuizzes: number; latestScores: { score: number | null; completedAt: string | null }[] }[];
   interventions: { total: number; planned: number; inProgress: number; completed: number };
 }
 export interface AdminSystemData extends SystemData {

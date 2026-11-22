@@ -45,7 +45,7 @@ function PracticeWords({ item }: { item: SuggestionItem }) {
   </div>;
 }
 
-function SuggestionCard({ item, onUse, disabled, primary }: { item: SuggestionItem; onUse?: (item: SuggestionItem) => void; disabled?: boolean; primary?: boolean }) {
+function SuggestionCard({ item, onUse, disabled, primary, compact = false }: { item: SuggestionItem; onUse?: (item: SuggestionItem) => void; disabled?: boolean; primary?: boolean; compact?: boolean }) {
   const s = item.suggestion;
   const Heading = primary ? 'h3' : 'h4';
   return <article className={`m7s-card${primary ? ' m7s-primary' : ''}`} aria-label={`${primary ? 'Top suggestion' : 'Suggestion'}: ${item.competencyName}, ${item.languageName}`}>
@@ -54,8 +54,8 @@ function SuggestionCard({ item, onUse, disabled, primary }: { item: SuggestionIt
       <span className="m7s-chips"><span className="m7s-chip">{item.languageName}</span>
         {item.level && <span className={`m7s-chip m7s-level-${item.level}`}>{LEVEL_LABEL[item.level]}</span>}</span>
     </div>
-    {primary ? <SuggestionBody item={item} onUse={onUse} disabled={disabled} /> : <>
-      <p className="m7s-headline">{item.evidenceText} <strong>Suggested: {s?.title}.</strong></p>
+    {primary && !compact ? <SuggestionBody item={item} onUse={onUse} disabled={disabled} /> : <>
+      <p className="m7s-headline">{compact ? (s ? <>Suggested: <strong>{s.title}</strong></> : item.evidenceText) : <>{item.evidenceText} <strong>Suggested: {s?.title}.</strong></>}</p>
       <details className="m7s-details"><summary>Show evidence and activity</summary><SuggestionBody item={item} onUse={onUse} disabled={disabled} /></details>
     </>}
   </article>;
@@ -100,12 +100,12 @@ function LanguageTable({ languages }: { languages: LanguageEvaluation[] }) {
  * path: '/students/:id/suggestions' (Teacher) or '/admin/students/:id/suggestions' (School Admin).
  * refreshKey: change it to reload (after an intervention is saved).
  */
-export function SuggestedInterventions({ path, onUse, disabled, refreshKey = 0, scope = 'your classrooms', readOnly = false, scopeNote }: { path: string; onUse?: (item: SuggestionItem) => void; disabled?: boolean; refreshKey?: number; scope?: string; readOnly?: boolean; scopeNote?: string }) {
+export function SuggestedInterventions({ path, onUse, disabled, refreshKey = 0, scope = 'your classrooms', readOnly = false, scopeNote, compact = false, loadData = m7Request }: { path: string; onUse?: (item: SuggestionItem) => void; disabled?: boolean; refreshKey?: number; scope?: string; readOnly?: boolean; scopeNote?: string; compact?: boolean; loadData?: (path: string) => Promise<SuggestionsData> }) {
   const [data, setData] = useState<SuggestionsData | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     setLoading(true); setError('');
-    try { setData(await m7Request<SuggestionsData>(path)); } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
-  }, [path]);
+    try { setData(await loadData(path)); } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
+  }, [path, loadData]);
   useEffect(() => { void load(); }, [load, refreshKey]);
   const rules = data?.rules;
   return <section className="m7s" aria-label="Suggested interventions">
@@ -116,7 +116,7 @@ export function SuggestedInterventions({ path, onUse, disabled, refreshKey = 0, 
     {data && <>
       {!data.hasAnyData ? <p className="m7s-empty" role="status"><strong>More assessment data needed.</strong> There are no completed comprehension assessments or saved readings in {scope} yet, so no suggestion can be made.</p>
         : !data.suggestions.length ? <p className="m7s-empty" role="status"><strong>No intervention suggested right now.</strong> {data.moreDataNeeded ? 'Some competencies have too few saved questions to judge. More assessments are needed.' : 'Recent results meet the benchmarks used by these rules.'}</p>
-        : <div className="m7s-list">{data.suggestions.map((item, index) => <SuggestionCard key={item.id} item={item} primary={index === 0} onUse={onUse} disabled={disabled} />)}</div>}
+        : <div className="m7s-list">{data.suggestions.map((item, index) => <SuggestionCard key={item.id} item={item} primary={index === 0} compact={compact} onUse={onUse} disabled={disabled} />)}</div>}
       {data.additionalNeeds.length > 0 && <p className="m7s-also"><strong>Also observed:</strong> {data.additionalNeeds.map(n => `${n.competencyName} (${n.languageName}${n.level ? `, ${LEVEL_LABEL[n.level as 'pattern' | 'preliminary'].toLowerCase()}` : ''})`).join('; ')}. Shown after the clearest needs are addressed.</p>}
       {data.improving.length > 0 && <div className="m7s-improving"><h3>Improving: keep monitoring</h3>{data.improving.map(item => <div key={item.id}><p><strong>{item.competencyName} ({item.languageName})</strong>: {item.evidenceText}</p><SinceInterventionNote item={item} /></div>)}</div>}
       {data.notes.map(note => <p key={note} className="m7s-note">{note}</p>)}
