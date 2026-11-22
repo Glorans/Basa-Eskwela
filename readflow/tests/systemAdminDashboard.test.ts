@@ -21,7 +21,7 @@ test("System Admin sidebar: Dashboard first, every existing item kept", () => {
   const layout = read("modules/module3/components/M3Layout.tsx");
   const block = layout.slice(layout.indexOf('if (role === "system_admin")'), layout.indexOf("return [{ label: \"Dashboard\""));
   const labels = [...block.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(labels, ["Dashboard", "Content Management", "Create Module", "Reading Materials", "Upload Material", "Reading Practice",
+  assert.deepEqual(labels, ["Dashboard", "Content Management", "Reading Materials", "Reading Practice",
     "Practice History", "User Management", "Schools", "Platform Analytics", "Independent Learners"]);
   assert.match(block, /\{ label: "Dashboard", to: getRoleHomePath\(role\), icon: House, end: true \}/);
 });

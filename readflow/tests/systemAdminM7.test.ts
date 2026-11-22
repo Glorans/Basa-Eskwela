@@ -7,8 +7,8 @@ const read = (path: string) => readFileSync(new URL(`../src/${path}`, import.met
 test("System Admin sidebar keeps M3 Content Management and adds M7 Platform Analytics and Independent Learners", () => {
   const layout = read("modules/module3/components/M3Layout.tsx");
   const block = layout.slice(layout.indexOf('if (role === "system_admin")'), layout.indexOf("return [{ label: \"Dashboard\""));
-  for (const [label, to] of [["Content Management", "/system-admin/content"], ["Create Module", "/system-admin/content/modules/new"],
-    ["Reading Materials", "/system-admin/content/materials"], ["Upload Material", "/system-admin/content/materials/upload"],
+  for (const [label, to] of [["Content Management", "/system-admin/content"],
+    ["Reading Materials", "/system-admin/content/materials"],
     ["User Management", "/system-admin/users"], ["Platform Analytics", "/system-admin/analytics"], ["Independent Learners", "/system-admin/independent-learners"]]) {
     assert.ok(block.includes(`label: "${label}", to: "${to}"`), label);
   }
