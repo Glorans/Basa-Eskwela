@@ -212,6 +212,37 @@ test("Teacher assigns selected Students with a due date (end of the day in Manil
   assert.deepEqual([row.language, row.kind, row.assigned_by], ["en", "classroom", P.teacher[0]]);
 });
 
+test("package language must match the Learning Room subject; a room without a subject keeps the previous behaviour", async () => {
+  const { d, service } = await setup();
+  const en = await pkg(d, { title: "EN" });
+  const fil = await pkg(d, { title: "FIL", language: "fil" });
+  const school = await pkg(d, { scope: "school", owner: P.admin[0], title: "School EN" });
+  await d.exec("reset role");
+  await d.query("update rooms set subject = 'fil' where id = $1", [ROOM_A]);
+  await d.exec("set role service_role");
+  // Filipino room: the English packages are listed but not assignable, with the reason; the Filipino one is.
+  const offered = (await service.assignablePackagesForRoom(as("teacher"), ROOM_A)).packages;
+  assert.deepEqual(offered.map((p) => [p.title, p.eligible, p.reason]).sort(),
+    [["EN", false, "For English Learning Rooms only"], ["FIL", true, null]]);
+  await refused(service.createAssignments(as("teacher"), { roomId: ROOM_A, packageVersionId: en, studentIds: [P.s2[0]] }), 409, "PACKAGE_NOT_ELIGIBLE");
+  await refused(service.createAssignments(as("admin"), { roomId: ROOM_A, packageVersionId: school, studentIds: [P.s2[0]] }), 409, "PACKAGE_NOT_ELIGIBLE");
+  await refused(service.createAssignments(as("teacher"), { roomId: ROOM_A, packageVersionId: en, mode: "all_eligible" }), 409, "PACKAGE_NOT_ELIGIBLE");
+  assert.equal(await count(d), 0, "nothing was created for the mismatched language");
+  assert.equal((await service.createAssignments(as("teacher"), { roomId: ROOM_A, packageVersionId: fil, studentIds: [P.s2[0]] })).created, 1);
+  // English room: the Filipino package is refused for Teacher and School Admin alike.
+  await d.exec("reset role");
+  await d.query("update rooms set subject = 'en' where id = $1", [ROOM_B]);
+  await d.exec("set role service_role");
+  const schoolFil = await pkg(d, { scope: "school", owner: P.admin[0], title: "School FIL", language: "fil" });
+  await refused(service.createAssignments(as("admin"), { roomId: ROOM_B, packageVersionId: schoolFil, studentIds: [P.outsider[0]] }), 409, "PACKAGE_NOT_ELIGIBLE");
+  assert.equal((await service.createAssignments(as("admin"), { roomId: ROOM_B, packageVersionId: school, studentIds: [P.outsider[0]] })).created, 1);
+  // A legacy room without a subject: unchanged (any language may be assigned).
+  await d.exec("reset role");
+  await d.query("update rooms set subject = null where id = $1", [ROOM_A]);
+  await d.exec("set role service_role");
+  assert.ok((await service.assignablePackagesForRoom(as("teacher"), ROOM_A)).packages.every((p) => p.eligible));
+});
+
 test("selected Students are all-or-nothing; the reasons are returned and nothing is created", async () => {
   const { d, service } = await setup();
   const v = await pkg(d);
