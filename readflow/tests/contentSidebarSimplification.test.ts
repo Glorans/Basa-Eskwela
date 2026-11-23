@@ -30,6 +30,7 @@ function sidebar(role: string, pathname = "/") {
   const links = findAll(module.default({ role }), (n: any) => n.type === "NavLink");
   return {
     labels: links.map((n: any) => n.props["aria-label"]),
+    links,
     // What the sidebar highlights when the router itself reports no exact match for this link.
     highlighted: links.filter((n: any) => n.props.className({ isActive: false }).includes("m3-nav-item--active")).map((n: any) => n.props["aria-label"]),
   };
@@ -42,9 +43,9 @@ test("System Admin, School Admin and Teacher sidebars no longer list Create Modu
     assert.ok(!labels.includes("Upload Material"), `${role}: Upload Material`);
   }
   assert.ok(sidebar("system_admin").labels.includes("Content Management") && sidebar("system_admin").labels.includes("Reading Materials"));
-  assert.ok(sidebar("admin").labels.includes("Content Management"), "School Admin has no Reading Materials item and none is added");
-  assert.ok(!sidebar("admin").labels.includes("Reading Materials"));
-  assert.ok(sidebar("teacher").labels.includes("My Reading Modules") && sidebar("teacher").labels.includes("Reading Materials"));
+  // M3 all-role refinement: School Admin gains Reading Materials; Teacher's My Reading Modules opens from Reading Modules.
+  assert.ok(sidebar("admin").labels.includes("Content Management") && sidebar("admin").labels.includes("Reading Materials"));
+  assert.ok(!sidebar("teacher").labels.includes("My Reading Modules") && sidebar("teacher").labels.includes("Reading Materials"));
 });
 
 test("unrelated items stay (Dashboard, practice, users, schools, Learning Rooms...)", () => {
@@ -54,19 +55,22 @@ test("unrelated items stay (Dashboard, practice, users, schools, Learning Rooms.
   for (const label of ["Dashboard", "Reading Modules", "Learning Rooms", "Reading Results", "Reading Practice", "Student Support", "Analytics", "Reports"]) assert.ok(sidebar("teacher").labels.includes(label), label);
 });
 
-test("Independent Learner sidebar is unchanged (keeps Upload Material)", () => {
+test("Independent Learner sidebar: Upload Material opens from Reading Materials (M3 all-role refinement)", () => {
   const { labels } = sidebar("general_user");
-  assert.deepEqual(labels.slice(0, 4), ["Dashboard", "Reading Modules", "Reading Materials", "Upload Material"]);
+  assert.deepEqual(labels.slice(0, 3), ["Dashboard", "Reading Modules", "Reading Materials"]);
+  assert.ok(!labels.includes("Upload Material"));
 });
 
 test("the parent entry stays highlighted on the create and upload pages (and only there)", () => {
   assert.deepEqual(sidebar("system_admin", "/system-admin/content/modules/new").highlighted, ["Content Management"]);
   assert.deepEqual(sidebar("system_admin", "/system-admin/content/materials/upload").highlighted, ["Reading Materials"]);
   assert.deepEqual(sidebar("admin", "/m3/admin/modules/new").highlighted, ["Content Management"]);
-  assert.deepEqual(sidebar("teacher", "/m3/teacher/content/new").highlighted, ["My Reading Modules"]);
-  assert.deepEqual(sidebar("teacher", "/m3/teacher/materials/upload").highlighted, ["Reading Materials"]);
+  assert.deepEqual(sidebar("teacher", "/m3/teacher/content/new").highlighted, ["Reading Modules"]);
+  assert.deepEqual(sidebar("teacher", "/m3/teacher/content").highlighted, ["Reading Modules"]);
   assert.deepEqual(sidebar("system_admin", "/system-admin/users").highlighted, [], "no extra highlight elsewhere");
-  assert.deepEqual(sidebar("general_user", "/m3/general/materials/upload").highlighted, [], "Independent Learner keeps exact-match highlighting");
+  // Reading Materials (Teacher, School Admin, Independent Learner) stays highlighted on its sub-pages through the
+  // router's own prefix match (end: false), which this helper does not simulate.
+  for (const role of ["teacher", "admin", "general_user"]) assert.equal(sidebar(role).links.find((n: any) => n.props["aria-label"] === "Reading Materials").props.end, false, role);
 });
 
 test("routes and in-page buttons are unchanged", () => {
@@ -75,7 +79,7 @@ test("routes and in-page buttons are unchanged", () => {
   assert.match(app, /<Route path="content\/materials\/upload" element=\{<UploadMaterialPage role="system_admin" \/>\} \/>/);
   assert.match(app, /path="modules\/new"/);
   assert.match(app, /path="content\/new"\s*element=\{<ModuleFormPage mode="create" workspace="teacher" \/>\}/);
-  assert.equal(app.match(/path="materials\/upload"/g)?.length, 2, "Teacher and Independent Learner upload routes");
+  assert.equal(app.match(/path="materials\/upload"/g)?.length, 3, "Teacher, Independent Learner and School Admin upload routes");
   assert.match(read("modules/module3/pages/Module3Page.tsx"), /to=\{`\$\{paths\.module\}\/new`\}><PlusCircle[^>]*\/> Create Module<\/Link>/);
   assert.match(read("modules/module3/pages/MaterialLibraryPage.tsx"), /to=\{`\$\{root\}\/materials\/upload`\}>/);
 });

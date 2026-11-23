@@ -6,7 +6,6 @@ import {
   BookOpenCheck,
   ChartNoAxesCombined,
   ClipboardList,
-  FilePlus2,
   Files,
   House,
   Menu,
@@ -61,8 +60,9 @@ function getNavItems(role: ShellRole): NavItem[] {
   return [{ label: "Dashboard", to: getRoleHomePath(role), icon: House, end: true }, ...getWorkspaceNavItems(role)];
 }
 
-/** A sidebar link. `alsoActive`: exact paths of pages opened from this one (e.g. Create Module from Content
- * Management) that keep it highlighted, since they no longer have their own sidebar entry. */
+/** A sidebar link. `alsoActive`: paths of pages opened from this one (e.g. Create Module from Content Management)
+ * that keep it highlighted, since they no longer have their own sidebar entry. An entry ending in "/*" matches every
+ * path below it. */
 type NavItem = { label: string; to: string; icon: typeof Files; end: boolean; alsoActive?: string[] };
 
 /** Marks where the expandable M2 Assessment group is rendered (School Admin and Teacher). Never a route. */
@@ -72,7 +72,9 @@ function getWorkspaceNavItems(role: M3Role): NavItem[] {
   if (role === "admin") {
     return [
       // Create Module opens from the Content Management button (route unchanged).
-      { label: "Content Management", to: "/m3/admin", icon: Files, end: true, alsoActive: ["/m3/admin/modules/new"] },
+      { label: "Content Management", to: "/m3/admin", icon: Files, end: true, alsoActive: ["/m3/admin/modules/*"] },
+      // M3 all-role refinement: School Admin Reading Materials (upload opens from the button on that page).
+      { label: "Reading Materials", to: "/m3/admin/materials", icon: Files, end: false },
       { label: "System Performance", to: "/admin/analytics", icon: ChartNoAxesCombined, end: true },
       { label: "Student Performance", to: "/admin/student-performance", icon: Users, end: true },
       { label: "Reports", to: "/admin/reports", icon: ClipboardList, end: true },
@@ -98,21 +100,21 @@ function getWorkspaceNavItems(role: M3Role): NavItem[] {
 
   const items: NavItem[] = role === "teacher"
     // Teacher: Upload Material opens from the Reading Materials button (route unchanged).
+    // Teacher: My Reading Modules opens from the button on Reading Modules, so Reading Modules stays highlighted
+    // there and on its create/edit pages (routes unchanged).
     ? [
-      { label: "Reading Modules", to: `${root}/modules`, icon: BookOpenCheck, end: false },
-      { label: "Reading Materials", to: `${root}/materials`, icon: Files, end: true, alsoActive: [`${root}/materials/upload`] },
+      { label: "Reading Modules", to: `${root}/modules`, icon: BookOpenCheck, end: false, alsoActive: ["/m3/teacher/content", "/m3/teacher/content/*"] },
+      { label: "Reading Materials", to: `${root}/materials`, icon: Files, end: false },
     ]
+    // Independent Learner: Upload Material opens from the button on Reading Materials (route unchanged).
     : [
       { label: "Reading Modules", to: `${root}/modules`, icon: BookOpenCheck, end: false },
-      { label: "Reading Materials", to: `${root}/materials`, icon: Files, end: true },
-      { label: "Upload Material", to: `${root}/materials/upload`, icon: FilePlus2, end: true },
+      { label: "Reading Materials", to: `${root}/materials`, icon: Files, end: false },
     ];
 
   if (role === "teacher") {
-    // M3 Teacher F1–F5: create, organize, edit, delete and publish their own reading modules. Create Module opens from
-    // the button on My Reading Modules (route unchanged), which stays highlighted there.
-    items.splice(1, 0,
-      { label: "My Reading Modules", to: "/m3/teacher/content", icon: FilePlus2, end: true, alsoActive: ["/m3/teacher/content/new"] });
+    // M3 Teacher F1–F5 (create, organize, edit, delete, publish own modules) live on My Reading Modules, opened from
+    // the Reading Modules page button (M3 all-role refinement removed the duplicate sidebar entry).
     items.push({ label: "Learning Rooms", to: "/m3/teacher/learning-rooms", icon: School, end: true });
     items.push({
       label: "Reading Results",
@@ -146,6 +148,10 @@ function getWorkspaceNavItems(role: M3Role): NavItem[] {
   }
 
   return items;
+}
+
+function isAlsoActive(paths: string[] | undefined, pathname: string) {
+  return Boolean(paths?.some((path) => (path.endsWith("/*") ? pathname.startsWith(path.slice(0, -1)) : path === pathname)));
 }
 
 function getProfileRoute(role: ShellRole) {
@@ -231,7 +237,7 @@ export default function M3Layout({ role }: M3LayoutProps) {
                 aria-label={label}
                 title={label}
                 onClick={() => sidebar.close()}
-                className={({ isActive }) => `m3-nav-item${isActive || alsoActive?.includes(pathname) ? " m3-nav-item--active" : ""}`}
+                className={({ isActive }) => `m3-nav-item${isActive || isAlsoActive(alsoActive, pathname) ? " m3-nav-item--active" : ""}`}
               >
                 <Icon size={19} />
                 <span className="rf-nav-label">{label}</span>

@@ -41,6 +41,7 @@ test("every allowed message is still sent word for word by the server or databas
   "../../server/services/materialQuestionSetService.js",
   "../../server/services/materialPersistenceService.js",
   "../../server/services/personalMaterialService.js",
+  "../../server/services/questionCountRule.js",
   "../../supabase/proposed/personal_material_1_sources_PROPOSED.sql",
   "../../supabase/proposed/personal_material_2_questions_PROPOSED.sql",
   "../../supabase/proposed/personal_material_3_text_edits_and_new_questions_PROPOSED.sql",

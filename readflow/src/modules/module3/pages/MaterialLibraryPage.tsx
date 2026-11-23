@@ -1,3 +1,4 @@
+import "../components/M3Dialog.css";
 import "./MaterialLibraryPage.css";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Eye, FilePlus2, FileQuestion, Files, LoaderCircle, Pencil, RotateCcw, Trash2 } from "lucide-react";
@@ -6,12 +7,12 @@ import { confirmReadFlow } from "../../../components/ReadFlowDialog";
 import M3PageHeader from "../components/M3PageHeader";
 import M3StatusBadge from "../components/M3StatusBadge";
 import { useM3Content } from "../context/M3ContentContext";
-import { getMaterialServiceError, getTrashedMaterials, restorePersonalMaterial, type TrashedMaterial } from "../services/materialService";
+import { getMaterialServiceError, getMaterialTrash, restorePersonalMaterial, restoreStaffMaterial, type TrashedMaterial } from "../services/materialService";
 import type { M3Role, UploadedMaterial } from "../types/content";
 import { getM3WorkspaceRoot } from "../utils/workspaceRoot";
 
 interface MaterialLibraryPageProps {
-  role: Extract<M3Role, "teacher" | "general_user" | "system_admin">;
+  role: Extract<M3Role, "admin" | "teacher" | "general_user" | "system_admin">;
 }
 
 function formatDate(value: string) {
@@ -30,20 +31,24 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string>();
 
-  // Independent Learners move a material to Trash (kept, never erased) and can restore it from there.
+  // Every role moves a material to Trash (kept, never erased) and can restore it from there (M3 all-role
+  // refinement: Teacher, School Admin and System Admin use the staff Trash; Independent Learners their personal one).
   const personal = role === "general_user";
+  const staff = !personal;
   const [searchParams, setSearchParams] = useSearchParams();
-  const showTrash = personal && searchParams.get("view") === "trash";
   const [trash, setTrash] = useState<TrashedMaterial[]>();
+  // false: the staff Trash needs the m3_all_role_refinement database update (the button is hidden; nothing changes).
+  const [trashInstalled, setTrashInstalled] = useState(true);
+  const showTrash = trashInstalled && searchParams.get("view") === "trash";
   const [trashError, setTrashError] = useState("");
   const [restoringId, setRestoringId] = useState<string>();
 
   const loadTrash = useCallback(async () => {
     setTrashError("");
-    try { setTrash(await getTrashedMaterials()); }
+    try { const loaded = await getMaterialTrash(); setTrash(loaded.materials); setTrashInstalled(loaded.installed); }
     catch (loadError) { setTrash([]); setTrashError(getMaterialServiceError(loadError, "Unable to load your Trash.")); }
   }, []);
-  useEffect(() => { if (personal) void loadTrash(); }, [personal, loadTrash]);
+  useEffect(() => { void loadTrash(); }, [loadTrash]);
 
   function openView(view: "materials" | "trash") {
     setNotice(""); setError("");
@@ -51,10 +56,13 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
   }
 
   async function deleteMaterial(material: UploadedMaterial) {
-    if (personal && !(await confirmReadFlow(
+    if (!(await confirmReadFlow(
       `Move "${material.title}" to Trash?\n\n`
-      + "It leaves My Materials and you cannot practice with it until you restore it. "
-      + "Nothing is erased: your file, text, questions and results are kept, and you can restore it from Trash.",
+      + (personal
+        ? "It leaves My Materials and you cannot practice with it until you restore it. "
+          + "Nothing is erased: your file, text, questions and results are kept, and you can restore it from Trash."
+        : "It leaves your Reading Materials and cannot be used for new question sets or assignments until you restore it. "
+          + "Nothing is erased: the file, its text, question sets, answer keys and learner results are kept."),
       { confirm: "Move to Trash", cancel: "Keep material" },
     ))) return;
     setDeletingId(material.id);
@@ -63,15 +71,15 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
 
     try {
       await removeMaterial(material.id);
-      setNotice(personal ? `${material.title} was moved to Trash.` : `${material.title} was deleted.`);
-      if (personal) void loadTrash();
+      setNotice(`${material.title} was moved to Trash.`);
+      void loadTrash();
     } catch (deleteError) {
       setError(
         getMaterialServiceError(
           deleteError,
           personal
             ? "Unable to move the material to Trash. It is still in My Materials."
-            : "Unable to delete the material. It remains in your library.",
+            : "Unable to move the material to Trash. It is still in your Reading Materials.",
         ),
       );
     } finally {
@@ -82,10 +90,10 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
   async function restore(material: TrashedMaterial) {
     setRestoringId(material.id); setNotice(""); setError("");
     try {
-      await restorePersonalMaterial(material.id);
+      await (personal ? restorePersonalMaterial(material.id) : restoreStaffMaterial(material.id));
       setTrash((current) => current?.filter((item) => item.id !== material.id));
       await refreshMaterials();
-      setNotice(`${material.title} is back in My Materials.`);
+      setNotice(personal ? `${material.title} is back in My Materials.` : `${material.title} is back in Reading Materials.`);
     } catch (restoreError) {
       setError(getMaterialServiceError(restoreError, "Unable to restore the material. It is still in Trash."));
     } finally {
@@ -97,7 +105,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
     <section className="m3-panel" id="my-materials">
       <div className="m3-section-heading">
         <div>
-          <h2>My Uploaded Materials</h2>
+          <h2>{role === "admin" ? "School Materials" : "My Uploaded Materials"}</h2>
           <p>{materials.length} saved {materials.length === 1 ? "material" : "materials"}</p>
         </div>
       </div>
@@ -125,7 +133,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
                 <span>{material.fileType}</span>
                 <span>{material.language}</span>
                 <span>Uploaded {formatDate(material.uploadedAt)}</span>
-                {(role === "teacher" || role === "system_admin") && <span>{material.questionSetCount
+                {staff && <span>{material.questionSetCount
                   ? `${material.questionSetCount} saved question ${material.questionSetCount === 1 ? "set" : "sets"}`
                   : "No saved question sets yet"}</span>}
               </div>
@@ -139,7 +147,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
                   <Pencil size={16} /> Edit Text
                 </Link>
               )}
-              {(role === "teacher" || role === "system_admin") && (
+              {staff && (
                 <Link className="m3-action-link" to={`${root}/materials/${material.id}#question-sets`}>
                   <FileQuestion size={16} /> {(material.questionSetCount ?? 0) > 0 ? "View Question Sets" : "Generate First Question Set"}
                 </Link>
@@ -155,9 +163,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
                 ) : (
                   <Trash2 size={16} />
                 )}
-                {deletingId === material.id
-                  ? (personal ? "Moving..." : "Deleting...")
-                  : (personal ? "Move to Trash" : "Delete")}
+                {deletingId === material.id ? "Moving..." : "Move to Trash"}
               </button>
             </div>
           </article>
@@ -179,10 +185,11 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
       <div className="m3-section-heading">
         <div>
           <h2 id="trash-heading">Trash</h2>
-          <p>Materials you moved here are kept. Restore one to practice with it again.</p>
+          <p>{personal ? "Materials you moved here are kept. Restore one to practice with it again."
+            : "Materials moved here are kept with their files, question sets and learner results. Restore one to use it again."}</p>
         </div>
         <button type="button" className="m3-action-link" onClick={() => openView("materials")}>
-          <ArrowLeft size={16} aria-hidden="true" /> Back to My Materials
+          <ArrowLeft size={16} aria-hidden="true" /> {personal ? "Back to My Materials" : "Back to Reading Materials"}
         </button>
       </div>
       {trashError && <div className="m3-error-message" role="alert">{trashError}</div>}
@@ -200,6 +207,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
                 <div>
                   <h2>{material.title}</h2>
                   <p>Source: {material.originalFilename}</p>
+                  {staff && material.trashedByName && <p>Moved by {material.trashedByName}</p>}
                 </div>
               </div>
               <div className="m3-record-meta">
@@ -229,7 +237,7 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
   return (
     <div className={`m3-page-stack${personal ? " m3-personal-library" : ""}`}>
       <M3PageHeader
-        eyebrow={role === "system_admin" ? undefined : role === "teacher" ? "Teacher workspace" : "Personal workspace"}
+        eyebrow={role === "system_admin" ? undefined : role === "teacher" ? "Teacher workspace" : role === "admin" ? "Admin library" : "Personal workspace"}
         title="Reading Materials"
         description={
           role !== "general_user"
@@ -237,13 +245,13 @@ export default function MaterialLibraryPage({ role }: MaterialLibraryPageProps) 
             : "Upload a reading, check its text, then practice."
         }
         actions={<>
-          {personal && (
-            <button type="button" className={`m3-button m3-button--secondary m3-trash-button${showTrash ? " is-active" : ""}`}
+          {trashInstalled && (
+            <button type="button" className={`m3-button m3-button--secondary m3-trash-button m3-trash-toggle${showTrash ? " is-active" : ""}`}
               aria-pressed={showTrash} aria-label={`Trash, ${trash?.length ?? 0} ${(trash?.length ?? 0) === 1 ? "material" : "materials"}`}
               onClick={() => openView(showTrash ? "materials" : "trash")}>
               <Trash2 size={18} aria-hidden="true" />
               Trash
-              <span className="m3-trash-button__count" aria-hidden="true">{trash?.length ?? 0}</span>
+              <span className="m3-trash-button__count m3-trash-toggle__count" aria-hidden="true">{trash?.length ?? 0}</span>
             </button>
           )}
           <Link className={`m3-button ${personal ? "m3-button--primary" : "m3-button--coral"}`} to={`${root}/materials/upload`}>

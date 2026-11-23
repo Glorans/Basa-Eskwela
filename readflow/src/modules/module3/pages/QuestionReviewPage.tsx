@@ -1,7 +1,7 @@
 import { getQuestionGenerationError } from "../services/questionGenerationError";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, FileQuestion, LoaderCircle, Save } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import M3PageHeader from "../components/M3PageHeader";
 import M3StatusBadge from "../components/M3StatusBadge";
 import { useM3Content } from "../context/M3ContentContext";
@@ -28,7 +28,19 @@ interface QuestionReviewPageProps {
   role: Extract<M3Role, "admin" | "teacher" | "system_admin">;
 }
 
+/**
+ * M3 all-role refinement: editing happens in the shared Question Bank editor on the material page. The old full-page
+ * edit route stays valid for bookmarks: it opens that editor for the same set.
+ */
 export default function QuestionReviewPage({ role, editing = false }: QuestionReviewPageProps) {
+  const { materialId, setId } = useParams<{ materialId: string; setId: string }>();
+  if (editing && materialId && setId) {
+    return <Navigate replace to={`${getM3WorkspaceRoot(role)}/materials/${encodeURIComponent(materialId)}?editSet=${encodeURIComponent(setId)}#question-sets`} />;
+  }
+  return <QuestionReviewView role={role} editing={false} />;
+}
+
+function QuestionReviewView({ role, editing = false }: QuestionReviewPageProps) {
   const { materialId, setId } = useParams<{ materialId: string; setId: string }>();
   const {
     getMaterial,

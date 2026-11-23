@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { authorizeMaterialRequest, requireUploadRole, listPersistedMaterials, getPersistedMaterial,
-  deletePersistedMaterial, MaterialAuthorizationError } = require('../services/materialPersistenceService');
+  deletePersistedMaterial, restoreStaffMaterial, MaterialAuthorizationError } = require('../services/materialPersistenceService');
 const { listMaterialQuestionSets, getMaterialQuestionSet, saveMaterialQuestionSet, reviewMaterialQuestionSet,
   generateMaterialQuestionSet } = require('../services/materialQuestionSetService');
 const { createDatabase, dependencies, requester, material, generatedQuestions,
@@ -55,15 +55,16 @@ test('System Admin F8-F10: other uploads, private questions and deletion remain 
     assert.deepEqual(db.removedStoragePaths,[]);
   }
 });
-test('System Admin F10: existing material deletion refuses references and deletes only own unused upload', async () => {
+// M3 all-role refinement: System Admin "Delete" is Move to Trash (nothing erased; Restore brings it back).
+test('System Admin F10: deleting own upload moves it to Trash, keeps Storage and rows, and Restore brings it back', async () => {
   const db=fixture(), deps=dependencies(db);
   db.tables.modules.push({ id: 'module', source_material_id: MATERIAL_A });
-  await assert.rejects(deletePersistedMaterial(actor,MATERIAL_A,deps));
-  assert.deepEqual(db.removedStoragePaths,[]);
-  db.tables.modules=[];
   await deletePersistedMaterial(actor,MATERIAL_A,deps);
-  assert.deepEqual(db.tables.uploaded_materials.map(m=>m.id),[MATERIAL_B]);
-  assert.deepEqual(db.removedStoragePaths,[`${SYS}/${MATERIAL_A}.pdf`]);
+  assert.deepEqual(db.removedStoragePaths,[]);
+  assert.deepEqual(db.tables.uploaded_materials.map(m=>m.id).sort(),[MATERIAL_A,MATERIAL_B].sort());
+  assert.ok(db.tables.uploaded_materials.find(m=>m.id===MATERIAL_A).trashed_at);
+  await restoreStaffMaterial(actor,MATERIAL_A,deps);
+  assert.equal(db.tables.uploaded_materials.find(m=>m.id===MATERIAL_A).trashed_at,null);
 });
 test('School Admin still cannot read Independent Learner material; Teacher ownership remains enforced', async () => {
   const db=fixture(), deps=dependencies(db);

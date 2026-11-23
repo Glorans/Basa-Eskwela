@@ -51,7 +51,7 @@ test("old navigation wording is gone from navigation and page headings", async (
     assert.doesNotMatch(text, /My Materials|My Badges|My Progress|My Results|Progress & Results/);
   }
   // A heading about the teacher's own uploads keeps its descriptive wording.
-  assert.match(files[3], /<h2>My Uploaded Materials<\/h2>/);
+  assert.match(files[3], /<h2>\{role === "admin" \? "School Materials" : "My Uploaded Materials"\}<\/h2>/);
 });
 
 function renderHeader(props: Record<string, unknown>) {

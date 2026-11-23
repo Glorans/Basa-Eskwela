@@ -110,7 +110,8 @@ test('IL content management: edit text before practice, preview without answers,
     assert.equal((await request(`/materials/${mat}/personal-practice/questions`)).status, 403, 'no practice while in Trash');
     assert.deepEqual(await history(), before, 'Trash erases nothing');
     assert.deepEqual(await listIds('/materials/trash', 'other'), [], 'another learner never sees this Trash');
-    assert.equal((await request('/materials/trash', undefined, 'teacher')).status, 403, 'Trash is for Independent Learners');
+    // M3 all-role refinement: staff have their own Trash; a learner's material never appears in it.
+    assert.deepEqual(await listIds('/materials/trash', 'teacher'), [], "a Teacher never sees a learner's Trash");
     assert.equal((await request(`/materials/${mat}/personal-practice/restore`, {}, 'other')).status, 403, 'another learner cannot restore');
     assert.equal((await request(`/materials/${fresh}/personal-practice/restore`, {})).status, 409, 'only materials in Trash can be restored');
 

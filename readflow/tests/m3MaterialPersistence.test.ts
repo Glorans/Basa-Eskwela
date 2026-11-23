@@ -13,7 +13,7 @@ test("Teacher creates separate sets and regenerates only the selected set inline
   assert.doesNotMatch(detail + review + sets + admin, /RegenerateQuestionsModal/);
   assert.match(sets, /Saved Question Sets/);
   assert.match(sets, /Generate New Question Set/);
-  assert.match(sets, /createMaterialQuestionSet\(materialId, questionCount\)/);
+  assert.match(sets, /createMaterialQuestionSet\(materialId, countCheck\.value\)/, "only a validated typed total is sent");
   assert.match(review, /Regenerating will replace ONLY/);
   assert.match(review, /regenerateMaterialQuestionSet\(material.id, selectedSet.id, selectedSet.revision\)/);
   assert.match(review, />Cancel<\/button>/);
@@ -84,7 +84,7 @@ test("General User has no generation or question-review controls", async () => {
   const library = await source("pages/MaterialLibraryPage.tsx");
   assert.match(detail, /role === "teacher"/);
   assert.match(detail, /role !== "general_user"/);
-  assert.ok(library.includes('(role === "teacher" || role === "system_admin") &&'));
+  assert.ok(library.includes("const staff = !personal;"), "question-set controls are staff-only (Teacher, School Admin, System Admin)");
 });
 
 test("question review loads and saves one set through persisted APIs", async () => {
@@ -111,9 +111,10 @@ test("Teacher opens, cancels, and confirms the accessible Question Set deletion 
   const review = await source("pages/QuestionReviewPage.tsx");
   const detail = await source("pages/MaterialDetailPage.tsx");
   // New sets offer only 9 (default) or 12 questions, split evenly across the three types.
-  assert.match(sets, /useState<number>\(DEFAULT_NEW_QUESTION_SET_COUNT\)/);
-  assert.match(sets, /NEW_QUESTION_SET_COUNTS\.map/);
-  assert.match(service, /NEW_QUESTION_SET_COUNTS = \[9, 12\] as const/);
+  // M3 all-role refinement: the shared numeric input (at least 6, multiples of 3, at most 12).
+  assert.match(sets, /useState<string>\(String\(DEFAULT_NEW_QUESTION_SET_COUNT\)\)/);
+  assert.match(sets, /<QuestionCountInput value=\{questionCount\}/);
+  assert.match(service, /NEW_QUESTION_SET_COUNTS = \[6, 9, 12\] as const/);
   assert.match(service, /DEFAULT_NEW_QUESTION_SET_COUNT = 9;/);
   assert.doesNotMatch(sets, /\[3, 6, 9, 12\]|useState\(6\)/);
   assert.match(sets, />Delete Set<\/button>/);
@@ -152,7 +153,8 @@ test("material and question pages put the text beside the questions; assigned se
   assert.match(review, /disabled=\{busy \|\| !editing \|\| locked\}/);
   assert.ok(review.includes('(role === "teacher" || role === "system_admin") && selectedSet && !locked'));
   assert.match(sets, /disabled=\{busy \|\| deleteBusy \|\| Boolean\(set\.assignedCount\)\}/);
-  assert.match(sets, /!set\.hasStudentAttempts && <Link/);
+  assert.match(sets, /set\.hasStudentAttempts \? 'View Questions' : 'View\/Edit Questions'/, "answered sets open read-only in the editor");
+  assert.match(sets, /readOnly=\{Boolean\(editing\.hasStudentAttempts\)\}/);
   assert.match(css, /\.m3-material-split__text \{[^}]*position: sticky;[^}]*max-height: calc\(100vh - 32px\);[^}]*overflow-y: auto;/);
   assert.match(css, /@media \(max-width: 1100px\) \{\s*\.m3-material-split \{\s*grid-template-columns: minmax\(0, 1fr\);/);
   assert.match(css, /\.m3-page-stack--wide \{\s*max-width: 1440px;/);

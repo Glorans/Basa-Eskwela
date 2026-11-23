@@ -46,6 +46,12 @@ class Query {
   delete() { this.action = "delete"; return this; }
   eq(column, value) { this.filters.push((row) => row[column] === value); return this; }
   in(column, values) { this.filters.push((row) => values.includes(row[column])); return this; }
+  // PostgREST is(column, null) / not(column, "is", null). A column the seed omits counts as null.
+  is(column, value) { this.filters.push((row) => (row[column] ?? null) === value); return this; }
+  not(column, operator, value) {
+    if (operator !== "is") throw new Error(`fake not() supports only "is", got ${operator}`);
+    this.filters.push((row) => (row[column] ?? null) !== value); return this;
+  }
   // Keyset pagination used by the M7 complete-read helper (reportRows).
   gt(column, value) { this.filters.push((row) => row[column] > value); return this; }
   order(column, options = {}) { this.ordering = { column, ascending: options.ascending !== false }; return this; }

@@ -36,6 +36,8 @@ const {
   requireUploadRole,
   updateMaterialLanguage,
   listTrashedPersonalMaterials,
+  listTrashedStaffMaterials,
+  restoreStaffMaterial,
 } = require("../services/materialPersistenceService");
 const {
   materialFileUpload,
@@ -398,14 +400,30 @@ function createMaterialsRouter(dependencies = {}) {
     }
   });
 
-  // Independent Learner Trash: own materials that were moved to Trash (never erased). Other roles are refused.
+  // Trash: materials moved to Trash (never erased). Independent Learner: own personal materials. Teacher, School Admin
+  // and System Admin (M3 all-role refinement): the same scope as their active list. `installed: false` = no Trash yet.
   router.get("/trash", async (req, res) => {
     try {
       const requester = await authorize(req, dependencies);
       res.set("Cache-Control", "no-store");
-      return res.json({ success: true, materials: await listTrashedPersonalMaterials(requester, adminDependencies) });
+      if (requester.profile.role === "general_user") {
+        return res.json({ success: true, installed: true, materials: await listTrashedPersonalMaterials(requester, adminDependencies) });
+      }
+      const trash = await listTrashedStaffMaterials(requester, adminDependencies);
+      return res.json({ success: true, installed: trash.installed, materials: trash.materials });
     } catch (error) {
       return sendMaterialError(res, error, "Unable to load your Trash.");
+    }
+  });
+
+  // Staff Restore from Trash (Teacher: own; School Admin: their school's; System Admin: own uploads).
+  router.post("/:materialId/restore", async (req, res) => {
+    try {
+      const requester = await authorize(req, dependencies);
+      await restoreStaffMaterial(requester, requireMaterialId(req.params.materialId), adminDependencies);
+      return res.json({ success: true, message: "Material restored." });
+    } catch (error) {
+      return sendMaterialError(res, error, "Unable to restore the material. It is still in Trash.");
     }
   });
 
@@ -477,6 +495,18 @@ function createMaterialsRouter(dependencies = {}) {
       return res.json({ success: true, set });
     } catch (error) { return sendMaterialError(res, error, "Unable to mark the question set as reviewed."); }
   });
+  // Shared question editor: save the reviewed questions (text, choices, chosen correct answer, hint, explanation,
+  // evidence) and mark the set reviewed in one step. Never regenerates.
+  router.put("/:materialId/question-sets/:setId/reviewed", async (req, res) => {
+    try {
+      const requester = await authorize(req, dependencies);
+      const set = await questionSets.saveReviewedMaterialQuestionSet(
+        requester, requireMaterialId(req.params.materialId), requireMaterialId(req.params.setId),
+        req.body?.revision, req.body?.questions, adminDependencies);
+      return res.json({ success: true, set });
+    } catch (error) { return sendMaterialError(res, error, "Unable to save the reviewed questions."); }
+  });
+
   router.put("/:materialId/question-sets/:setId", async (req, res) => {
     try {
       const requester = await authorize(req, dependencies);
@@ -525,6 +555,22 @@ function createMaterialsRouter(dependencies = {}) {
       return res.json({ state: await service.personalPracticeState(requester, id, adminDependencies) });
     } catch (error) { return sendMaterialError(res, error, "Unable to save your text."); }
   });
+  // Independent Learner: open their own current private set to edit it (with answers), and save the edits.
+  router.get("/:materialId/personal-practice/bank", async (req, res) => {
+    try {
+      const requester = await authorize(req);
+      res.set("Cache-Control", "no-store");
+      return res.json(await require("../services/personalMaterialService").editablePersonalBank(
+        requester, requireMaterialId(req.params.materialId), adminDependencies));
+    } catch (error) { return sendMaterialError(res, error, "Unable to load your questions."); }
+  });
+  router.put("/:materialId/personal-practice/bank", async (req, res) => {
+    try {
+      const requester = await authorize(req);
+      return res.json(await require("../services/personalMaterialService").savePersonalBank(
+        requester, requireMaterialId(req.params.materialId), req.body ?? {}, adminDependencies));
+    } catch (error) { return sendMaterialError(res, error, "Unable to save your questions."); }
+  });
   // Independent Learner: Trash -> My Materials.
   router.post("/:materialId/personal-practice/restore", async (req, res) => {
     try {
@@ -551,7 +597,7 @@ function createMaterialsRouter(dependencies = {}) {
         }
         // "new-questions": a new set for the same text before any assessment (counts toward the same limits).
         return res.json({ set: await service.generatePersonalQuestions(requester, id, { ...adminDependencies, generate: generateWithGemini },
-          { replace: req.params.action === "new-questions" }) });
+          { replace: req.params.action === "new-questions", questionCount: req.body?.questionCount ?? 9 }) });
       }
       return res.status(400).json({ message: "Confirm the reviewed text or generate private questions." });
     } catch (error) {
@@ -589,7 +635,7 @@ function createMaterialsRouter(dependencies = {}) {
       const requester = await authorize(req, dependencies);
       const materialId = requireMaterialId(req.params.materialId);
       await removeMaterial(requester, materialId, adminDependencies);
-      return res.json({ success: true, message: "Uploaded material deleted." });
+      return res.json({ success: true, message: requester.profile.role === "general_user" ? "Uploaded material deleted." : "Material moved to Trash." });
     } catch (error) {
       return sendMaterialError(res, error, "Unable to delete the uploaded material.");
     }

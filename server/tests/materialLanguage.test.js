@@ -288,24 +288,24 @@ test('PATCH /:materialId/language returns the corrected language', async t => {
   assert.deepEqual((await response.json()).material, { id: MATERIAL_A, language: 'fil', changed: true });
 });
 
-test('new question sets need 9 or 12 questions; 9 is the default', async () => {
+test('new question sets: at least 6, multiples of 3, at most 12 (shared rule); 9 is the default', async () => {
   const db = createDatabase({ uploaded_materials: [material(MATERIAL_A, TEACHER_A)] });
   db.rpc = async () => ({ data: 'new-set', error: null });
   const teacher = requester(TEACHER_A, 'teacher');
-  for (const count of [3, 6, 0, 15, '9']) {
+  for (const count of [3, 0, 7, 15, '9']) {
     await assert.rejects(generateMaterialQuestionSet(teacher, MATERIAL_A, null, null, () => assert.fail('no generation'), dependencies(db), count),
       { statusCode: 400, code: 'INVALID_QUESTION_COUNT' }, String(count));
   }
   const requested = [];
   const generate = async input => { requested.push(input.questionCount); return generatedQuestions(); };
-  for (const count of [undefined, 9, 12]) {
+  for (const count of [undefined, 6, 9, 12]) {
     db.tables.material_question_sets = [];
     await generateMaterialQuestionSet(teacher, MATERIAL_A, null, null, generate, dependencies(db), count).catch(() => undefined);
   }
-  assert.deepEqual(requested, [9, 9, 12]);
+  assert.deepEqual(requested, [9, 6, 9, 12]);
 });
 
-test('the question-set route rejects a 6-question request from an old client', async t => {
+test('the question-set route rejects a count that is not a multiple of 3', async t => {
   const db = createDatabase({ profiles: [{ id: TEACHER_A, role: 'teacher' }], uploaded_materials: [material(MATERIAL_A, TEACHER_A)] });
   const app = express(); app.use(express.json());
   app.use('/api/materials', createMaterialsRouter({ getSupabaseAdmin: () => db, authorizeMaterialRequest: async () => requester(TEACHER_A, 'teacher'),
@@ -313,7 +313,7 @@ test('the question-set route rejects a 6-question request from an old client', a
   const server = app.listen(0, '127.0.0.1'); await new Promise(r => server.once('listening', r));
   t.after(() => new Promise(r => server.close(r)));
   const response = await fetch(`http://127.0.0.1:${server.address().port}/api/materials/${MATERIAL_A}/question-sets`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ questionCount: 6 }) });
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ questionCount: 7 }) });
   assert.equal(response.status, 400);
-  assert.match((await response.json()).message, /9 or 12/);
+  assert.match((await response.json()).message, /multiple of 3/);
 });

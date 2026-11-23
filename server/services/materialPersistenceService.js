@@ -11,8 +11,10 @@ const MATERIAL_ROLES = Object.freeze([
   "general_user",
 ]);
 
+// M3 all-role refinement: School Admins upload too (their uploads stay in their school, like their other content).
 const UPLOADER_ROLES = Object.freeze([
   "system_admin",
+  "admin",
   "teacher",
   "general_user",
 ]);
@@ -87,7 +89,7 @@ function requireUploadRole(profile) {
   requireRole(
     profile,
     UPLOADER_ROLES,
-    "Only System Admins, Teachers and Independent Learners may upload reading materials.",
+    "Only System Admins, School Admins, Teachers and Independent Learners may upload reading materials.",
   );
 }
 
@@ -241,7 +243,9 @@ async function listPersistedMaterials(
   }
 
   const deleted = requester.profile.role === "general_user"
-    ? await require("./personalMaterialService").deletedPersonalIds(supabase, (data ?? []).map(m => m.id)) : new Set();
+    ? await require("./personalMaterialService").deletedPersonalIds(supabase, (data ?? []).map(m => m.id))
+    // M3 all-role refinement: staff uploads in Trash leave every active list (kept; restorable).
+    : (await trashedMaterialIds(supabase, (data ?? []).map(m => m.id))).ids;
   let materials = (data ?? []).filter(m => !deleted.has(m.id));
   const profiles = await loadUploaderProfiles(
     supabase,
@@ -250,7 +254,7 @@ async function listPersistedMaterials(
   if (requester.profile.role === "admin") {
     // School Admin: never an Independent Learner's personal upload (see isIndependentLearnerUpload), and never
     // another school's material (M1 multi-tenancy).
-    materials = materials.filter((material) => profiles.get(material.uploaded_by)?.role !== "general_user");
+    materials = materials.filter((material) => !["general_user", "system_admin"].includes(profiles.get(material.uploaded_by)?.role));
     const foreign = await require("./schoolScope").foreignSchoolOwners(requester, materials.map((m) => m.uploaded_by), dependencies);
     materials = materials.filter((material) => !foreign.has(material.uploaded_by));
   }
@@ -377,13 +381,31 @@ async function isIndependentLearnerUpload(supabase, uploaderId) {
   if (!uploaderId) return false;
   const { data, error } = await supabase.from("profiles").select("id, role").eq("id", uploaderId).maybeSingle();
   if (error) throw new MaterialPersistenceError("Unable to verify the material owner.");
-  return data?.role === "general_user";
+  // M3 all-role refinement: a System Admin's platform upload is outside a School Admin's school as well (owners with
+  // no school were treated as visible, which would now let a School Admin move platform materials to Trash).
+  return data?.role === "general_user" || data?.role === "system_admin";
 }
+
+/** Staff uploads in Trash among `ids`. `installed: false` before m3_all_role_refinement (no Trash yet). */
+async function trashedMaterialIds(supabase, ids) {
+  if (!ids.length) return { installed: true, ids: new Set() };
+  const { data, error } = await supabase.from("uploaded_materials").select("id, trashed_at").in("id", ids);
+  if (error) {
+    if (["42703", "PGRST204"].includes(error.code)) return { installed: false, ids: new Set() };
+    throw new MaterialPersistenceError("Unable to check the Trash.");
+  }
+  return { installed: true, ids: new Set((data ?? []).filter((row) => row.trashed_at).map((row) => row.id)) };
+}
+
+const TRASH_NOT_INSTALLED = () => new MaterialPersistenceError(
+  "Trash for reading materials needs a database update (m3_all_role_refinement) that is not installed yet. Nothing was changed.",
+  503, "MATERIAL_TRASH_NOT_INSTALLED");
 
 async function getAuthorizedMaterialRow(
   requester,
   materialId,
   dependencies = {},
+  options = {},
 ) {
   const material = await loadMaterialRow(
     materialId,
@@ -415,7 +437,86 @@ async function getAuthorizedMaterialRow(
   if (requester.profile.role === "general_user" && (await require("./personalMaterialService").deletedPersonalIds(dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin(), [materialId])).has(materialId)) {
     throw new MaterialAuthorizationError("This material is in Trash. Restore it from Trash in Reading Materials to use it again.");
   }
+  if (requester.profile.role !== "general_user" && !options.allowTrashed
+    && (await trashedMaterialIds(dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin(), [materialId])).ids.has(materialId)) {
+    throw new MaterialPersistenceError("This material is in Trash. Restore it from Trash in Reading Materials to use it again.", 409, "MATERIAL_IN_TRASH");
+  }
   return material;
+}
+
+const STAFF_TRASH_ROLES = Object.freeze(["system_admin", "admin", "teacher"]);
+
+/**
+ * Move to Trash (Teacher, School Admin, System Admin). Non-destructive: the file, text, question sets, answer keys
+ * and every reading or comprehension result are kept, and Restore brings the material back unchanged. Refused while
+ * the material is assigned to an active classroom activity (remove the assignment first), like module Trash.
+ */
+async function trashStaffMaterial(requester, materialId, dependencies = {}) {
+  requireRole(requester.profile, STAFF_TRASH_ROLES);
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const material = await getAuthorizedMaterialRow(requester, materialId, dependencies, { allowTrashed: true });
+  const state = await trashedMaterialIds(supabase, [material.id]);
+  if (!state.installed) throw TRASH_NOT_INSTALLED();
+  if (state.ids.has(material.id)) return { trashed: true, alreadyInTrash: true };
+  const { data: active, error: activeError } = await supabase.from("reading_activity_assignments").select("id")
+    .eq("material_id", material.id).is("removed_at", null).limit(1);
+  if (activeError) throw new MaterialPersistenceError("Unable to check whether this material is assigned.");
+  if (active?.length) {
+    throw new MaterialPersistenceError(
+      "This material is assigned to a classroom activity. Remove the assignment first, then move it to Trash.", 409, "MATERIAL_ASSIGNED");
+  }
+  const { data: updated, error } = await supabase.from("uploaded_materials")
+    .update({ trashed_at: new Date().toISOString(), trashed_by: requester.user.id })
+    .eq("id", material.id).is("trashed_at", null).select("id");
+  if (error) {
+    if (["42703", "PGRST204"].includes(error.code)) throw TRASH_NOT_INSTALLED();
+    throw new MaterialPersistenceError("The material could not be moved to Trash. It is still in your library.");
+  }
+  if (!updated?.length) throw new MaterialPersistenceError("This material changed. Reload the list and try again.", 409);
+  return { trashed: true };
+}
+
+async function restoreStaffMaterial(requester, materialId, dependencies = {}) {
+  requireRole(requester.profile, STAFF_TRASH_ROLES);
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const material = await getAuthorizedMaterialRow(requester, materialId, dependencies, { allowTrashed: true });
+  const state = await trashedMaterialIds(supabase, [material.id]);
+  if (!state.installed) throw TRASH_NOT_INSTALLED();
+  if (!state.ids.has(material.id)) return { restored: true, alreadyActive: true };
+  const { error } = await supabase.from("uploaded_materials").update({ trashed_at: null, trashed_by: null }).eq("id", material.id);
+  if (error) throw new MaterialPersistenceError("The material could not be restored. It is still in Trash.");
+  return { restored: true };
+}
+
+/** Staff Trash list, with the same scope as the active list (own uploads; School Admin: their school's, never an
+ * Independent Learner's). `installed: false` before the database update. */
+async function listTrashedStaffMaterials(requester, dependencies = {}) {
+  requireRole(requester.profile, STAFF_TRASH_ROLES);
+  const supabase = dependencies.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  let query = supabase.from("uploaded_materials").select(MATERIAL_SELECT + ", trashed_at, trashed_by");
+  if (requester.profile.role !== "admin") query = query.eq("uploaded_by", requester.user.id);
+  const { data, error } = await query.order("created_at", { ascending: false });
+  if (error) {
+    if (["42703", "PGRST204"].includes(error.code)) return { installed: false, materials: [] };
+    throw new MaterialPersistenceError("Unable to load the Trash.");
+  }
+  let rows = (data ?? []).filter((row) => row.trashed_at)
+    .sort((a, b) => String(b.trashed_at).localeCompare(String(a.trashed_at)));
+  const profiles = await loadUploaderProfiles(supabase, rows);
+  if (requester.profile.role === "admin") {
+    rows = rows.filter((row) => !["general_user", "system_admin"].includes(profiles.get(row.uploaded_by)?.role));
+    const foreign = await require("./schoolScope").foreignSchoolOwners(requester, rows.map((row) => row.uploaded_by), dependencies);
+    rows = rows.filter((row) => !foreign.has(row.uploaded_by));
+  }
+  const trashers = await loadUploaderProfiles(supabase, rows.filter((row) => row.trashed_by).map((row) => ({ uploaded_by: row.trashed_by })));
+  return {
+    installed: true,
+    materials: rows.map((row) => ({
+      ...toMaterialDto(row, profiles.get(row.uploaded_by)),
+      deletedAt: row.trashed_at,
+      trashedByName: trashers.get(row.trashed_by)?.full_name?.trim() || null,
+    })),
+  };
 }
 
 async function getPersistedMaterial(
@@ -626,6 +727,14 @@ async function deletePersistedMaterial(
     materialId,
     dependencies,
   );
+
+  if (STAFF_TRASH_ROLES.includes(requester.profile.role)) {
+    // M3 all-role refinement: staff "Delete" is Move to Trash. The old path removed the storage file before the
+    // database rows, so a referenced material could lose its file while its record stayed ("The material file was
+    // deleted, but its database record could not be removed"). Nothing is erased now.
+    await trashStaffMaterial(requester, materialId, dependencies);
+    return;
+  }
 
   if (requester.profile.role === "general_user") {
     try {
@@ -846,6 +955,10 @@ async function updateMaterialLanguage(
 }
 
 module.exports = {
+  trashStaffMaterial,
+  restoreStaffMaterial,
+  listTrashedStaffMaterials,
+  trashedMaterialIds,
   MATERIAL_ROLES,
   QUESTION_REVIEW_ROLES,
   ROLE_LABELS,
