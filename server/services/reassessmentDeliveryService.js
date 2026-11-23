@@ -67,8 +67,11 @@ const unavailable = (reason, kind) => (kind === "independent" ? UNAVAILABLE_INDE
 const LANGUAGE_NAMES = Object.freeze({ en: "English", fil: "Filipino" });
 const manilaDay = (value) => new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric" }).format(new Date(value));
 
-function createReassessmentDeliveryService({ repository, receipts, now = () => new Date().toISOString() } = {}) {
+function createReassessmentDeliveryService({ repository, receipts, now = () => new Date().toISOString(),
+  independentPilot = require("./independentPilot").parseIndependentPilot(undefined) } = {}) {
   if (!repository) throw new Error("A reassessment delivery repository is required.");
+  // Pilot allow-list (default off): while on, only listed Independent Learners may START (see independentPilot.js).
+  const pilotAllows = (userId) => !independentPilot.enabled || independentPilot.allows(userId);
 
   /** Students take classroom reassessments; Independent Learners take their own self-started ones. Nobody else. */
   function requireLearner(requester) {
@@ -189,7 +192,7 @@ function createReassessmentDeliveryService({ repository, receipts, now = () => n
       const active = activeAll && (await blocker(activeAll, { gates })) !== "VERSION_WITHDRAWN" ? activeAll : null;
       let reason = null;
       let nextAvailableAt = null;
-      if (!gates.independent || gates.days === null) reason = "Reassessments are not open yet. Please check again later.";
+      if (!gates.independent || gates.days === null || !pilotAllows(userId)) reason = "Reassessments are not open yet. Please check again later.";
       else if (active) reason = `Finish your ${name} reassessment first.`;
       else if (!(await run(() => repository.hasInitialDiagnostic(userId, language)))) reason = `Finish your first ${name} reading check before taking a reassessment.`;
       else {
@@ -233,6 +236,8 @@ function createReassessmentDeliveryService({ repository, receipts, now = () => n
     if (typeof versionId !== "string" || !UUID.test(versionId)) fail("Choose a reassessment.", 400, "PACKAGE_REQUIRED");
     const gates = await loadGates();
     if (!gates.independent || gates.days === null) fail(UNAVAILABLE_INDEPENDENT.REASSESSMENT_NOT_ENABLED, 409, "REASSESSMENT_NOT_ENABLED");
+    // Pilot allow-list: an account outside the pilot gets the same answer as when reassessments are closed.
+    if (!pilotAllows(userId)) fail(UNAVAILABLE_INDEPENDENT.REASSESSMENT_NOT_ENABLED, 409, "REASSESSMENT_NOT_ENABLED");
     const version = await run(() => repository.getVersion(versionId));
     const pkg = version ? await run(() => repository.getPackage(version.package_id)) : null;
     // A classroom package (or anything else) looks exactly like a missing one.
