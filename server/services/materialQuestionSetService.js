@@ -13,20 +13,16 @@ const {
 
 const QUESTION_TYPES = ["literal", "inferential", "critical"];
 const { checkEvidence } = require("./passageEvidence");
+const { ALLOWED_QUESTION_COUNTS, questionCountProblem } = require("./questionCountRule");
 
-// New sets need at least 9 questions (3 of each type). Existing 3- and 6-question
-// sets stay valid: they can still be edited, reviewed, assigned and regenerated.
-const NEW_QUESTION_SET_COUNTS = Object.freeze([9, 12]);
+// M3 all-role refinement: new sets follow the shared rule (at least 6, multiples of 3, at most 12; equal Literal,
+// Inferential and Critical). Existing 3-question sets stay valid: they can still be edited, reviewed and assigned.
+const NEW_QUESTION_SET_COUNTS = ALLOWED_QUESTION_COUNTS;
 const DEFAULT_NEW_QUESTION_SET_COUNT = 9;
 
 function validateNewQuestionSetCount(value = DEFAULT_NEW_QUESTION_SET_COUNT) {
-  if (!NEW_QUESTION_SET_COUNTS.includes(value)) {
-    throw new MaterialPersistenceError(
-      "New question sets need 9 or 12 questions.",
-      400,
-      "INVALID_QUESTION_COUNT",
-    );
-  }
+  const problem = questionCountProblem(value);
+  if (problem) throw new MaterialPersistenceError(problem, 400, "INVALID_QUESTION_COUNT");
   return value;
 }
 
@@ -42,14 +38,22 @@ async function authorize(
 ) {
   if (
     !["teacher", "admin", "system_admin"].includes(requester.profile.role) ||
-    (generating && !["teacher", "system_admin"].includes(requester.profile.role))
+    (generating && !["teacher", "admin", "system_admin"].includes(requester.profile.role))
   ) {
     throw new MaterialAuthorizationError(
       "Question sets are available only to authorized Teachers and Admins.",
     );
   }
 
-  return getAuthorizedMaterialRow(requester, materialId, deps);
+  const material = await getAuthorizedMaterialRow(requester, materialId, deps);
+  // M3 all-role refinement: School Admins create, regenerate and delete sets for the materials they uploaded, like a
+  // Teacher. A Teacher's material in their school stays view-and-review for them (never Teacher-private changes).
+  if (generating && requester.profile.role === "admin" && material.uploaded_by !== requester.user.id) {
+    throw new MaterialAuthorizationError(
+      "School Admins create and delete question sets only for the materials they uploaded. This material belongs to its Teacher.",
+    );
+  }
+  return material;
 }
 
 const ASSIGNED_SET_MESSAGE =
@@ -620,6 +624,46 @@ async function saveMaterialQuestionSet(
   );
 }
 
+/**
+ * "Save Reviewed Questions" (the shared question editor): saves the edited text, choices, chosen correct answer,
+ * hint, explanation and evidence and marks the set reviewed, in one database operation ('review'). The reviewer may
+ * choose another correct option (correctOptionIndex 0-3, m3_all_role_refinement); nothing is regenerated.
+ */
+async function saveReviewedMaterialQuestionSet(requester, materialId, setId, revision, questions, deps = {}) {
+  const material = await authorize(requester, materialId, deps);
+  requireRevision(revision);
+  const current = await getMaterialQuestionSet(requester, materialId, setId, deps);
+  if (current.revision !== revision) throw new MaterialPersistenceError("This question set changed. Reload it before saving.", 409);
+  if (current.hasStudentAttempts) throw new MaterialPersistenceError(ANSWERED_SET_MESSAGE, 409);
+  const reviewed = validateReviewedQuestions(questions);
+  const count = validateQuestionCount(reviewed.length);
+  if (reviewed.length !== current.questions.length
+    || new Set(reviewed.map((q) => q.id)).size !== reviewed.length
+    || reviewed.some((q) => !current.questions.some((saved) => saved.id === q.id))) {
+    throw new MaterialPersistenceError("Questions cannot be added or removed while editing. Reload the set and try again.", 400, "INVALID_QUESTIONS");
+  }
+  if (QUESTION_TYPES.some((type) => reviewed.filter((q) => q.type === type).length !== count / 3)) {
+    throw new MaterialPersistenceError("Distribute questions evenly across Literal, Inferential and Critical.", 400);
+  }
+  const bank = reviewed.map((question, index) => {
+    const chosen = questions[index]?.correctOptionIndex;
+    if (!Number.isInteger(chosen) || chosen < 0 || chosen > 3) {
+      throw new MaterialPersistenceError(`Question ${index + 1}: choose the correct answer.`, 400, "INVALID_ANSWER_KEY");
+    }
+    return { ...question, correctOptionIndex: chosen };
+  });
+  validateSupportingEvidence(bank, material.content_text);
+  const saved = await write(requester, materialId, setId, "review", revision, bank, deps);
+  // Without m3_all_role_refinement the database keeps the old answer key: never report that as saved.
+  const ignored = bank.filter((question) => saved.questions.find((item) => item.id === question.id)?.correctOptionIndex !== question.correctOptionIndex);
+  if (ignored.length) {
+    throw new MaterialPersistenceError(
+      "Your text edits were saved, but changing the correct answer needs a database update (m3_all_role_refinement) that is not installed yet. The previous correct answers were kept.",
+      409, "ANSWER_KEY_UPDATE_UNAVAILABLE");
+  }
+  return saved;
+}
+
 async function reviewMaterialQuestionSet(requester, materialId, setId, revision, deps = {}) {
   const material = await authorize(requester, materialId, deps);
   requireRevision(revision);
@@ -650,6 +694,7 @@ module.exports = {
   getMaterialQuestionSet,
   generateMaterialQuestionSet,
   saveMaterialQuestionSet,
+  saveReviewedMaterialQuestionSet,
   reviewMaterialQuestionSet,
   deleteMaterialQuestionSet,
 };

@@ -191,8 +191,10 @@ function createAdminModulePassagesRouter(deps = {}) {
         }
 
         const questionCount = req.body?.questionCount ?? DEFAULT_PASSAGE_BANK_SIZE;
-        if (!PASSAGE_BANK_SIZES.includes(questionCount)) {
-          return res.status(400).json({ message: 'Choose 6, 9 or 12 questions for this passage.' });
+        // Shared M3 rule (at least 6, multiples of 3, at most 12): the same message as every other generation control.
+        const countProblem = require('../services/questionCountRule').questionCountProblem(questionCount);
+        if (countProblem || !PASSAGE_BANK_SIZES.includes(questionCount)) {
+          return res.status(400).json({ message: countProblem ?? 'Choose 6, 9 or 12 questions for this passage.' });
         }
         if (questionCount !== DEFAULT_PASSAGE_BANK_SIZE) {
           const { data: sizes, error: sizesError } = await client.rpc('m3_passage_bank_sizes');

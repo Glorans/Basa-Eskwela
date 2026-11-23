@@ -107,6 +107,9 @@ export interface GeneratedComprehensionQuestion {
   scaffoldingHint: string;
   reviewStatus?: GeneratedQuestionsReviewStatus;
   displayOrder?: number;
+  /** Optional feedback saved with the answer key (shown after answering). */
+  answerExplanation?: string | null;
+  supportingEvidence?: string | null;
 }
 
 export interface ReviewableComprehensionQuestion {

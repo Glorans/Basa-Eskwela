@@ -42,7 +42,7 @@ export async function updateMaterialLanguage(materialId: string, language: Mater
 }
 
 /** New question sets offer 9 or 12 questions (3 or 4 of each type); older sets keep their size. */
-export const NEW_QUESTION_SET_COUNTS = [9, 12] as const;
+export const NEW_QUESTION_SET_COUNTS = [6, 9, 12] as const;
 export const DEFAULT_NEW_QUESTION_SET_COUNT = 9;
 
 export function getMaterialServiceError(
@@ -134,7 +134,7 @@ export interface PersonalQuestionPreview {
   questions: { id: string; type: "literal" | "inferential" | "critical"; questionText: string; options: string[] }[];
 }
 
-export type TrashedMaterial = UploadedMaterial & { deletedAt: string };
+export type TrashedMaterial = UploadedMaterial & { deletedAt: string; trashedByName?: string | null };
 
 const personalPracticePath = (materialId: string) => `/api/materials/${encodeURIComponent(materialId)}/personal-practice`;
 
@@ -160,8 +160,44 @@ export async function getPersonalQuestionPreview(materialId: string) {
 }
 
 export async function getTrashedMaterials() {
-  const { data } = await api.get<{ materials: TrashedMaterial[] }>("/api/materials/trash", { headers: await getMaterialAuthHeaders() });
-  return data.materials;
+  return (await getMaterialTrash()).materials;
+}
+
+/** Trash for every role. `installed: false`: staff Trash needs the m3_all_role_refinement database update. */
+export async function getMaterialTrash() {
+  const { data } = await api.get<{ materials: TrashedMaterial[]; installed?: boolean }>("/api/materials/trash", { headers: await getMaterialAuthHeaders() });
+  return { materials: data.materials, installed: data.installed !== false };
+}
+
+/** Teacher, School Admin and System Admin: Trash -> Reading Materials. */
+export async function restoreStaffMaterial(materialId: string) {
+  await api.post(`/api/materials/${encodeURIComponent(materialId)}/restore`, {}, { headers: await getMaterialAuthHeaders() });
+}
+
+/** Shared question editor: save reviewed text, choices, chosen correct answers, hints, explanations and evidence. */
+export interface ReviewedMaterialQuestion {
+  id: string; type: string; questionText: string; options: string[]; correctOptionIndex: number;
+  scaffoldingHint: string; answerExplanation: string; supportingEvidence: string;
+}
+export async function saveReviewedMaterialQuestionSet(materialId: string, setId: string, revision: number, questions: ReviewedMaterialQuestion[]) {
+  const { data } = await api.put<{ set: MaterialQuestionSet }>(`${setPath(materialId, setId)}/reviewed`, { revision, questions },
+    { headers: await getMaterialAuthHeaders() });
+  return data.set;
+}
+
+/** Independent Learner: their own current private set, with answers, for editing (locked once assessed). */
+export interface PersonalEditableBank {
+  setId: string | null;
+  locked: boolean;
+  questions: Array<{ id: string; type: "literal" | "inferential" | "critical"; questionText: string; options: string[];
+    correctOptionIndex: number; scaffoldingHint: string; answerExplanation: string; supportingEvidence: string }>;
+}
+export async function getPersonalEditableBank(materialId: string) {
+  const { data } = await api.get<PersonalEditableBank>(`${personalPracticePath(materialId)}/bank`, { headers: await getMaterialAuthHeaders() });
+  return data;
+}
+export async function savePersonalEditableBank(materialId: string, setId: string, questions: PersonalEditableBank["questions"]) {
+  await api.put(`${personalPracticePath(materialId)}/bank`, { setId, questions }, { headers: await getMaterialAuthHeaders() });
 }
 
 export async function restorePersonalMaterial(materialId: string) {
@@ -169,6 +205,6 @@ export async function restorePersonalMaterial(materialId: string) {
 }
 
 /** Regenerate Questions: replaces the current private questions with a new set for the same text (before any assessment). */
-export async function getNewPersonalQuestions(materialId: string) {
-  await api.post(`${personalPracticePath(materialId)}/new-questions`, {}, { headers: await getMaterialAuthHeaders(), timeout: 150000 });
+export async function getNewPersonalQuestions(materialId: string, questionCount = 9) {
+  await api.post(`${personalPracticePath(materialId)}/new-questions`, { questionCount }, { headers: await getMaterialAuthHeaders(), timeout: 150000 });
 }

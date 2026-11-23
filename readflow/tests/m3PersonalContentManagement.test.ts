@@ -10,7 +10,7 @@ test("practice shows short steps in order: check/edit text, questions (with prev
   const order = ['title="Check the text"', 'title="Get your questions"', 'title="Read aloud"', 'title="Answer the questions"']
     .map(step => panel.indexOf(step));
   assert.ok(order.every(i => i > 0) && order.every((i, n) => n === 0 || i > order[n - 1]), String(order));
-  assert.match(panel, /<Link className="m3-action-link" to=\{`\$\{root\}\/questions`\}>Preview Questions<\/Link>/);
+  assert.match(panel, /<Link className="m3-action-link" to=\{`\$\{root\}\/questions`\}>Review \/ Edit Questions<\/Link>/);
   // Each step shows Done or To do.
   assert.match(panel, /\{done \? 'Done' : 'To do'\}/);
   assert.match(panel, /export const REVIEW_QUESTIONS_INSTRUCTION = 'Review your questions before starting comprehension\.';/);
@@ -37,15 +37,21 @@ test("comprehension is offered only when eligible and keeps the one-assessment r
   assert.match(panel, /: state\.questionSetId && state\.readingId && state\.reviewed/);
 });
 
-test("question preview is read-only, shows no answers and never starts the assessment by itself", async () => {
+test("question preview list shows no answers; answers only in the explicit editor; never starts the assessment", async () => {
   const page = (await source("modules/module3/pages/PersonalQuestionPreviewPage.tsx"))
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, ""); // code only, not comments
   const service = await source("modules/module3/services/materialService.ts");
-  assert.doesNotMatch(page, /correct|explanation|supportingEvidence|scaffoldingHint|answerKey/i);
+  // M3 all-role refinement: the read-only list still renders only the question and its choices.
+  const list = page.slice(page.indexOf('className="m3-question-preview__list"'), page.indexOf('className="m3-panel m3-question-preview__actions"'));
+  assert.ok(list.length > 100);
+  assert.doesNotMatch(list, /correct|explanation|supportingEvidence|scaffoldingHint|answerKey/i);
+  // Answers appear only after choosing Edit Questions, which is offered only before the comprehension has started.
+  assert.match(page, /\{!practice\.attemptId && <div className="m3-form-actions">/);
+  assert.match(page, /This editor shows the correct answers\./);
   assert.match(service, /questions: \{ id: string; type: "literal" \| "inferential" \| "critical"; questionText: string; options: string\[\] \}\[\];/);
   assert.match(page, /const canStart = !practice\.attemptId && practice\.reviewed && Boolean\(practice\.readingId\);/);
   assert.match(page, /Your question set · \$\{preview\.questions\.length\} questions/);
-  assert.match(page, /The answers appear after you finish\./);
+  assert.match(page, /The answers appear after you finish, unless you open Edit Questions\./);
   // No POST: only reads.
   assert.doesNotMatch(page, /api\.post|fetch\(/);
 });
@@ -62,7 +68,7 @@ test("the preview route is Independent Learner only and Teacher/Admin question r
 test("Step 2: Preview always, Regenerate only when eligible, clear locks; no question editing or manual creation", async () => {
   const panel = await source("modules/module3/components/PersonalMaterialPractice.tsx");
   const preview = await source("modules/module3/pages/PersonalQuestionPreviewPage.tsx");
-  assert.match(panel, /<Link className="m3-action-link" to=\{`\$\{root\}\/questions`\}>Preview Questions<\/Link>/);
+  assert.match(panel, /<Link className="m3-action-link" to=\{`\$\{root\}\/questions`\}>Review \/ Edit Questions<\/Link>/);
   assert.match(panel, /\{state\.canGetNewQuestions && <button type="button" className="m3-button m3-button--secondary"/);
   assert.match(panel, /confirmReadFlow\(REGENERATE_CONFIRMATION, \{ confirm: 'Regenerate Questions', cancel: 'Keep my questions' \}\)/);
   assert.match(preview, /confirmReadFlow\(REGENERATE_CONFIRMATION, \{ confirm: "Regenerate Questions", cancel: "Keep my questions" \}\)/);
@@ -71,8 +77,10 @@ test("Step 2: Preview always, Regenerate only when eligible, clear locks; no que
   assert.match(panel, /assessment_completed: 'You already answered these questions, so they stay the same\.'/);
   assert.match(panel, /\{state\.questionsLockedReason && <p className="m3-practice-note m3-practice-lock">/);
   for (const text of [panel, preview]) {
-    assert.doesNotMatch(text.replace(/\/\*[\s\S]*?\*\//g, ""), /Edit Questions|Create My Own|Get New Questions/);
+    assert.doesNotMatch(text.replace(/\/\*[\s\S]*?\*\//g, ""), /Create My Own|Get New Questions/);
   }
+  // M3 all-role refinement: the learner edits their own set on the question page (never questions they did not get).
+  assert.match(preview, /> \{opening \? "Opening\.\.\." : "Edit Questions"\}<\/button>/);
   // Generation failures stay friendly.
   assert.match(panel, /kind === 'generate' \|\| kind === 'regenerate' \? getQuestionGenerationError\(e\)/);
 });

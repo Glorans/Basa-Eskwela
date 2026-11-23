@@ -9,6 +9,8 @@ import {
 } from '../services/materialService';
 import './PersonalMaterialPractice.css';
 import { getQuestionGenerationError } from '../services/questionGenerationError';
+import QuestionCountInput from './QuestionCountInput';
+import { checkQuestionCount } from '../utils/questionCount';
 
 export const CHECK_TEXT_INSTRUCTION = 'Check the text below. You can edit it if something is incorrect.';
 export const REVIEW_QUESTIONS_INSTRUCTION = 'Review your questions before starting comprehension.';
@@ -60,6 +62,8 @@ export default function PersonalMaterialPractice({ materialId, contentText, star
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState<'' | 'save' | 'confirm' | 'generate' | 'regenerate'>('');
+  // Shared M3 question-count rule (at least 6, multiples of 3, at most 12). Nine stays the starting value.
+  const [questionCount, setQuestionCount] = useState('9');
   const root = `/m3/general/materials/${encodeURIComponent(materialId)}`;
 
   useEffect(() => { setText(contentText ?? ''); }, [contentText]);
@@ -101,17 +105,19 @@ export default function PersonalMaterialPractice({ materialId, contentText, star
     setState(await getPersonalPracticeState(materialId));
     setNotice('Text confirmed.');
   });
+  const countCheck = checkQuestionCount(questionCount);
   const generate = () => run('generate', async () => {
-    await api.post(`/api/materials/${encodeURIComponent(materialId)}/personal-practice/generate`, {},
+    if (!countCheck.ok) return;
+    await api.post(`/api/materials/${encodeURIComponent(materialId)}/personal-practice/generate`, { questionCount: countCheck.value },
       { headers: await getMaterialAuthHeaders(), timeout: 150000 });
     setState(await getPersonalPracticeState(materialId));
     setNotice('Your questions are ready.');
   });
   const regenerate = async () => {
-    if (busy) return;
+    if (busy || !countCheck.ok) return;
     if (!(await confirmReadFlow(REGENERATE_CONFIRMATION, { confirm: 'Regenerate Questions', cancel: 'Keep my questions' }))) return;
     await run('regenerate', async () => {
-      await getNewPersonalQuestions(materialId);
+      await getNewPersonalQuestions(materialId, countCheck.ok ? countCheck.value : 9);
       setState(await getPersonalPracticeState(materialId));
       setNotice('Your new questions are ready.');
     });
@@ -156,15 +162,19 @@ export default function PersonalMaterialPractice({ materialId, contentText, star
         {state.questionSetId ? <>
           <p>{REVIEW_QUESTIONS_INSTRUCTION}</p>
           <div className="m3-personal-actions">
-            <Link className="m3-action-link" to={`${root}/questions`}>Preview Questions</Link>
-            {state.canGetNewQuestions && <button type="button" className="m3-button m3-button--secondary" disabled={!!busy} onClick={() => void regenerate()}>
+            <Link className="m3-action-link" to={`${root}/questions`}>Review / Edit Questions</Link>
+          </div>
+          {state.canGetNewQuestions && <QuestionCountInput value={questionCount} onChange={setQuestionCount} disabled={!!busy} label="Questions in a new set" />}
+          <div className="m3-personal-actions">
+            {state.canGetNewQuestions && <button type="button" className="m3-button m3-button--secondary" disabled={!!busy || !countCheck.ok} onClick={() => void regenerate()}>
               {busy === 'regenerate' ? <LoaderCircle className="m3-spinner" size={16} aria-hidden="true" /> : <RefreshCw size={16} aria-hidden="true" />}
               {busy === 'regenerate' ? 'Making new questions…' : 'Regenerate Questions'}</button>}
           </div>
         </> : !state.attemptId && (!state.reviewed ? <p>Confirm the text first.</p>
           : <>
             {state.questionsOutdated && <p>Your text changed, so you need new questions.</p>}
-            <button type="button" className="m3-button m3-button--primary" disabled={!!busy} onClick={() => void generate()}>
+            <QuestionCountInput value={questionCount} onChange={setQuestionCount} disabled={!!busy} />
+            <button type="button" className="m3-button m3-button--primary" disabled={!!busy || !countCheck.ok} onClick={() => void generate()}>
               {busy === 'generate' ? 'Making your questions…' : 'Generate Questions'}</button>
           </>)}
         {state.questionsLockedReason && <p className="m3-practice-note m3-practice-lock"><Lock size={15} aria-hidden="true" /> {QUESTION_LOCKS[state.questionsLockedReason]}</p>}

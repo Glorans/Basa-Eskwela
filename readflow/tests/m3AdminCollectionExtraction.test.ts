@@ -135,7 +135,8 @@ function mount(
       uploadNames: findAll(tree, (node) => node.props?.className === "m3-editor-upload-name").map(textOf),
       uploadStatuses: findAll(tree, (node) => typeof node.props?.className === "string" && node.props.className.startsWith("m3-editor-upload-status ")).map(textOf),
       languageSelect: findAll(labelled(tree, "Language"), (node) => node.type === "select")[0],
-      levelSelect: findAll(labelled(tree, "Reading Level"), (node) => node.type === "select")[0],
+      // M3 all-role refinement: no Reading Level; the learning path follows language + difficulty.
+      levelSelect: findAll(labelled(tree, "Difficulty"), (node) => node.type === "select")[0],
       titleInput: findAll(labelled(tree, "Title"), (node) => node.type === "input")[0],
       saveDraft: findAll(tree, (node) => node.type === "button" && textOf(node) === "Save Draft")[0],
     };
@@ -148,7 +149,7 @@ function mount(
   };
   const choosePath = () => {
     ui().languageSelect.props.onChange({ target: { value: PATH.language } });
-    ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
+    ui().levelSelect.props.onChange({ target: { value: PATH.difficultyTier } });
   };
   const button = (label: string) => findAll(render(), (node) => node.type === "button" && textOf(node) === label)[0];
   return { ui, published, extractCalls, drafts, chooseFile, choosePath, confirms, button, browserWindow, browserDocument, saves, server: () => serverCollection };
@@ -174,7 +175,7 @@ test("create mode shows an editable passage textarea and an optional file input"
 test("a draft saves typed passage text without any extraction", async () => {
   const m = mount();
   m.ui().languageSelect.props.onChange({ target: { value: PATH.language } });
-  m.ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
+  m.ui().levelSelect.props.onChange({ target: { value: PATH.difficultyTier } });
   m.ui().titleInput.props.onChange({ target: { value: "Typed Module" } });
   m.ui().textarea.props.onChange({ target: { value: "A passage typed by hand." } });
   m.ui().saveDraft.props.onClick();
@@ -186,7 +187,7 @@ test("a draft saves typed passage text without any extraction", async () => {
 test("extracted text fills the passage and stays editable before saving", async () => {
   const m = mount(async () => ({ extractedText: "Extracted story text." }));
   m.ui().languageSelect.props.onChange({ target: { value: PATH.language } });
-  m.ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
+  m.ui().levelSelect.props.onChange({ target: { value: PATH.difficultyTier } });
   await m.chooseFile();
   assert.equal(m.extractCalls.length, 1);
   assert.equal(m.extractCalls[0].learningPathLanguage, "en");
@@ -209,7 +210,7 @@ test("extracting without a learning path is refused and leaves the passage edita
   await m.chooseFile();
   const view = m.ui();
   assert.deepEqual(m.extractCalls, []);
-  assert.match(view.text, /Select a learning path before extracting\./);
+  assert.match(view.text, /Choose the module's Language above before extracting/);
   assert.equal(view.textarea.props.value, "Kept text.");
   assertEditable(view.textarea, view.textareaFieldset);
 });
@@ -217,7 +218,7 @@ test("extracting without a learning path is refused and leaves the passage edita
 test("a failed extraction keeps the typed passage text editable and shows the error", async () => {
   const m = mount(async () => { throw new Error("Unable to read this file."); });
   m.ui().languageSelect.props.onChange({ target: { value: PATH.language } });
-  m.ui().levelSelect.props.onChange({ target: { value: PATH.readingLevel } });
+  m.ui().levelSelect.props.onChange({ target: { value: PATH.difficultyTier } });
   m.ui().textarea.props.onChange({ target: { value: "Text typed before extracting." } });
   await m.chooseFile();
   const view = m.ui();
@@ -336,7 +337,7 @@ test("unsaved Create Reading Module work is kept on this device for this account
   const stored = JSON.parse(localStorage.getItem(NEW_DRAFT_KEY) ?? "null");
   assert.equal(stored.title, "Unsaved Title");
   assert.equal(stored.language, "en");
-  assert.equal(stored.readingLevel, "Instructional");
+  assert.equal(stored.readingLevel, null, "modules no longer store a reading level choice");
   assert.deepEqual(stored.passages.map((p: any) => p.passageText), ["Unsaved passage text."]);
   assert.ok(!("questions" in stored.passages[0]), "question banks are never stored locally");
   assert.deepEqual(Object.keys(stored.passages[0]).sort(), ["id", "passageText", "sourceMaterialId", "title"]);
@@ -363,7 +364,7 @@ test("a remounted editor offers the unsaved draft, and Resume restores every fie
   assert.equal(view.textarea.props.value, "Recovered text.");
   assert.equal(view.textareas.length, 1, "the blank starting passage is replaced, not kept as an extra passage");
   assert.equal(view.languageSelect.props.value, "en");
-  assert.equal(view.levelSelect.props.value, "Instructional");
+  assert.equal(view.levelSelect.props.value, "Easy", "the restored difficulty (which selects the path)");
   assert.equal(view.saveDraft.props.disabled, false, "restored work can be saved");
 });
 

@@ -47,13 +47,19 @@ async function loadMaterialReadingSource(requester, materialId, context, deps = 
  * any assessment (personal_material_3: the current set is kept and marked replaced, and it still counts toward the
  * 5-per-24-hours limit). The database refuses a replacement once an assessment exists.
  */
-async function generatePersonalQuestions(requester, materialId, deps = {}, { replace = false } = {}) {
+async function generatePersonalQuestions(requester, materialId, deps = {}, { replace = false, questionCount = 9 } = {}) {
+  // M3 all-role refinement: the learner chooses the total (at least 6, multiples of 3, at most 12; equal categories).
+  const countProblem = require('./questionCountRule').questionCountProblem(questionCount);
+  if (countProblem) throw new PersonalMaterialError(countProblem, 400);
   const source = await loadPersonalReadingSource(requester, materialId, {}, deps);
   if (source.passage.length > MAX_QUESTION_CONTENT_LENGTH) throw new PersonalMaterialError('This material exceeds the 30,000-character question-generation limit.', 413);
   const db = dbFor(deps);
   const call = async (operation, token = null, bank = null) => {
     const { data, error } = await db.rpc('personal_material_generation', { actor: requester.user.id, material: materialId, operation, token, bank });
     throwIfContentScreen(error);
+    if (error && questionCount !== 9 && /Invalid private question bank|Invalid question classifications/.test(String(error.message))) {
+      throw new PersonalMaterialError('Choosing a number other than 9 needs a database update (m3_all_role_refinement) that is not installed yet. Choose 9 questions.', 409);
+    }
     if (error) throw new PersonalMaterialError(error.code === 'P0001' ? error.message : 'Private question generation is unavailable. Please retry.', error.code === '42501' ? 403 : 409);
     return data;
   };
@@ -73,8 +79,8 @@ async function generatePersonalQuestions(requester, materialId, deps = {}, { rep
     if (reservedSource.passage !== source.passage || reservedSource.language !== source.language) {
       throw new PersonalMaterialError('The material changed. Review it and generate again.');
     }
-    const generated = await (deps.generate ?? generateComprehensionQuestions)({ contentText: source.passage, language: source.language, questionCount: 9, previousQuestions });
-    const validated = validateGeneratedQuestions({ questions: generated }, 9, source.passage);
+    const generated = await (deps.generate ?? generateComprehensionQuestions)({ contentText: source.passage, language: source.language, questionCount, previousQuestions });
+    const validated = validateGeneratedQuestions({ questions: generated }, questionCount, source.passage);
     const bank = validated.map(q => ({ id: randomUUID(), type: q.type, questionText: q.questionText, options: q.options,
       scaffoldingHint: q.scaffoldingHint, correctOptionIndex: q.options.indexOf(q.correctAnswer),
       answerExplanation: q.answerExplanation, supportingEvidence: q.supportingEvidence }));
@@ -87,6 +93,43 @@ async function generatePersonalQuestions(requester, materialId, deps = {}, { rep
 }
 async function loadPersonalBank(requester, materialId, deps = {}) {
   return rpc(requester, materialId, 'bank', {}, deps);
+}
+
+const BANK_FIELDS = ['id', 'type', 'questionText', 'options', 'correctOptionIndex', 'scaffoldingHint', 'answerExplanation', 'supportingEvidence'];
+/**
+ * M3 all-role refinement: the Independent Learner opens their own current private set to edit it, with the answers
+ * (their private practice; it earns no XP and no one else sees it). Locked once the comprehension assessment for
+ * this material exists, because that assessment is scored from these keys.
+ */
+async function editablePersonalBank(requester, materialId, deps = {}) {
+  const state = await personalPracticeState(requester, materialId, deps);
+  const bank = await loadPersonalBank(requester, materialId, deps);
+  const questions = Array.isArray(bank?.questions) ? bank.questions : [];
+  return {
+    setId: bank?.id ?? null,
+    locked: Boolean(state?.attemptId),
+    questions: questions.map((question) => Object.fromEntries(BANK_FIELDS.map((key) => [key, question[key]]))),
+  };
+}
+
+async function savePersonalBank(requester, materialId, { setId, questions } = {}, deps = {}) {
+  if (typeof setId !== 'string' || !Array.isArray(questions)) throw new PersonalMaterialError('Reload your questions before saving.', 400);
+  const bank = questions.map((question) => ({
+    id: String(question?.id ?? ''), type: question?.type, questionText: String(question?.questionText ?? '').trim(),
+    options: Array.isArray(question?.options) ? question.options.map((option) => String(option ?? '').trim()) : [],
+    correctOptionIndex: question?.correctOptionIndex, scaffoldingHint: String(question?.scaffoldingHint ?? '').trim(),
+    answerExplanation: String(question?.answerExplanation ?? '').trim(), supportingEvidence: String(question?.supportingEvidence ?? '').trim(),
+  }));
+  const db = deps.getSupabaseAdmin?.() ?? getSupabaseAdmin();
+  const { data, error } = await db.rpc('personal_material_save_bank', { actor: requester.user.id, material: materialId, target_set: setId, bank });
+  if (error) {
+    if (['42883', 'PGRST202'].includes(error.code)) {
+      throw new PersonalMaterialError('Editing your questions needs a database update (m3_all_role_refinement) that is not installed yet. Nothing was changed.', 503);
+    }
+    if (error.code === '42501') throw new PersonalMaterialError('This material is not available to your account.', 403);
+    throw new PersonalMaterialError(error.message || 'Your questions could not be saved. Your edits are still on the page.', error.code === '22023' ? 400 : 409);
+  }
+  return data;
 }
 /** Material id -> time it was moved to Trash (soft deletion in personal_material_state). */
 async function deletedPersonalMaterials(db, ids) {
@@ -224,7 +267,7 @@ async function restorePersonalMaterial(requester, materialId, deps = {}) {
   if (restoreError || !restored) throw new PersonalMaterialError('Unable to restore this material. Please retry.');
   return { restored: true };
 }
-module.exports = { PersonalMaterialError, personalContext, loadMaterialReadingSource, loadPersonalReadingSource,
+module.exports = { editablePersonalBank, savePersonalBank, PersonalMaterialError, personalContext, loadMaterialReadingSource, loadPersonalReadingSource,
   generatePersonalQuestions, loadPersonalBank, previewPersonalQuestions, updatePersonalMaterialText, restorePersonalMaterial,
   personalPracticeState, personalFeatures,
   personalMaterialAccess: rpc, deletedPersonalIds, deletedPersonalMaterials };

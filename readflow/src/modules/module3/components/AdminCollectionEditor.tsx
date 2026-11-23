@@ -2,11 +2,11 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { confirmReadFlow } from "../../../components/ReadFlowDialog";
 import "./AdminCollectionEditor.css";
 import InlineRegeneration from "./InlineRegeneration";
-import BankSizeSelect from "./BankSizeSelect";
-import PassageBank from "./PassageBank";
-import ReadOnlyPassageBank from "./ReadOnlyPassageBank";
-import { resolveLearningPath, learningPathSelectionIssue } from "../utils/learningPathSelection";
-import { groupPublishIssues } from "../utils/publishIssues";
+import QuestionCountInput from "./QuestionCountInput";
+import PassageBankSummary from "./PassageBankSummary";
+import PublishIssuesDialog from "./PublishIssuesDialog";
+import { checkQuestionCount } from "../utils/questionCount";
+import { resolveLearningPath, resolveLearningPathByDifficulty, difficultyPathIssue } from "../utils/learningPathSelection";
 import { passageUploadIssue, suggestedPassageTitle } from "../utils/passageUpload";
 import {
   applyDraft,
@@ -114,13 +114,14 @@ export default function AdminCollectionEditor({
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pathLanguage, setPathLanguage] = useState<string | null>(null);
-  const [pathReadingLevel, setPathReadingLevel] = useState<string | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
   const [generationStage, setGenerationStage] = useState<GenerationStage>("generating");
   const [uncertainPassage, setUncertainPassage] = useState<string | null>(null);
   // Six only until the database reports 6/9/12 support (m3_passage_bank_sizes).
   const [bankSizes, setBankSizes] = useState<readonly number[]>(SIX_ONLY);
-  const [requestedSizes, setRequestedSizes] = useState<Record<string, number>>({});
+  // Typed question count per passage (shared numeric input). Only a valid total is ever sent.
+  const [requestedCounts, setRequestedCounts] = useState<Record<string, string>>({});
+  const [publishProblem, setPublishProblem] = useState<{ issues: string[]; serverMessage?: string } | null>(null);
   // Versions of a published module; null until m3_module_revisions is installed.
   const [revisions, setRevisions] = useState<ModuleRevision[] | null>(null);
   const generationPending = useRef(false);
@@ -130,7 +131,7 @@ export default function AdminCollectionEditor({
   } | null>(null);
   const [message, setMessage] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
-  const [issues, setIssues] = useState<string[]>([]);
+  const [, setIssues] = useState<string[]>([]);
   const [extracting, setExtracting] = useState<string | null>(null);
   // Per-passage file selection and extraction result, keyed by passage id.
   const [uploads, setUploads] = useState<Record<string, PassageUpload>>({});
@@ -167,8 +168,13 @@ export default function AdminCollectionEditor({
     });
   }
 
-  const bankSizeFor = (passage: AdminPassage) =>
-    requestedSizes[passage.id] ?? targetBankSize(passage.questions.length, bankSizes);
+  const maxBankSize = Math.max(...bankSizes);
+  const typedCount = (passage: AdminPassage) =>
+    requestedCounts[passage.id] ?? String(targetBankSize(passage.questions.length, bankSizes));
+  const bankSizeFor = (passage: AdminPassage) => {
+    const check = checkQuestionCount(typedCount(passage), maxBankSize);
+    return check.ok ? check.value : targetBankSize(passage.questions.length, bankSizes);
+  };
 
   useEffect(() => {
     const current = ++generation.current;
@@ -189,7 +195,6 @@ export default function AdminCollectionEditor({
 
     setCollection(null);
     setPathLanguage(null);
-    setPathReadingLevel(null);
     setMessage("");
     setRemoved([]);
     setDirty(false);
@@ -275,10 +280,11 @@ export default function AdminCollectionEditor({
       mode: mode === "create" ? "create" : "edit",
       collection,
       language: pathLanguage ?? path?.language ?? null,
-      readingLevel: pathReadingLevel ?? path?.readingLevel ?? null,
+      // Kept for older saved drafts; modules no longer choose a reading level.
+      readingLevel: null,
       removed,
     }));
-  }, [dirty, collection, canKeepDraft, recoverable, learningPaths, userId, draftKey, mode, pathLanguage, pathReadingLevel, removed]);
+  }, [dirty, collection, canKeepDraft, recoverable, learningPaths, userId, draftKey, mode, pathLanguage, removed]);
 
   // Warn before a refresh, tab close or in-app link would leave unsaved changes behind.
   useEffect(() => {
@@ -357,7 +363,6 @@ export default function AdminCollectionEditor({
     });
     setRemoved(restored.removed);
     setPathLanguage(recoverable.language);
-    setPathReadingLevel(recoverable.readingLevel);
     setRecoverable(null);
     setDirty(true);
     setIssues([]);
@@ -474,7 +479,7 @@ export default function AdminCollectionEditor({
     if (!collection) return;
     const path = learningPaths.find(item => item.id === collection.learningPathId);
     if (!path || !resolveLearningPath(learningPaths, path.language, path.readingLevel)) {
-      throw new Error("Choose a uniquely configured language and reading level before saving.");
+      throw new Error("Choose the module's language and difficulty before saving.");
     }
 
     if (mode === "create") {
@@ -549,7 +554,7 @@ export default function AdminCollectionEditor({
 
     if (!language) {
       return fail(
-        "Select a learning path before extracting. Choose the module's Language and Reading Level above, then choose the file again.",
+        "Choose the module's Language above before extracting, then choose the file again.",
       );
     }
 
@@ -644,6 +649,12 @@ export default function AdminCollectionEditor({
     generationPending.current = true;
     const current = generation.current;
     const target = collection.passages.find((passage) => passage.id === passageId);
+    const countCheck = target ? checkQuestionCount(typedCount(target), maxBankSize) : null;
+    if (countCheck && !countCheck.ok) {
+      generationPending.current = false;
+      setGenerationFeedback({ passageId, message: `${countCheck.error} No questions were generated.` });
+      return;
+    }
     const size = target ? bankSizeFor(target) : bankSizes[0];
     const sizeWord = numberWord(size);
 
@@ -716,18 +727,15 @@ export default function AdminCollectionEditor({
     (path) => path.id === collection.learningPathId,
   );
   const chosenLanguage = pathLanguage ?? selectedPath?.language ?? "";
-  const chosenLevel = pathReadingLevel ?? selectedPath?.readingLevel ?? "";
-  const pathIssue = learningPathSelectionIssue(learningPaths, chosenLanguage, chosenLevel);
-  function choosePath(language: string, readingLevel: string) {
+  // An existing module keeps its saved learning path until its language or difficulty is changed.
+  const pathIssue = selectedPath ? "" : difficultyPathIssue(learningPaths, chosenLanguage, collection.difficulty);
+  function choosePath(language: string, difficulty: AdminCollection["difficulty"]) {
     if (!collection) return;
-    const path = resolveLearningPath(learningPaths, language, readingLevel);
+    const path = resolveLearningPathByDifficulty(learningPaths, language, difficulty);
     setPathLanguage(language);
-    setPathReadingLevel(readingLevel);
-    setCollection({ ...collection, learningPathId: path?.id ?? "", language: path?.language ?? null,
-      difficulty: path?.difficultyTier ?? collection.difficulty });
+    setCollection({ ...collection, learningPathId: path?.id ?? "", language: path?.language ?? null, difficulty });
     setDirty(true);
   }
-  const groupedIssues = groupPublishIssues(issues);
 
   const total = collection.passages.reduce(
     (sum, passage) => sum + passage.questions.length,
@@ -889,7 +897,7 @@ export default function AdminCollectionEditor({
               id="module-language"
               value={chosenLanguage}
               aria-describedby="module-path-help"
-              onChange={(event) => choosePath(event.target.value, chosenLevel)}
+              onChange={(event) => choosePath(event.target.value, collection.difficulty)}
             >
               <option value="">Select language</option>
               <option value="en">English</option>
@@ -897,39 +905,20 @@ export default function AdminCollectionEditor({
             </select>
           </label>
           <label>
-            Reading Level
-            <select id="module-reading-level" value={chosenLevel} aria-describedby="module-path-help"
-              onChange={(event) => choosePath(chosenLanguage, event.target.value)}>
-              <option value="">Select reading level</option>
-              {["Frustration", "Instructional", "Independent"].map(level => <option key={level}>{level}</option>)}
-            </select>
-          </label>
-
-          <label>
             Difficulty
             <select
-              aria-describedby="module-difficulty-help"
+              aria-describedby="module-path-help"
               value={collection.difficulty}
-              onChange={(event) => {
-                setCollection({
-                  ...collection,
-                  difficulty: event.target
-                    .value as AdminCollection["difficulty"],
-                });
-                setDirty(true);
-              }}
+              onChange={(event) => choosePath(chosenLanguage, event.target.value as AdminCollection["difficulty"])}
             >
               {["Easy", "Medium", "Hard"].map((difficulty) => (
                 <option key={difficulty}>{difficulty}</option>
               ))}
             </select>
-            <span id="module-difficulty-help" className="m3-editor-help">
-              Easy, Medium or Hard. Sets the XP learners earn for completing this module.
-            </span>
           </label>
 
           <p id="module-path-help" className="m3-editor-wide m3-editor-help" role={pathIssue ? "status" : undefined}>
-            {pathIssue || "Language and reading level determine learner recommendations. Difficulty sets completion XP."}
+            {pathIssue || "Enter a title, then choose the language and difficulty. Difficulty sets the XP learners earn for completing this module and the learning path it is listed under."}
           </p>
         </fieldset>
       </div>
@@ -998,7 +987,10 @@ export default function AdminCollectionEditor({
                 <p className="m3-passage-preview">
                   {passage.passageText || "No passage text yet."}
                 </p>
-                <ReadOnlyPassageBank passage={passage} bankSizes={bankSizes} />
+                <PassageBankSummary moduleTitle={collection.title} passage={passage} readOnly disabled={false}
+                  editLink={collection.status === "draft" && !collection.publishedAt
+                    ? <Link to={`${paths.module}/${collection.id}/edit`}>Edit this draft to change its questions</Link> : undefined}
+                  onOpenChange={() => undefined} onSave={async () => undefined} />
               </>
             ) : (
               <fieldset
@@ -1190,49 +1182,28 @@ export default function AdminCollectionEditor({
 
             {mode !== "create" && mode !== "detail" && (
               <>
-                <p className="m3-editor-help">
-                  {dirty
-                    ? "Save your passage changes before generating questions. "
-                    : ""}
-                  Each bank needs two literal, two inferential
-                  and two critical questions.
-                </p>
+                {dirty && <p className="m3-editor-help">Save your passage changes before generating questions.</p>}
+
+                <PassageBankSummary
+                  key={`${passage.id}:${collection.revision}`}
+                  moduleTitle={collection.title || "Untitled module"}
+                  passage={passage}
+                  readOnly={readOnly}
+                  disabled={busy || dirty || readOnly || Boolean(bankDirty && bankDirty !== passage.id)}
+                  onOpenChange={(open) => setBankDirty(open ? passage.id : null)}
+                  onSave={async (questions) => {
+                    try {
+                      await saveBank(collection, { ...passage, questions }, "review");
+                    } catch (error) {
+                      throw new Error(error instanceof Error ? error.message : "The question bank could not be saved. Your edits are still here.");
+                    }
+                    await reload();
+                    setMessage("Question bank, explanations, and evidence reviewed and saved.");
+                  }}
+                />
 
                 {Boolean(passage.questions.length) && (
                   <>
-                    <h4>Saved Question Bank</h4>
-                    <p>
-                      {passage.questions.length} questions saved
-                    </p>
-
-                    <PassageBank
-                      key={`${passage.id}:${collection.revision}`}
-                      passage={passage}
-                      disabled={
-                        busy ||
-                        dirty ||
-                        readOnly ||
-                        Boolean(
-                          bankDirty && bankDirty !== passage.id,
-                        )
-                      }
-                      onDirty={(value) =>
-                        setBankDirty(value ? passage.id : null)
-                      }
-                      onSave={(questions) =>
-                        void perform(async () => {
-                          await saveBank(
-                            collection,
-                            { ...passage, questions },
-                            "review",
-                          );
-                          await reload();
-                          setMessage(
-                            "Question bank, explanations, and evidence reviewed and saved.",
-                          );
-                        })
-                      }
-                    />
 
                     <InlineRegeneration
                       disabled={
@@ -1243,22 +1214,23 @@ export default function AdminCollectionEditor({
                         generateQuestions(passage.id)
                       }
                     >
-                      <BankSizeSelect
-                        sizes={bankSizes}
-                        value={bankSizeFor(passage)}
+                      <QuestionCountInput
+                        value={typedCount(passage)}
+                        max={maxBankSize}
+                        label="Questions in a new set"
                         disabled={busy || dirty || readOnly || Boolean(bankDirty) || uncertainPassage === passage.id}
-                        onChange={(size) => setRequestedSizes((sizes) => ({ ...sizes, [passage.id]: size }))}
+                        onChange={(value) => setRequestedCounts((counts) => ({ ...counts, [passage.id]: value }))}
                       />
                     </InlineRegeneration>
                   </>
                 )}
 
                 {!passage.questions.length && (
-                  <BankSizeSelect
-                    sizes={bankSizes}
-                    value={bankSizeFor(passage)}
+                  <QuestionCountInput
+                    value={typedCount(passage)}
+                    max={maxBankSize}
                     disabled={busy || dirty || readOnly || Boolean(bankDirty) || uncertainPassage === passage.id}
-                    onChange={(size) => setRequestedSizes((sizes) => ({ ...sizes, [passage.id]: size }))}
+                    onChange={(value) => setRequestedCounts((counts) => ({ ...counts, [passage.id]: value }))}
                   />
                 )}
 
@@ -1269,6 +1241,7 @@ export default function AdminCollectionEditor({
                       className="m3-button m3-button--secondary"
                       disabled={
                         busy || dirty || readOnly || Boolean(bankDirty) || uncertainPassage === passage.id
+                        || !checkQuestionCount(typedCount(passage), maxBankSize).ok
                       }
                       aria-busy={generating === passage.id}
                       onClick={() =>
@@ -1419,11 +1392,12 @@ export default function AdminCollectionEditor({
                   );
 
                 setIssues(errors);
-                setMessage(
-                  errors.length
-                    ? "Complete the passage-specific requirements below."
-                    : "Content validation passed. This module is ready to publish.",
-                );
+                if (errors.length) {
+                  setMessage("");
+                  setPublishProblem({ issues: errors });
+                } else {
+                  setMessage("Content validation passed. This module is ready to publish.");
+                }
               })
             }
           >
@@ -1444,7 +1418,11 @@ export default function AdminCollectionEditor({
                   const result = await publishModule(collection.id);
 
                   if (!result.ok) {
-                    setMessage(result.message);
+                    // Show why, with the passage-specific requirements, in a centered dialog. Nothing was published.
+                    const errors = await passageRepository.getPublishIssues(collection.id).catch(() => [] as string[]);
+                    setIssues(errors);
+                    setMessage("");
+                    setPublishProblem({ issues: errors, serverMessage: errors.length ? undefined : result.message });
                     return;
                   }
 
@@ -1459,25 +1437,17 @@ export default function AdminCollectionEditor({
           )}
       </footer>
 
-      {Boolean(issues.length) && (
-        <div role="alert" className="m3-editor-publish-issues">
-          {groupedIssues.module.length > 0 && (
-            <section>
-              <h3>Module</h3>
-              <ul>
-                {groupedIssues.module.map((issue) => <li key={issue}>{issue}.</li>)}
-              </ul>
-            </section>
-          )}
-          {groupedIssues.passages.map(({ passage, messages }) => (
-            <section key={passage}>
-              <h3>Passage {passage}</h3>
-              <ul>
-                {messages.map((message) => <li key={message}>{message}</li>)}
-              </ul>
-            </section>
-          ))}
-        </div>
+      {publishProblem && (
+        <PublishIssuesDialog
+          issues={publishProblem.issues}
+          serverMessage={publishProblem.serverMessage}
+          onClose={() => setPublishProblem(null)}
+          onReviewPassage={(passageNumber) => {
+            setPublishProblem(null);
+            const target = collection.passages[passageNumber - 1];
+            if (target) requestAnimationFrame(() => document.getElementById(`passage-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+          }}
+        />
       )}
     </div>
   );

@@ -21,3 +21,5 @@ m5_m6_staff_practice_PROPOSED.sql -text
 m5_m6_staff_practice_ROLLBACK_PROPOSED.sql -text
 m7_staff_practice_queue_PROPOSED.sql -text
 m7_staff_practice_queue_ROLLBACK_PROPOSED.sql -text
+m3_all_role_refinement_PROPOSED.sql -text
+m3_all_role_refinement_ROLLBACK_PROPOSED.sql -text

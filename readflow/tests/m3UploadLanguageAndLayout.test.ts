@@ -48,16 +48,16 @@ test("saved-material language correction goes through the guarded server endpoin
   // The saved language shows at once, before the material list finishes refreshing.
   assert.match(control, /setSavedLanguage\(choice\);/);
   assert.match(control, /<strong>\{LANGUAGE_NAMES\[current\]\}<\/strong>/);
-  assert.match(detail, /role !== "admin" && material && material\.uploadedById === profile\?\.id/);
+  assert.match(detail, /const canEditLanguage = Boolean\(material && material\.uploadedById === profile\?\.id\);/);
   assert.match(detail, /if \(materialsLoading && !material\)/);
 });
 
-test("new question sets offer only 9 or 12 questions", async () => {
+test("new question sets use the shared numeric input: at least 6, multiples of 3, at most 12", async () => {
   const sets = await source("modules/module3/components/MaterialQuestionSets.tsx");
   const service = await source("modules/module3/services/materialService.ts");
-  assert.match(service, /NEW_QUESTION_SET_COUNTS = \[9, 12\] as const/);
+  assert.match(service, /NEW_QUESTION_SET_COUNTS = \[6, 9, 12\] as const/);
   assert.match(service, /createMaterialQuestionSet\(materialId: string, questionCount: number = DEFAULT_NEW_QUESTION_SET_COUNT\)/);
-  assert.match(sets, /\{count \/ 3\} Literal, \{count \/ 3\} Inferential, \{count \/ 3\} Critical/);
+  assert.match(sets, /<QuestionCountInput value=\{questionCount\}/);
   assert.doesNotMatch(sets, /\[3, 6/);
 });
 

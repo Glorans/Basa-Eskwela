@@ -26,20 +26,19 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
   const material = getMaterial(materialId);
   const root = getM3WorkspaceRoot(role);
   const canView = Boolean(material);
+  // M3 all-role refinement: School Admins work on their own uploads like Teachers (Teacher uploads in their school
+  // stay view-and-review for them).
+  const staff = role === "teacher" || role === "system_admin" || role === "admin";
   const canGenerate = Boolean(
-    (role === "teacher" || role === "system_admin") &&
+    staff &&
       material &&
       material.uploadedById === profile?.id &&
       material.processingStatus === "completed" &&
       material.contentText?.trim(),
   );
-  const canDeleteSets = Boolean(
-    (role === "teacher" || role === "system_admin") && material && material.uploadedById === profile?.id,
-  );
-  // Only the uploader corrects the language; Admin views but does not edit uploads.
-  const canEditLanguage = Boolean(
-    role !== "admin" && material && material.uploadedById === profile?.id,
-  );
+  const canDeleteSets = Boolean(staff && material && material.uploadedById === profile?.id);
+  // Only the uploader corrects the language (a School Admin views, but does not change, a Teacher's upload).
+  const canEditLanguage = Boolean(material && material.uploadedById === profile?.id);
 
   // A background refresh (e.g. after a language correction) keeps the loaded page visible.
   if (materialsLoading && !material) {
@@ -57,14 +56,14 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
         <FileText size={36} />
         <h1>Material unavailable</h1>
         <p>This material does not exist or is unavailable to your account.</p>
-        <Link className={role === "system_admin" ? "m3-back-link" : "m3-button m3-button--primary"} to={role === "admin" ? root : `${root}/materials`}>
+        <Link className={role === "system_admin" ? "m3-back-link" : "m3-button m3-button--primary"} to={`${root}/materials`}>
           {role === "system_admin" && <ArrowLeft size={17} aria-hidden="true" />} Back to Materials
         </Link>
       </div>
     );
   }
 
-  const backTarget = role === "admin" ? root : `${root}/materials`;
+  const backTarget = `${root}/materials`;
   const showQuestionSets = role !== "general_user";
 
   // Independent Learner: a short summary, then the practice steps (the reading text is checked and edited in step 1).
@@ -146,7 +145,7 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
           materialId={material.id}
           language={material.languageCode}
           canEdit={canEditLanguage}
-          hasQuestionSets={role === "teacher" || role === "system_admin"}
+          hasQuestionSets={staff}
           onChanged={refreshMaterials}
         />
 
@@ -181,6 +180,8 @@ export default function MaterialDetailPage({ role }: MaterialDetailPageProps) {
           root={root}
           canGenerate={canGenerate}
           canDelete={canDeleteSets}
+          materialTitle={material.title}
+          contentText={material.contentText ?? ""}
         />
       </div>
       </div>

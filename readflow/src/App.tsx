@@ -378,6 +378,9 @@ function App() {
               element={<ModuleFormPage mode="edit" />}
             />
 
+            {/* M3 all-role refinement: School Admin Reading Materials (list, Trash, upload). */}
+            <Route path="materials" element={<MaterialLibraryPage role="admin" />} />
+            <Route path="materials/upload" element={<UploadMaterialPage role="admin" />} />
             <Route
               path="materials/:materialId"
               element={<MaterialDetailPage role="admin" />}

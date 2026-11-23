@@ -120,7 +120,6 @@ function LegacyModuleDetailPage({ role }: ModuleDetailPageProps) {
         <div className="m3-detail-summary">
           {role === "admin" && <>
             <div><span>Language</span><strong>{module.language === "en" ? "English" : "Filipino"}</strong></div>
-            <div><span>Reading Level</span><strong>{module.readingLevel}</strong></div>
             <div><span>Learning-path Tier</span><strong>{module.difficultyTier}</strong></div>
           </>}
           <div>

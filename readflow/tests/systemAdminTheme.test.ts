@@ -99,8 +99,36 @@ function withLegacyLearnerLabels(tree:any, role:string){
  };
  const result=walk(tree); assert.equal(renamed,1,`${role}: Reading Assessment link renamed back for comparison`); return result;
 }
+// M3 all-role refinement (2026-11-23): School Admin gained Reading Materials; the Teacher's "My Reading Modules" and the
+// Independent Learner's "Upload Material" left the sidebar (both open from page buttons), and Reading Materials now
+// stays highlighted on its sub-pages (end: false). Those changes are swapped back before comparing, so everything else
+// in the frozen shell must still match exactly.
+function withLegacyM3Refinement(tree:any, role:string){
+ const template=findAll(tree,n=>n.type==='NavLink')[0];
+ const link=(label:string,to:string,icon:string)=>({type:template.type,props:{...template.props,to,end:true,'aria-label':label,title:label,
+  children:[{type:icon,props:{...template.props.children[0].props}},{type:'span',props:{...template.props.children[1].props,children:label}}]}});
+ let changed=0;
+ const walk=(value:any):any=>{
+  if(Array.isArray(value))return value.flatMap(v=>{
+   if(v?.type==='NavLink'){
+    const label=v.props?.['aria-label'];
+    if(role==='admin'&&label==='Reading Materials'){changed++;return [];}
+    const restored=label==='Reading Materials'&&role!=='admin'?{...v,props:{...v.props,end:true}}:v;
+    if(role==='teacher'&&label==='Reading Modules'){changed++;return [walk(restored),link('My Reading Modules','/m3/teacher/content','FilePlus2')];}
+    if(role==='general_user'&&label==='Reading Materials'){changed++;return [walk(restored),link('Upload Material','/m3/general/materials/upload','FilePlus2')];}
+    return [walk(restored)];
+   }
+   return [walk(v)];
+  });
+  if(value&&typeof value==='object'&&value.type)return {type:value.type,props:Object.fromEntries(Object.entries(value.props).map(([k,v])=>[k,k==='ref'?v:walk(v)]))};
+  return value;
+ };
+ const result=walk(tree);
+ if(['admin','teacher','general_user'].includes(role))assert.equal(changed,1,`${role}: M3 refinement sidebar change swapped back`);
+ return result;
+}
 for(const role of ['admin','teacher','general_user']) for(const [label,mobile,open,collapsed] of [['desktop',false,false,false],['rail',false,false,true],['mobile',true,false,false],['drawer',true,true,false]] as const)
- test(`${role} ${label}: rendered shell matches pre-redesign snapshot`,()=>assert.equal(fingerprint(withLegacyLearnerLabels(withLegacyAssessmentLinks(withLegacyContentLinks(mount(role,mobile,open,collapsed).tree,role),role),role)),baseline[`${role}:${label}`]));
+ test(`${role} ${label}: rendered shell matches pre-redesign snapshot`,()=>assert.equal(fingerprint(withLegacyLearnerLabels(withLegacyAssessmentLinks(withLegacyContentLinks(withLegacyM3Refinement(mount(role,mobile,open,collapsed).tree,role),role),role),role)),baseline[`${role}:${label}`]));
 
 test('System Admin alone opts into the theme, with existing Settings, Logout and all navigation targets',()=>{
  const {tree,calls}=mount('system_admin');
@@ -152,7 +180,7 @@ test('System Admin pages show one title each: no header title and no decorative 
  // School Admin, Teacher and Independent Learner labels are unchanged.
  assert.match(editor,/eyebrow: "Teacher Workspace" \}[\s\S]*eyebrow: "Admin Workspace" \}/);
  assert.match(read('modules/module3/pages/Module3Page.tsx'),/teacher \? "Teacher workspace" : workspace === "system_admin" \? undefined : "Admin library"/);
- for(const file of ['MaterialLibraryPage','UploadMaterialPage']) assert.match(read(`modules/module3/pages/${file}.tsx`),/role === "system_admin" \? undefined : role === "teacher" \? "Teacher workspace" : "Personal workspace"/);
+ for(const file of ['MaterialLibraryPage','UploadMaterialPage']) assert.match(read(`modules/module3/pages/${file}.tsx`),/role === "system_admin" \? undefined : role === "teacher" \? "Teacher workspace" : role === "admin" \? "Admin library" : "Personal workspace"/);
  assert.match(read('modules/module3/pages/QuestionReviewPage.tsx'),/role === "system_admin" \? undefined : `\$\{role === "admin" \? "Admin" : "Teacher"\} question review`/);
 });
 test('weekly chart shows API counts without mutation, fabricated totals or empty-data bars',()=>{

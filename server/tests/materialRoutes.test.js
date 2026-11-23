@@ -101,7 +101,7 @@ test("uploads an OCR image and deletes only its registered temporary file", asyn
 for (const [role, expectedStatus] of [
   [undefined, 401],
   ["student", 403],
-  ["admin", 403],
+  ["admin", 400], // M3 all-role refinement: School Admins upload (an empty form fails file validation)
   ["teacher", 400],
   ["system_admin", 400],
   ["general_user", 400],

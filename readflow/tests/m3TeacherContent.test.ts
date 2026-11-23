@@ -23,10 +23,12 @@ type TrashRow = { id: string; title: string; statusBefore: string; trashedAt: st
 function mountList(workspace?: "admin" | "teacher" | "system_admin", options: { trash?: TrashRow[] | null; restored?: string; modules?: typeof MODULES } = {}) {
   const runtime = createHookRuntime(require("react"));
   const calls: string[] = [];
+  // M3 all-role refinement: the Trash view is a URL parameter (?view=trash) opened from the header button.
+  let params = new URLSearchParams();
   const page = loadComponentModule(pageUrl, (id) => {
     if (id === "react") return runtime.react;
     if (id === "lucide-react") return new Proxy({}, { get: () => "svg" });
-    if (id === "react-router-dom") return { Link: "a" };
+    if (id === "react-router-dom") return { Link: "a", useSearchParams: () => [params, (next: Record<string, string>) => { params = new URLSearchParams(next); }] };
     if (id.endsWith("/M3ContentContext")) {
       return { useM3Content: () => ({ modules: options.modules ?? MODULES, modulesLoading: false, modulesError: null, refreshModules: async () => {},
         feedback: null, clearFeedback: () => {}, deleteModule: async (id: string) => { calls.push(`delete:${id}`); return { ok: true }; }, archiveModule: async () => ({ ok: true }),
@@ -53,7 +55,10 @@ function mountList(workspace?: "admin" | "teacher" | "system_admin", options: { 
   const titles = () => findAll(render(), (n) => n.type === "article" && n.props?.className === "m3-record-card")
     .map((card) => textOf(findAll(card, (n) => n.type === "h2")[0]));
   const select = (label: string) => findAll(render(), (n) => n.type === "label" && textOf(n).startsWith(label))[0];
-  return { render, titles, select, calls, text: () => textOf(render()) };
+  const trashToggle = () => findAll(findAll(render(), (n) => n.props?.actions)[0].props.actions, (n) => n.type === "button" && String(n.props?.className ?? "").includes("m3-trash-toggle"))[0];
+  const openTrash = () => { trashToggle().props.onClick(); render(); };
+  const createHref = () => findAll(findAll(render(), (n) => n.props?.actions)[0].props.actions, (n) => n.type === "a")[0].props.to;
+  return { render, titles, select, calls, trashToggle, openTrash, createHref, text: () => textOf(render()) };
 }
 
 test("Teacher list shows only the Teacher's own modules and links into the Teacher workspace", async () => {
@@ -62,8 +67,7 @@ test("Teacher list shows only the Teacher's own modules and links into the Teach
   assert.deepEqual(m.titles(), ["My Easy Draft", "My Hard Story"]);
   const tree = m.render();
   const hrefs = findAll(tree, (n) => n.type === "a").map((n) => n.props.to);
-  const create = findAll(tree, (n) => n.props?.actions)[0].props.actions.props.to;
-  assert.equal(create, "/m3/teacher/content/new");
+  assert.equal(m.createHref(), "/m3/teacher/content/new");
   assert.ok(hrefs.includes("/m3/teacher/content/mine-draft/edit"));
   assert.ok(hrefs.includes("/m3/teacher/content/mine-pub"));
   assert.ok(hrefs.every((href: string) => !href.startsWith("/m3/admin")));
@@ -71,19 +75,21 @@ test("Teacher list shows only the Teacher's own modules and links into the Teach
   assert.deepEqual(m.calls, ["trash"], "Teachers load their own Trash (the database returns only their modules)");
   const buttons = findAll(m.render(), (node) => node.type === "button").map((node) => node.props["aria-label"] ?? textOf(node));
   assert.ok(buttons.every((label: string) => !/^(Archive|Restore)/.test(label)), "no Archive/Restore actions for Teachers' live modules");
+  assert.ok(m.trashToggle(), "Trash button beside Create Module");
+  assert.equal(findAll(m.render(), (node) => node.props?.className === "m3-panel m3-trash").length, 0, "Trash opens from the header button");
+  assert.deepEqual(buttons.filter((label: string) => label.startsWith("Move to Trash")), ["Move to Trash My Easy Draft", "Move to Trash My Hard Story"]);
+  m.openTrash();
   assert.equal(findAll(m.render(), (node) => node.props?.className === "m3-panel m3-trash").length, 1, "Teacher Trash section");
-  assert.deepEqual(buttons.filter((label: string) => label.startsWith("Delete")), ["Delete My Easy Draft", "Delete My Hard Story"]);
+  assert.deepEqual(m.titles(), [], "the module list is replaced by the Trash view");
 });
 
-test("Teacher F2: modules are organized by reading level and difficulty", () => {
+test("Teacher F2: modules are organized by difficulty; reading level is not module metadata", () => {
   const m = mountList("teacher");
   findAll(m.select("Difficulty"), (n) => n.type === "select")[0].props.onChange({ target: { value: "Hard" } });
   assert.deepEqual(m.titles(), ["My Hard Story"]);
   findAll(m.select("Difficulty"), (n) => n.type === "select")[0].props.onChange({ target: { value: "all" } });
-  findAll(m.select("Reading level"), (n) => n.type === "select")[0].props.onChange({ target: { value: "Frustration" } });
-  assert.deepEqual(m.titles(), ["My Easy Draft"]);
-  const levels = findAll(findAll(m.select("Reading level"), (n) => n.type === "select")[0], (n) => n.type === "option").map((o) => o.props.value ?? o.props.children);
-  assert.deepEqual(levels.slice(1), ["Frustration", "Instructional", "Independent"], "only the existing reading levels");
+  assert.equal(m.select("Reading level"), undefined, "no Reading level filter (M3 all-role refinement)");
+  assert.doesNotMatch(m.text(), /Reading level/, "no reading level on the module cards");
   const difficulties = findAll(findAll(m.select("Difficulty"), (n) => n.type === "select")[0], (n) => n.type === "option").map((o) => o.props.value);
   assert.deepEqual(difficulties.slice(1), ["Easy", "Medium", "Hard"], "only the existing difficulties");
 });
@@ -94,11 +100,11 @@ test("Admin Content Management is unchanged: every module, Admin links, Trash lo
   assert.deepEqual(m.titles(), ["My Easy Draft", "My Hard Story", "Someone Else"]);
   const tree = m.render();
   const hrefs = findAll(tree, (n) => n.type === "a").map((n) => n.props.to);
-  assert.equal(findAll(tree, (n) => n.props?.actions)[0].props.actions.props.to, "/m3/admin/modules/new");
+  assert.equal(m.createHref(), "/m3/admin/modules/new");
   assert.ok(hrefs.includes("/m3/admin/modules/mine-draft/edit"));
   assert.deepEqual(m.calls, ["trash"]);
   assert.equal(findAll(tree, (n) => n.props?.actions)[0].props.title, "Content Management");
-  assert.equal(m.select("Difficulty"), undefined);
+  assert.ok(m.select("Difficulty"), "Difficulty filter for every role (M3 all-role refinement)");
   assert.equal(m.select("Reading level"), undefined);
 });
 
@@ -113,7 +119,9 @@ test("Teacher routes live inside the approved-Teacher route group and reuse the 
     'path="content/:moduleId/edit"\n              element={<ModuleFormPage mode="edit" workspace="teacher" />}',
   ]) assert.ok(teacherBlock.includes(route), route);
   assert.match(read("modules/module3/pages/ModuleFormPage.tsx"), /<AdminCollectionEditor mode=\{mode\} workspace=\{workspace\} \/>/);
-  assert.match(read("modules/module3/components/M3Layout.tsx"), /label: "My Reading Modules", to: "\/m3\/teacher\/content"/);
+  // M3 all-role refinement: My Reading Modules opens from the Reading Modules page button; the sidebar keeps it highlighted.
+  assert.doesNotMatch(read("modules/module3/components/M3Layout.tsx"), /label: "My Reading Modules"/);
+  assert.match(read("modules/module3/components/M3Layout.tsx"), /label: "Reading Modules", to: `\$\{root\}\/modules`, icon: BookOpenCheck, end: false, alsoActive: \["\/m3\/teacher\/content", "\/m3\/teacher\/content\/\*"\]/);
   // Admin routes untouched.
   assert.match(app, /<Route index element=\{<Module3Page \/>\} \/>/);
   assert.match(app, /path="modules\/new"\n\s+element=\{<ModuleFormPage mode="create" \/>\}/);
@@ -169,8 +177,9 @@ test("Teachers can find module authoring from every usual entry point, like the 
   const layout = read("modules/module3/components/M3Layout.tsx");
   // Sidebar simplification (2026-11-22): Create Module is the button on My Reading Modules / Content Management, which
   // stays highlighted on the create page; the sidebar no longer repeats it.
-  assert.match(layout, /\{ label: "My Reading Modules", to: "\/m3\/teacher\/content", icon: FilePlus2, end: true, alsoActive: \["\/m3\/teacher\/content\/new"\] \}/);
-  assert.match(layout, /\{ label: "Content Management", to: "\/m3\/admin", icon: Files, end: true, alsoActive: \["\/m3\/admin\/modules\/new"\] \}/);
+  // M3 all-role refinement: Reading Modules -> My Reading Modules (page button) -> Create Module (page button).
+  assert.match(layout, /alsoActive: \["\/m3\/teacher\/content", "\/m3\/teacher\/content\/\*"\]/);
+  assert.match(layout, /\{ label: "Content Management", to: "\/m3\/admin", icon: Files, end: true, alsoActive: \["\/m3\/admin\/modules\/\*"\] \}/);
   assert.doesNotMatch(layout, /label: "Create Module"/);
   assert.match(read("modules/module3/pages/Module3Page.tsx"), /to=\{`\$\{paths\.module\}\/new`\}><PlusCircle[^>]*\/> Create Module<\/Link>/, "the page button remains");
 
@@ -194,6 +203,7 @@ const labels = (m: ReturnType<typeof mountList>) => findAll(m.render(), (n) => n
 test("Teacher Trash: own trashed modules can be restored, never deleted permanently", async () => {
   const m = mountList("teacher", { trash: TRASHED, restored: "archived" });
   await settle(m);
+  m.openTrash();
   const trash = findAll(m.render(), (n) => n.props?.className === "m3-panel m3-trash")[0];
   assert.ok(trash, "Trash section shown on My Reading Modules");
   assert.match(textOf(trash), /Modules you deleted stay here/);
@@ -212,7 +222,7 @@ test("Teacher Trash: own trashed modules can be restored, never deleted permanen
 test("Teacher Delete moves the module to the Trash (no hard delete) once the Trash is installed", async () => {
   const m = mountList("teacher", { trash: [] });
   await settle(m);
-  findAll(m.render(), (n) => n.type === "button" && n.props["aria-label"] === "Delete My Hard Story")[0].props.onClick();
+  findAll(m.render(), (n) => n.type === "button" && n.props["aria-label"] === "Move to Trash My Hard Story")[0].props.onClick();
   await settle(m);
   assert.ok(m.calls.includes("trashModule:mine-pub"), "uses m3_trash_module");
   assert.ok(!m.calls.some((c) => c.startsWith("delete:")), "never the hard-delete path");
@@ -223,6 +233,7 @@ test("Before the migration (Teacher Trash unavailable) the existing Delete is ke
   const m = mountList("teacher", { trash: null });
   await settle(m);
   assert.equal(findAll(m.render(), (n) => n.props?.className === "m3-panel m3-trash").length, 0);
+  assert.equal(m.trashToggle(), undefined, "no Trash button before the migration");
   findAll(m.render(), (n) => n.type === "button" && n.props["aria-label"] === "Delete My Easy Draft")[0].props.onClick();
   await settle(m);
   assert.ok(m.calls.includes("delete:mine-draft"));
@@ -231,6 +242,7 @@ test("Before the migration (Teacher Trash unavailable) the existing Delete is ke
 test("Admin Trash unchanged: Restore and Delete Permanently, with the remover's name", async () => {
   const m = mountList(undefined, { trash: TRASHED });
   await settle(m);
+  m.openTrash();
   const trash = findAll(m.render(), (n) => n.props?.className === "m3-panel m3-trash")[0];
   assert.match(textOf(trash), / by Tess Teacher/);
   assert.ok(labels(m).includes("Delete Gone Draft permanently"), "Admin keeps permanent deletion for modules without history");
@@ -282,13 +294,13 @@ test("System Admin reuses the module list: create/view/edit links, difficulty or
   await settle(m);
   assert.deepEqual(m.titles(), ["My Easy Draft", "My Hard Story", "Someone Else"]);
   const tree = m.render();
-  assert.equal(findAll(tree, n => n.props?.actions)[0].props.actions.props.to, "/system-admin/content/modules/new");
+  assert.equal(m.createHref(), "/system-admin/content/modules/new");
   const links = findAll(tree, n => n.type === "a").map(n => n.props.to);
   assert.ok(links.includes("/system-admin/content/modules/mine-draft/edit"));
   assert.ok(links.includes("/system-admin/content/modules/mine-pub"));
   findAll(m.select("Difficulty"), n => n.type === "select")[0].props.onChange({ target: { value: "Hard" } });
   assert.deepEqual(m.titles(), ["My Hard Story"]);
-  findAll(m.render(), n => n.type === "button" && n.props["aria-label"] === "Delete My Hard Story")[0].props.onClick();
+  findAll(m.render(), n => n.type === "button" && n.props["aria-label"] === "Move to Trash My Hard Story")[0].props.onClick();
   await settle(m);
   assert.ok(m.calls.includes("trashModule:mine-pub"), "same history-preserving Trash action");
 });

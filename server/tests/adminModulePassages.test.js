@@ -188,7 +188,8 @@ for (const questionCount of [0, 3, 7, 15, '9', 9.5]) {
       generate: async () => assert.fail('Invalid counts must not reach generation'),
     }, { revision: 7, questionCount });
     assert.equal(response.status, 400);
-    assert.match((await response.json()).message, /Choose 6, 9 or 12 questions/);
+    // M3 all-role refinement: the shared rule names the exact reason (at least 6, multiples of 3, at most 12, whole number).
+    assert.match((await response.json()).message, /Enter at least 6 questions|multiple of 3|Enter at most 12 questions|whole number of questions/);
     assert.deepEqual(calls.map(call => call.name), ['m3_admin_collection']);
   });
 }

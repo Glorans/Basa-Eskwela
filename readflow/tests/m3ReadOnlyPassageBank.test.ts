@@ -3,69 +3,64 @@ import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createHookRuntime, findAll, loadComponentModule, textOf } from "./helpers/hookRuntime.ts";
-import * as bankSize from "../src/modules/module3/utils/passageBankSize.ts";
 
-// Admin View Details: saved banks are shown read-only, and a missing or
-// incomplete bank is stated plainly.
+// Read-only question bank in the module detail view. M3 all-role refinement (2026-11-23): the old ReadOnlyPassageBank
+// list was replaced by the shared compact summary (PassageBankSummary readOnly) with View Questions in a read-only
+// modal. These tests keep the same guarantees for the new summary.
 const require = createRequire(import.meta.url);
-const url = new URL("../src/modules/module3/components/ReadOnlyPassageBank.tsx", import.meta.url);
+const url = new URL("../src/modules/module3/components/PassageBankSummary.tsx", import.meta.url);
+const question = (id: string, type: string, reviewStatus = "reviewed") => ({
+  id, type, questionText: `Q ${id}`, options: ["a", "b", "c", "d"], correctAnswer: "a", scaffoldingHint: "h", reviewStatus,
+  answerExplanation: "e", supportingEvidence: "x",
+});
+const bank = (perType: number, reviewStatus = "reviewed") => ["literal", "inferential", "critical"]
+  .flatMap((type) => Array.from({ length: perType }, (_, i) => question(`${type}-${i}`, type, reviewStatus)));
 
-function render(questions: unknown[]) {
+function render(questions: unknown[], editLink?: unknown) {
   const runtime = createHookRuntime(require("react"));
-  const bank = loadComponentModule(url, (id) => (id === "react" ? runtime.react : id.endsWith("passageBankSize.ts") ? bankSize : require(id)));
-  return runtime.render(bank.default, { passage: { id: "p1", title: "Kindness", passageText: "Text.", sourceMaterialId: null, displayOrder: 1, questions } });
+  const mod = loadComponentModule(url, (id) => {
+    if (id === "react") return runtime.react;
+    if (id === "lucide-react") return new Proxy({}, { get: () => "svg" });
+    if (id === "./QuestionBankEditorModal" || id === "./ComprehensionStudentPreview") return { default: () => null };
+    if (id === "../utils/questionCount") return require(new URL("../src/modules/module3/utils/questionCount.ts", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
+    return require(id);
+  });
+  return runtime.render(mod.default, {
+    moduleTitle: "Module", passage: { id: "p1", title: "Passage", passageText: "x", questions }, readOnly: true, disabled: false,
+    editLink, onOpenChange: () => {}, onSave: async () => {},
+  });
 }
 
-const question = (n: number, type: string, reviewStatus = "reviewed") => ({
-  id: `q${n}`, type, questionText: `Question text ${n}?`, options: [`Right ${n}`, `Wrong A${n}`, `Wrong B${n}`, `Wrong C${n}`],
-  correctAnswer: `Right ${n}`, scaffoldingHint: `Hint ${n}`, reviewStatus,
-  answerExplanation: `Because ${n}.`, supportingEvidence: `Evidence ${n}.`,
-});
-const fullBank = ["literal", "literal", "inferential", "inferential", "critical", "critical"].map((type, i) => question(i + 1, type));
-
-test("a saved bank is listed without any editable control", () => {
-  const tree = render(fullBank);
-  assert.deepEqual(findAll(tree, (node) => ["input", "textarea", "select", "button", "form", "fieldset"].includes(node.type)), []);
+test("a saved bank is summarized without any editable control", () => {
+  const tree = render(bank(2));
   const text = textOf(tree);
-  assert.match(text, /Saved Question Bank \(read-only\)/);
-  assert.match(text, /Literal 2\/2 · Inferential 2\/2 · Critical 2\/2 · All questions reviewed/);
-  for (let n = 1; n <= 6; n++) {
-    assert.match(text, new RegExp(`Question text ${n}\\?`));
-    assert.match(text, new RegExp(`Right ${n} \\(correct answer\\)`));
-    assert.match(text, new RegExp(`Hint ${n}Answer explanationBecause ${n}\\.Supporting evidenceEvidence ${n}\\.`));
-  }
-  assert.equal(findAll(tree, (node) => node.props?.["data-correct"]).length, 6);
-  assert.doesNotMatch(text, /does not have exactly two/);
+  assert.match(text, /Question bank saved and reviewed/);
+  assert.match(text, /6 questions.*2 Literal.*2 Inferential.*2 Critical/s);
+  assert.equal(findAll(tree, (n) => ["input", "textarea", "select"].includes(n.type)).length, 0, "no editable field in the summary");
+  const buttons = findAll(tree, (n) => n.type === "button").map((n) => textOf(n).trim());
+  assert.deepEqual(buttons, ["View Questions", "Preview as Student"], "read-only: View, never View/Edit");
 });
 
 test("a missing bank is stated clearly", () => {
-  const text = textOf(render([]));
-  assert.match(text, /No question bank yet\. Edit the draft to generate and review six questions \(2 literal, 2 inferential and 2 critical\)/);
+  const tree = render([]);
+  assert.match(textOf(tree), /No question bank yet/);
+  assert.equal(findAll(tree, (n) => n.type === "button").length, 0);
 });
 
-test("an incomplete or unreviewed bank is flagged", () => {
-  const text = textOf(render([question(1, "literal", "generated"), question(2, "inferential")]));
-  assert.match(text, /Literal 1\/2 · Inferential 1\/2 · Critical 0\/2 · Some questions still need review/);
-  assert.match(text, /does not have exactly two questions of each type/);
-  assert.match(text, /Needs review/);
+test("an unreviewed bank is flagged, with a link to edit the draft when one is given", () => {
+  const tree = render(bank(2, "generated"), "EDIT-LINK");
+  assert.match(textOf(tree), /Question bank saved · needs review/);
+  assert.match(textOf(tree), /EDIT-LINK/);
 });
 
-test("View Details renders the read-only bank and keeps editing controls out of detail mode", async () => {
+test("nine- and twelve-question banks are counted per type", () => {
+  assert.match(textOf(render(bank(3))), /9 questions.*3 Literal.*3 Inferential.*3 Critical/s);
+  assert.match(textOf(render(bank(4))), /12 questions.*4 Literal.*4 Inferential.*4 Critical/s);
+});
+
+test("View Details renders the read-only summary and keeps editing controls out of detail mode", async () => {
   const editor = await readFile(new URL("../src/modules/module3/components/AdminCollectionEditor.tsx", import.meta.url), "utf8");
+  assert.match(editor, /<PassageBankSummary moduleTitle=\{collection\.title\} passage=\{passage\} readOnly disabled=\{false\}/);
   const detail = editor.slice(editor.indexOf('{mode === "detail" ? ('), editor.indexOf(") : (", editor.indexOf('{mode === "detail" ? (')));
-  assert.match(detail, /<ReadOnlyPassageBank passage=\{passage\} bankSizes=\{bankSizes\} \/>/);
-  assert.doesNotMatch(detail, /<(input|textarea|select|PassageBank)\b/);
-  // Generation and bank editing stay limited to edit mode.
-  assert.match(editor, /\{mode !== "create" && mode !== "detail" && \(/);
-});
-
-test("with 6/9/12 support, a nine-question bank is counted against three per type", () => {
-  const runtime = createHookRuntime(require("react"));
-  const bank = loadComponentModule(url, (id) => (id === "react" ? runtime.react : id.endsWith("passageBankSize.ts") ? bankSize : require(id)));
-  const nine = ["literal", "inferential", "critical"].flatMap((type, t) => [1, 2, 3].map((n) => question(t * 3 + n, type)));
-  const text = textOf(runtime.render(bank.default, { bankSizes: [6, 9, 12], passage: { id: "p1", title: "T", passageText: "Text.", sourceMaterialId: null, displayOrder: 1, questions: nine } }));
-  assert.match(text, /Literal 3\/3 · Inferential 3\/3 · Critical 3\/3 · All questions reviewed/);
-  assert.doesNotMatch(text, /does not have exactly/);
-  const empty = textOf(runtime.render(bank.default, { bankSizes: [6, 9, 12], passage: { id: "p2", title: "T", passageText: "Text.", sourceMaterialId: null, displayOrder: 1, questions: [] } }));
-  assert.match(empty, /generate and review 6, 9 or 12 questions, with equal numbers of literal, inferential and critical questions for this passage/);
+  assert.doesNotMatch(detail, /<input|<textarea|Generate|Save Reviewed/);
 });

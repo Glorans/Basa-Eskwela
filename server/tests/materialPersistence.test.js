@@ -9,15 +9,18 @@ const {
   getPersistedMaterial,
   listPersistedMaterials,
   requireUploadRole,
+  trashStaffMaterial,
+  restoreStaffMaterial,
+  listTrashedStaffMaterials,
 } = require("../services/materialPersistenceService");
 
 const { createDatabase, dependencies, requester, material,
   TEACHER_A, TEACHER_B, GENERAL, ADMIN, MATERIAL_A, MATERIAL_B } = require("./fixtures/materialDatabase");
 
-test("upload authorization allows Teacher and Independent Learner but denies Admin and Student", () => {
+test("upload authorization allows Teacher, School Admin and Independent Learner but denies Student", () => {
   assert.doesNotThrow(() => requireUploadRole({ role: "teacher" }));
   assert.doesNotThrow(() => requireUploadRole({ role: "general_user" }));
-  assert.throws(() => requireUploadRole({ role: "admin" }), MaterialAuthorizationError);
+  assert.doesNotThrow(() => requireUploadRole({ role: "admin" }), "M3 all-role refinement: School Admin upload");
   assert.throws(() => requireUploadRole({ role: "student" }), MaterialAuthorizationError);
 });
 
@@ -108,17 +111,18 @@ test("School Admin gets 'not found' for an Independent Learner's material: no de
   assert.equal((await getPersistedMaterial(requester(GENERAL, "general_user"), MATERIAL_B, deps)).id, MATERIAL_B, "the owner still sees it");
 });
 
-test("referenced material deletion returns 409 without removing Storage or metadata", async () => {
+// M3 all-role refinement: staff "Delete" is Move to Trash. The old path removed the storage file before the database
+// rows, so a referenced material could keep a record without its file. Nothing is erased now.
+test("staff deletion moves a material used by a module to Trash without touching Storage or rows", async () => {
   const database = createDatabase({
     uploaded_materials: [material(MATERIAL_A, TEACHER_A)],
     modules: [{ id: "module-1", source_material_id: MATERIAL_A }],
   });
-  await assert.rejects(
-    deletePersistedMaterial(requester(ADMIN, "admin"), MATERIAL_A, dependencies(database)),
-    (error) => error instanceof MaterialPersistenceError && error.statusCode === 409,
-  );
+  await deletePersistedMaterial(requester(ADMIN, "admin"), MATERIAL_A, dependencies(database));
   assert.equal(database.removedStoragePaths.length, 0);
   assert.equal(database.tables.uploaded_materials.length, 1);
+  assert.ok(database.tables.uploaded_materials[0].trashed_at, "in Trash");
+  assert.equal(database.tables.uploaded_materials[0].trashed_by, ADMIN);
 });
 
 test("Teacher and Independent Learner cannot delete another user's material", async () => {
@@ -133,7 +137,7 @@ test("Teacher and Independent Learner cannot delete another user's material", as
   }
 });
 
-test("eligible deletion removes Storage, material questions, answer keys, and metadata", async () => {
+test("Move to Trash keeps Storage, questions, answer keys and metadata; Restore brings it back unchanged", async () => {
   const question = {
     id: "88888888-8888-4888-8888-888888888888",
     material_id: MATERIAL_A,
@@ -143,19 +147,37 @@ test("eligible deletion removes Storage, material questions, answer keys, and me
     comprehension_questions: [question],
     comprehension_question_answers: [{ question_id: question.id, correct_answer: "A" }],
   });
-  await deletePersistedMaterial(requester(TEACHER_A, "teacher"), MATERIAL_A, dependencies(database));
-  assert.equal(database.removedStoragePaths.length, 1);
-  assert.equal(database.tables.uploaded_materials.length, 0);
-  assert.equal(database.tables.comprehension_questions.length, 0);
-  assert.equal(database.tables.comprehension_question_answers.length, 0);
+  const teacher = requester(TEACHER_A, "teacher");
+  await deletePersistedMaterial(teacher, MATERIAL_A, dependencies(database));
+  assert.equal(database.removedStoragePaths.length, 0);
+  assert.equal(database.tables.uploaded_materials.length, 1);
+  assert.equal(database.tables.comprehension_questions.length, 1);
+  assert.equal(database.tables.comprehension_question_answers.length, 1);
+  assert.equal((await listPersistedMaterials(teacher, dependencies(database))).length, 0, "gone from the active list");
+  const trash = await listTrashedStaffMaterials(teacher, dependencies(database));
+  assert.deepEqual(trash.materials.map((item) => item.id), [MATERIAL_A]);
+  await assert.rejects(getPersistedMaterial(teacher, MATERIAL_A, dependencies(database)), { statusCode: 409, code: "MATERIAL_IN_TRASH" });
+  await restoreStaffMaterial(teacher, MATERIAL_A, dependencies(database));
+  assert.equal(database.tables.uploaded_materials[0].trashed_at, null);
+  assert.equal((await listPersistedMaterials(teacher, dependencies(database))).length, 1, "back in the active list");
 });
 
-test("Storage deletion failure preserves database metadata and reports failure", async () => {
+test("a material assigned to an active classroom activity cannot be moved to Trash", async () => {
+  const database = createDatabase({
+    uploaded_materials: [material(MATERIAL_A, TEACHER_A)],
+    reading_activity_assignments: [{ id: "a1", material_id: MATERIAL_A, removed_at: null }],
+  });
+  await assert.rejects(trashStaffMaterial(requester(TEACHER_A, "teacher"), MATERIAL_A, dependencies(database)), { statusCode: 409, code: "MATERIAL_ASSIGNED" });
+  assert.equal(database.tables.uploaded_materials[0].trashed_at, undefined);
+  database.tables.reading_activity_assignments[0].removed_at = "2026-11-20T00:00:00Z";
+  await trashStaffMaterial(requester(TEACHER_A, "teacher"), MATERIAL_A, dependencies(database));
+  assert.ok(database.tables.uploaded_materials[0].trashed_at, "a removed assignment no longer blocks Trash");
+});
+
+test("staff Trash never calls Storage, even when Storage is unavailable", async () => {
   const database = createDatabase({ uploaded_materials: [material(MATERIAL_A, TEACHER_A)] });
   database.storageError = { message: "storage unavailable" };
-  await assert.rejects(
-    deletePersistedMaterial(requester(ADMIN, "admin"), MATERIAL_A, dependencies(database)),
-    (error) => error instanceof MaterialPersistenceError && error.statusCode === 502,
-  );
+  await deletePersistedMaterial(requester(ADMIN, "admin"), MATERIAL_A, dependencies(database));
   assert.equal(database.tables.uploaded_materials.length, 1);
+  assert.equal(database.removedStoragePaths.length, 0);
 });
