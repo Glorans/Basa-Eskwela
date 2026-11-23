@@ -10,6 +10,7 @@ const { PGlite } = require("@electric-sql/pglite");
 const { LIVE_FIXTURE } = require("../../supabase/tests/fixtures/liveDiagnosticFixture.cjs");
 const { createTranscriptReceiptService } = require("../services/diagnosticTranscriptReceipts");
 const { createReassessmentDeliveryService, passageHash } = require("../services/reassessmentDeliveryService");
+const { parseIndependentPilot, describeIndependentPilot } = require("../services/independentPilot");
 const { createReassessmentsRouter } = require("../routes/reassessments");
 const { DIAGNOSTIC_ASSESSMENTS, getDiagnosticAssessmentBinding } = require("../services/diagnosticAssessments");
 
@@ -62,7 +63,7 @@ function repo(d) {
 }
 
 /** gates: "off" (the default) or { days } to switch both gates on with that interval. */
-async function setup({ gates = { days: 30 } } = {}) {
+async function setup({ gates = { days: 30 }, pilot } = {}) {
   const d = new PGlite();
   await d.exec(LIVE_FIXTURE);
   for (const [id, role, status] of Object.values(P)) {
@@ -81,7 +82,8 @@ async function setup({ gates = { days: 30 } } = {}) {
   if (gates !== "off") await d.query("update m2_reassessment_settings set official_reassessment_enabled = true, independent_learner_enabled = true, independent_min_days_between = $1", [gates.days]);
   await d.exec("set role service_role");
   const receipts = createTranscriptReceiptService({ getSecret: () => SECRET });
-  const service = createReassessmentDeliveryService({ repository: repo(d), receipts, now: () => new Date().toISOString() });
+  const service = createReassessmentDeliveryService({ repository: repo(d), receipts, now: () => new Date().toISOString(),
+    ...(pilot === undefined ? {} : { independentPilot: parseIndependentPilot(pilot) }) });
   return { d, service, receipts };
 }
 const su = async (d, work) => { await d.exec("reset role"); try { return await work(); } finally { await d.exec("set role service_role"); } };
@@ -207,6 +209,66 @@ test("delivery and official result: no keys; receipts bound to this learner + ve
   assert.equal((await submit([receipt(receipts, { bind, recording: rid(5) })])).replayed, true);
   await refused(submit([receipt(receipts, { bind, recording: rid(6) })]), 409, "ASSIGNMENT_COMPLETED");
   assert.equal((await d.query("select count(*)::int n from diagnostic_results where assessment_type = 'reassessment'")).rows[0].n, 1);
+});
+
+test("pilot allow-list: parsing is default-off, exact, case-insensitive and fails closed; the log never shows ids", () => {
+  for (const raw of [undefined, null, "", "   "]) assert.equal(parseIndependentPilot(raw).enabled, false);
+  assert.equal(parseIndependentPilot(undefined).allows("anyone"), true, "off = previous behaviour");
+  const one = parseIndependentPilot(` ${P.il[0].toUpperCase()} , `);
+  assert.deepEqual([one.enabled, one.malformed, one.size, one.allows(P.il[0]), one.allows(P.il2[0]), one.allows(undefined)], [true, false, 1, true, false, false]);
+  for (const raw of [`${P.il[0]},not-an-id`, ",", "x"]) {
+    const bad = parseIndependentPilot(raw);
+    assert.deepEqual([bad.enabled, bad.malformed, bad.allows(P.il[0])], [true, true, false], `fails closed for ${JSON.stringify(raw)}`);
+  }
+  assert.equal(describeIndependentPilot(parseIndependentPilot(undefined)), "M2 Independent Learner pilot allow-list: off");
+  assert.equal(describeIndependentPilot(one), "M2 Independent Learner pilot allow-list: on (1 account)");
+  assert.doesNotMatch(describeIndependentPilot(one) + describeIndependentPilot(parseIndependentPilot("x")), /0000/);
+});
+
+test("pilot ON: only the listed Independent Learner can start; everyone else is refused by the server, not just hidden", async () => {
+  const { d, service } = await setup({ pilot: P.il2[0] }); // il2 is listed (but still inside its waiting interval)
+  const v = await version(d);
+  // il: eligible in every other way, but not in the pilot -> "not open yet", no Start, and the server refuses a direct call.
+  const outside = await service.listMine(as("il"));
+  assert.deepEqual([outside.languages.en.canStart, outside.languages.en.reason], [false, "Reassessments are not open yet. Please check again later."]);
+  assert.equal(outside.available[0].canStart, false);
+  await refused(service.startIndependent(as("il"), { packageVersionId: v.versionId }), 409, "REASSESSMENT_NOT_ENABLED");
+  await refused(service.startIndependent(as("il3"), { packageVersionId: v.versionId }), 409, "REASSESSMENT_NOT_ENABLED");
+  // Listed il2: the existing rules still apply (waiting interval since its initial diagnostic 2 days ago, 30-day interval).
+  const listed = await service.listMine(as("il2"));
+  assert.match(listed.languages.en.reason, /^Your next English reassessment opens on/);
+  await refused(service.startIndependent(as("il2"), { packageVersionId: v.versionId }), 409, "NOT_ELIGIBLE");
+  assert.equal(await count(d), 0, "nothing was created");
+  // Students never self-start, pilot or not.
+  await refused(service.startIndependent(as("student"), { packageVersionId: v.versionId }), 403, "REASSESSMENT_FORBIDDEN");
+  // The switch OFF still closes everything, pilot or not.
+  await su(d, () => d.query("update m2_reassessment_settings set independent_learner_enabled = false"));
+  await refused(service.startIndependent(as("il2"), { packageVersionId: v.versionId }), 409, "REASSESSMENT_NOT_ENABLED");
+});
+
+test("pilot ON for an eligible learner: start, content and official result as without the pilot; interval and initial rules kept", async () => {
+  const { d, service, receipts } = await setup({ pilot: P.il[0] });
+  const v = await version(d);
+  const second = await version(d, { title: "Second" });
+  const mine = await service.listMine(as("il"));
+  assert.deepEqual([mine.languages.en.canStart, mine.languages.fil.canStart], [true, false], "Filipino still needs its initial diagnostic");
+  const { assignment } = await service.startIndependent(as("il"), { packageVersionId: v.versionId });
+  await service.getContent(as("il"), assignment.id);
+  const result = await service.submitResult(as("il"), assignment.id, { transcriptReceipts: [receipt(receipts, { bind: binding(v.versionId, assignment.id) })], answers: ALL_RIGHT });
+  assert.equal(result.readingLevel, "Independent");
+  const row = (await d.query("select user_id, package_version_id, verification_status, reading_level from diagnostic_results where assessment_type = 'reassessment'")).rows[0];
+  assert.deepEqual([row.user_id, row.package_version_id, row.verification_status, row.reading_level], [P.il[0], v.versionId, "server_verified", "Independent"]);
+  const after = await service.listMine(as("il"));
+  assert.match(after.languages.en.reason, /^Your next English reassessment opens on/, "the waiting interval restarts as usual");
+  await refused(service.startIndependent(as("il"), { packageVersionId: second.versionId }), 409, "NOT_ELIGIBLE");
+});
+
+test("pilot value malformed: fails closed — nobody can start", async () => {
+  const { d, service } = await setup({ pilot: `${P.il[0]},oops` });
+  const v = await version(d);
+  assert.equal((await service.listMine(as("il"))).languages.en.canStart, false);
+  await refused(service.startIndependent(as("il"), { packageVersionId: v.versionId }), 409, "REASSESSMENT_NOT_ENABLED");
+  assert.equal(await count(d), 0);
 });
 
 test("after completing: the same version is never offered again, and the new result restarts the waiting interval", async () => {

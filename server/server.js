@@ -26,11 +26,15 @@ const app = express();
 // Signs M2 transcripts at both Azure STT entry points and verifies them when
 // the diagnostic result is submitted (DIAGNOSTIC_RECEIPT_SECRET).
 const diagnosticReceipts = createTranscriptReceiptService();
+// M2 F8 pilot: optional allow-list of Independent Learner accounts that may start a reassessment (default off).
+const independentPilot = require("./services/independentPilot").parseIndependentPilot(process.env.M2_IL_PILOT_USER_IDS);
+console.log(require("./services/independentPilot").describeIndependentPilot(independentPilot));
 // M2 F8: one reassessment delivery service shared by the Student routes and the speech binding (receipts are bound
 // to the Student's own active assignment and exact package version).
 const reassessmentDelivery = require("./services/reassessmentDeliveryService").createReassessmentDeliveryService({
   repository: require("./services/reassessmentDeliveryRepository").createSupabaseReassessmentDeliveryRepository(),
   receipts: diagnosticReceipts,
+  independentPilot,
 });
 // M2 F6: which initial diagnostic version learners take (built-in 3.0 unless a System Admin activated another).
 const initialDiagnostics = require("./services/initialDiagnosticService").createInitialDiagnosticService();
