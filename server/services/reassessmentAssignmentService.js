@@ -100,6 +100,9 @@ function createReassessmentAssignmentService({ repository, now = () => new Date(
       if (pkg.archived_at) reason = "Archived";
       else if (!version) reason = "Not published in the library";
       else if (room && pkg.scope === "teacher" && room.teacher_id !== pkg.owner_id) reason = `Only in ${ownerName ?? "the owning Teacher"}'s Learning Rooms`;
+      // The package language must match the Learning Room's subject (English room -> English package). A legacy room
+      // without a subject keeps the previous behaviour.
+      else if (room && room.subject && room.subject !== pkg.language) reason = `For ${pkg.language === "fil" ? "Filipino" : "English"} Learning Rooms only`;
       return {
         packageId: pkg.id,
         versionId: version?.id ?? null,
